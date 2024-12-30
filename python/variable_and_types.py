@@ -18,7 +18,7 @@ print(name)
 #none
 
 #int
-a = 1 #a is an integer 
+a = 1 #a is an integer
 print(a)
 #float
 b = 1.0 #b is a float
