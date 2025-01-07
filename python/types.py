@@ -1,5 +1,5 @@
 
-a = 10 
+a = 10
 print(type(a))
 
 b = [1,3,4,4,5]
@@ -12,3 +12,9 @@ d= float(c)
 print(type(d))
 
 #str("23") = 23
+
+
+#python practice
+
+
+
