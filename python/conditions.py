@@ -78,6 +78,15 @@ for x in fruits:
 for x in range(6):
   print(x)
 
+#range function with start parameter
+for x in range(2, 6):
+  print(x)
+
+
+
+#range function with start, end and step parameter
+for x in range(2, 30, 3):
+  print(x)
 
 #nested loops
 adj = ["red", "big", "tasty"]
@@ -88,4 +97,20 @@ for x in adj:
 
 
 
+
+#do while loop
+i = 1
+while i < 6:
+  print(i)
+  i += 1
+else:
+  print("i is no longer less than 6")
+
+#do while loop with break statement
+i = 1
+while i < 6:
+  print(i)
+  if i == 3:
+    break
+  i += 1
 
