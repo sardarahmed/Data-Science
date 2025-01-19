@@ -1,0 +1,43 @@
+Q:
+
+How to obtain pose of a mesh that I added as a collision object?
+
+I am trying to obtain pose of a collision object that I added to the scene.
+I have two nodes (node1 and node2), I also have a launch file which launches a custom world.
+node1 does all the planning and collision checking stuff. Works well
+node2 is to spawn a part into my custom world and attach it to a link(not a manipulator link). I'm using planning_scene_interface to add a mesh collision object to the scene and  also updating the collision between the link and the part using setEntry() for allowedCollisionMatrix.  I am then using using planning_scene_monitor to publish the updates into the scene. All this works well.
+Now, in the node1 I want to obtain the pose of the collision object that I added from node2.
+I found that I can use move_group/monitored_planning_scene topic to get the information of the complete scene. From this answer I read that move_group/monitored_planning_scene topic publish msgs only if there is a change in the scene or if we explicitly make a service request to update the scene and get information out of it.
+My question is how do I access the pose of a collision object after making that request? do I need to write a subscriber and callback for the move_group/monitored_planning_scene topic to read the pose information?
+EDIT: I tried making a planning_scene_monitor->requestPlanningSceneState("/get_planning_scene") to get a response on move_group/monitored_planning_scene topic, msgs are being published on the topic whenever I make a request, but those msgs does not show the information of the added collision object.
+My end goal for getting this pose information is to transform this pose using a transformation_matrix to rotate and/or translate this collision object from node1 itself.
+Is this the right way of doing it? or is there a more straight-forward way to read the pose of the collision object? I see there is a topic being published /collision_object, does this topic publish any useful information that I'm trying to find? I don't see anything being published to it
+
+Originally posted by srujan on ROS Answers with karma: 32 on 2020-12-18
+Post score: 0
+
+A:
+
+I was able to get the pose of the collision objects by making a service request to /get_planning_scene. Added code snippet below.
+  get_planning_scene_client = collision_nh_.serviceClient<moveit_msgs::GetPlanningScene>("/get_planning_scene");
+  moveit_msgs::PlanningScene planning_scene_;
+  moveit_msgs::GetPlanningScene srv; 
+  srv.request.components.components = moveit_msgs::PlanningSceneComponents::WORLD_OBJECT_GEOMETRY;
+
+  if (get_planning_scene_client.call(srv))
+  {
+    ROS_INFO("Got planning scene from move group.");
+    planning_scene_ = srv.response.scene;
+  }
+  else
+  {
+    ROS_ERROR("Failed to get planning scene from move group.");
+  }
+
+  geometry_msgs::Pose CollisionObjectMeshPose = planning_scene_.world.collision_objects[0].mesh_poses[0];
+  std::cout << CollisionObjectMeshPose << std::endl;
+
+Originally posted by srujan with karma: 32 on 2020-12-18
+This answer was ACCEPTED on the original site
+Post score: 0
+

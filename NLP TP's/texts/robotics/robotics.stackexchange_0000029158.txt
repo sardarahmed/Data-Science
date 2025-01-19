@@ -1,0 +1,63 @@
+Q:
+
+How to get the camera matrix of a camera sensor in Ignition Gazebo
+
+I have a world in Ignition Gazebo that contains a camera and a robot arm (panda). The camera has the robot in view. I would like to compute the pixel position of the robot's end-effector within the recorded camera image.
+What I would like to know is how/where to find the camera matrix (and information about distortion if applicable) so that I can compute the projection.
+I can find the projected position of the end-effector in the camera's frame of reference, but to convert the location into pixels I need the camera's intrinsic parameters. I thought they would be published on the /camera_info topic, but the simulator doesn't appear to publish any messages on this topic. My next thought was to check the camera sensor's source code, but I can't seem to figure out where it is located.
+Any pointers where to find this information are highly appreciated :)
+
+Originally posted by FirefoxMetzger on Gazebo Answers with karma: 1 on 2021-03-17
+Post score: 0
+
+A:
+
+It is indeed possible to get the camera matrix from the /camera_info topic. It also directly provides a projection matrix to map between pixel coordinates and meters.
+However, there is a gotcha that is not so obvious: Gazebo doesn't follow the typical convention of defining the camera's coordinate system with the z-axis pointing forward. Instead, it follows the default robotics joint convention and cameras have the x-axis pointing forward (z-axis pointing up). The projection matrix, however, is given in a format that assumes the standard camera coordinate frame (z-axis pointing forward, y-axis pointing down). As a result, an additional transformation (rotation) is needed to convert the position, before applying the projection.
+Here is the critical piece of code in python to (hopefully) make things more clear:
+def world2px_cam_info(pos_world):
+    # camera info msg based projection
+
+    ## pos in world coords -> pos in camera coords
+    # gazebo doesn't use conventional camera coordinates
+    # camera points in x-direction instead of z-direction
+    tf = transform(np.array((0,0,0, np.pi/2, np.pi/2, 0)))
+    pos_cam_gazebo = homogenize(world2cam(pos_world))
+    pos_cam = np.matmul(tf, pos_cam_gazebo)
+
+    projection = np.array(cam_info.projection.p).reshape((3, 4))
+    pos_px = cartesianize(np.matmul(projection, pos_cam))
+
+    #image indexing uses y-x order instead of x-y
+    pos_px = pos_px[::1]
+
+    return pos_px
+
+I've added a full code example below (using gym-ignition and ropy). It produces the following image:
+
+https://gist.github.com/FirefoxMetzger/dc9af8ae62fce176a3fe037d095988dc
+Edit: The .sdf was causing problems because it contained absolute paths for my local file system due to the traffic cone. I updated the .sdf, moved the code into a gist for syntax highlighting, and added ropy which takes care of the additional rotation and makes the code cleaner overall.
+
+Originally posted by FirefoxMetzger with karma: 1 on 2021-03-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by AndrejOrsula on 2021-03-19:
+Great that you made it work, good job! To have camera with "standard camera coordinate frame", you can also set the link or sensor pose (relative_to requires SDF 1.7).
+<model name="camera_model">
+  <pose>0 0 10 0 3.14 0</pose>
+  <link name="sensor_link">
+    <sensor name="camera_sensor" type="camera">
+      <pose relative_to="camera_model::sensor_link">0 0 0 -1.57 -1.57 -1.57</pose>
+      <!-- ... -->
+    </sensor>
+    <!-- ... -->
+  </link>
+</model>
+
+Comment by FirefoxMetzger on 2021-03-20:
+@AndrejOrsula Thanks! I would upvote your comment because it is really useful; unfortunately, it requires 3 rep to do so, meaning I will have to wait with that until somebody upvotes my question or answer :)
+Comment by benedikt on 2022-06-03:
+This worked for me, but I'm having problems with using the camera_info topic in ROS2 Galactic with the camera sensor of type rgbd_camera. I've set up a ros_ign_bridge with the argument /camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo This forwards the the camera_info topic to ROS2 successfully. But changing the image width and/or height has no effect on the camera matrix of the camera_info topic. I had to explicitly set the <intrinsics> tag in the sdf. Is this normal or a bug?
+

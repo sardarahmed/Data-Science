@@ -1,0 +1,187 @@
+Q:
+
+How to setup a C++ project for moveit?
+
+Hi i'm a newbie of ROS and C++, i worked with python for some months and i would like to start to use C++ which is well supported. I am using ROS Kinetic with Ubuntu 16.04 and Qt-creator with ROS plugin as IDE.
+I created a new workspace with: catkin build and a new package with: catkin_create_pkg test1 roscpp rospy std_msgs.
+I opened the CMakeLists.txt inside the package and i modified this in this way:
+cmake_minimum_required(VERSION 3.0.2)
+project(test1)
+
+## Compile as C++11, supported in ROS Kinetic and newer
+# add_compile_options(-std=c++11)
+
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  std_msgs
+)
+find_package(moveit_ros_planning_interface)
+include_directories(${moveit_ros_planning_interface_DIR})
+find_package(Eigen3 REQUIRED)
+include_directories(SYSTEM ${EIGEN3_INCLUDE_DIRS})
+
+## System dependencies are found with CMake's conventions
+# find_package(Boost REQUIRED COMPONENTS system)
+
+catkin_package(
+#  INCLUDE_DIRS include
+#  LIBRARIES test1
+#  CATKIN_DEPENDS roscpp rospy std_msgs moveit_ros_planning_interface
+#  DEPENDS system_lib
+)
+include_directories(
+# include
+  ${catkin_INCLUDE_DIRS}
+)
+add_executable(test1 src/moveit_tutorial.cpp)
+
+I created this simple C++ script like the moveit tutorials in order to practice:
+#include <ros/ros.h>
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+
+#include <moveit_msgs/DisplayRobotState.h>
+#include <moveit_msgs/DisplayTrajectory.h>
+
+#include <moveit_msgs/AttachedCollisionObject.h>
+#include <moveit_msgs/CollisionObject.h>
+
+int main(int argc, char **argv)
+{
+    // Inizializzazione nodo ROS
+    ros::init(argc, argv, "moveit_tutorial");
+    ros::NodeHandle node_handle;
+    ros::AsyncSpinner spinner(1);
+    spinner.start();
+
+    ROS_INFO("HELLO! NODO INIT");
+
+    // Nome del gruppo
+    static const std::string PLANNING_GROUP = "manipulator";
+
+    moveit::planning_interface::MoveGroupInterface move_group(PLANNING_GROUP);
+
+    // Raw pointers are frequently used to refer to the planning group for improved performance.
+    const robot_state::JointModelGroup* joint_model_group =
+            move_group.getCurrentState()->getJointModelGroup(PLANNING_GROUP);
+
+    geometry_msgs::Pose target_pose1;
+    target_pose1.orientation.w = 1.0;
+    target_pose1.position.x = 0.10;
+    target_pose1.position.y = -0.1;
+    target_pose1.position.z = 0.3;
+
+    move_group.setPoseTarget(target_pose1);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan1;
+
+    bool success = (move_group.plan(plan1) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+    ROS_INFO_NAMED("tutorial", "visualizing plan 1 (pose goal) %s", success ? "" : "FAILED");
+    // usa move_group.move() quando usi un vero robot
+
+    // Pianificare un joint-space goal
+    // RobotState oggetto che contiene tutte le posizioni attuali pos/vel/acc
+    moveit::core::RobotStatePtr current_state = move_group.getCurrentState();
+
+    // Current set of joint values
+    std::vector<double> joint_group_position;
+    // copia da current state i valori dei giunti
+    current_state->copyJointGroupPositions(joint_model_group, joint_group_position);
+
+    // modifico un valore di un giunto
+    joint_group_position[0] = -1.0;
+    move_group.setJointValueTarget(joint_group_position);
+    moveit::planning_interface::MoveGroupInterface::Plan plan2;
+    success = (move_group.plan(plan2) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+    ROS_INFO("HA AVUTO SUCCESSO? %s", success ? "SI" : "NO");
+    if (success)
+    {
+        move_group.execute(plan2);
+    }
+    ros::shutdown();
+    return 0;
+}
+
+On the IDE i receive this error: moveit_tutorial.cpp:40:43: error: member reference type 'robot_state::RobotStatePtr' (aka 'int') is not a pointer
+And after sourcing the workspace and building i received:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/d888e812f28e5371788687830d6ff14a
+
+Originally posted by Kappa95 on ROS Answers with karma: 91 on 2021-01-13
+Post score: 0
+
+A:
+
+It seems that there are some critical packages missing from your CMakeLists. For example, moveit_core seems pretty important. After combining the CMakeLists from moveit_tutorials and the specific move_group_interface_tutorial, as well as updating the package.xml, I was able to compile your code.
+cmake_minimum_required(VERSION 2.8.3)
+project(test1)
+
+add_compile_options(-std=c++11)
+
+find_package(Eigen3 REQUIRED)
+
+# Eigen 3.2 (Wily) only provides EIGEN3_INCLUDE_DIR, not EIGEN3_INCLUDE_DIRS
+if(NOT EIGEN3_INCLUDE_DIRS)
+  set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
+endif()
+
+find_package(catkin REQUIRED
+  COMPONENTS
+    interactive_markers
+    moveit_core
+    moveit_visual_tools
+    moveit_ros_planning
+    moveit_ros_planning_interface
+    pluginlib
+    geometric_shapes
+    pcl_ros
+    pcl_conversions
+    rosbag
+    tf2_ros
+    tf2_eigen
+    tf2_geometry_msgs
+)
+
+find_package(Boost REQUIRED system filesystem date_time thread)
+
+catkin_package(
+  LIBRARIES
+    interactivity_utils
+  INCLUDE_DIRS
+    ${THIS_PACKAGE_INCLUDE_DIRS}
+  CATKIN_DEPENDS
+    moveit_core
+    moveit_visual_tools
+    moveit_ros_planning_interface
+    interactive_markers
+  DEPENDS
+    EIGEN3
+)
+
+###########
+## Build ##
+###########
+
+include_directories(SYSTEM ${THIS_PACKAGE_INCLUDE_DIRS} ${Boost_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS})
+link_directories(${catkin_LIBRARY_DIRS})
+
+add_executable(test1 src/moveit_tutorial.cpp)
+target_link_libraries(test1 ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+install(TARGETS test1 DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+The package.xml came straight from here, just rename moveit_tutorials to test1. Note that this is really not the best way to go about doing things as it includes several extra libraries and unnecessary overhead. You can probably get this working properly by appending the appropriate libraries to your catkin_create_pkg command :)
+
+Originally posted by makr with karma: 179 on 2021-01-13
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Kappa95 on 2021-01-14:
+Thanks a lot! Copying and pasting directly the package.xml and the cmakelists,txt worked perfectly! It is always necessary also a catkin clean :DDD
+

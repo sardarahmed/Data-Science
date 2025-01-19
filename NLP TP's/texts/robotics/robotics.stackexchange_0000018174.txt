@@ -1,0 +1,24 @@
+Q:
+
+How can I preserve a high framerate while using at least 1280x720 resolution on 2 USB cameras on the same computer?
+
+To expand on this, I have a down-facing camera using the whycon ROS node on Ubuntu 16.04 Kinetic on a quad-core computer with 640x480@60fps MJPG video. I'm also using the usb_cam node to publish the image_raw. I've noticed that the overall CPU consumption would already be above 90% for all 4 cores whenever I try to run just these 2 nodes. 
+But I also want to add a secondary front-facing USB camera that will only be for streaming video to another computer. This secondary camera ideally should have a 1280x720 resolution. I tried to run both cameras at the same time, but the 1280x720 one is only at 10-12fps, which is too slow for my purposes. Additionally, it would be great if I can also have the whycon node to be using 1280x720, but I think the framerate should have a higher priority. 
+I realize that I can lower both resolutions to 640x480 and that should help with the framerate issue, but is that really the only way to ensure a smoother video?
+I also have a single USB 3.0 port and 2 USB 2.0 ports on my computer and I have plugged in the front-facing camera into the USB 3.0 port. I've also already ran v4l2-ctl --list-formats-ext on my cameras (they are exactly the same) and they both are only capable of 60fps up to 1920x1080.
+EDIT: A follow-up question I have is if it would be better to switch to a different computer with a better processor? What I'm currently using has the Intel Cherry Trail 1.8 Ghz Quadcore.
+EDIT2: @kaliatech If I run the front camera at 1280x720, I can get up to 34fps with 1 CPU core maxing out at 100% at a time and the rest at more or less 25%. If I run just the down-facing camera at 640x480, I can get up to 60fps with CPU usage around 55% for 1 core while the rest are less than 20%. If I have both the down-facing cam and the whycon node running, I still have 60fps from usb_cam but CPU usage maxes out at 100% and 70% for 2 cores. Finally, if I run all three, the down-facing cam remains the same in terms of framerate but the front-facing has around 12 fps and at least 2 cores max out with the rest at above 60%. At this point, I'm not currently transferring the videos through the network. I'm still conducting some tests on the local computer, but you would be right that it will be much worse on a slower network. I will try to use a different camera driver like cv_camera but I think I skipped it since it seemed older than usb_camera and even less supported
+EDIT3: I tried using cv_camera but the resulting framerate seemed about the same, if not worse.
+
+A:
+
+Here are a few things to consider:
+
+First, do you know where the actual bottleneck(s) are? Some possibilities: the usb camera driver or usb_cam and related settings (especially if having to compress/uncompress/transpose the video format without hardware support), cpu processing (perhaps whycon is overloading), network bandwidth/latency/processing (what type and speed network are you using?), or the final video decoding/display. Any one of those could be affecting the frame rates.
+If you are trying to transfer HD resolutions over a slower network in MJPG, then that could explain the lower frame rate. And depending on your hardware, some network interfaces require use of main CPU, would could also be adding to the overall CPU load.
+MJPG is not very good for capturing and streaming at higher resolutions & rates over a network, compared to something like H264 or other stream based encoders. You mention publishing image_raw, which would require significantly even more bandwidth, though it's unclear to me where in your ROS node network you are doing this.
+Some cameras have onboard hardware based encoders, which can significantly lighten the main CPU load. It requires support on both sides though (camera and driver). I'm not sure if usb_cam supports on camera encoding (I don't think it does, but not positive.) It might be worth try something like libuvc_camera, or cv_camera, and experimenting with settings and formats to see if you can get lower CPU and better frame rates.
+
+If this info doesn't help, I would suggest adding more information about the cameras you are using, your network setup, and more about your intended use-case.
+I would also suggest testing, if you haven't already, what kind of cpu and framerates you can get from the front camera at 1280x720 without simultaneously running the primary camera and without running whycon.  Based on what you find from doing that, you can probably add more info to your question, or start a new question, to get better answers.
+

@@ -1,0 +1,161 @@
+Q:
+
+Smach Userdata Input/Output keys error
+
+[ERROR] [WallTime: 1455271923.018549] [44.655000] Userdata key 'error_bool' not available. Available keys are: ['parameters']
+I keep getting this error... Anybody has a clue why is this happening?
+This is how the definition of the states and the state machine are done:
+
+def main(self):
+    # Create a SMACH state machine
+    sm = smach.StateMachine(outcomes=['outcome'])
+    sm.userdata.parameters = []
+
+    # Open the container
+    with sm:
+        # Add states to the container
+        smach.StateMachine.add('Ready', ready_state.Ready(), 
+                               transitions={'cartesianMotionRequest':'CartesianMotion', \
+                                            'articularMotionRequest':'ArticularMotion', \
+                                            'fullBodyMotionRequest':'FullBodyMotion', \
+                                            'endEffectorRequest':'EndEffectorCoordination', \
+                                            'trajectoryExecutionRequest':'TrajectoryExecution', \
+                                            'failure':'ErrorHandling', \
+                                            'recordTrajectoryRequest':'RecordTrajectory', \
+                                            'changeEndEffectorRequest':'ChangeEndEffector', \
+                                            'exit':'Finish'},
+                               remapping={ 'error_bool':'error_bool',
+                                            'parameters':'parameters' })
+        smach.StateMachine.add('CartesianMotion', cartesian_motion_state.CartesianMotion(self.hiro), 
+                               transitions={'success':'Ready', \
+                                           'failure':'ErrorHandling'},                                           
+                               remapping={'parameters':'parameters',
+                                          'error_bool':'error_bool'})
+
+________________________________________________________________________________________-
+class Ready(smach.State):
+def __init__(self):
+    smach.State.__init__(self,                     
+outcomes=['cartesianMotionRequest', \
+                                   'articularMotionRequest', \
+                                   'fullBodyMotionRequest', \
+                                   'endEffectorRequest', \
+                                   'trajectoryExecutionRequest', \
+                                   'failure', 'recordTrajectoryRequest', \
+                                   'changeEndEffectorRequest', 'exit'], \
+                         output_keys=['parameters'],
+                         input_keys=['error_bool']
+                         )
+
+    class CartesianMotion(smach.State): 
+    def __init__(self, robot):
+    smach.State.__init__(self, outcomes=['success', 'failure'],
+                         input_keys=['parameters'], 
+                         output_keys=['error_bool']
+                        )
+
+Originally posted by MartinI on ROS Answers with karma: 1 on 2016-02-12
+Post score: 0
+
+A:
+
+You should init the userdata key before you call it:
+i.e.
+    sm.userdata.error_bool = False
+
+i copy pasted your code and applied some simplification (you can ignore the introspection/threading stuff at the bottom). Try below to test it:
+
+#!/usr/bin/env python
+# This Python file uses the following encoding: utf-8
+
+import roslib
+import rospy
+import threading
+
+import smach
+from smach import StateMachine
+
+import smach_ros
+from smach_ros import IntrospectionServer, SimpleActionState
+
+class Ready(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,                     
+                         outcomes=['test'],
+                         output_keys=['parameters'],
+                         input_keys=['error_bool']
+                         )
+        
+    def execute(self, userdata):
+        rospy.loginfo("ready state key error_bool: "+str(userdata.error_bool))
+        rospy.sleep(1)
+        userdata.parameters = ['some param'];
+        return 'test'   
+    
+        
+
+class CartesianMotion(smach.State): 
+    def __init__(self):
+        smach.State.__init__(self, outcomes=['success', 'failure'],
+                         input_keys=['parameters','error_bool'], 
+                         output_keys=['error_bool'])
+    def execute(self, userdata):
+        rospy.loginfo("cartesian state key parameters: "+str(userdata.parameters))  
+        rospy.sleep(1)  
+        
+        return 'success'             
+
+def main():
+    rospy.init_node('test')#, log_level=rospy.DEBUG)
+    
+    # Create a SMACH state machine
+    sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+    sm.userdata.parameters = []
+    sm.userdata.error_bool = False
+
+    # Open the container
+    with sm:
+        # Add states to the container
+        smach.StateMachine.add('Ready', Ready(), 
+                               transitions={'test':'CartesianMotion'})
+
+        smach.StateMachine.add('CartesianMotion', CartesianMotion(), 
+                               transitions={'success':'succeeded', 'failure':'aborted'})
+    
+    #setup introspection  
+    sis = IntrospectionServer('server_name', sm, '/Test')
+    sis.start()
+    
+    #set preemption handler
+    smach_ros.set_preempt_handler(sm)
+    
+    # Create a thread to execute the smach container
+    smach_thread = threading.Thread(target = sm.execute)
+    smach_thread.start()
+    
+    # Wait for ctrl-c
+    rospy.spin()
+    
+    # Request the container to preempt
+    sm.request_preempt()
+    
+    # Block until everything is preempted 
+    # (you could do something more complicated to get the execution outcome if you want it)
+    smach_thread.join()
+    
+    #stop introspection
+    sis.stop()
+    
+    
+
+if __name__ == '__main__':
+    main()
+
+With the introspectionserver you can also use smach_viewer to check the states of your userdata keys / check your state machine:
+image description http://s9.postimg.org/piqq5lg1r/Screenshot_from_2016_04_06_20_11_53.png
+Hope this helps :)
+
+Originally posted by ski11io with karma: 46 on 2016-04-06
+This answer was ACCEPTED on the original site
+Post score: 0
+

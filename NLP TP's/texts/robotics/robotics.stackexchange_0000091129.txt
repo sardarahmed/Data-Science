@@ -1,0 +1,140 @@
+Q:
+
+[ROS2 Crystal] Minimalistic built from sources
+
+OS: Ubtuntu 16.04
+Target: Ubuntu armhf 18.04
+ROS-DISTRIB = ROS2 Crystal
+
+I am looking to cross-compile a minimalistic ros2 built intended for embedded, but the current cross-compilation tutorial imports and builds the whole ros2 source repository.
+Some visualization packages are already disabled.
+touch \
+    ros2_ws/src/ros2/rviz/COLCON_IGNORE \
+    ros2_ws/src/ros-visualization/COLCON_IGNORE
+
+Where can I find the different
+packages used for ros-base (barebone)
+? Including self-contained libraries
+as I'm building from source with the
+option -DFORCE_BUILD_VENDOR_PKG=ON
+
+And how bare-bone can I get while
+keeping the main functionalities of
+ROS2 ? Regarding this question, this
+answer
+was given some time ago but when
+doing so, I encountered a ERROR 404:
+
+ urllib.error.HTTPError: HTTP Error 404: Not Found (https://raw.githubusercontent.com/ros2/rosdistro/ros2/index.yaml)
+
+EDIT
+
+Second point resolved (see comment
+below)
+
+I tried to list the sources needed
+for a lightweight ROS. It might be
+missing some important dependency:
+
+https://pastebin.com/jnWRNzNx
+
+[EDIT 2]
+from @gvdhoorn comment:
+REP 2001: ROS Bouncy and Newer Variants gives the different dependencies for ros2.
+Then create the ros2_core.repos with
+rosinstall_generator ros_core --rosdistro crystal --deps > ros_core.repos
+
+Use vsc for importing the source:
+vcs-import src < ros2.repos
+
+Originally posted by William Bulle on ROS Answers with karma: 40 on 2019-03-26
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-03-26:\
+
+Regarding this question, this answer was given some time ago but when doing so, I encountered a ERROR 404
+
+the ROS 1 and ROS 2 rosdistro dbs were merged some time ago, so you don't need to configure an alternative ROSDISTRO_INDEX_URL any more.
+Comment by gvdhoorn on 2019-03-27:
+You may want to take a look at REP 2001: ROS Bouncy and Newer Variants which documents the sets of pkgs that are considered the ROS variants.
+Those are not necessarily minimal, but should provide a little more insight into which pkgs could go together in a deployment.
+Are you using rosinstall_generator already, or doing everything by hand?
+Comment by William Bulle on 2019-03-27:
+@gvdhoorn  Thank you for the link. That's what I looking for.
+I just used rosinstall_generator for print out the dependencies of the minimal examples and I listed them by hand. Would the ros1 tutorial part when using rosinstall genreator would be up to date for ros 2 as the ros2 build from source tutorial didn't include the use of rosinstall_generator ?
+Comment by gvdhoorn on 2019-03-27:\
+
+Would the ros1 tutorial part when using rosinstall genreator would be up to date for ros 2 as the ros2 build from source tutorial didn't include the use of rosinstall_generator ?
+
+It should. As far as rosinstall_generator is concerned there is no difference between Kinetic or Crystal. It's all just packages in the distribution.yaml of the respective release.
+Comment by marguedas on 2019-03-27:
+@william-bulle As you would like to build using -DFORCE_BUILD_VENDOR_PKG=ON, and that this option is only available on master as of a couple days ago (and not part of any release or crystal development branch), the version of the packages you will get using rosinstall_generator will not have this CMake option.
+In ROS 2 the tool used for cloning is python3-vcstool, so the equivalent to the ROS1 tutorial would be something like:
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws
+rosinstall_generator ros_core --rosdistro crystal --deps --tar > crystal-ros_core.rosinstall
+vcs import src < crystal-ros_core.rosinstall
+
+Though last time I tried (for bouncy, it may have changed since) there were some missing packages due to some dependencies being injected later on in the release process. That may be the reason the installation pages don't use rosinstall_generator yet.
+Comment by William Bulle on 2019-03-27:
+@marguedas: to use the -DFORCE_BUILD_VENDOR_PKG=ON I git update the vendors' repos to the master branch.
+I came to the same answer as you. I'll need to check if nothing is missing and try to build.
+Comment by marguedas on 2019-03-27:
+Follow up of:
+
+for bouncy, it may have changed since) there were some missing packages
+
+This seems to still be the case. I used this fix to get the missing packages: https://github.com/ros-infrastructure/rosinstall_generator/pull/54
+Comment by William Bulle on 2019-03-29:
+@marguedas :
+I encountered some build issues that might come from the discrepancy of the source as ros2.depos are set to ros2 or foreign repos as it follows
+ros2.depos:
+  eProsima/Fast-RTPS:
+    type: git
+    url: https://github.com/eProsima/Fast-RTPS.git
+    version: b48ce9d2fba6fc94e756da01c58b72f2ad848238
+  ros2/poco_vendor:
+    type: git
+    url: https://github.com/ros2/poco_vendor.git
+    version: 1.1.1
+
+custom ros_core.install :
+local-name: poco_vendor
+uri: https://github.com/ros2-gbp/poco_vendor-release.git
+version: release/crystal/poco_vendor/1.1.1-0
+
+local-name: fastrtps
+uri: https://github.com/ros2-gbp/fastrtps-release.git
+version: release/crystal/fastrtps/1.7.2-0
+
+I can edit by hand the uri to the correct branch/repos but I'm looking a way to specify for getting the sources from ros2 repos using rosinstall generator ? Maybe related to this issue
+Comment by gvdhoorn on 2019-03-29:
+@William Bulle: ros2.repos specs source repositories, while rosinstall_generator will always give you release repositories.
+As long as the ROS 2 release team has followed a normal release workflow, the release repositories should contain the same artefacts as the source repositories, just "frozen" at a certain version (ie: the released version).
+Editing the .rosinstall file to point to source repositories should not be needed.
+Comment by marguedas on 2019-03-29:
+@William Bulle I did my build using the release repositories using the following command: rosinstall_generator ros_core --rosdistro crystal --deps > ros_core.install
+Once I used the fixed version of rosinstall generator (0.1.16), I had all the repositories needed to perform the build.
+Note that I am building natively on amd64 and not cross-compiling. The Dockerfile I'm using is here
+
+that might come from the discrepancy of the source as ros2.depos are set to ros2 or foreign repos as it follows ros2.depos
+
+The release repos have the exact code used to build the crystal debs. I usually use those as they are ensured to have a package.xml allowing rosdep to install all the dependencies. If you use the rosinstall_generator options to get the source repos (--upstream(-devel) flags) you may not have the same version of the code for third party packages and no package.xml that will lead to dependency issues
+
+A:
+
+From the comments of @gvdhoorn and @marguedas :
+Using ROS REP 2001 and python3-rosinstall_generator, we can generate our own our own ros2.repo to download the source with the following command:
+rosinstall_generator ros_core --rosdistro crystal --deps > ros_core.install
+vcs-import src < ros_core.install
+
+I obtain the following packages in my /src folder.
+I still have to check if all the core packages are presents and maybe remove other rmw_implementations (connext/opensplice)
+[EDIT]
+Using rosinstall might generate some issues as it generate its install file from ros-gdb repos instead of ros|ros2|eProsima repos ? If using the default branches/tags seems to not lead to a dependency problem, using upstream branch did lead of some missing dependencies while building.
+
+Originally posted by William Bulle with karma: 40 on 2019-03-27
+This answer was ACCEPTED on the original site
+Post score: 0
+

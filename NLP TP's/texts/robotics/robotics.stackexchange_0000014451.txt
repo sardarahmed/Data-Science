@@ -1,0 +1,19 @@
+Q:
+
+Kalman filter for vision based pose estimation: 'good' measurements not improving system covariance
+
+I am starting off with a very simple Kalman filter for vision based pose estimation (PnP algorithm). The filter is inspired by the constant velocity model in this OpenCV tutorial, but I am ignoring roll, pitch and yaw for now and I am only estimating the XYZ pose.
+As PnP is formulated as a non linear least squares problem, I have access to a covariance matrix from the solver I am using (Ceres), and I am using this matrix as an estimate of the measurement noise covariance matrix $R$ at each step. Process noise covariance $Q$ remains constant. My understanding of the filter is that if I obtain more and more 'good' measurements (with low $R$), the system covariance should recursively decrease; and even if the measurements worsen later, the posteriors should not worsen too much. So if I were to start from an area of bad measurements with covariance $P_1$, move to an area where I receive some good measurements and back to the area of bad measurements with covariance this time being $P_2$, $P_2 < P_1$.
+On the other hand, in my formulation, my posterior covariance $P$ seems to be blindly following $R$: in my previous example of bad-good-bad areas, $P$ decreases and increases to almost the same extent, so I can't see the advantage of receiving good measurements reflected in the final covariance. On the other hand, if I reduce $Q$ even lower, I can see some variation in initial vs. final covariances, but the system is not trusting the measurements at all and is smoothing the poses out way too much. I am confused as to how to pick the best values of $Q$ and $R$, and mainly as to how I can write my filter in a way that it recognizes the advantage of getting good measurements.
+
+A:
+
+First, let me see if I can summarize your issue to see if I understand correctly:
+1) Start in area with bad measurements (high R), get P1
+2) Move to area with good measurements (low R)
+3) Move back to first area (high R), get P2
+And you expect P2 < P1, correct?
+Generally speaking, yes, at some level you can think P2 should be less than P1. But the devil is in the details: over time the filter will reach a steady state so given the same state, Q, and R it will converge to the same value regardless of how you got there. If are able to instantaneously jump between the bad and good measurement regions you should initially see P2
+
+The other thing to consider is the magnitude of R relative to Q; if even your "good" measurement R is large the filter mostly just trusts the predictive model so the quality of your measurements doesn't affect much. You can try test with a large Q (or smaller R) to trust the measurements more; but that will also make the filter adjust more quickly after changing from good->bad measurement regions.
+

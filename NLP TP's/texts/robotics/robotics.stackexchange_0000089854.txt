@@ -1,0 +1,195 @@
+Q:
+
+Low update rate on robot_localization
+
+I am using ROS kinetic, Raspbian  9.4 (Stretch) on a Raspberry Pi 3. I am equipping  a miniature vehicle (similar to the image below, image from google) for autonomous driving.
+
+So far my I have an IMU and encoders installed, and I am attempting to fuse the sensors with robot_localization ekf. The outputs of robot localization are actually close to the expected position/orientation, but the rate is unusable low and slow to converge as a consequence. Here is the output from rostopic hz.
+note@pc:~$ rostopic hz odometry/filtered
+subscribed to [/odometry/filtered]
+no new messages
+no new messages
+no new messages
+no new messages
+no new messages
+average rate: 0.290
+    min: 3.444s max: 3.444s std dev: 0.00000s window: 2
+no new messages
+no new messages
+no new messages
+average rate: 0.264
+    min: 3.444s max: 4.122s std dev: 0.33911s window: 3
+[..]
+
+The publish rates for the TF transforms is higher than 50Hz (image below), and robot_localization is set up to publish the odom->base_link transform.
+
+The same goes for the topics which robot_localization are subscribed to (below). Outputs from rqt.
+
+The configuration file for robot_localization is as shown below. I have played with frequency and sensor_timeout parameters, but I did not experiment much with the covariance matrices, as I expect to see performance changes by modifying the covariances, and not the filter`s loop frequency (Is this assumption correct?).
+      <node name="local"   pkg="robot_localization" type="ekf_localization_node">
+
+  <param name="frequency" value="100"/>
+  <param name="sensor_timeout" value="0.02"/>
+  <param name="two_d_mode" value="true"/>
+  <param name="map_frame" value="map"/>
+  <param name="odom_frame" value="odom"/>
+  <param name="base_link_frame" value="base_link"/>
+  <param name="world_frame" value="odom"/>
+  <param name="transform_time_offset" value="0.0"/>
+  <param name="transform_timeout" value="0"/>
+
+  <param name="imu0" value="imu/data"/>
+  <param name="odom0" value="enc/pos"/>
+
+  <rosparam param="imu0_config">
+      [false, false, true,
+       true,  true,  true, 
+       false, false, false,
+       true, true, true,
+       true, true, true]
+      </rosparam>
+
+  <rosparam param="odom0_config">
+      [true, true, true,
+       false, false, false,
+       false, false, false,
+       false, false, true,
+       false, false, false]
+      </rosparam>
+
+  <param name="imu0_queue_size"  value="10"/>
+  <param name="odom0_queue_size" value="10"/>
+
+  <param name="imu0_differential"  value="false"/>
+  <param name="odom0_differential" value="false"/>
+
+  <param name="imu0_relative"  value="false"/>
+  <param name="odom0_relative" value="false"/>
+
+  <param name="imu0_remove_gravitational_acceleration"  value="true"/>
+
+  <rosparam param="initial_state">[0.0,  0.0,  0.0,
+                                0.0,  0.0,  0.0,
+                                0.0,  0.0,  0.0,
+                                0.0,  0.0,  0.0,
+                            0.0,  0.0,  0.0]</rosparam>
+
+  <param name="publish_tf"  value="true"/>
+
+  <param name="publish_acceleration"  value="false"/>
+  <param name="print_diagnostics"  value="true"/>
+
+  </node>
+
+Anyone would have insight on what I am missing?/ How can I get a higher update rate from robot_localization?
+
+Originally posted by hyori on ROS Answers with karma: 46 on 2018-12-16
+Post score: 2
+
+Original comments
+Comment by Tom Moore on 2019-01-29:
+Please include a sample sensor message from every sensor input. My guess is that there's an issue with covariance matrices somewhere, but I can't say without more data.
+
+A:
+
+At this point I have strong indications that it is all about the actual processing capacity of the Raspberry Pi. Basically what I have done is to move the localization node to another board (Nvidia TX2), while keeping the other nodes on the Raspberry Pi. In that setup I could get 80+ Hz update rate.
+Furthermore, when used top to show cpu usage, it was pretty high.
+
+After the migration of robot_localization to TX2:
+
+I would be glad to hear from other Raspberry Pi users if anyone has faced a similar problem, and if they could actually have robot_localization running alongside various other nodes.
+Here is a sample of IMU data:
+    ---
+    header:
+      seq: 4516
+      stamp: 
+        secs: 1548832661
+        nsecs: 383944034
+      frame_id: "imu_base"
+    orientation: 
+      x: -0.00143707386235
+      y: -0.0112244264823
+      z: -0.349196171157
+      w: 0.93698131311
+    orientation_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    angular_velocity: 
+      x: 0.000330710783601
+      y: -2.22474336624e-05
+      z: 0.00118492916226
+    angular_velocity_covariance: [0.03, 0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.03]
+    linear_acceleration: 
+      x: 0.222736816406
+      y: 0.0502954101563
+      z: 10.1836230469
+    linear_acceleration_covariance: [0.1, 0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1]
+    ---
+
+Here is a sample of Odometry Data:
+
+header: 
+  seq: 293
+  stamp: 
+    secs: 1548832850
+    nsecs: 747138977
+  frame_id: "odom"
+child_frame_id: "base_link"
+pose: 
+  pose: 
+    position: 
+      x: -6.18503931136e-05
+      y: 0.0
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.00011245525997
+      w: 0.999999993677
+  covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+twist: 
+  twist: 
+    linear: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+---
+
+[EDIT]
+I have compiled robot_localization by adding the -DCMAKE_BUILD_TYPE=RelWithDebInfo parameter, and by doing so I got a reduction of cpu usage from 80% to 30-some% on robot_localization. The update rates are up too. I could actually do away with the TX2 now. Picture of the current state of the system:
+
+Thank you for the suggestions.
+
+Originally posted by hyori with karma: 46 on 2019-01-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-01-30:
+Something to check: if you're compiling robot_localization from source, make sure to have enabled optimisations.
+Comment by hyori on 2019-01-30:
+I am actually building it from source. How can I enable optimizations? Something like this?:
+catkin_make --pkg robot_localization -DCMAKE_CXX_FLAGS="-O3"
+
+Comment by gvdhoorn on 2019-01-30:
+I would use -DCMAKE_BUILD_TYPE=RelWithDebInfo.
+Comment by hyori on 2019-01-30:
+I will try it and post results here.
+Comment by Tom Moore on 2019-01-30:
+Yeah, your input data looks fine. I have an Odroid U3, and my recollection is that it runs fine on there. I'm interested to hear how you get on. I've had people complain about not even being able to build on a Raspberry Pi.
+Comment by hyori on 2019-01-30:
+Compiling with the optimization parameter seems to have done the trick.
+Thank you for the suggestions.
+Comment by Tom Moore on 2019-01-31:
+Just a further note: I think RelWithDebInfo results in the -O2 flag being used, but if you go with Release, it uses -O3. You might get further CPU usage reduction in that case. From here.
+Comment by gvdhoorn on 2019-01-31:
+@Tom Moore: yes, that's correct. I always use RelWithDebInfo as I'm typically on the "developer side" and would like to have optimisations enabled but still be able to debug if needed.
+Full Release would make that impossible.
+Comment by gvdhoorn on 2019-01-31:
+See ros-infrastructure/bloom#327 for a related discussion btw.
+Comment by Tom Moore on 2019-01-31:
+Yes, same. I only use O3 for binaries and source builds that aren't meant to be used for dev. Curious as to how much of a difference it makes on this kind of hardware, though.
+

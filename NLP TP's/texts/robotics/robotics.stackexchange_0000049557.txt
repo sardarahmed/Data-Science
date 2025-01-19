@@ -1,0 +1,210 @@
+Q:
+
+Robot_pose_ekf does not take into account the velocity commands
+
+Hello
+Im also ROS users and doing some research in assist robotics. Im using Fuerte and Ubuntu 10.04. Have somee problem with the robot_pose_ekf package. My platform has wheel encoders and IMU , laser and Kinect.
+So when using the robot_pose_ekf package it does not take into account the velocity commands sent to the robot when updating the filter. I have topics from encoders contains velocity massages but robot_pose_ekf it does not take into account.
+So I though to modify  the code of the robot_pose_ekf stack and add the velocity information. I'm not sure if that's possible. I've looked the code and seems that it only works with poses, but I'm not sure.
+I already have an node for subscribe to odom topic. This my node
+void odomCallback(const nav_msgs::OdometryConstPtr& msg)
+{
+  //first, we'll publish the transform over tf
+    odom_trans.transform.translation.x = odom_raw.pose.pose.position.x  =  msg->pose.pose.position.x;
+    odom_trans.transform.translation.y = odom_raw.pose.pose.position.y  =  msg->pose.pose.position.y;
+
+    odom_trans.transform.rotation = odom_raw.pose.pose.orientation = msg->pose.pose.orientation;
+
+odom_raw.twist = msg->twist;
+    
+
+        odom_trans.header.stamp = odom_raw.header.stamp = msg->header.stamp;
+        pub2.publish(odom_raw);
+    
+
+    static tf::TransformBroadcaster br;
+   
+    
+}
+
+void poseCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg)
+{
+  odom.pose.pose.position.x = msg->pose.pose.position.x;
+  odom.pose.pose.position.y = msg->pose.pose.position.y;
+  odom.pose.pose.orientation = msg->pose.pose.orientation;
+  odom.header.stamp = msg->header.stamp;
+
+//Speed calculation
+  delta_t = ros::Time::now().toSec() - time_last;
+  odom.twist.twist.linear.x = (msg->pose.pose.position.x-xlast)/delta_t;
+  odom.twist.twist.linear.y = (msg->pose.pose.position.y-ylast)/delta_t;
+  curr_yaw = tf::getYaw(msg->pose.pose.orientation);
+  odom.twist.twist.angular.z = normalize(curr_yaw-yaw_last)/delta_t;
+
+  pub.publish(odom);
+  xlast = msg->pose.pose.position.x; ylast = msg->pose.pose.position.y; yaw_last = curr_yaw;
+  time_last = ros::Time::now().toSec();
+}
+
+int main(int argc, char **argv)
+{
+
+ 
+  ros::init(argc, argv, "ekf_encoders_odom");
+  ros::NodeHandle nh;
+  initialize();
+
+  ros::Subscriber sub = nh.subscribe("odom", 1, odomCallback);
+
+  pub2 = nh.advertise<nav_msgs::Odometry>("raw_odometry", 1);
+
+  ros::Rate rate(1);
+  while(ros::ok())
+{
+  ros::spinOnce();
+  rate.sleep();
+}
+return 0;
+}
+
+So do I need something else???
+
+Originally posted by Astronaut on ROS Answers with karma: 330 on 2013-03-19
+Post score: 0
+
+A:
+
+Example how to generate Odometry message from encoders.
+#include "pr2_mechanism_model/joint.h"
+#include "pr2_controller_interface/controller.h"
+#include "nav_msgs/Odometry.h"
+#include "sensor_msgs/JointState.h"
+#include "tf/transform_broadcaster.h"
+#include "ros/ros.h"
+#include "math.h"
+
+double delta_x = 0;
+double delta_y = 0;
+double delta_a1 = 0;
+double delta_a2 = 0;
+double fi = 0;
+double current_fi = 0;
+double last_x = 0;
+double last_y = 0;
+double current_a1, current_a2;
+double last_a1 = 0;
+double last_a2 = 0;
+
+void OdomCallback(const sensor_msgs::JointState::ConstPtr& msg)
+{
+  // Getting the positions of right and left back wheels from /joint_states topic 
+
+  current_a1 = msg->position[4];
+  current_a2 = msg->position[5];
+
+}
+
+int main (int argc, char** argv)
+{
+    ros::init(argc, argv, "odom_publisher");
+
+    ros::NodeHandle n;
+    ros::Publisher odom_pub;
+    ros::Subscriber odom_sub;
+
+    odom_sub = n.subscribe("/joint_states",1000,OdomCallback);
+
+    odom_pub = n.advertise<nav_msgs::Odometry>("odom",100);
+    tf::TransformBroadcaster odom_broadcaster;
+
+      ros::Rate r(1.0);
+
+      ros::Time current_time, last_time;
+      current_time = ros::Time::now();
+      last_time = ros::Time::now();
+
+      double  R = 0.07; //wheel radius
+      double d = 0.3;  //distance between two wheels
+      double x = 0;     //initial values
+      double y = 0;
+      double th = 0;
+      double vx, vy, vth;
+
+      int count = 0;
+      while(n.ok())
+      {
+            ros::spinOnce();               // check for incoming messages
+            current_time = ros::Time::now();
+
+            delta_a1 = current_a1 - last_a1;
+            delta_a2 = current_a2 - last_a2;
+
+            last_a1 = current_a1;
+            last_a2 = current_a2;
+            //ROS_INFO("delta_a %f", delta_a);
+            double dt = (current_time - last_time).toSec();
+
+            current_fi = -R*(delta_a2 - delta_a1)/d;
+            fi +=current_fi;
+            current_fi = 0;
+            ROS_INFO("yaw %f", fi);
+
+            delta_x = R*delta_a1*cos(fi);
+            delta_y = R*delta_a1*sin(fi);
+
+            x += delta_x;
+            y += delta_y;
+            th = fi;
+            vx = delta_x/dt;
+            vy = delta_y/dt;
+            vth = current_fi/dt;
+
+            //since all odometry is 6DOF we'll need a quaternion created from yaw
+               geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+
+               //first, we'll publish the transform over tf
+               geometry_msgs::TransformStamped odom_trans;
+               odom_trans.header.stamp = current_time;
+               odom_trans.header.frame_id = "odom";
+               odom_trans.child_frame_id = "base_link";
+
+               odom_trans.transform.translation.x = -x;
+               odom_trans.transform.translation.y = -y;
+               odom_trans.transform.translation.z = 0.0;
+               odom_trans.transform.rotation = odom_quat;
+
+               //send the transform
+               odom_broadcaster.sendTransform(odom_trans);
+
+               //next, we'll publish the odometry message over ROS
+               nav_msgs::Odometry odom;
+               odom.header.stamp = current_time;
+               odom.header.frame_id = "odom";
+
+               //set the position
+               odom.pose.pose.position.x = -x;
+               odom.pose.pose.position.y = -y;
+               odom.pose.pose.position.z = 0.0;
+               odom.pose.pose.orientation = odom_quat;
+
+               //set the velocity
+               odom.child_frame_id = "base_link";
+               odom.twist.twist.linear.x = vx;
+               odom.twist.twist.linear.y = vy;
+               odom.twist.twist.angular.z = vth;
+
+               //publish the message
+               odom_pub.publish(odom);
+
+               last_time = current_time;
+               r.sleep();
+               count++;
+      }
+
+ return 0;
+}
+
+Originally posted by Peter Listov with karma: 338 on 2013-03-20
+This answer was ACCEPTED on the original site
+Post score: 2
+

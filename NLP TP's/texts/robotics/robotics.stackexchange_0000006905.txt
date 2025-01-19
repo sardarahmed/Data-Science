@@ -1,0 +1,25 @@
+Q:
+
+SLAM noob here, a few questions regarding EKF-SLAM
+
+I've recently been learning about SLAM and have been attempting to implement EKF-SLAM in python. I've been using this great article as a guide. Some progress has been made, but I'm still confused by certain stages.
+Firstly, does the inverse sensor model have to compute range and bearing, as opposed to cartesian coordinates? Why is this approach used?
+Secondly, what format should my robot provide its heading in? Currently I just use a running offset from the origin angle (0), without wrapping it between 0 and 360. Turning right yields positive degrees, and left negative. I ask this as I assume the sensor model expects a certain format.
+Thirdly, when computing the jacobians for adding new landmarks, (page 35) is Jz simply the absolute rotation of the robot (-540 degrees for example) plus the bearing the landmark was detected at?
+And finally, what's the best approach for managing the huge covariance matrix? I'm currently thinking of a good way to 'expand' P when adding new landmarks.
+Here's my current implementation: http://pastebin.com/r7wUMgY7
+Any help would be much appreciated! Thanks.
+
+A:
+
+I've addressed your first two questions below.
+
+Firstly, does the inverse sensor model have to compute range and bearing, as opposed to cartesian coordinates? Why is this approach used?
+
+Given your current state (which includes the pose of the robot and the position of the landmarks), the inverse sensor model predicts what the observation should be. In other words, if you have a laser scanner that reports the range and bearing of the landmark from your current pose, you want to compare that observation with what the inverse sensor model predicts. The reason why it is not converted to Cartesian coordinates is because the noise of the laser scanner observation is in range and bearing. Usually you want your observation model to generate a prediction whose form is as close to what your physical sensor provides as possible.
+
+Secondly, what format should my robot provide its heading in? Currently I just use a running offset from the origin angle (0), without wrapping it between 0 and 360. Turning right yields positive degrees, and left negative. I ask this as I assume the sensor model expects a certain format.
+
+If the only place the heading is used is in cosines and sines, then it shouldn't matter. However, you need to be careful whenever you take the difference between two angles. For example 179 degrees minus -179 degrees gives 358 degrees. In reality, the difference is -2 degrees, (which is equivalent to 358 degrees if you know it must be wrapped), but an algorithm minimizing the error might think 358 degrees is a large error.
+Also, the traditional 2D coordinate system has the angle being report with respect to the x-axis, with x forward, y left and z up. As a result, turning right should decrease the heading angle.
+

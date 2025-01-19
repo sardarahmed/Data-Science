@@ -1,0 +1,28 @@
+Q:
+
+Using multiple laser scanners
+
+What is the best way to use multiple laser scanners on a robot?  Currently I have two hokuyo scanners, one facing forward, and one facing backwards.  I'd like to do slam as efficiently as possible using data from both scanners.
+
+Originally posted by aarons on ROS Answers with karma: 81 on 2011-03-05
+Post score: 8
+
+A:
+
+I don't believe the current slam-gmapping implementation in ROS directly supports laser scans coming from lasers with different frames.
+A quick solution: You could try to combine your two 180-deg lasers scans into one 360-deg laser scan. Compute the x-y coordinates from both the laser scans, then calculate the distance from each beam endpoint to a virtual laser scanner, and output the result as a LaserScan.
+This would work best if you align your sensors well, ie, exactly 180 degrees apart from each other. Also, try to get the optical centers of the lasers as close as possible. The laser scan structure assumes the angular gap between two scan beams is constant, so hacking two laser scans into one might introduce some distortions in the data. Nevertheless, it will probably be minimal, if you are careful with the settings of your scanners.
+Now, for a more correct solution: slam-gmapping (as well as other laser tools, such as canonical_scan_matcher) don't algorithmically require that the input data is in polar coordinates. In fact, they take the (r, theta) readings from the laser, and covert them to (x, y) coordinates internally. What would be best is to rewrite the wrappers to accept (x, y) coordinates directly. Then, you would be able to combine any number of laser scans, regardless of their physical configuration. All you would have to do is convert the LaserScans to  PointClouds, and then merge the PointClouds together. You would also be able to use non-laser sources of data (like the Kinect) without having to go through a clunky PointCloud-To-LaserScan conversion.
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2011-03-05
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Ivan Dryanovski on 2011-03-05:
+Looks like we have two discussions going - on the mailing list and here. We can continue with the details of modifying slam_gmapping on the mailing list.
+Comment by aarons on 2011-03-05:
+Unfortunately my scanners are at opposite sides of the robot, about 1m apart.  I already hacked together a node that merges the LaserScans into one PointCloud, and was planning to look into modifying slam_gmapping to accept a PointCloud.  It looks like I'm on the right path then.  Thanks.
+Comment by JunTuck on 2016-05-24:
+Hi there, would you mind sharing which part of slam_gmapping you hacked? I'm having trouble finding the part where it actually converts LaserScans into x-y coordinates. Thanks in advance!
+

@@ -1,0 +1,70 @@
+Q:
+
+Roslaunch across multiple machines failing when calling nodes
+
+I currently have a two machine robotic set-up one that is operating internally on the robot itself and an "external" machine which is used for heavier computations and graphical processing. We are trying to launch everything from one computer and have set up the following launch file:
+<?xml version="1.0"?>
+<launch>
+    <group>
+        <machine name="pc1" address="youbot-hbrs1-pc1" default="true"/>
+
+        <!-- base components -->
+        <include file="$(find raw_bringup)/robot.launch" />
+
+        <!-- base placement -->
+        <include file="$(find raw_base_placement)/ros/launch/placement_wrt_workspace.launch" />
+
+        <!-- motion controller -->
+        <include file="$(find raw_relative_movements)/launch/base_controller.launch" />
+
+        <!-- manipulation -->
+        <include file="$(find raw_arm_navigation)/ros/launch/simple_manipulation.launch" />
+    </group>
+    <group>
+        <machine name="pc2" address="youbot-hbrs2-pc2" default="true" env-loader="/home/b-it-bots/RoboCupAtWork/raw_env_loader.sh"/>
+
+        <!-- Kinect -->
+        <include file="$(find raw_bringup)/components/cam3d.launch" />
+
+        <!-- 3d perception pipeline -->
+        <include file="$(find raw_object_detection)/ros/launch/perception_pipeline.launch" />
+
+        <include file="$(find raw_visual_servoing)/ros/launch/microsoft_lifecam_720_online.launch"/>
+
+        <!-- navigation -->
+        <include file="$(find raw_2dnav)/ros/launch/2dnav.launch" />
+    </group>
+</launch>
+
+When I load this file everything up until the "raw_visual_servoing" has no problem running. The visual servoing application is one that uses the usb_cam package to grab a live video stream from a webcam and to perform blob detection on it using OpenCV libraries. It is run using the following command
+$rosservice call /raw_visual_servoing/do_visual_servoing
+
+It is normally launched form the 2nd (external) computer and run there as the internal one cannot run it. When we do this using one launch file we get the following errors:
+PC2
+$ rosservice call /raw_visual_servoing/do_visual_servoing 
+ERROR: transport error completing service call: unable to receive data from sender, check sender's logs for details
+
+From the node "raw_visual_servoing"
+more raw_visual_servoing-raw_visual_servoing-26-stderr.log 
+
+(GRAY:32551): Gtk-WARNING **: cannot open display: 
+
+** (GRAY:32551): WARNING **: Command line `dbus-launch --autolaunch=0dcb19185f6f6b6fddfd12cb00000002 --binary-syntax --close-stderr' exited with non-zero exit status 1: Autolaunch error: X11 initialization failed.\n
+
+I should also mention that if I move each group into its own launch file which will be launched from each machine separately they seem to work fine. It is ONLY when all of the nodes are started using the single launch file.
+with no errors present or detectable on PC1 I know that you should be able to start everything from one launch file so any ones assistance in getting this to work would be VERY appreciated!
+Thanks,
+Mat
+
+Originally posted by BadRobot on ROS Answers with karma: 91 on 2013-06-21
+Post score: 0
+
+A:
+
+I don't know raw_visual_servoing, but I think you mean this: https://github.com/fsfrk/hbrs-youbot-hackathon/blob/master/raw_object_perception/raw_visual_servoing/src/visual_servoing.cpp
+The problem is this program opens windows (cvShowImage), but if you start it with a launch file over the network you just have a ssh connection and no display on the remote machine ("cannot open display").
+
+Originally posted by MichaelKorn with karma: 1480 on 2013-06-24
+This answer was ACCEPTED on the original site
+Post score: 1
+

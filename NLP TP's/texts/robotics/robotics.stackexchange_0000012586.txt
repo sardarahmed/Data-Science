@@ -1,0 +1,106 @@
+Q:
+
+How can reading a quadrature encoder fail?
+
+I am trying to the read the quadrature encoder on a ServoCity 624 RPM Premium Planetary Gear Motor w/Encoder with a SparkFun ESP32 Thing.
+I am supposed to see 228 counts per revolution, but I see 230-232 instead.
+Here is my Arduino code:
+// Global variables modified by ISR
+int state;
+unsigned int count;
+
+int error;
+
+// ISR called on both edge of quadrature signals
+void handleInterrupt()
+{
+  // Shift old state into higher bits
+  state = ( state << 2 ) & 15;
+
+  // Get current state
+  if( digitalRead(34) ) state |= 2;
+  if( digitalRead(35) ) state |= 1;
+
+  // Check state change for forward or backward quadrature
+  // Flag any state change errors
+  switch( state )
+  {
+    case 1:
+    case 7:
+    case 14:
+    case 8:
+      count--;
+      break;
+    case 11:
+    case 13:
+    case 4:
+    case 2:
+      count++;
+      break;
+    default:
+      error++;
+  }
+}
+
+void setup()
+{
+  pinMode(33, OUTPUT); // PWM
+  pinMode(32, OUTPUT); // DIR
+
+  pinMode(34, INPUT_PULLUP); // QB
+  pinMode(35, INPUT_PULLUP); // QA
+
+  attachInterrupt( digitalPinToInterrupt(34), handleInterrupt, CHANGE );
+  attachInterrupt( digitalPinToInterrupt(35), handleInterrupt, CHANGE );
+
+  Serial.begin(74880);
+}
+
+void loop()
+{
+  int new_state;
+  int old_state;
+
+  // Start motor
+  digitalWrite(32, HIGH); // clockwise
+  digitalWrite(33, HIGH);
+
+  // 57*4-17 found by trial and error to make a complete revolution
+  for( int i = 0; i < (57*4-17); i++ )
+  {
+    // Busy wait for change
+    do
+    {
+      // Get current state
+      new_state = 0;
+      if( digitalRead(34) ) new_state |= 2;
+      if( digitalRead(35) ) new_state |= 1;
+    }
+    while( old_state == new_state );
+    old_state = new_state;
+  }
+
+  // Stop motor
+  digitalWrite(33, LOW);
+  delay( 1000 );
+
+  Serial.print( " state=" );
+  Serial.print( state );
+  Serial.print( " count=" );
+  Serial.print( count % 228 );
+  Serial.print( " error=" );
+  Serial.println( error );
+}
+
+On my scope, quadrature signals are very clean
+I instrumented the code to look at interrupts and they appear to be in the right places and not too close together.
+I don't see mechanical slipping, and it would be obvious because
+over 100 revs, the count slips an entire revolution.
+
+But the bottom line is: How can this be failing?  If the CPU is missing transitions, I would get illegal transitions and errors.  Noise would also cause errors.  But I am not getting any errors at all (except a single error at startup).
+
+A:
+
+ServoCity 624 RPM Premium Planetary Gear Motor w/Encoder has the encoder on the motor and a 19:1 gear reduction on the output shaft.
+Mechanical tolerance in the gearbox accounts for the difference between 228 counts per revolution that I expected and 230.7 counts per revolution that I measured.
+

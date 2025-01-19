@@ -1,0 +1,99 @@
+Q:
+
+Inconsistent results between Simulink derivative model and tf for PD controller
+
+I'm designing a PD controller so that the response due to unit step should exhibit an overshoot of 20% and steady-state error less 0.01. I've computed the parameters Kp and Kd and double-checked the result based on root locus design approach. This is the Simulink for a PD controller where kp=7130 and kd=59.388. 
+
+and the result is 
+
+I've computed the closed-loop pole  $-38.694+75.5266j$ at the gain kd via another Matlab's script I've written. Matlab shows same closed-loop pole shown below
+
+which agrees with my calculation for kd. The block diagram for the preceding system is 
+
+Now, I would like to use stepinfo() to obtain the performance of the system, hence: 
+clear all
+clc
+kp=7130;
+kd=59.3880;
+num=[kd kp];
+den=[1 (kd+18) (kp+72)];
+F=tf(num,den);
+step(F)
+stepinfo(F)
+
+which yields this information (i.e. obviously wrong) 
+    RiseTime: 0.0133
+SettlingTime: 0.0910
+ SettlingMin: 0.9182
+ SettlingMax: 1.2584
+   Overshoot: 27.1141
+  Undershoot: 0
+        Peak: 1.2584
+    PeakTime: 0.0321
+
+Why tf yields different results in comparison with Simulink.
+
+Matlab's documentation shows no benefits info regarding this issue. 
+
+A:
+
+After some investigation, there is a problem with the derivative block in Simulink. tf yields the correct response in my case. While the values of Kd has been designed to yields 20%, the system is not a second-order system because there is no zero-pole cancellation. The zero comes from the PD controller. The new system yields 27%. 
+The derivative block as shown in my post must be used with caution. The discussion can be found in What are the implications of using the Derivative block in Simulink?. The answer is provided by  MathWorks Support Team staff which is 
+
+Here is a list of recommendations on the usage of the Derivative
+  block:
+1) Signals connected to the Derivative block should be continuous in
+  time and amplitude
+Derivative blocks amplify discontinuities when connected to a
+  non-continuous signal. In example 'Example1_Discont.mdl', the slope of
+  the input signal changes instantly. After being passed through a
+  Derivative block, it becomes a peak.
+2) Signals connected to the Derivative block should have a small
+  derivative at t=0
+‘Example2_Spike.mdl’ shows how a spike can occur in the second
+  derivative after the first time step. This occurs because the
+  Derivative block yields 0 by default at the initial time step, instead
+  of 2*pi in this case. If this model is simulated again with a smaller
+  time step, the spike amplitude increases.
+3) Signals connected to the derivative should contain a low level of
+  noise
+In general, taking the derivative of a noisy signal tends to
+  exacerbate the influence of that noise. Therefore, Derivative blocks
+  in Simulink exhibit this behavior as well. In ‘Example3_Noise.mdl’,
+  the noise gets amplified in the output, to the point where the
+  derivative of the sine wave is not recognizable. By using a filtered
+  derivative transfer function which filters out higher frequencies, a
+  much better result can be obtained in the example.
+If your model cannot respect the above guidelines, you might want to
+  consider the following alternatives:
+a) Rearranging the equations
+Typically, a system's best-form mathematical model exclusively
+  involves integrators (i.e., no derivatives). It is usually possible to
+  design the model in such a way that Derivative blocks are never
+  needed. In 'Example4_BestForm.mdl', the "naive" first approach
+  involves a Derivative block; however, the second approach avoids
+  having to compute the derivative.
+b) Including the derivative into a transfer function
+If a Derivative block and another Transfer Function block are in
+  series, it may be possible to remove the Derivative block and multiply
+  the numerator of the transfer function by ‘s’ (see
+  ‘Example5_InSeries.mdl’, where the magnitude of the error is very
+  small compared to the magnitude of the output signal).
+c) Filtered derivative
+The Derivative block can be replaced with a transfer function of the
+  form G(s) = s/(tau*s+1), where ‘tau’ is a time constant which should
+  be small compared to the dominant time constant of the system, to
+  avoid filtering out important system dynamics. ‘Example6_Filtered.mdl’
+  contrasts this transfer function with the Derivative block.
+
+Additional note:
+
+How is the derivative part of the PID controller implemented in
+  Simulink? It does not use a Derivative block, but instead implements a
+  filtered derivative similar to the one described above. In a model
+  including a PID Controller block, right-click on the block and select
+  ‘Look Under Mask’ to see the exact implementation of the controller,
+  and in particular its derivative part.
+
+The credit goes to @Matteo Ragni. The actual implementation for the derivative block is provided by Matteo.  
+

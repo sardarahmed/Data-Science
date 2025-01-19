@@ -1,0 +1,102 @@
+Q:
+
+How to combine two topics in one callback (when synchronization is not possible)
+
+I made a similar question here as to how to assign a callback to two different topics.
+The answer was to use message_filter. I tried it and it worked.
+I am trying to do the same with two other types of topics and I got the error:
+AttributeError: 'Image' object has no attribute 'header'
+
+I investigated and found that the synchronization uses the time stamp in the headers of the topics.
+The problem is that now I am using two topics  and one of them is a types of messages without headers.
+The topic message type ("Image") is
+uint64 unique_id
+sensor_msgs/CompressedImage image
+
+As you can see it has no headers. (therefore the error "no attribute header")
+My question is, is there a way that I can still combine these two topics in one callback?
+P.S I have tried to follow the advice of the wiki and use allow_headerless=True but when I do this the callback function never gets called
+P.S.2  is this the only way?
+
+Originally posted by Kansai on ROS Answers with karma: 170 on 2021-04-14
+Post score: 0
+
+Original comments
+Comment by tryan on 2021-04-14:\
+
+P.S I have tried to follow the advice of the wiki and use allow_headerless=True but when I do this the callback function never gets called
+
+P.S.2 is this the only way?
+
+If using the receipt time instead of a timestamp is acceptable (depends on your application), allow_headerless = True should work, and you can post your code for help troubleshooting.  Otherwise, there's no need to modify the publisher directly.  If you're really trying to synchronize the messages, the image field of your Image message, should have a header in it as I mentioned below, which is probably what you should use.
+Comment by Kansai on 2021-04-14:
+I have checked and the image field does seem to have a header filled. I am now learning how to use topic_tools relay to republish... it seems it can be done by a launch file but I wonder if that is possible from the code? mmm it seems relay will only republish the same message... wonder how to publish only the image part...
+Comment by Kansai on 2021-04-14:
+@tryan is there a way to synchronize it with the header of the image part of the message?
+Comment by tryan on 2021-04-14:
+You could do that if you write a custom message filter, but it would probably be easier to write a node (if topic_tools doesn't work) to republish a message you can use with an existing filter.
+
+A:
+
+In short, yes.  There are multiple ways to approach this depending on how you want to handle the messages.  You can always implement your own class that subscribes to both topics, stores the messages, and operates on them as you see fit.  On the other end of the spectrum, you may be able to get away with using topic_tools (wiki) to republish the sensor_msgs/CompressedImage (doc), which does have a header, on a new topic and subscribing to that one with a message_filters::Synchronizer (wiki) as before.  In between, you may be able to use the message_filter library to implement a custom filter without starting from scratch.
+Please, provide more context if you'd like a more specific answer.  How do you want to handle the messages if not time-synchronizing them?  Do you need the unique_id for processing in the callback?
+
+###Update
+To clarify the discussion in the comments, @Kansai chose the second option above.  There is enough information in the original Image message defined in the question for normal synchronizing with a message_filters::TimeSynchronizer, but that info is not contained in a top-level header as expected.
+The message definition contains a field called image of type sensor_msgs/CompressedImage, which in turn contains a header.  The chosen solution therefore involves relaying the image field on its own (new) topic as a standalone CompressedImage message, which can work with the TimeSynchronizer.
+To achieve the relay, one can use topic_tools/transform in a launch file like so:
+<launch>
+    <node name="pub" pkg="rostopic" type="rostopic"
+        args="pub -r 1 /original_topic test_pkg/Image
+            '{unique_id: 0, image: {header: {seq: 0, stamp: {secs: 1, nsecs: 0}, frame_id: 'test_frame'}, format: 'png', data: '[1]'}}'" />
+
+    <node name="relay" pkg="topic_tools" type="transform"
+        args="/original_topic /new_topic sensor_msgs/CompressedImage 'm.image'"/>
+</launch>
+
+Check output:
+$ rostopic echo /new_topic 
+header: 
+  seq: 1
+  stamp: 
+    secs: 1
+    nsecs:         0
+  frame_id: "test_frame"
+format: "png"
+data: [1]
+---
+
+This way the allow_headerless option (which would use receipt time rather than a timestamp) is unnecessary, and better synchronization is possible.  Though the relay node introduces some extra delay, it may be negligible for a given application.  There are of course alternatives, but I don't want to clutter the discussion more if this solution works for OP.
+
+Originally posted by tryan with karma: 1421 on 2021-04-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Kansai on 2021-04-14:
+I am trying to solve this with topic_tools and it seems that transform would help but it seems this does not work with launch files https://answers.ros.org/question/349655/topic_tools-transform-works-in-console-but-not-in-launch-file/
+Comment by tryan on 2021-04-14:
+I tried the "broken" example from your link, and it worked for me:
+<launch>
+    <node name="pub" pkg="rostopic" type="rostopic" args="pub /foo std_msgs/Float64 0.5 -r 1" />
+    <node name="foobar" pkg="topic_tools" type="transform" args="/foo /bar std_msgs/Float64 'm'"/>
+</launch>
+
+output:
+$ rostopic echo /bar
+data: 0.5
+---
+data: 0.5
+---
+
+Comment by Kansai on 2021-04-14:
+Yeah, I wrote one for my self and it works as well. Thanks for the help!
+Comment by gvdhoorn on 2021-04-15:
+So what is the solution here now?
+@Kansai: what was the cause of your callback not getting called?
+I'm having a hard time understanding how republish or transform suddenly make this work.
+
+Yeah, I wrote one for my self and it works as well.
+
+then why not post it here as an answer?
+

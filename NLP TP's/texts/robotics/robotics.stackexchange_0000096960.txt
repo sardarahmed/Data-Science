@@ -1,0 +1,126 @@
+Q:
+
+opening new terminal and execute
+
+Hello.
+I'm making a node that killing and starting another nodes.
+I'm using std::system for this node. But there is a problem.
+when this node kill and start new node, this 'manager node' is overwrited by new node.(Beacuse new node starts in same terminal.) So manager cannot work anymore.
+Is there any solution for starting new node without overwrite?
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include "std_msgs/Int32.h"
+#include "geometry_msgs/Twist.h"
+#include "std_msgs/Bool.h"
+#include <sstream>
+
+bool last_bool = true;
+double saved_distance_[3] = {0};
+int saved_sequence_data = 0;
+
+void isHumanCallback(const std_msgs::Bool& isHuman){
+    // node_controller
+    bool isHuman_ = isHuman.data;
+    if (last_bool != isHuman_ ){
+        if (isHuman_){
+
+            //kill node
+            std::stringstream kill_patrol;
+            kill_patrol << "rosnode kill patrol";
+        std::system(kill_patrol.str().c_str());
+
+    // open new terminal
+    std::string newTerminal = "xterm -e sh -c 'ls -l; exec bash'";
+    std::system(newTerminal.c_str());
+
+    //start node
+    std::stringstream start_tracking;
+    start_tracking << "rosrun patrol_and_tracking tracking";
+    std::system(start_tracking.str().c_str());
+}
+// start tracking
+
+if (!isHuman_){
+    //kill node
+    std::stringstream kill_tracking;
+    kill_tracking << "rosnode kill tracking";
+    std::system(kill_tracking.str().c_str());
+
+        // open new terminal
+            std::string newTerminal = "xterm -e sh -c 'ls -l; exec bash'";
+            std::system(newTerminal.c_str());
+            
+
+            //start node
+            std::stringstream start_patrol;
+            start_patrol << "rosrun patrol_and_tracking patrol";
+            std::system(start_patrol.str().c_str());
+        }
+        last_bool = isHuman_;
+    }
+    }
+
+void distanceCallback(const geometry_msgs::Twist& distance){
+// not yet
+}
+
+void sequenceCallback(const std_msgs::Int32& sendSequence){
+    saved_sequence_data = sendSequence.data;
+}
+
+    int main(int argc, char** argv){
+    
+        ros::init(argc, argv, "manager");
+        ros::NodeHandle nh;
+    
+        ros::Subscriber isHuman_sub = nh.subscribe("isHuman", 10, isHumanCallback);
+        ros::Subscriber distance_sub = nh.subscribe("distance", 10, distanceCallback);
+            ros::Subscriber sequence_sub = nh.subscribe("sendSequence", 10, sequenceCallback);
+        
+        std_msgs::Int32 saved_sequence;
+        ros::Publisher sequence_pub = nh.advertise<std_msgs::Int32>("receiveSequence", 1000);
+        geometry_msgs::Twist distanceFromManager;
+        ros::Publisher distance_pub = nh.advertise<geometry_msgs::Twist>("distanceFromManager", 1000);
+    
+        while(ros::ok()){
+    
+        saved_sequence.data = saved_sequence_data;
+        sequence_pub.publish(saved_sequence);
+
+        distanceFromManager.linear.x = -0.2;
+        distanceFromManager.linear.y = -0.2;
+        distanceFromManager.angular.z = 0.0;
+        distance_pub.publish(distanceFromManager);
+
+        ros::spinOnce();
+    } 
+}
+
+Originally posted by Ray_Shim on ROS Answers with karma: 27 on 2020-08-28
+Post score: 0
+
+A:
+
+If qt libraries are acceptable for your project I recommend QProcess class for doing that. It can start another process in detached mode and provide you pid for process monitoring. If qt cannot be used you can try OS's fork function but it's  unix function and most likely not crossplatform.
+
+Originally posted by dtyugin with karma: 121 on 2020-08-28
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Ray_Shim on 2020-08-28:
+Thanks for your help.
+
+I'm trying to understand qprocess's arguments. It looks that all codes looks so different from each other, so it is really hard to understand. If you know how to use QProcess::startDetached, could i get some example or link that you get information aobut startDetached?
+
+What kind of package i have to install? There is only QT plugin. It looks like tools to make nodes, not a package for qprocess class.
+
+Comment by dtyugin on 2020-08-29:
+Here is function signature
+bool QProcess::startDetached(const QString &program, const QStringList &arguments, const QString &workingDirectory = QString(), qint64 *pid = nullptr)
+I believe you can use like this:
+bool result = QProcess::startDetached("gzip", QStringList() << "-c", "/tmp");
+There is an example on doc page which describe how to use start function, they are similar. By the way start function also does not block your program, but child process will die if your program finish. While startDetached allows child program to live when your program finished.
+Qt is a framework not related to ros. But many ros packages are written using it, like rviz, rqt and so on.
+I have no exact instructions how to setup environment but I recommend take a look at existing qt based ros package and take it's CMakeLists.txt and package.xml as a start point to build your package with ros and qt.
+

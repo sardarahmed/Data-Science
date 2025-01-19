@@ -1,0 +1,112 @@
+Q:
+
+reading a specific tf frame
+
+Hello,
+Does anyone know if there is a function that lets you read a specific tf frame such as:
+.readFrame("/base_link" , time(latest info published), //frame reference);
+I need to be able to read a specific frame. I know you can do:
+tf::StampedTransform transform;
+.lookUpTransform("target frame", "original frame" , time , transform);
+The reason why I don't want a lookUpTransform is because I am actually not trying to take the transform of anything here.
+Unless I am not understanding something here, I would appreciate some feed back here.
+This is what I have so far. Please give me some feed back on the frames that I am using. Because to my understanding The "base_link" frame should be transformed to the "map" frame, If I have a .yaml map file running on top of the navigation stack right?
+  #include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_broadcaster.h>
+
+using namespace std;
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "readTFframe");
+    ros::NodeHandle nh;
+        tf::Transform leader_base_link;
+    tf::Quaternion q;
+    tf::Vector3 v;  
+    tf::TransformListener listener;
+    geometry_msgs::TransformStamped transformConverter;
+
+    ros::Time current_time, last_time;
+        current_time = ros::Time::now();
+        last_time = ros::Time::now();
+
+    ros::Publisher pub = nh.advertise<geometry_msgs::TransformStamped>("/leader/tf", 1);
+
+    static tf::TransformBroadcaster br;
+    
+    double yaw; 
+
+ros::Rate loopRate(10);
+while(ros::ok()){
+    tf::StampedTransform transform;
+    current_time = ros::Time::now();
+    
+
+    try {
+                        listener.waitForTransform("base_link", "base_footprint", ros::Time(0), ros::Duration(10.0));
+            listener.lookupTransform("base_link", "base_footprint", ros::Time(0), transform);
+        }
+        catch (tf::TransformException &ex) {
+            ROS_ERROR("%s",ex.what());
+        }
+    yaw =   tf::getYaw(transform.getRotation()); 
+        v.setValue(transform.getOrigin().x() , transform.getOrigin().y() , transform.getOrigin().z());
+        
+    leader_base_link.setOrigin(v);
+    q.setRPY(0.0, 0.0, yaw);
+    leader_base_link.setRotation(q );
+    br.sendTransform(tf::StampedTransform(leader_base_link, ros::Time::now(), "base_footprint", "leader_base_link"));
+    
+/*
+    ROS_INFO_STREAM("X pose " <<  transform.getOrigin().x() );
+    ROS_INFO_STREAM("Y pose " << transform.getOrigin().y() );
+    ROS_INFO_STREAM("Z pose " << transform.getOrigin().z() );
+    ROS_INFO_STREAM("Yaw "<< yaw );
+*/  
+double th = yaw;
+ geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+    transformConverter.header.stamp = current_time; 
+    transformConverter.header.frame_id = "base_footprint";
+    transformConverter.child_frame_id = "base_link";
+    transformConverter.transform.translation.x = transform.getOrigin().x();
+    transformConverter.transform.translation.y = transform.getOrigin().y();
+    transformConverter.transform.translation.z = transform.getOrigin().z();
+    transformConverter.transform.rotation = odom_quat;
+    ROS_INFO_STREAM("X pose " <<  transformConverter.transform.translation.x );
+    ROS_INFO_STREAM("Y pose " << transformConverter.transform.translation.y);
+    ROS_INFO_STREAM("Z pose " << transformConverter.transform.translation.z );
+    ROS_INFO_STREAM("Yaw "<< yaw );
+
+    loopRate.sleep();
+}
+
+    return 0;
+}
+
+This is my current code when I run it I can see that the values are being passed to the transformConverter transform that is converting the desired transform from tf::StampedTransform to geometry_msgs::TransformStamped . This way it can be published on the topic /leader/tf. The only thing is I can see the values are passed through ROS_INFO. But they are not being published now on the topic.
+
+Originally posted by choog on ROS Answers with karma: 101 on 2014-09-24
+Post score: 0
+
+A:
+
+What you want is exactly the output from lookupTransform. It provides the transform between the two frames. The position of frameA in frameB is the same as the transform to transform a point from frameB into frameA. If you reverse the order of the frame_ids it will give the transform of the coordinate frame instead of a point. (This will just give you the inverse value.)
+
+Originally posted by tfoote with karma: 58457 on 2014-09-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by choog on 2014-09-25:
+What if I am trying to publish a transform holding that data to a topic?
+Comment by tfoote on 2014-09-25:
+Publish a geometry_msgs/TransformStamped message
+Comment by choog on 2014-09-25:
+That was my initial thought but I am getting this error:
+error: no match for call to ‘(ros::Publisher) (tf::StampedTransform&)’
+Comment by tfoote on 2014-09-26:
+With your latest edit. The reason your message is not being sent out is that you're not actually calling publish
+

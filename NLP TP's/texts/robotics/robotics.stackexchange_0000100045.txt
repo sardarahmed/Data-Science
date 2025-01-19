@@ -1,0 +1,57 @@
+Q:
+
+Intraprocess zero-copy seems to be working for multiple subscribers
+
+When following instructions from Pipeline with two image viewers, running
+ros2 run intra_process_demo image_pipeline_with_two_image_view
+
+the expected result is that the last pointer in image_view_node_2 has a different memory address.
+However, all the memory addresses are the same. Does this mean zero-copy intraprocess communication works for multiple subscribers? Or is it my misunderstanding somewhere?
+
+ps. ROS2 Galactic, DDS is left as default (CycloneDDS)
+
+Originally posted by ijnek on ROS Answers with karma: 460 on 2021-09-07
+Post score: 1
+
+A:
+
+I have tested this demo with foxy/galactic/humble, and only with humble it will work like your description.
+So my best guess is the demo you are using contains this commit, which should only be available since humble.
+The foxy/galactic document is somehow wrong:
+
+This means the system deliveres the same shared_ptr to both callbacks. When the first intraprocess subscription is handled, the internally stored unique_ptr is promoted to a shared_ptr. Each of the callbacks will receive shared ownership of the same message.
+
+The foxy/galactic demo's ImageViewNode callback used type const sensor_msgs::msg::Image::SharedPtr as argument, and it's NOT shared ownership. Then the intra-process logic have to copy the message to make sure each ImageViewNode will have exclusive ownership of the message dispatched to them, which behaves the same as callbacks using type const std::unique_ptr<sensor_msgs::msg::Image>.
+The humble demo's ImageViewNode callback changed the argument type to sensor_msgs::msg::Image::ConstSharedPtr, and now it really means shared ownership. Then the demo behaves like your description, so the humble's document should be updated to reflect this change.
+The intraprocess zero copy for multiple subscriber should always work since foxy, as long as you are using the correct signature for callbacks.
+The callback argument type and ownership relationship can be verified using this snippet:
+#include <iostream>
+#include <memory>
+
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+
+template<typename TCallback>
+void PrintAnyCallbackSharedOrNot(TCallback&& cb) {
+  rclcpp::AnySubscriptionCallback<sensor_msgs::msg::Image, std::allocator<void>> acb{std::allocator<void>()};
+  acb.set(std::move(cb));
+  std::cout << acb.use_take_shared_method() << std::endl;
+}
+
+int main(int , char *[]) {
+  // false
+  PrintAnyCallbackSharedOrNot([](std::shared_ptr<sensor_msgs::msg::Image>){});
+  // false, same as const sensor_msgs::msg::Image::SharedPtr
+  PrintAnyCallbackSharedOrNot([](const std::shared_ptr<sensor_msgs::msg::Image>){});
+
+  // true, same as sensor_msgs::msg::Image::ConstSharedPtr
+  PrintAnyCallbackSharedOrNot([](std::shared_ptr<const sensor_msgs::msg::Image>){});
+  // true
+  PrintAnyCallbackSharedOrNot([](const std::shared_ptr<const sensor_msgs::msg::Image>){});
+  return 0;
+}
+
+Originally posted by tsingakbar with karma: 26 on 2023-03-14
+This answer was ACCEPTED on the original site
+Post score: 0
+

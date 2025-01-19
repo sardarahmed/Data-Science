@@ -1,0 +1,169 @@
+Q:
+
+Making a ROS GUI QT6 and C++ in Ubuntu 20.04
+
+I'm trying to make a ROS GUI with QTCreator 6. For some reason I'm always getting some include problems either with QT-Libraries, own header files or ROS. I'm using the ros_qtc_plugin.
+Project architecture:
+catkin_ws
+-anayzer_gui
+--include
+---analyzer_gui
+----analyzer_gui.h
+----analyzergui.ui
+--nodes
+---analyzer_gui_node.cpp
+--src
+---analyzer_gui.cpp
+-CMakeLists.txt
+-package.xml
+
+CMakeLists.txt:
+cmake_minimum_required(VERSION 3.0.2)
+project(analyzer_gui)
+
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+find_package(pluginlib REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS roscpp std_msgs
+)
+
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analyzer_gui
+  ${CMAKE_CURRENT_SOURCE_DIR}/nodes
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(${PROJECT_NAME}_node nodes/analyzer_gui_node.cpp)
+target_link_libraries(${PROJECT_NAME}_node PRIVATE Qt6::Widgets)
+
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})`
+
+package.xml:
+
+<?xml version="1.0"?>
+<package format="2">
+  <name>analyzer_gui</name>
+  <version>0.0.0</version>
+  <description>The analyzer_gui package</description
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>pkg-config</build_depend>
+  <build_depend>qt6-qmake</build_depend>
+  <build_depend>qtbase6-dev</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>qt_build</build_depend>
+  <build_depend>libqt6</build_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>qt_build</exec_depend>
+  <exec_depend>libqt6</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+
+  </export>
+</package>
+
+analyzer_gui.h:
+
+#ifndef ANALYZER_GUI_H
+#define ANALYZER_GUI_H
+
+#include <QWidget>
+#include <ros/ros.h>
+
+namespace Ui {
+class AnalyzerGui;
+}
+
+class AnalyzerGui : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit AnalyzerGui(QWidget *parent = nullptr);
+    ~AnalyzerGui();
+
+private:
+    Ui::AnalyzerGui *ui;
+};
+
+#endif // ANALYZER_GUI_H
+
+analyzer_gui_node.cpp:
+
+#include <QApplication>
+#include "analyzer_gui/analyzer_gui.h"
+
+int main(int argc, char *argv[]){
+    ros::init(argc, argv, "analyzer_gui_node");
+    QApplication a(argc, argv);
+
+    AnalyzerGui w;
+    w.setWindowTitle(QString::fromStdString(ros::this_node::getName()));
+    w.show();
+    return a.exec();
+}
+
+analyzer_gui.cpp:
+
+#include "analyzer_gui.h"
+#include "ui_analyzergui.h"
+
+AnalyzerGui::AnalyzerGui(QWidget *parent)
+    : QWidget(parent)
+    , ui(new Ui::AnalyzerGui)
+{
+    ui->setupUi(this);
+}
+
+AnalyzerGui::~AnalyzerGui()
+{
+    delete ui;
+}`
+
+Error messages:
+:-1: error: CMakeFiles/analyzer_gui_node.dir/nodes/analyzer_gui_node.cpp.o: in function `main':
+/home/bryan/catkin_ws/src/analyzer_gui/nodes/analyzer_gui_node.cpp:5: error: undefined reference to `ros::init(int&, char**, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned int)'
+
+:-1: error: /home/bryan/catkin_ws/src/analyzer_gui/nodes/analyzer_gui_node.cpp:8: undefined reference to `AnalyzerGui::AnalyzerGui(QWidget*)'
+
+:-1: error: /home/bryan/catkin_ws/src/analyzer_gui/nodes/analyzer_gui_node.cpp:9: undefined reference to `ros::this_node::getName[abi:cxx11]()'
+
+:-1: error: /home/bryan/catkin_ws/src/analyzer_gui/nodes/can_analyzer_gui_node.cpp:8: undefined reference to `AnalyzerGui::~AnalyzerGui()'
+
+:-1: error: /home/bryan/catkin_ws/src/analyzer_gui/nodes/analyzer_gui_node.cpp:8: undefined reference to `AnalyzerGui::~AnalyzerGui()'
+
+:-1: error: collect2: error: ld returned 1 exit status
+
+:-1: error: [analyzer_gui/CMakeFiles/analyzer_gui_node.dir/build.make:89: /home/bryan/catkin_ws/devel/lib/analyzer_gui/analyzer_gui_node] Error 1
+
+Thank you!
+The CMakeLists and package look pretty messy since I'm a beginner and tried a lot of stuff that didn't work.
+In Qt the content of the header files is recognized (class names are highlighted) but while building they are not found.
+
+A:
+
+File analyzer_gui.cpp is not compiled. Try adding it into add_executable(...)
+catkin libraries are missing from link stage, also try:
+target_link_libraries(${PROJECT_NAME}_node 
+   PRIVATE 
+      Qt6::Widgets 
+      ${catkin_LIBRARIES}
+)
+

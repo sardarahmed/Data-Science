@@ -1,0 +1,47 @@
+Q:
+
+Articulated Body Algorithm with gear ratio
+
+I am reading up on the proposed articulated body algorithm by Featherstone, which goes like:
+Pass 1:
+\begin{equation}
+\nu_0 = 0\\
+\nu_i = {^i}X_{\lambda(i)}\nu_{\lambda(i)}+s_i\dot{q}_i\\
+c_i = \nu_i \times s_i\dot{q}_i\\
+p_i=\nu_i \times^* I_i\nu_i
+\end{equation}
+Pass 2:
+\begin{equation}
+I^A_i=I_i+\sum_{j\in\mu(i)} {^i}X_{j}^* I{^a}{_j} ^{j}X_{i}\\
+p_i^A = p_i + \sum_{j\in\mu(i)}{^i}X_{j}^*p_j^a\\
+h_i = I^A_i s_i\\
+d_i = s_i^T h_i\\
+u_i = \tau_i - s_i^T p_i^A\\
+I_i^a = I_i^A - h_ih_i^T/d_i\\
+p_i^a = p_i^A + I_i^a c_i + h_iu_i/d_i
+\end{equation}
+Pass 3:
+\begin{equation}
+a_0 = -a_g\\
+a_i^` = {^i}X_{\lambda(i)}a_{\lambda(i)} + c_i\\
+\ddot{q}_i = \left(u_i-h_i^Ta_i^`\right)/d_i\\
+a_i = a_i^`+s_i\ddot{q}_i
+\end{equation}
+The algorithm seems just to work if I assume for a robotic arm a direct drive. Is there a way to add gear ratios with the mass and inertia of rotors to this algorithm? Any help pointing to a reference is greatly appreciated.
+
+A:
+
+In Featherstone's book "Rigid Body Dynamics Algorithms", there is a section of Chapter 9 (specifically, 9.6) dedicated to explaining how to incorporate gears into a given dynamic model.
+At a high level, you need to incorporate the gear ratios into the dynamics via a similar process to how a kinematic loop would be handled, by introducing additional joint variables for the additional moving parts and then mapping them onto the standard (typical) joint variables in the algorithm above.
+The example shared in the book describes a simple geared system where there are geared motors driving the angular positions of two links, which can be described as the following set of four moving components (assuming small gears drive large gears at each joint and the stator of the first motor is fixed):
+
+The first link, the first large gear, and the stator of the second motor;
+The first small gear and the rotor of the first motor;
+The second link and the second large gear; and
+The second small gear and the rotor of the second motor.
+
+This means that joints 1 and 3 are the typical joints you would expect, while joints 2 and 4 are rotations within the motors driving the gears, and leads to a relationship between the joint positions in $q$ and the gear ratios $n_1$ and $n_2$. Specifically, if we define independent variables as $y_1 = q_1$ and $y_2 = q_3$, then we can define a function $\gamma$ to map from $y$ to $q$ as $\gamma = [\begin{matrix} y_1 & n_1 y_1 & y_2 & n_2 y_2 \end{matrix}]^T$.
+Once we've done that, we can define the matrix $G = {\partial \gamma}/{\partial y}$ and the vector $g = \dot G \dot y$ to get to the following dynamic equation of motion (where $H$ and $C$ are the coefficients of the equation of motion without gearing):
+$$G^T H G \ddot y + G^T (C+Hg) = G^T \tau$$.
+Note: In this formulation, $\tau_1 = \tau_3 = 0$ while the motor torques will appear in $\tau_2$ and $\tau_4$. Using this equation, you can then apply the inverse dynamics equations as needed, such as the ABA you've outlined above.
+

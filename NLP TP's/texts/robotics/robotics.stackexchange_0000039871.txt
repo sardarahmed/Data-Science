@@ -1,0 +1,174 @@
+Q:
+
+PCL Tutorial doesn't show anything
+
+Hi,
+I was following the tutorial of PCL with ROS here, the 4.1 program, I got everything compiled, and I run my program, but I get this error:
+home/david/ros_workspace/another_mypcltut/src/run_test.cpp:25:25: error: no matching function for call to ‘pcl::VoxelGrid<sensor_msgs::pointcloud2_std::allocator<void > >::setInputCloud(pcl::PointCloudpcl::pointxyzrgb&)’
+This is the code I've used: //pcl::PointCloud< pcl::PointXYZRGB> PC;
+//pcl::PointCloud< pcl::PointXYZRGB> PC_filtered;
+pcl::PointCloud< pcl::PointXYZ> PC;
+pcl::PointCloud< pcl::PointXYZ> PC_filtered;
+void
+cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud)
+{
+pcl::fromROSMsg(*cloud, PC); //Now you can process this PC using the pcl functions
+sensor_msgs::PointCloud2 cloud_filtered;
+// Perform the actual filtering
+pcl::VoxelGrid< sensor_msgs::PointCloud2> sor ;
+sor.setInputCloud (PC);
+//sor.setInputCloud (PC);
+sor.setLeafSize (0.01, 0.01, 0.01);
+sor.filter (PC_filtered);
+//Convert the pcl cloud back to rosmsg
+try{
+pcl::toROSMsg(*PC_filtered, cloud_filtered);}
+catch(std::runtime_error e){
+ROS_ERROR_STREAM("Error in converting cloud to image message: "<< e.what());}
+// Publish the data
+pub.publish (cloud_filtered);
+}  
+Though, browsing for some programs that does compile, to have an idea, I found this program which it does compile (it's not related to the first program, it's a different I have found):  void
+cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
+{
+// Convert the sensor_msgs/PointCloud2 data to pcl/PointCloud
+pcl::PointCloud< pcl::PointXYZ> cloud;
+pcl::fromROSMsg (*input, cloud);
+pcl::ModelCoefficients coefficients;
+pcl::PointIndices inliers;
+// Create the segmentation object
+pcl::SACSegmentation< pcl::PointXYZ> seg;
+// Optional
+seg.setOptimizeCoefficients (true);
+// Mandatory
+seg.setModelType (pcl::SACMODEL_PLANE);
+seg.setMethodType (pcl::SAC_RANSAC);
+seg.setDistanceThreshold (0.01);
+seg.setInputCloud (cloud.makeShared ());
+seg.segment (inliers, coefficients);
+// Publish the model coefficients
+pub.publish (coefficients);
+} 
+The part I found interesting was this line:
+  seg.setInputCloud (cloud.makeShared ())  
+In which both functions:
+setInputCloud (const PointCloudConstPtr &cloud)
+Have as argument a ptr, and the 'makeShared()' function returns a shared pointer to the copy of the cloud. However this only work in the second program, when I run with the function mentioned in the first program, I get this error:
+/home/david/ros_workspace/another_mypcltut/src/run_test.cpp:24:39: error: no matching function for call to ‘pcl::VoxelGrid<sensor_msgs::PointCloud2_std::allocator<void > >::setInputCloud(pcl::PointCloudpcl::PointXYZRGB::Ptr)’
+Why is that happenning? :/
+Thanks
+P.S.1: Features of my software:
+
+Ubuntu 11.04
+ROS Electric
+PCL 1.5
+
+P.S.2: Does this has anything to do with the fact I should have installed the PCL with ROS package (ros-unstable-perception-pcl) instead the one I have (ros-electric-perception-pcl)?? I have read a forum where a person asks for some errors while compiling using VoxelGrid (different than mines) and they suggested that they should have that one (dont know if that actually fixed the problem)
+
+Originally posted by DavidLavy on ROS Answers with karma: 139 on 2012-04-24
+Post score: 2
+
+Original comments
+Comment by karthik on 2012-05-02:
+you have to include the #include <pcl/filters/voxel_grid.h> to work with Voxels. You may try now the same on sensor_msgs datatype of your code and see if it compiles.
+Comment by karthik on 2012-05-02:
+thanks for organizing your question after my request :)
+Comment by karthik on 2012-05-02:
+please check my updated answer with code for you to test with
+
+A:
+
+Hi,
+Ok I guess you have missed the point that the Kinect has to be connected and openni_camera has to be started in order to grab image from the real world. Or you may have to simulate the same in Gazebo. Or you have to modify the code so that it does the processing on the standalone PCD file.
+4.1 callback function is called only when the node subscribes to a cloud given by another node(Kinect).
+To download Kinect for ROS and make it work please follow the link.
+Let me know if any issues. Hope this helps.
+Karthik
+input:=/narrow_stereo_texture/points2 is the input to your my_pcl_tutorial which here may not be the one given by the openni_camera node.
+Once you run the openni_camera, check for the topics it is publishing. I guess it should be /camera/rgb/points or /camera/depth/points so in that case your input becomes the topic it is publishing. Now as you run the my_pcl_tutorial, you should see some clouds coming. You may visualize the same in rviz as well.
+Let me know if it is working
+David
+I am editing your code so as to use ros::fromROSMsg and ros::toROSMsg. The thing is that sensor_msgs::PointCloud2 type is not used in pcl to do the manipulations that you want to do. So you have to convert it in the code in the callback function to process the cloud and convert it back to rosmsg to publish it.
+pcl::PointCloud<pcl::PointXYZRGB> PC;
+pcl::PointCloud<pcl::PointXYZRGB> PC_filtered;
+cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud)
+{
+  pcl::fromROSMsg(*cloud, PC); //Now you can process this PC using the pcl functions 
+  sensor_msgs::PointCloud2 cloud_filtered;
+ 
+// Perform the actual filtering
+   pcl::VoxelGrid< sensor_msgs::PointCloud2 > sor ;
+   sor.setInputCloud (PC);
+   sor.setLeafSize (0.01, 0.01, 0.01);
+   sor.filter (PC_filtered);
+   
+  //Convert the pcl cloud back to rosmsg
+  pcl::toROSMsg(PC_filtered, cloud_filtered);
+
+  // Publish the data
+  //You may have to set the header frame id of the cloud_filtered also
+  pub.publish (cloud_filtered);
+}
+
+I may have missed out in the pointers n stuff about the functions in the above code which you may want to check before compiling.
+
+For your convenience i have written this complete code for voxelization that you may run directly. Hope this helps you understand on how to code further for your project.
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl_ros/point_cloud.h>
+#include <ros/ros.h>
+#include <boost/foreach.hpp>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl/io/pcd_io.h>
+
+using namespace std;
+ros::Publisher pub;
+typedef pcl::PointXYZRGB rgbpoint;
+typedef pcl::PointCloud<pcl::PointXYZRGB> cloudrgb;
+typedef cloudrgb::Ptr cloudrgbptr;
+void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud)
+{
+  cloudrgbptr PC (new cloudrgb());
+  cloudrgbptr PC_filtered (new cloudrgb());
+  pcl::fromROSMsg(*cloud, *PC); //Now you can process this PC using the pcl functions 
+  sensor_msgs::PointCloud2 cloud_filtered;
+
+  
+// Perform the actual filtering
+   pcl::VoxelGrid<pcl::PointXYZRGB> sor ;
+   sor.setInputCloud (PC);
+   sor.setLeafSize (0.01, 0.01, 0.01);
+   sor.filter (*PC_filtered);
+
+  //Convert the pcl cloud back to rosmsg
+  pcl::toROSMsg(*PC_filtered, cloud_filtered);
+  //Set the header of the cloud
+  cloud_filtered.header.frame_id = cloud->header.frame_id;
+  // Publish the data
+  //You may have to set the header frame id of the cloud_filtered also
+  pub.publish (cloud_filtered);
+}
+int main(int argc, char ** argv)
+{
+    ros::init(argc, argv, "test_pcl_ros");
+    ros::NodeHandle nh;
+    ros::Subscriber sub = nh.subscribe("camera/rgb/points", 1, cloud_cb);
+    pub = nh.advertise<sensor_msgs::PointCloud2> ("/camera/rgb/david", 1);
+    ros::spin();
+}
+
+Thanks
+Karthik
+
+Originally posted by karthik with karma: 2831 on 2012-04-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by AndresCH on 2013-09-12:
+Thanks Karthik, Your example helped me solve a problem.
+Comment by ctguell on 2013-10-08:
+@karthik have you used the pcl17? and manage to make it work with ROS? if sodo you now ow tu create a publisher in the pcl code and make it work?
+Comment by karthik on 2013-10-15:
+I was able to get it work on my ROS electric successfully and also helped someone do the same on Fuerte. But I am still working on making it work for the Groovy.
+

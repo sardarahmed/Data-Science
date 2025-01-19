@@ -1,0 +1,99 @@
+Q:
+
+ROS Service/Client Memory leak?
+
+Hi everybody,
+i'm pretty new to ROS and programming, and I hope someone can help me with this problem:
+Everytime I use a service in one of my nodes, the memory usage of the service node and the client node start rising limitless. First I thought I had a bug in one of my nodes or in my custom service, but I tried a modified tutorial and got the same problem.
+I only commented the ROS_INFO out, made two constant ints and added a loop to the client.
+Service:
+#include "ros/ros.h"
+#include "lidar_sim/AddTwoInts.h"
+
+bool add(lidar_sim::AddTwoInts::Request  &req,
+         lidar_sim::AddTwoInts::Response &res)
+{
+  res.sum = req.a + req.b;
+ // ROS_INFO("request: x=%ld, y=%ld", (long int)req.a, (long int)req.b);
+ // ROS_INFO("sending back response: [%ld]", (long int)res.sum);
+  return true;
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "add_two_ints_server");
+  ros::NodeHandle n;
+
+  ros::ServiceServer service = n.advertiseService("add_two_ints", add);
+  ROS_INFO("Ready to add two ints.");
+  ros::spin();
+
+  return 0;
+}
+
+Client:
+#include "ros/ros.h"
+#include "lidar_sim/AddTwoInts.h"
+#include <cstdlib>
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "add_two_ints_client");
+
+  ros::NodeHandle n;
+  ros::ServiceClient client = n.serviceClient<lidar_sim::AddTwoInts>("add_two_ints");
+  lidar_sim::AddTwoInts srv;
+  srv.request.a = 1;
+  srv.request.b = 2;
+  ros::Rate loop_rate(20);
+  while(ros::ok())
+  {
+  if (client.call(srv))
+  {
+    //ROS_INFO("Sum: %ld", (long int)srv.response.sum);
+  }
+  else
+  {
+    //ROS_ERROR("Failed to call service add_two_ints");
+  }
+
+    loop_rate.sleep();
+  }
+}
+
+After an hour, client and service use, according to gnome-system-monitor, 800MB memory.
+I'm using Ubuntu 14.04 64bit and ROS indigo.
+Valgrind also doesn't show any memory leak.
+Thanks for any help!
+BTW: lidar_sim is just a package I use to test various nodes in.
+
+Originally posted by JohnDoe2991 on ROS Answers with karma: 305 on 2014-12-18
+Post score: 1
+
+Original comments
+Comment by Wolf on 2014-12-18:
+Does this problem occurr for client and subscriber? I noted your client does not call into spinOnce(); Maybe some cleaning up is done there??
+Comment by JohnDoe2991 on 2014-12-19:
+@Wolf: I thought spinOnce() is only for publisher/subscriber not service/client? I tested it, but it doesn't make any difference.
+@gvdhoorn: Thank you! It seems that the persistent mode works! I'm just curious why the non persistent mode piles up memory usage and how to get rid of it.
+Comment by gvdhoorn on 2014-12-19:
+I only asked about persistent mode to see if that would change the behaviour you're seeing. You might want to report this to the roscpp issue tracker. However, without valgrind results backing you up, I expect you'll encounter some scepticism.
+Comment by tfoote on 2014-12-24:
+@Dirk Thomas FYI
+
+A:
+
+Yes, there was a memory leak in roscpp's base Transport class for ROS Indigo. You can see a full explanation in the pull request to fix the issue (which has now been merged): https://github.com/ros/ros_comm/pull/570
+The short version is that the Linux function getifaddrs() requires a freeifaddrs() call once the list of network interface structures are no longer needed. Since this issue is present inside roscpp's base class, Transport, every new connection loses a few Kb in memory. This means ROS Service servers then devour memory if left alive for long enough. Fortunately, the fix was a one-liner.
+As for debugging ROS with Valgrind, if you attempt to run valgrind --tool=memcheck --leak-check=yes rosrun package_foo executable_bar, you will not get useful memory stats. I believe this is due to rosrun spawning your  node in a separate process. To get around this, you can call your executable directly: 
+(from the root of your catkin workspace) valgrind --tool=memcheck --leak-check=yes ./devel/lib/package_foo/executable_bar
+Alternatively, you could write your own launchfile with Valgrind in the launch-prefix.
+
+Originally posted by imcmahon with karma: 790 on 2015-02-25
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by gvdhoorn on 2015-02-26:
+This should probably be the accepted answer. My answer provides only a (not too nice) workaround.
+

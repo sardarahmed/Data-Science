@@ -1,0 +1,29 @@
+Q:
+
+How to create timeout to ROS2 async client service?
+
+Following this example how do i create an async timeout to service? I want client to wait for 5s asynchronously to get response, if it is not received log something and clear request.
+
+A:
+
+I found solution: i need to create timer which will fire async after defined time and check in timer's callback if future is ready with wait_for(0s). Also i need (i think) to store request ids for when i call service when timer is not yet finished, so i can clear all queued requests. Timer and vector are initialized in node's constructor.
+auto futureAndRequestID =
+    client->async_send_request(request, [this](rclcpp::Client<my_interface::srv::myService>::SharedFuture future) {
+        auto result = future.get();
+        //do stuff when service returns
+    });
+
+rclcpp::Client<my_interface::srv::myService>::SharedFuture future = futureAndRequestID.future;
+vectorOfIds->push_back(futureAndRequestID.request_id);
+
+timer = create_wall_timer(5s, [this, future]() {
+    if (future.wait_for(0s) != std::future_status::ready) {
+        //"TimeOut"
+        for (const auto id : *vectorOfIds) {
+            client->remove_pending_request(id);
+        }
+        vectorOfIds->clear();
+    }
+    timer->cancel();
+});
+

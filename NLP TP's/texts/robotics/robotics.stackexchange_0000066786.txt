@@ -1,0 +1,74 @@
+Q:
+
+Merge the output of Ultrasound sensor with hokuyo laser output for navigation
+
+Hi all,
+I have a mobile robot and I would like it to navigate around the building. I already have a 2D map of the building. I have Rotational encoders to get the odometry information and IMU/UWB for localization. I will be using hokuyo laser sensor and Ultrasound sensors for navigation. Hokuyo will be the main sensor for navigation and Ultrasound sensors will be used to detect obstacles not seen by the hokuyo (like Overhangs, etc). So, my question is how can I merge the output of Ultrasound sensor which is of the type sensor_msgs/Range.msg with the hokuyo sensor output which is of the type sensor_msgs/LaserScan.msg ?
+I think one of the ways can be to convert Range message to LaserScan message and then modify the original LaserScan message from the Hokuyo to incorporate this LaserScan message to come up with the final merged LaserScan message and use it for navigation. But I dont know how hard it will be specially merging of two LaserScan messages into one.
+Is there any other (easier or better) way to accomplish this? Or if this is the only way, what is the best way to go about it?
+Thanks in advance.
+Naman Kumar
+
+Originally posted by Naman on ROS Answers with karma: 1464 on 2015-04-01
+Post score: 2
+
+A:
+
+You could just use a range sensor layer: http://wiki.ros.org/range_sensor_layer
+The idea is that the laser adds to the obstacle layer as usual and the sonar add to a separate range sensor layer, then both are combined to the costmap.
+Of yourse you need to switch your configuration to layered costmaps first.
+My global_costmap_params.yaml (partial):
+plugins:
+  - {name: static_layer, type: 'costmap_2d::StaticLayer'}
+  - {name: obstacle_layer, type: 'costmap_2d::ObstacleLayer'}
+  - {name: inflation_layer, type: 'costmap_2d::InflationLayer'}
+
+My local_costmap_params.yaml (partial):
+plugins:
+  - {name: obstacle_layer, type: 'costmap_2d::ObstacleLayer'}
+  - {name: sonar_layer,   type: "range_sensor_layer::RangeSensorLayer"}
+  - {name: inflation_layer, type: 'costmap_2d::InflationLayer'}
+
+sonar_layer:
+  topics: ["/sonar_forward_lower"]
+  no_readings_timeout: 1.0
+
+Originally posted by Humpelstilzchen with karma: 1504 on 2015-04-02
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Naman on 2015-04-07:
+Thanks @Humpelstilzchen! Just one more thing, why did you use range_sensor_layer only in the local costmap and not in the global costmap? It can be used in the global costmap also if we want to use sonar information for global planning, right?
+Comment by Humpelstilzchen on 2015-04-07:
+Sure, it can be used. I decided against it because of the high inaccuracy of the sensor (nearest obstacle i n field of view)
+Comment by Naman on 2015-04-08:
+Thanks @Humpelstilzchen! I am facing some problem when I use ultrasound sensor for global planning using range_sensor_layer. If possible, can you look at http://answers.ros.org/question/206805/adding-range_sensor_layer-to-layered-costmap-for-global-planning/ ?
+Comment by Kaveh on 2022-03-05:
+@Humpelstilzchen, Do you know how to merge Ultrasound Sensor on local_costmap of TurtleBot3?
+Here is local_costmap_params.yaml
+local_costmap:
+global_frame: odom
+robot_base_frame: base_footprint
+update_frequency: 10.0
+publish_frequency: 10.0
+transform_tolerance: 0.5
+static_map: false
+rolling_window: true
+width: 3
+height: 3
+resolution: 0.05
+And here is costmap_common_params_burger.yaml
+obstacle_range: 3.0
+raytrace_range: 3.5
+footprint: [[-0.105, -0.105], [-0.105, 0.105], [0.041, 0.105], [0.041, -0.105]]
+#robot_radius: 0.105
+inflation_radius: 1.0
+cost_scaling_factor: 3.0
+map_type: costmap
+observation_sources: scan
+scan: {sensor_frame: base_scan, data_type: LaserScan, topic: scan, marking: true, clearing: true}
+Would you Please Assist?
+Comment by Humpelstilzchen on 2022-03-06:
+You should create a new question for this
+

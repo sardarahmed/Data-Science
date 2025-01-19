@@ -1,0 +1,25 @@
+Q:
+
+Pose-graph-slam:using only a camera
+
+I'd like to know how to form my pose graph if the only information I have available is that from a camera,
+(1) What are my poses? Are they just the accumulated transformations from pairwise matching?
+(2) And then what are my edges?
+(3) If I have already detected the loops, how would I loop correct?
+Thank you. 
+
+A:
+
+(1) Usually, the poses are just your absolute camera poses, i.e $[R,T]$ where $R$ is a rotation matrix and $T$ is a translation, expressed in world coordinates. You can add a scale factor to that if you want.
+(2) Usually, the edges are the relative displacements between your cameras. That is , if you have cameras $C_1=[R_1,T_1]$ and $C_2=[R_2,T_2]$, then, noting $X_w$ a point in world coordinates and $X_1$, $X_2$ its representations in (respectively) cameras $C_1$ and $C_2$, we will have
+$X_w=R_1X_1+T_1$
+$X_w=R_2X_2+T_2$
+$\Rightarrow X_1=R_1^{t}R_2X_2+R_1^t(T_2-T_1)\triangleq R'X_2+T'.$ 
+Now, your edges are just defined as the relative transformation $[R',T']$. Once again, you can add a scale factor.
+(3)  Let $P_1,...,P_n$ be the relative poses computed between cameras $1,...n,n+1$ by your SLAM algorithm. Now, you detect a loop between cameras $n$ and $n+1$, and this says that your relative transformation should be $T_n$, not $P_n$ .  The difference between $T_n$ and $R_n$ is often important, and you want to propagate this large error to previous cameras. Thus, what you want to do is this: you want to change all absolute camera poses in a way that does not significantly change the relative poses $P_1,...,P_{n-1}$, all the while making the transformation between cameras $n$ and $n+1$ as close to $T_n$ as possible. Let us write $A_i$ the absolute pose of camera $i$, and assume that $A_i^{-1}A_j$ gives us the relative transformation between $i$ and $j$. Now, we can state our goal clearly:
+$\{P_1,...,P_{n-1}\}\cup{T_n}   \ \ \ \text{these are our constants}$
+$\{A_1,...,A_n,A_{n+1}\} \ \ \ \ \text{These are the variable we optimize}$
+$argmin_{A_i}\Sigma_{i=1}^{n-1}d(A_i^{-1}A_{i+1},P_i)+d(A_{n}^{-1}A_{n+1},T_n) \ \ \ \text{what we want to solve}$
+where $d$ is a function measuring the distance between its two arguments. Its actual definition will depend on how you actually parametrize your transformations (e.g Lie algera, quaternions, etc...). Usually, any iterative minimization algorithm will do. 
+A really great resource to understand loop closure is Hauke Strasdat's phd thesis.
+

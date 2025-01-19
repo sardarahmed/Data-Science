@@ -1,0 +1,113 @@
+Q:
+
+KeyError:'unique_identifier_msgs' and KeyError:'service_msgs' when compiling interface package
+
+I am pretty new to ROS, so please do not expect much from me.
+I am building a robotic system for my project, and as of right now I am setting up interfaces to use in the project. I added a message file (.msg) and it worked fine, but when I go to add an action file (.action), it starts giving me a KeyError. After looking at the error message, I thought the package it referenced was not installed (it was showing up first with 'service_msgs'), so I went ahead and added the line <depend>service_msgs</depend> to my packages.xml file, and I also added find_packages(service_msgs REQUIRED) and added that package next to DEPENDENCIES in CMakeLists.txt. After that, I went to compile it and I got the same error message but with unique_interfaces_msgs. I do the same thing with that package, and after compiling I get the previous message: KeyError: 'services_msgs'. I try compiling again and I get KeyError: 'unique_identifier_msgs'. It seems to switch between both messages, but I cannot tell what the actual problem is. I got the same error message but instead saying action_msgs or builtin_interfaces. I am very confused now and I do not know what to do. My code right now is below:
+CMakeLists.txt:
+cmake_minimum_required(VERSION 3.8)
+project(interfaces)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+# uncomment the following section in order to fill in
+# further dependencies manually.
+find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(service_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+find_package(unique_identifier_msgs REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Location.msg"
+  "actions/SendBotToLoc.action"
+  DEPENDENCIES geometry_msgs
+)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()
+
+package.xml:
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>interfaces</name>
+  <version>0.0.1</version>
+  <description>This package stores all interfaces for use with actions, topics, and services</description>
+  <maintainer email="vxw397@student.bham.ac.uk">Vivan Waghela</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <depend>geometry_msgs</depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <depend>service_msgs</depend>
+  <depend>unique_identifier_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+
+Location.msg (inside msg folder):
+geometry_msgs/Point location
+
+SendBotToLoc.action (inside actions folder)
+uint8 MAIN_BOT=0
+
+uint8 bot
+geometry_msgs/Point final_point
+---
+uint8 exit_code
+---
+
+I have also tried adding the 'std_msgs' dependency by adding the line find_package(std_msgs REQUIRED)to CMakeLists.txt and <depend>std_msgs</depend> in packages.xml, but that did not change the error message at all.
+All help will be greatly appreciated. Thanks.
+Edit: I realised that I forgot to show the full error, so I am adding that here:
+Starting >>> interfaces
+--- stderr: interfaces                            
+Traceback (most recent call last):
+  File "/opt/ros/iron/lib/rosidl_generator_type_description/rosidl_generator_type_description", line 50, in <module>
+    sys.exit(main())
+  File "/opt/ros/iron/lib/rosidl_generator_type_description/rosidl_generator_type_description", line 46, in main
+    generate_type_hash(args.generator_arguments_file)
+  File "/opt/ros/iron/lib/python3.10/site-packages/rosidl_generator_type_description/__init__.py", line 160, in generate_type_hash
+    pkg_dir = include_map[pkg]
+KeyError: 'builtin_interfaces'
+gmake[2]: *** [CMakeFiles/interfaces__rosidl_generator_type_description.dir/build.make:77: rosidl_generator_type_description/interfaces/msg/Location.json] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:215: CMakeFiles/interfaces__rosidl_generator_type_description.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+gmake: *** [Makefile:146: all] Error 2
+---
+Failed   <<< interfaces [0.34s, exited with code 2]
+
+Summary: 0 packages finished [0.72s]
+  1 package failed: interfaces
+  1 package had stderr output: interfaces
+
+The error message above shows up with other package names in place of 'builtin_interfaces'.
+
+A:
+
+Soooo, apparantly the reason for the errors was simply because I had an action in the folder actions, and it appears that ROS2 does not like that.  They want actions to be in a folder specifically called action. Moving Location.action to the folder action and changing CMakeLists.txt as needed made building pass. I did not even need to add the dependencies services_msgs, builtin_interfaces, etc.
+

@@ -1,0 +1,63 @@
+Q:
+
+confuse in theBaxter-IK Pick and Place Demo example
+
+Hi everyone,
+I'm had some confuse problem in the Baxter IK pick and place demo example program there such as the ik_request(), and _retract() function there.
+
+In the ik_request(), I can understand this function's main function was calling the IK server to calculate the rest of the joints angle after that return back. But what is the purpose in line 100 (What is doing in here?), line 102-107**(What is the purpose for the seed_str{},it's necessary to have this?) and line 108-113( the if statement was determined the same condition, but here had to do two times?)**.Becuase the function a bit long, so please use the link go to the example website check the program.
+
+In the _retract(),follow is the programming:
+def _retract(self):
+        # retrieve current pose from endpoint
+        current_pose = self._limb.endpoint_pose()
+        ik_pose = Pose()
+        ik_pose.position.x = current_pose['position'].x
+        ik_pose.position.y = current_pose['position'].y
+        ik_pose.position.z = current_pose['position'].z + self._hover_distance
+        ik_pose.orientation.x = current_pose['orientation'].x
+        ik_pose.orientation.y = current_pose['orientation'].y
+        ik_pose.orientation.z = current_pose['orientation'].z
+        ik_pose.orientation.w = current_pose['orientation'].w
+        joint_angles = self.ik_request(ik_pose)
+        # servo up from current pose
+        self._guarded_move_to_joint_position(joint_angles)
+
+what is the useful of the current_pose = self._limb.endpoint_pose() and ik_pose = Pose().
+Thank you for your helping me!
+
+Originally posted by Zero on ROS Answers with karma: 104 on 2016-06-16
+Post score: 0
+
+A:
+
+In the ik_request(), I can understand this function's main function was calling the IK server to calculate the rest of the joints angle after that return back. But what is the purpose in line 100 (What is doing in here?)
+
+    resp_seeds = struct.unpack('<%dB' % len(resp.result_type), resp.result_type)
+    if (resp_seeds[0] != resp.RESULT_INVALID):
+
+This line is figuring out if the result coming back from the Inverse Kinematic Service is valid or not by parsing the response message.
+
+line 102-107(What is the purpose for the seed_str{},it's necessary to have this?) and line 108-113( the if statement was determined the same condition, but here had to do two times?).
+
+Nope, these lines are not necessary. This code is there just to provide some debugging information about what kind of Joint Seed was ultimately used so solve the Inverse Kinematics problem. A "Joint Seed" is the initial condition used to begin an Inverse Kinematics solver. Users can specify a seeding strategy for the Inverse Kinematics solver, or they can specify "Auto", which means the solver runs though each seeding strategy one after another. This debugging information is only useful in the "Auto" case when you want to find out which seed the solver ultimately used to solve the IK request, giving you the returned Joint Angles.
+
+what is the useful of the current_pose = self._limb.endpoint_pose() and ik_pose = Pose().
+
+Here, in the _retract(), I want the robot to move its end effector in the positive Z direction with respect to the robot's base. In order to do that, I am copying the current pose of the end effector (through current_pose = self._limb.endpoint_pose()), because I want to maintain the X and Y translation, as well as the current orientation.
+The ik_pose = Pose() is just creating an new instance of a Pose object to send in to the IK solver. Then I copy all the fields from the current pose, but add a hover_distance to the Z component. Then I send it into the IK solver to give me the joint angles that I would need to accomplish the move to this end effector position.
+Hope this helps!
+
+Originally posted by imcmahon with karma: 790 on 2016-06-16
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Zero on 2016-06-16:
+Thank you so much! Your explanation is really useful for me!
+Comment by Zero on 2016-06-20:
+Hi Imcmahon,
+Sorry to disturb you again. Can I ask you one more question was relate to that example?
+Here is my question, in the example line 286, why there can use the len() to count the number? And does it work, I mean to use this to repeat the movement from 1 to 3 then again?
+Thank you.
+

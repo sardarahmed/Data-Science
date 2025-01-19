@@ -1,0 +1,124 @@
+Q:
+
+Publisher or Subscriber inside a class [rosserial]
+
+Hi, I'm using rosserial in Arduino and have a problem initializing the Publisher or Subscriber inside the class constructor:
+ void setup() {
+    DifferentialDriveRobot *my_robot = new DifferentialDriveRobot( );
+ }
+
+ void loop() {
+    ...
+ }
+
+And the class is implemented as (in this example, with a subscriber):
+    class DifferentialDriveRobot
+    {
+              ...
+        public:
+            ros::NodeHandle nh;
+            ros::Subscriber<geometry_msgs::Twist> sub;
+            ...
+            void ddr_callback(const geometry_msgs::Twist& msg)  {...}
+
+        DifferentialDriveRobot() {  // Constructor
+                nh.initNode()
+                sub("/cmd_vel_mux/input/teleop", ddr_callback);
+                nh.subscribe(sub);
+             }
+    };
+
+And the compiling errors are the following:
+error: no matching function for call to 'ros::Subscriber<geometry_msgs::Twist>::Subscriber()'
+note:   candidate expects 3 arguments, 0 provided
+error: no match for call to '(ros::Subscriber<geometry_msgs::Twist>) (const char [26], void (&)(const geometry_msgs::Twist&))'
+sub("/cmd_vel_mux/input/teleop", ddr_callback);
+I think that this is because of the initialization of the sub variable without any parameter. Should I declare it as a pointer?
+NOTE: If I declare the ros::NodeHandle nh and ros::Subscriber<geometry_msgs::Twist> sub("/cmd_vel_mux/input/teleop", ddr_callback) in the main loop as global variables, the code works fine.
+I'm not very familiarized using templates, so I don't know exactly if exists an good implementation for this problem in the ros_lib library.
+Thanks for your help!
+
+Update
+Error message shown by the Arduino IDE when compile the answer of @DavidN:
+Arduino: 1.6.12 (Linux), Board: "Arduino Leonardo"
+
+In file included from /home/emiliano/catkin_ws/src/my_mobile_robot/from_keyboard_node-local_variables/from_keyboard_node-local_variables.ino:27:0:
+DifferentialDriveRobot.h:45: error: invalid use of template-name 'ros::Subscriber' without an argument list
+  ros::Subscriber sub;
+  ^
+sketch/DifferentialDriveRobot.h: In constructor 'DifferentialDriveRobot::DifferentialDriveRobot(DCMotor*, DCMotor*, double, double)':
+DifferentialDriveRobot.h:67: error: 'sub' was not declared in this scope
+  sub = nh.subscribe("/cmd_vel_mux/input/teleop", 1, &DifferentialDriveRobot::ddr_callback, this);
+  ^
+DifferentialDriveRobot.h:67: error: no matching function for call to 'ros::NodeHandle_<ArduinoHardware>::subscribe(const char [26], int, void (DifferentialDriveRobot::*)(const geometry_msgs::Twist&), DifferentialDriveRobot*)'
+  sub = nh.subscribe("/cmd_vel_mux/input/teleop", 1, &DifferentialDriveRobot::ddr_callback, this);
+                                                                                                ^
+sketch/DifferentialDriveRobot.h:67:96: note: candidate is:
+In file included from /home/emiliano/Arduino/libraries/ros_lib/ros.h:38:0,
+                 from sketch/DifferentialDriveRobot.h:8,
+                 from /home/emiliano/catkin_ws/src/my_mobile_robot/from_keyboard_node-local_variables/from_keyboard_node-local_variables.ino:27:
+/home/emiliano/Arduino/libraries/ros_lib/ros/node_handle.h:352:12: note: template<class SubscriberT> bool ros::NodeHandle_<Hardware, MAX_SUBSCRIBERS, MAX_PUBLISHERS, INPUT_SIZE, OUTPUT_SIZE>::subscribe(SubscriberT&) [with SubscriberT = SubscriberT; Hardware = ArduinoHardware; int MAX_SUBSCRIBERS = 25; int MAX_PUBLISHERS = 25; int INPUT_SIZE = 512; int OUTPUT_SIZE = 512]
+       bool subscribe(SubscriberT& s){
+            ^
+/home/emiliano/Arduino/libraries/ros_lib/ros/node_handle.h:352:12: note:   template argument deduction/substitution failed:
+In file included from /home/emiliano/catkin_ws/src/my_mobile_robot/from_keyboard_node-local_variables/from_keyboard_node-local_variables.ino:27:0:
+sketch/DifferentialDriveRobot.h:67:96: note:   candidate expects 1 argument, 4 provided
+  sub = nh.subscribe("/cmd_vel_mux/input/teleop", 1, &DifferentialDriveRobot::ddr_callback, this);
+                                                                                                ^
+exit status 1
+invalid use of template-name 'ros::Subscriber' without an argument list
+
+Originally posted by Emiliano on ROS Answers with karma: 23 on 2017-03-30
+Post score: 2
+
+Original comments
+Comment by jayess on 2019-01-17:
+Comment from @DavidN:
+
+According to this test under rosserial, there is definitely a way to declare subscriber without argument list: https://github.com/ros-drivers/rosser...
+
+Comment by subarashi on 2020-06-29:
+Is there any way to publish outside the void loop?
+Comment by subarashi on 2020-06-29:
+I think for the subscriber is easy, but for publishing is not easy. Is there any way to publish outside the void loop?
+Comment by Emiliano on 2020-06-29:
+Would you create a new issue and point us there so we can give you precise feedback?
+Comment by subarashi on 2020-06-29:
+Thanks.
+I've created this one rosserial arduino
+
+A:
+
+Hi,
+According to this test: https://github.com/ros-drivers/rosserial/blob/dd76994c67c5e4997ef64837c07afb4eb0d4df27/rosserial_client/test/subscriber_test.cpp#L52
+You should write:
+class DifferentialDriveRobot
+{
+          ...
+    public:
+        ros::NodeHandle nh;
+        ros::Subscriber<geometry_msgs::Twist, DifferentialDriveRobot> sub;
+        ...
+        void ddr_callback(const geometry_msgs::Twist& msg)  {...}
+
+        DifferentialDriveRobot()
+        : sub("/cmd_vel_mux/input/teleop", &DifferentialDriveRobot::ddr_callback, this)
+        {  // Constructor
+            nh.initNode()
+            nh.subscribe(sub);
+         }
+};
+
+Originally posted by rreignier with karma: 544 on 2017-04-16
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by Emiliano on 2017-04-16:
+Thanks a lot!! This implementation saved me a lot of memory!
+Comment by aconstantinescu on 2021-01-05:
+I know this is a few years old, but I wonder if using initialization lists is the only approach? This solution worked well for me until I decided that I want the topic name to be different for each instance of my class. In that case, you could pass a char* variable as a parameter to the constructor. But what if you wanted to change only part of the topic name? For example "/cmd_vel_mux/input1/teleop" for instance 1 and "/cmd_vel_mux/input2/teleop" for instance 2. Possible but a bit messy in my opinion if the only solution is to use initialization lists. Would be nice have that line of code inside the body of the constructor itself. Any thoughts on alternative approaches?
+Comment by rreignier on 2021-01-07:
+This is possible if you create the NodeHandle, the subscribers and publishers on the heap. But might not be compatible with your platform.
+You could use std::shared_ptr<ros::NodeHandle>, std::shared_ptr<ros::Subscriber<geometry_msgs::Twist>> and initialize them in the constructor body.
+

@@ -1,0 +1,37 @@
+Q:
+
+Are there any problems with a variable frequency PID?
+
+I am working on a quadrotor and am trying to solve the problems described here. In attempts to bring the refresh rate to 100 Hz, I did an analysis of the functions  and most of the time 35+ ms is being taken by the RC receiver input function. To tackle this, I have decided on two solutions:
+
+Use interrupts (PinChangeInt library) instead of pulseIn
+Reduce the frequency of pilot input
+
+The second solution which is much simpler is to simply read the pilot input once in $(n+1)$  PID updates. So, for $n$ times, we have a update time of $8\;ms$, and for the $(n+1)^{th}$ time, we have an update time of T ms. $n$ will be around $10$.
+This will create a system that will run on average in $(n*8 + T)/(n+1)\; ms$.
+Now, how does a dual/variable frequency affect the PID system? Does the system behave as if working at the effective frequency? I have been searching for some time but I cannot find anything that discusses such a situation. 
+
+A:
+
+You should be fine as long as your PID algorithm understands that it's not being called at a constant rate. Currently your function doesn't take a delta time parameter. Let's add one:
+int16_t pid_roll(int16_t roll, int16_t dT_ms)
+{
+    static int16_t roll_old = 0;
+    int16_t result = 
+    (KP_ROLL * roll) + 
+    (KI_ROLL * (roll_old + roll)*dT_ms) +
+    (KD_ROLL * (roll - roll_old)/dT_ms);
+    roll_old += roll;
+
+    return -result;
+}
+
+However, I would say that ideally you would be using a microcontroller or Arduino which had enough processing power to reliably execute the PID controller at a decent rate.
+
+A:
+
+I think you're solving the wrong problem.  Variable-frequency PIDs are a really bad idea because you lose control of the proportional component of force.  In other words, your force toward the setpoint stays constant even though you may have moved much closer to it in the time between updates, and the PID will need to make larger adjustments — possibly oscillating wildly.
+The constraint of only being able to update your inputs once every ~35ms means that your desired setpoint will only change every ~35ms, but the PID should only care about getting to that setpoint smoothly.  To accomplish that, the PID should ideally be running at the frequency of the measurement sensor and/or motor controller.
+For an extreme example, consider a PID controller for a cart on a track whose desired setpoint is constant at zero.  It would be silly to run the PID at 0Hz just because the setpoint never changes.  
+TL;DR, don't wait for pilot input inside your PID loop.  Let the PID loop run at constant frequency and feed it new setpoints whenever they become available. 
+

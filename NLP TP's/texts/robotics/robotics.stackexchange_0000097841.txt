@@ -1,0 +1,139 @@
+Q:
+
+Including a Python module in a ROS2 package
+
+Hey you all I have been scratching at my head for a solid day trying to figure out why this is proving to be such a problem.
+So i have a python ROs2 package. Inside my package i have a node trying to reference a submodule i have included. It keeps saying there is no module in package. I have tried to look at the setup.py file and still have had no luck trying to add it as part of the path.
+
+Project Folder
+    A [package] 
+
+         A 
+
+            nodeFile.py 
+
+            Submodule 
+
+                 file-that-i-am-trying-to-call.py
+
+.....
+
+Sos. I havent added anything unique to the setup.py or the package.xml from a typical basic node setup so its pretty blank in terms of that.
+Any help would be awesome thank you so much!!
+
+Originally posted by edesta on ROS Answers with karma: 51 on 2020-12-15
+Post score: 5
+
+Original comments
+Comment by nnmm on 2020-12-16:
+What is the path you use for importing that submodule? Do you have an init.py?
+Comment by edesta on 2020-12-16:
+to import it i said
+from Submodule.file_that-i-am-trying-to-call.py
+and yes it has an init.py
+An interesting thing that happens is when i remove the submodule folder and pull the file in by itself, i can import it like: .file-that-i-am-trying-to-call.py
+Comment by nnmm on 2020-12-16:
+You shouldn't use dashes in module names, and you shouldn't need the .py extension when importing. I think theoretically it should be import A.Submodule.file_that_i_am_trying_to_call (i.e. with the package name in front). If that doesn't work, please provide a minimal example to reproduce the error.
+Comment by edesta on 2020-12-16:
+Hi,
+So this is for the example i used dashes for the actual implementation i will give you the set of steps to recreate.
+I made a python ros2 package just using the customary build instructions
+I then made a node that includes a submodule for a dstar algorithm implementation.
+so the folder (called dstar) contains dstar_algorithm.py and some of its own helper files.
+I mispoke when i added a .py at the end of the include it does not have one.
+So in my node class, all it does, is it prints hello -- i literally am just testing the ability to pull in different python modules into ros2.
+My colcon build passes which is what i expect, but on the run of the node file, it fails on the line that is including the dstar_algorithm .
+i import it like from dstar.dstar_algorithm import *
+I have also tried:
+from dstar import dstar_algorithm
+from .dstar.dstar_algorithm import *
+import dstar_algorithm
+and the list goes on.
+So i think i need to affect the setup.py or the package.xml
+not sure
+Comment by veilkrand on 2021-03-04:
+Have you been able to find a solution? Thanks
+
+A:
+
+I think this question is also related so I recommend to check it out first:
+https://answers.ros.org/question/319867/ros2-colcon-build-not-getting-subfolders/
+When ROS2 builds the src files with colcon, it puts the python files into workspace/install/lib/python3.8/site-packages/<package_name>. This folder is considered as the root of python packages in the given ROS 2 package.
+If you can find the python files there, then you can use the following import statement: import .<file_name>. Note the . at the start of the import. You don't have to edit nothing else.
+If you want to put the imported files into submodules, then you have to achieve that they show up in the workspace/install/lib/python3.8/site-packages/<package_name>/<submodule_name> folder. This can be done by replacing the packages argument in the setup.py file to the following: packages=["<package_name>", "<packages_name>/<submodule_name>"]. This way the import statement is import .<submodule_name>.<file_name>.
+Example file structure to import with submodule:
+workspace
+|-> ...
+|-> src
+      |-> mypackage
+             |-> mypackage
+                    |-> submodules
+                           |->__init__.py
+                           |-> imported.py
+                    |-> __init__.py
+                    |-> main.py
+             |-> resource
+                    |-> ...
+             |-> test
+                    |-> ...
+             |-> package.xml
+             |-> setup.cfg
+             |-> setup.py
+
+setup.py:
+from setuptools import setup
+
+package_name = 'mypackage'
+submodules = "mypackage/submodules"
+
+setup(
+    name=package_name,
+    version='0.0.0',
+    packages=[package_name, submodules],
+    data_files=[
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
+        ('share/' + package_name, ['package.xml']),
+    ],
+    install_requires=['setuptools'],
+    zip_safe=True,
+    maintainer='TODO',
+    maintainer_email='TODO@email.com',
+    description='TODO: Package description',
+    license='TODO: License declaration',
+    tests_require=['pytest'],
+    entry_points={
+        'console_scripts': [
+            'main = mypackage.main:main',
+        ],
+    },
+)
+
+main.py:
+from .submodules.imported import function
+
+def main():
+    function()
+
+if __name__ == '__main__':
+    main()
+
+imported.py:
+def function():
+    print("hello world")
+
+Originally posted by nagda9 with karma: 116 on 2021-05-29
+This answer was ACCEPTED on the original site
+Post score: 10
+
+Original comments
+Comment by engro39 on 2021-09-15:
+thank you so much. It works well.
+Comment by xzkeee on 2022-04-04:
+with dot.  I can run as pkg, but cannot run directly from vscode, (without dot I can) is there a way to do both?
+Comment by Bogdan on 2022-06-24:
+I have the same problem, i can either run my nodes with a launch file, or directly from vscode but both of them are not working at the same time, i allways get an import related error e.g. module not found.
+Comment by nagda9 on 2022-07-09:
+Well, I think ROS 2 is still a bit quirky/clumsy in this regard. It was designed to be used in the "ROS" way: you have to build the workspace first, then you can run your program with the ros2 run command. As far as I know, it is not really compatible with "just running files". The build system is not allowing it to see the submodules in the usual way. I agree this is a disadvantage as it slows down development and makes things more complicated, but for now, this is the cost of the necessary build tool due to platform independentness.
+To correct this issue, either colcon should be changed, or ROS 2 should use a different build tool or build method.
+

@@ -1,0 +1,293 @@
+Q:
+
+ROS2 port of ORB SLAM3. Can copy libDoW2.so and libg2o.so using Cmake but getting error while loading shared libraries: libpango_vars.so
+
+Ubuntu 22.04, ROS2 Humble
+Hi,
+To port my research project to ROS2, I have been trying to make a native ROS2 implementation of ORB SLAM3 following the ROS1 implementation done by thien94 in
+https://github.com/thien94/orb_slam3_ros/blob/master/.
+As far I have understood, the ROS 1 implementation integrates ORB-SLAM3 as a shared library along with the executable node.
+My project structure looks like the following
+
+This Cmake configuration allows me to build the node and orb slam3 as a shared library
+cmake_minimum_required(VERSION 3.8)
+project(orb_slam3_ros2)
+
+set(ENV{PYTHONPATH} "/opt/ros/humble/lib/python3.10/site-packages/") # Must be set to match your installation
+
+# Must use C++17 to make it compatible with rclcpp
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
+
+# Check C++17 support
+include(CheckCXXCompilerFlag)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+
+if(COMPILER_SUPPORTS_CXX17)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+  add_definitions(-DCOMPILEDWITHC17)
+  message(STATUS "Using flag -std=c++17.")
+else()
+  message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
+endif()
+
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
+
+# LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/g2o/cmake_modules)
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(custom_msg_interface REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV 4.2 REQUIRED)
+find_package(Eigen3 3.3.0 REQUIRED) # Matched with Sophus
+find_package(Pangolin REQUIRED)
+#message("Pangolin libraries: ${Pangolin_LIBRARIES}")
+find_package(image_transport REQUIRED)
+#find_package(Boost REQUIRED)
+
+# Doesn't work, needs to work with very old version as discussed here https://github.com/lrse/sptam/issues/49
+# find_package(G2O REQUIRED)
+# if(NOT G2O_FOUND)
+#    message(FATAL_ERROR "G2O not found.")
+# endif()
+
+# Boost doesn't work
+# set(Boost_USE_STATIC_LIBS OFF) 
+# set(Boost_USE_MULTITHREADED ON)  
+# set(Boost_USE_STATIC_RUNTIME OFF) 
+# find_package(Boost 1.83.0 REQUIRED COMPONENTS system serialization)
+# find_package(OpenSSL REQUIRED)
+
+# -------------------------- ORB SLAM3 library build includes
+
+include_directories(include) # This package include
+
+# Library's includes
+include_directories(
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/orb_slam3
+  ${PROJECT_SOURCE_DIR}/orb_slam3/include
+  ${PROJECT_SOURCE_DIR}/orb_slam3/include/CameraModels
+  ${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty
+  ${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/Sophus
+  ${ament_INCLUDE_DIRS}
+)
+
+include_directories(SYSTEM
+  ${EIGEN3_INCLUDE_DIRS}
+  ${Pangolin_INCLUDE_DIRS}
+)
+
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+  rclcpp
+  std_msgs
+  sensor_msgs
+  custom_msg_interface
+  cv_bridge
+  image_transport
+  OpenCV
+  Eigen3
+  Pangolin
+)
+
+# Redundant?
+# include(${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/DBoW2/CMakeLists.txt)
+# include(${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/g2o/CMakeLists.txt)
+# set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/orb_slam3/lib)
+
+# add_library(${PROJECT_NAME} SHARED
+add_library(orb_slam3_ros2 SHARED
+  orb_slam3/src/System.cc
+  orb_slam3/src/Tracking.cc
+  orb_slam3/src/LocalMapping.cc
+  orb_slam3/src/LoopClosing.cc
+  orb_slam3/src/ORBextractor.cc
+  orb_slam3/src/ORBmatcher.cc
+  orb_slam3/src/FrameDrawer.cc
+  orb_slam3/src/Converter.cc
+  orb_slam3/src/MapPoint.cc
+  orb_slam3/src/KeyFrame.cc
+  orb_slam3/src/Atlas.cc
+  orb_slam3/src/Map.cc
+  orb_slam3/src/MapDrawer.cc
+  orb_slam3/src/Optimizer.cc
+  orb_slam3/src/Frame.cc
+  orb_slam3/src/KeyFrameDatabase.cc
+  orb_slam3/src/Sim3Solver.cc
+  orb_slam3/src/Viewer.cc
+  orb_slam3/src/ImuTypes.cc
+  orb_slam3/src/G2oTypes.cc
+  orb_slam3/src/CameraModels/Pinhole.cpp
+  orb_slam3/src/CameraModels/KannalaBrandt8.cpp
+  orb_slam3/src/OptimizableTypes.cpp
+  orb_slam3/src/MLPnPsolver.cpp
+  orb_slam3/src/GeometricTools.cc
+  orb_slam3/src/TwoViewReconstruction.cc
+  orb_slam3/src/Config.cc
+  orb_slam3/src/Settings.cc
+  orb_slam3/src/SystemUtils.cc
+  orb_slam3/include/System.h
+  orb_slam3/include/Tracking.h
+  orb_slam3/include/LocalMapping.h
+  orb_slam3/include/LoopClosing.h
+  orb_slam3/include/ORBextractor.h
+  orb_slam3/include/ORBmatcher.h
+  orb_slam3/include/FrameDrawer.h
+  orb_slam3/include/Converter.h
+  orb_slam3/include/MapPoint.h
+  orb_slam3/include/KeyFrame.h
+  orb_slam3/include/Atlas.h
+  orb_slam3/include/Map.h
+  orb_slam3/include/MapDrawer.h
+  orb_slam3/include/Optimizer.h
+  orb_slam3/include/Frame.h
+  orb_slam3/include/KeyFrameDatabase.h
+  orb_slam3/include/Sim3Solver.h
+  orb_slam3/include/Viewer.h
+  orb_slam3/include/ImuTypes.h
+  orb_slam3/include/G2oTypes.h
+  orb_slam3/include/CameraModels/GeometricCamera.h
+  orb_slam3/include/CameraModels/Pinhole.h
+  orb_slam3/include/CameraModels/KannalaBrandt8.h
+  orb_slam3/include/OptimizableTypes.h
+  orb_slam3/include/MLPnPsolver.h
+  orb_slam3/include/GeometricTools.h
+  orb_slam3/include/TwoViewReconstruction.h
+  orb_slam3/include/SerializationUtils.h
+  orb_slam3/include/Config.h
+  orb_slam3/include/Settings.h
+  orb_slam3/include/SystemUtils.h
+  
+  
+)
+
+set_target_properties(orb_slam3_ros2 PROPERTIES VERSION "${orb_slam3_ros2_VERSION}")
+#set_target_properties(orb_slam3_ros2 PROPERTIES PROPERTIES LINKER_LANGUAGE CXX)
+
+ament_target_dependencies(orb_slam3_ros2
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
+# Works do not delete
+target_link_libraries(orb_slam3_ros2
+  ${OpenCV_LIBS}
+  ${EIGEN3_LIBS}
+  ${Pangolin_LIBRARIES}
+  ${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/DBoW2/lib/libDBoW2.so
+  ${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/g2o/lib/libg2o.so
+  -lboost_system
+  -lboost_serialization
+  -lcrypto 
+)
+
+# Find your .so files (replace lib1.so and lib2.so with your actual file names)
+set(DBoW2_PATH "${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/DBoW2/lib/libDBoW2.so")
+set(g2o_PATH "${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/g2o/lib/libg2o.so")
+
+# Install .so files to the lib directory in the install space
+install(FILES ${DBoW2_PATH} DESTINATION lib)
+install(FILES ${g2o_PATH} DESTINATION lib)
+
+# --------------------------------------- CPP node ------------------------------------------
+
+# Add executable
+add_executable(agent0
+  src/agent0.cpp
+  src/robot_slam.cpp
+)
+#ament_target_dependencies(agent0 vslam_lib rclcpp std_msgs sensor_msgs custom_msg_interface cv_bridge Pangolin Eigen3 image_transport OpenCV)
+#ament_target_dependencies(agent0 rclcpp std_msgs sensor_msgs custom_msg_interface cv_bridge Pangolin Eigen3 image_transport OpenCV)
+
+ament_target_dependencies(agent0
+  PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
+target_link_libraries(agent0
+  PUBLIC
+  orb_slam3_ros2
+)
+
+# Install the library
+install(
+  TARGETS orb_slam3_ros2
+  EXPORT orb_slam3_ros2Targets
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include/orb_slam3_ros2
+)
+
+# install(
+#   TARGETS orb_slam3_ros2
+#   EXPORT export_orb_slam3_ros2
+#   LIBRARY DESTINATION lib
+#   ARCHIVE DESTINATION lib
+#   RUNTIME DESTINATION lib/orb_slam3_ros2
+#   INCLUDES DESTINATION include/orb_slam3_ros2
+# )
+
+# Install this executable
+install(TARGETS agent0
+  DESTINATION lib/orb_slam3_ros2
+)
+
+# This works
+install (DIRECTORY include/ 
+        DESTINATION include/orb_slam3_ros2
+)
+
+ament_export_include_directories(include)     # <-- superfluous?
+ament_export_libraries(rb_slam3_ros2Targets)             # <-- superfluous?
+ament_export_targets(orb_slam3_ros2Targets HAS_LIBRARY_TARGET)
+
+With a colcon build --packages-select orb_slam3_ros2 it builds successfully. But when I invoke this command
+ros2 run orb_slam3_ros2 agent0 --ros-args -p agent_name:=robot0
+
+I am getting this error
+/home/tigerwife/ros2_ws/install/orb_slam3_ros2/lib/orb_slam3_ros2/agent0: error while loading shared libraries: libpango_vars.so: cannot open shared object file: No such file or directory
+
+I followed the official tutorial in https://github.com/stevenlovegrove/Pangolin and installed Pangolin in home/pangolin/Pangolin. My ROS workspace is here home/ros2_ws
+Any help would be highly appreciated.
+With best
+@Mechazo11
+
+A:
+
+I have solved this problem by installing Pangolin globally in my system. This approach along with adding a macro in .bashrc ensures the .so files are found by Cmake during run time from /usr/local/lib folder.
+The steps to installing Pangolin globally are as follows
+
+git clone and change directory into the downloaded folder using the following instructions in https://github.com/stevenlovegrove/Pangolin
+
+Install recommended software ./scripts/install_prerequisites.sh --dry-run recommended
+
+Install recommended dependencies ./scripts/install_prerequisites.sh recommended
+
+cmake -B build create a build directory and configure using Cmake
+
+cmake --build build -j4 build using 4 parallel processors
+
+sudo cmake --install build install pangolin system-wide with elevated privileges
+
+Optional: test Pangolin is installed correctly by running one of the provided examples
+
+8a. In a terminal, check if /usr/lib/local is added to Dynamic library path using echo $LD_LIBRARY_PATH
+8b. Add /usr/lib/local and update ldconfig as follows
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/local
+sudo ldconfig
+
+Open .bashrc file and then add the following lines at the very of the file
+
+if [[ ":$LD_LIBRARY_PATH:" != *":/usr/local/lib:"* ]]; then
+    export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+fi
+
+source the .bashrc file to solve the above problem
+source ~/.bashrc
+
+With best,
+@mechazo11
+

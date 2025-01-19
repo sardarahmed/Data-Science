@@ -1,0 +1,51 @@
+Q:
+
+Creating new request services
+
+I am struggling with creating new requests dynamically.  I have defined my own messages and I want to do something like  request.setTask("xyz");  The request will happily take whatever I pass to it if I hardcode the tasks, but I want to have a separate function that I can call and will generate these responses.  Do I need to create a ServiceManager and ServiceFactory?
+This:
+final rosd_messages.RosDRequest request = serviceClient.newMessage();
+request.setTask("xyz");
+
+works fine.  However, what if we have another task "abc" that we want to execute?  What if we aren't sure how many requests there will be? I can create a new request, but I can't initialize it to serviceClient.newMessage();  as the serviceClient is final.
+Any help?
+Thanks!
+James
+
+Originally posted by jforkey on ROS Answers with karma: 82 on 2013-04-12
+Post score: 0
+
+A:
+
+I've managed to achieve this by starting my third party application (where the requests derive from) in a separate thread then making the thread wait when you issue the request using:
+synchronized (thread1) {
+    thread1.wait();
+ }
+
+Then, wake it up in the onSuccess (and onFailure - don't want it getting stuck waiting) with:
+  synchronized (thread1) {
+      thread1.notifyAll();
+  }
+
+Then I created a method to construct the requests that my third party client can call:
+ public static void buildRequest(String str){
+    
+    final rosd_messages.RosDRequest req;
+    req = node1.getServiceRequestMessageFactory().newFromType(rosd_messages.RosD._TYPE);
+    req.setTask(str);
+     ServiceClient<rosd_messages.RosDRequest, rosd_messages.RosDResponse> sClient;
+     
+    try {
+        sClient = node1.newServiceClient("abc123", rosd_messages.RosD._TYPE);
+      } catch (ServiceNotFoundException e) {
+            throw new RosRuntimeException(e);
+    }
+
+Note:  There is no reason you have to use custom requests.  I think this gives you the ability to build your own requests dynamically in a fairly efficient way.  If you have a better idea, I am all ears.
+Cheers!
+-James
+
+Originally posted by jforkey with karma: 82 on 2013-04-22
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,123 @@
+Q:
+
+Action client waiting forever for server to start
+
+I'm in the process of writing an action cpp file and the client side seems to be stuck waiting for the server to start and I'm not quite sure why.
+Here's the code:
+#include <stdio.h>
+#include <std_msgs/String.h>
+
+#include <ros/ros.h>
+#include <actionlib/server/simple_action_server.h>
+#include <actionlib/client/simple_action_client.h>
+
+#include <mavros_msgs/SetMode.h>
+#include <mavros_msgs/CommandBool.h>
+
+#include <rovexp/ModeAction.h>
+
+typedef actionlib::SimpleActionServer<rovexp::ModeAction> Server;
+
+class ModeActionServer {
+
+protected:
+ros::NodeHandle nh_;
+
+ros::ServiceClient arming_client_;
+ros::ServiceClient set_mode_client_;
+
+Server mode_server_;
+
+rovexp::ModeFeedback feedback_;
+rovexp::ModeResult result_;
+std::string action_name_;
+public:
+ModeActionServer(std::string name) :
+    mode_server_(nh_, name, boost::bind(&ModeActionServer::executeCB, this, _1), false),
+    action_name_(name)
+{
+    mode_server_.start();
+    ROS_INFO("Mode action server started...");
+}
+~ModeActionServer(void) { }
+
+void executeCB(const rovexp::ModeGoalConstPtr &goal)
+{
+    ROS_INFO_STREAM("mode experiment started...");
+
+    /*
+    set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
+    mavros_msgs::SetMode offb_set_mode;
+    offb_set_mode.request.custom_mode = goal->mode_num;
+
+    set_mode_client_.call(offb_set_mode);
+    */
+
+    arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>("mavros/cmd/arming");
+    ros::Rate rate(20.0);
+    mavros_msgs::CommandBool arm_cmd;
+    arm_cmd.request.value = true;
+    arming_client_.call(arm_cmd);
+}
+};
+
+typedef actionlib::SimpleActionClient<rovexp::ModeAction> Client;
+
+void modeActionClient(uint8_t mode_num)
+
+{
+Client client("mode_client", true);
+
+ROS_INFO("Waiting for action server to start");
+client.waitForServer();
+
+rovexp::ModeGoal goal;
+goal.mode_num = mode_num;
+printf("%d\t4\n",goal.mode_num);
+client.sendGoal(goal);
+
+client.waitForResult();
+}
+
+int main(int argc, char**argv)
+{
+if(std::string(argv[1])=="-server")
+{
+  ros::init(argc, argv, "mode_server");
+  ModeActionServer server("mode_server");
+  //server.start();
+  ros::spin();
+
+}
+else if(std::string(argv[1])=="-client")
+{
+    if ( std::string(argv[2])=="-h" ) {
+        printf("Use: rosrun rovexp mode -client @mode\n"); 
+        exit(-1);
+    }
+    ros::init(argc, argv, "mode_action_client");
+    uint8_t mode_num = atoi(argv[2]);
+    modeActionClient(mode_num);
+}
+printf("done\n");   
+return 0;
+}
+
+The terminal will output "Mode action server started..." and "Waiting for action server to start" but never gets to "mode experiment started...".
+So it would seem that the client gets stuck on
+client.waitForServer();
+
+A lot of what I've done was inspired by a ROS tutorial (link) and there's works fine on my pc. Having a hard time seeing the difference.
+I'm running ubuntu 16.04LTS and ROS kinetic.
+
+A:
+
+You need to use the same topics for the master and the client. 
+Client client("mode_client", true);
+
+starts a client that looks for a server that listens on the ~mode_client/goal topic, but you started the server on ~mode_server/goal. 
+Could you run both nodes and add the output of 
+rostopic list
+
+to your question?
+

@@ -1,0 +1,124 @@
+Q:
+
+rviz2 not showing images since update - probable QoS
+
+I ran a system update of my Ubuntu 20.04 today. Since then I can not see image topics in rviz2 like before. I assume it is an QoS issue, but I can not solve it.
+My rviz version should be
+$sudo apt list --installed | grep rviz2
+ros-foxy-rviz2/focal,now 8.2.4-1focal.20211006.001624 amd64 [installed,automatic]
+
+The two image topics have the frame IDs (from the realsense_ros2 node)
+camera_infra1_optical_frame
+camera_depth_optical_frame
+If I replay my bag the usual way with ros2 bag play -l ~/tmp/rviz_issue I do not see anything with rviz2 or with ros2 run rqt_image_view rqt_image_view.
+I tried running the replay with ros2 bag play -l ~/tmp/rviz_issue --qos-profile-overrides-path ~/tmp/reliability_override.yaml then I at least get iamges with the rqt_image_view
+The image topics have the QoS:
+$ ros2 topic info /camera/infra1/image_rect_raw --verbose
+Type: sensor_msgs/msg/Image
+
+Publisher count: 1
+
+Node name: _ros2cli_rosbag2
+Node namespace: /
+Topic type: sensor_msgs/msg/Image
+Endpoint type: PUBLISHER
+GID: 01.0f.bd.21.1d.26.00.00.01.00.00.00.00.00.12.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT
+  Durability: RMW_QOS_POLICY_DURABILITY_VOLATILE
+  Lifespan: 2147483651294967295 nanoseconds
+  Deadline: 2147483651294967295 nanoseconds
+  Liveliness: RMW_QOS_POLICY_LIVELINESS_AUTOMATIC
+  Liveliness lease duration: 2147483651294967295 nanoseconds
+
+Subscription count: 0
+
+$ ros2 topic info /camera/depth/image_rect_raw --verbose
+Type: sensor_msgs/msg/Image
+
+Publisher count: 1
+
+Node name: _ros2cli_rosbag2
+Node namespace: /
+Topic type: sensor_msgs/msg/Image
+Endpoint type: PUBLISHER
+GID: 01.0f.bd.21.1d.26.00.00.01.00.00.00.00.00.13.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT
+  Durability: RMW_QOS_POLICY_DURABILITY_VOLATILE
+  Lifespan: 2147483651294967295 nanoseconds
+  Deadline: 2147483651294967295 nanoseconds
+  Liveliness: RMW_QOS_POLICY_LIVELINESS_AUTOMATIC
+  Liveliness lease duration: 2147483651294967295 nanoseconds
+
+Subscription count: 0
+
+Rviz2 is configured
+- Class: rviz_default_plugins/Image
+  Enabled: true
+  Max Value: 1
+  Median window: 5
+  Min Value: 0
+  Name: Image
+  Normalize Range: true
+  Topic:
+    Depth: 5
+    Durability Policy: Volatile
+    History Policy: Keep Last
+    Reliability Policy: Best Effort
+    Value: /camera/infra1/image_rect_raw
+  Value: true
+- Class: rviz_default_plugins/Image
+  Enabled: true
+  Max Value: 1
+  Median window: 5
+  Min Value: 0
+  Name: Image
+  Normalize Range: true
+  Topic:
+    Depth: 5
+    Durability Policy: Volatile
+    History Policy: Keep Last
+    Reliability Policy: Best Effort
+    Value: /camera/depth/image_rect_raw
+
+It there an issue with rviz2 since the update or can I fix this by some configuration update. According to the specs I can not find an issue with my config.
+Unfortunately I can not add a minimal ros2 bag and the config files here. But feel free to ask for more information.
+
+Originally posted by basti.hunter on ROS Answers with karma: 25 on 2021-10-12
+Post score: 0
+
+Original comments
+Comment by PatoInso on 2021-10-12:
+I got a very similar issue with my laserscan data that I can"t see anymore in rviz2 since I did the Foxy update... Can you still see your laser data ?
+Comment by PatoInso on 2021-10-12:
+I note I can't also received maps data (map and costmaps)
+(I'm using Cyclone DDS)
+Comment by basti.hunter on 2021-10-12:
+I am not working with laser data, so I can not comment on that. Sorry.
+
+A:
+
+This seems due to a regression in Rviz2: https://github.com/ros2/rviz/issues/782
+I could get a functional Rviz again by following the suggestion and rebuilding version 8.2.3 for Foxy from sources (until the patched version got released):
+git clone https://github.com/ros2/rviz.git
+git checkout tags/8.2.3 -b foxy 
+
+>> In rviz_default_plugins/CMakeLists.txt comment tests lines 491-500 (point_cloud2_display_test) and lines 513-520 (point_cloud_scalar_display_test) that are likely to make the build fail
+
+colcon build
+
+Originally posted by PatoInso with karma: 109 on 2021-10-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by basti.hunter on 2021-10-12:
+Confirmation on the fix. Worked! Thanks!
+Comment by gvdhoorn on 2021-10-12:
+Pedantic, but this is a work-around of course.
+The real fix would be to get the regression resolved.
+@PatoInso: is there any news about a release which would include a fix?
+Comment by PatoInso on 2021-10-12:
+@gvdhoorn No idea, I guess we must keep an eye on the update on the github issue...
+

@@ -1,0 +1,170 @@
+Q:
+
+Bldc motors erratic behavior with Arduino program
+
+I've been making my own quadcopter flight controller using Arduino Mega. This is the sample code I wrote in order to test the esc timers and motors:
+byte channelcount_1, channelcount_2, channelcount_3, channelcount_4;  
+int receiverinput_channel_1, receiverinput_channel_2, receiverinput_channel_3, receiverinput_channel_4, start;  
+unsigned long channel_timer_1, channel_timer_2, channel_timer_3, channel_timer_4, current_time, esc_looptimer;  
+unsigned long zero_timer, timer_1, timer_2, timer_3, timer_4;  
+void setup() {  
+  // put your setup code here, to run once:  
+  DDRC |= B11110000; //Setting digital pins 30,31,32,33 as output  
+  DDRB |= B10000000;; //Setting LED Pin 13 as output  
+  //Enabling Pin Change Interrupts  
+  PCICR |= (1 << PCIE0);  
+  PCMSK0 |= (1 << PCINT0); //Channel 3 PIN 52  
+  PCMSK0 |= (1 << PCINT1); //Channel 4 PIN 53  
+  PCMSK0 |= (1 << PCINT2); //Channel 2 PIN 51  
+  PCMSK0 |= (1 << PCINT3); //Channel 1 PIN 50  
+  //Wait till receiver is connected
+  while (receiverinput_channel_3 < 990 || receiverinput_channel_3 > 1020 || receiverinput_channel_4 < 1400) {  
+    start++;  
+    PORTC |= B11110000;  
+    delayMicroseconds(1000); // 1000us pulse for esc  
+    PORTC &= B00001111;  
+    delay(3); //Wait 3 ms for next loop  
+    if (start == 125) { // every 125 loops i.e. 500ms  
+      digitalWrite(13, !(digitalRead(13))); //Change LED status  
+      start = 0; //Loop again  
+    }  
+  }  
+  start = 0;  
+  digitalWrite(13, LOW); //Turn off LED pin 13  
+  zero_timer = micros();  
+}  
+void loop() {  
+  // put your main code here, to run repeatedly:  
+  while (zero_timer + 4000 > micros());  
+  zero_timer = micros();  
+  PORTC |= B11110000;  
+  channel_timer_1 = receiverinput_channel_3 + zero_timer; //Time calculation for pin 33  
+  channel_timer_2 = receiverinput_channel_3 + zero_timer; //Time calculation for pin 32  
+  channel_timer_3 = receiverinput_channel_3 + zero_timer; //Time calculation for pin 31  
+  channel_timer_4 = receiverinput_channel_3 + zero_timer; //Time calculation for pin 30  
+  while (PORTC >= 16) //Execute till pins 33,32,31,30 are set low  
+  {  
+    esc_looptimer = micros();  
+    if (esc_looptimer >= channel_timer_1)PORTC &= B11101111; //When delay time expires, pin 33 is set low  
+    if (esc_looptimer >= channel_timer_2)PORTC &= B11011111; //When delay time expires, pin 32 is set low  
+    if (esc_looptimer >= channel_timer_3)PORTC &= B10111111; //When delay time expires, pin 31 is set low  
+    if (esc_looptimer >= channel_timer_4)PORTC &= B01111111; //When delay time expires, pin 30 is set low  
+  }  
+}  
+//Interrupt Routine PCI0 for Receiver  
+ISR(PCINT0_vect)  
+{  
+  current_time = micros();  
+  //Channel 1  
+  if (PINB & B00001000)  
+  {  
+    if (channelcount_1 == 0 )  
+    {  
+      channelcount_1 = 1;  
+      channel_timer_1 = current_time;  
+    }  
+  }  
+  else if (channelcount_1 == 1 )  
+  {  
+    channelcount_1 = 0;  
+    receiverinput_channel_1 = current_time - channel_timer_1;  
+  }  
+  //Channel 2  
+  if (PINB & B00000100)  
+  {  
+    if (channelcount_2 == 0 )  
+    {  
+      channelcount_2 = 1;  
+      channel_timer_2 = current_time;  
+    }  
+  }  
+  else if (channelcount_2 == 1)  
+  {  
+    channelcount_2 = 0;  
+    receiverinput_channel_2 = current_time - channel_timer_2;  
+  }  
+
+  //Channel 3  
+  if (PINB & B00000010)  
+  {  
+    if (channelcount_3 == 0 && PINB & B00000010)  
+    {  
+      channelcount_3 = 1;  
+      channel_timer_3 = current_time;  
+    }  
+  }  
+  else if (channelcount_3 == 1)  
+  {  
+    channelcount_3 = 0;  
+    receiverinput_channel_3 = current_time - channel_timer_3;  
+  }  
+  //Channel 4  
+  if (PINB & B00000001) {  
+    if (channelcount_4 == 0 )  
+    {  
+      channelcount_4 = 1;  
+      channel_timer_4 = current_time;  
+    }  
+  }  
+  else if (channelcount_4 == 1)  
+  {  
+    channelcount_4 = 0;  
+    receiverinput_channel_4 = current_time - channel_timer_4;  
+  }  
+}
+
+However, my issue here is that the bldc motors i'm using don't work smoothly when connected to the Arduino. They erratically stop and even change direction of rotation at the same throttle input. I've tested them by connecting them directly to the transmitter and they work fine there with perfect rotation and speed. Can someone please help me out and tell me where I might be going wrong? 
+EDIT: I do realize posting the entire Arduino code might be overkill, but I've been trying to solve this problem for three days (as of 22nd June,16) and I really do hope someone can point out any improvements/corrections in my code.
+
+A:
+
+Can you make a written description (comments, text, or block diagram) of what you think the code is supposed to be doing?
+I can't figure out what your whole timer scheme is supposed to do. Here's what happens when you execute it, though (assuming you make it to the main loop okay):
+
+void loop() {
+
+So here you start a loop. By definition, it loops. 
+
+while (zero_timer + 4000 > micros());
+zero_timer = micros();
+
+Here you set a while loop based on the condition (some starting time + constant) > current time, but then on the next line you declare (some starting time) = current time. So this looks like you're setting up an infinite loop... inside the infinite loop.
+
+PORTC |= B11110000;
+
+You set the four output pins to ON, but then:
+
+channel_timer_1 = receiverinput_channel_3 + zero_timer;
+
+Here you set channel_time_N equal to receiverinput_channel_3 (note you do this for all of the channel timers - they're all set equal to channel_3) plus zero_timer. Zero timer was just set one line ago equal to the current time. 
+What is receiverinput_channel_3? Well, it's not initialized, so it's either whatever was in the allocated memory when the function was declared, or:
+receiverinput_channel_3 = current_time - channel_timer_3, which evaluates to whatever the interrupt time step is for the first interrupt.
+receiverinput_channel_3 gets locked in to the interrupt time interval. This is because it *only gets updated if channelcount_3 is equal to one. However, when you set the value for receiverinput_channel_3, you set channelcount_3 equal to zero, meaning that it never gets updated until the interrupt gets called again. At that point, if the other criteria are met, you set channel_timer_3 equal to current_time and toggle channelcount_3 again. 
+Now that channelcount_3 has been toggled, on the next interrupt call, you again define receiverinput_channel_3 = current_time - channel_timer_3, but channel_timer_3 was set equal to the current_time on the previous interrupt, so receiverinput_channel_3 is always equal to the interrupt interval.
+
+So now, realizing that channel_timer_1 is set to the almost-current time (zero_timer) plus the interrupt interval (now + a very small value), we continue:
+while (PORTC >= 16) {
+
+Okay, start a loop to basically pause execution until all of the timers expire, BUT:
+
+esc_looptimer = micros();
+
+Set another constant equal to the now-current time, and THEN:
+
+if (esc_looptimer >= channel_timer_1)PORTC &= B11101111;
+
+As soon as the current time (as continuously defined by esc_looptimer) is greater than the start time outside this inner loop (zero_time) plus the interrupt interval, (channel_timer_1 as defined above), you turn the output pin off. 
+If you manage to hit the timing such that you invoke an interrupt before you hit the esc_looptimer >= channel_timer_1 criteria for turning the output, then you set channel_timer_1 = current_time, meaning that on the next loop iteration, you declare esc_looptimer = (current time) and then you meet the criteria and immediately turn the output off. 
+
+So, the tl;dr version of this is that you are turning your ESCs on then immediately back off, probably before the ESCs get a chance to evaluate the timing on the motors. Depending on the BLDC motors you're using, they may not have shaft position encoders ("sensorless" BLDC), meaning that:
+
+"A stationary motor generates no back EMF, making it impossible for the microcontroller to determine the position of the motor parts at start-up. The solution is to start the motor in an open loop configuration until sufficient EMF is generated for the microcontroller to take over motor supervision. These so-called “sensorless” BLDC motors are gaining in popularity. 
+
+So you turn the ESC on, then before it has a chance to start the motor to the point it has adequate control, you turn the ESC back off again. Once all the ESCs are off you turn them back on then immediately back off again. This process repeats. 
+With a BLDC motor, the commutator is removed. The commutator was what had previously provided the electrical current to the correct coils at the right time. Instead, a BLDC motor relies on electronic commutation, meaning you have to sequence the coils in the correct order, at the correct time.
+If you turn the ESC on and then off again before it has a chance to determine the correct timing for energizing the coil then you would get erratic behavior from the motors because they're not being controlled properly. 
+I really have no idea what your whole interrupt sequence is supposed to be doing, but I can pretty much guarantee it's not doing what you intended. If you just want the motor to be on for some period of time, then my suggestion would be to hard-code that run time as a constant and wait for it to elapse. 
+As @Jakob mentioned, the code is made more difficult to read because you're trying to control all four ESCs at once. Try getting one to work as desired first, then try to encapsulate the code for that into a function, then invoke that function for each ESC you want to run.
+As a final note, I'd say that I'm dubious as to what the output of PINB & B00000100 and similar lines would evaluate to: true or false? I thought PINB was one pin - how do you AND one pin with 8? What is the output of that function?. Also, you don't appear to really initialize anything equal to zero. This means that you're stuck with whatever is in the allocated memory when the program starts - if this isn't a 1 or a 0 in your channelcount_N variables, then your code never does anything.  
+If you revamp the code and it still doesn't work, please post a wiring diagram showing how everything is connected. But again, as it stands I don't think your code is doing what you think it's doing.
+

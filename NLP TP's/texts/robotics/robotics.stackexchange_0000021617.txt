@@ -1,0 +1,113 @@
+Q:
+
+PID Control: Is adding a delay before the next loop a good idea?
+
+I am implementing PID control in c++ to make a differential drive robot turn an accurate number of degrees, but I am having many issues.
+Exiting control loop early due to fast loop runtime
+If the robot measures its error to be less than .5 degrees, it exits the control loop and consider the turn "finished" (the .5 is a random value that I might change at some point). It appears that the control loop is running so quickly that the robot can turn at a very high speed, turn past the setpoint, and exit the loop/cut motor powers, because it was at the setpoint for a short instant. I know that this is the entire purpose of PID control, to accurately reach the setpoint without overshooting, but this problem is making it very difficult to tune the PID constants. For example, I try to find a value of kp such that there is steady oscillation, but there is never any oscillation because the robot thinks it has "finished" once it passes the setpoint. To fix this, I have implemented a system where the robot has to be at the setpoint for a certain period of time before exiting, and this has been effective, allowing oscillation to occur, but the issue of exiting the loop early seems like an unusual problem and my solution may be incorrect.
+D term has no effect due to fast runtime
+Once I had the robot oscillating in a controlled manner using only P, I tried to add D to prevent overshoot. However, this was having no effect for the majority of the time, because the control loop is running so quickly that 19 loops out of 20, the rate of change of error is 0: the robot did not move or did not move enough for it to be measured in that time. I printed the change in error and the derivative term each loop to confirm this and I could see that these would both be 0 for around 20 loop cycles before taking a reasonable value and then back to 0 for another 20 cycles. Like I said, I think that this is because the loop cycles are so quick that the robot literally hasn't moved enough for any sort of noticeable change in error. This was a big problem because it meant that the D term had essentially no effect on robot movement because it was almost always 0. To fix this problem, I tried using the last non-zero value of the derivative in place of any 0 values, but this didn't work well, and the robot would oscillate randomly if the last derivative didn't represent the current rate of change of error.
+Note: I am also using a small feedforward for the static coefficient of friction, and I call this feedforward "f"
+Should I add a delay?
+I realized that I think the source of both of these issues is the loop running very very quickly, so something I thought of was adding a wait statement at the end of the loop. However, it seems like an overall bad solution to intentionally slow down a loop. Is this a good idea?
+turnHeading(double finalAngle, double kp, double ki, double kd, double f){
+    std::clock_t timer;
+    timer = std::clock();
+
+    double pastTime = 0;
+    double currentTime = ((std::clock() - timer) / (double)CLOCKS_PER_SEC);
+
+    const double initialHeading = getHeading();
+    finalAngle = angleWrapDeg(finalAngle);
+
+    const double initialAngleDiff = initialHeading - finalAngle;
+    double error = angleDiff(getHeading(), finalAngle);
+    double pastError = error;
+
+    double firstTimeAtSetpoint = 0;
+    double timeAtSetPoint = 0;
+    bool atSetpoint = false;
+
+    double integral = 0;
+    double derivative = 0;
+    double lastNonZeroD = 0;
+
+    while (timeAtSetPoint < .05)
+    {
+        updatePos(encoderL.read(), encoderR.read());
+        error = angleDiff(getHeading(), finalAngle);
+
+        currentTime = ((std::clock() - timer) / (double)CLOCKS_PER_SEC);
+        double dt = currentTime - pastTime;
+
+        double proportional = error / fabs(initialAngleDiff);
+        integral += dt * ((error + pastError) / 2.0);
+        double derivative = (error - pastError) / dt;
+        
+        //FAILED METHOD OF USING LAST NON-0 VALUE OF DERIVATIVE
+        // if(epsilonEquals(derivative, 0))
+        // {
+        //     derivative = lastNonZeroD;
+        // }
+        // else
+        // {
+        //     lastNonZeroD = derivative;
+        // }
+
+        double power = kp * proportional + ki * integral + kd * derivative;
+
+        if (power > 0)
+        {
+            setMotorPowers(-power - f, power + f);
+        }
+        else
+        {
+            setMotorPowers(-power + f, power - f);
+        }
+
+        if (fabs(error) < 2)
+        {
+            if (!atSetpoint)
+            {
+                atSetpoint = true;
+                firstTimeAtSetpoint = currentTime;
+            }
+            else //at setpoint
+            {
+                timeAtSetPoint = currentTime - firstTimeAtSetpoint;
+            }
+        }
+        else //no longer at setpoint
+        {
+            atSetpoint = false;
+            timeAtSetPoint = 0;
+        }
+        pastTime = currentTime;
+        pastError = error;
+    }
+    setMotorPowers(0, 0);
+}
+
+turnHeading(90, .37, 0, .00004, .12);
+
+A:
+
+Don't disengage your controller.
+The purpose of a controller is not only to steer your system to the desired setpoint according to a predetermined dynamical response but also to counteract potential external factors that may impede this task. Think of a disturbance that will drive the system far from the setpoint once it has been reached. Thus, the controller shall be always operational (unless you need to change the task itself and as a result change the controller too).
+To this end, you would certainly need to add up the integral part, which is responsible for attaining a null steady-state error in presence of unmodeled quantities and external disturbances.
+This is quite a related resource: https://robotics.stackexchange.com/a/19198/6941.
+Leave out the derivative.
+95% of PID controllers in the industries are PI controllers (see "Feedback Systems" Astrom, Murray) as the D part can play a significant role only with slow processes (like those concerned with temperature and tank level regulation). This is definitely not your case. Somehow related resources about the difficulties of the derivative terms are:
+
+https://robotics.stackexchange.com/a/21556/6941.
+https://robotics.stackexchange.com/a/21555/6941.
+
+Once I had the robot oscillating in a controlled manner using only P, I tried to add D to prevent overshoot.
+
+Well, it seems that you are following the prescriptions of Ziegler-Nichols to tune your controller. There are tables you need to stick to that give you estimates for the gains. However, these are heuristic and it's likely that won't work in your case.
+Simply drop the D part and focus on the PI controller. There is also another Z-N variant that does not rely on purposely generated oscillations: https://robotics.stackexchange.com/a/21616/6941.
+Never ever add up delays to the system.
+Delays are bad guys to deal with in a control loop, and the worst beasts engineers have to fight against (watch this ) as they reduce significantly the phase margin pushing the overall system toward instability.
+If you deem that your loop is too fast, then apply input-shaping to the setpoint (with for example minimum-jerk trajectory) to smooth out the sharp step onset. The closed-loop system will react more gracefully. Another possibility is that your P gain is too high: just detune the controller then.
+In this respect, if you insert the integral term I, then you will need to reason about the sample time $T_s$ as well.
+

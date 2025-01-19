@@ -1,0 +1,365 @@
+Q:
+
+How to create a 180 degree laserscan from a panning Kinect?
+
+The Kinect has a narrow (57 degree) field of view, which is limited for obstacle avoidance, navigation and map making as pointed out elsewhere by others. My Kinect is mounted on a pan/tilt mechanism so I should be able to pan the laser and create a wider simulated laserscan. (but with an admittedly lower scan rate than a real laser) An advantage however is that the Kinect should be able to identify obstacles the full height of the robot, rather than just at the laser elevation. Does anyone have experience or example code available for this task?
+
+Originally posted by Bart on ROS Answers with karma: 856 on 2011-04-19
+Post score: 2
+
+A:
+
+Based on some help in previous ROS questions/answers I have developed a nodelet "pipeline" that augments the pointcloud_to_laserscan package provided in turtlebot. This pipeline takes the pointcloud from "cloud_throttle.cpp" and tranforms it geometrically based on  pan and tilt angles broadcast to tf using pcl_ros::transformPointCloud in a new nodelet "cloud_to_scan_tf.cpp". It then uses a third nodelet "scan_to_wide.cpp" to overlay a sequence of panned narrow scans into a wider 180 degree scan. The result is a simulation of a wider field of view, horizontal mounted, forward facing, planer laser.
+The "cloud_to_scan_tf.cpp" nodelet was documented previously as "cloud_to_scanHoriz.cpp" in the "pointcloud to laserscan with transform?" ROS Answers question.
+Attached below is the code for the "scan_to_wide" nodelet and a typical launch file. There is a Bool message to start/stop the panning. This nodelet sends a Float32 message to a hardware interface program to move the pan servo and receives a JointState message from the hardware interface program to indicate the pan servo position. The Kinect is tilted downwards 25 degrees to improve visibility just in front of the robot, but tf corrects the laserscan to horizontal. When the robot is moving the Kinect is stationary facing forward.  When the robot stops it does a 180 degree pan, which takes about 3 seconds. The Kinect nodelets and other hardware interface programs run on a small netbook (Atom N270 1.6 GHz) at 100% CPU, but only using 20 KB/sec of wireless network bandwidth to display the laserscan on rviz on a remote desktop computer.
+I'm interested if anyone has suggestions for improvement or experience integrating a panning Kinect with the navigation stack. As the FAQ suggests, a longer discussion should be moved to the mailing list.
+/*
+ * Copyright (c) 2010, Willow Garage, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyrigh
+
+t
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the Willow Garage, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+//scan_to_wide.cpp
+
+//Move a Kinect camera on a pan/tilt base to provide laserscan ranges with a wider field of view.
+//Consolidate the overlapping scans to provide a single wider laserScan message
+//Panning moves from center, left, center, right, center ...
+//A laserscan is published at each position.
+//When not panning, the received laserscan for center position is immediately published
+
+//The following messages are sent to the hardware interface program:
+// "camera_pan_mode" Boolean message to intiate or stop scanning
+// "camera_pan_angle_cmd" Float32 message indicating the position to move the camera to
+
+//The following message is recieved from the hardware interface program:
+// "camera_pos" JointsPos message indicating the actual position of the camera
+
+// "laser_scan_tf" laserscan message is received from pointcloud_to_laserscan package
+// "laser_scan_wide" laserscan message is published
+
+#include "ros/ros.h"
+#include "pluginlib/class_list_macros.h"
+#include "nodelet/nodelet.h"
+#include "std_msgs/Bool.h"
+#include "std_msgs/Float32.h"
+#include "sensor_msgs/JointState.h"
+#include "sensor_msgs/LaserScan.h"
+#include <vector>
+
+namespace r2PointcloudToLaser
+{
+
+class ScanToWide : public nodelet::Nodelet
+{
+public:
+  //Constructor
+  ScanToWide(): kinectFov(1.02974), panAngleErrorLimit(0.035), settleTimeSecs(1.0)
+  {
+  };
+
+private:
+  //Global data
+  bool cameraPanCmd;
+  enum CameraPanModeType {FIXED, PAN} cameraPanMode;
+  enum CameraPanStepType {INIT, LEFT, LEFTSCAN, CENTER, CENTERSCAN, RIGHT, RIGHTSCAN, DONE} cameraPanStep;
+  enum CameraPanDirection {LEFTDIR, RIGHTDIR} cameraPanDirection;
+  float panPosition; //camera angular yaw position
+
+  ros::Time positionTime;
+  double settleTimeSecs;
+  ros::Duration delayTime;  //allow camera pan position to settle
+
+  double kinectFov;          //Kinect horizonal field of view, 59 degrees
+  double panAngleTarget;
+  double panAngleErrorLimit; //2 degrees
+
+  sensor_msgs::LaserScan laserOut;  //laserIn messages overlaid into output scan
+
+  //************************************
+  //Define ROS messages used
+  ros::Subscriber cameraPanModeSubscriber; //std_msgs::Bool, "camera_pan_mode"
+  ros::Publisher cameraPanAnglePublisher;  //std_msgs::Float32, "camera_pan_angle_cmd"
+  ros::Subscriber cameraPosSubscriber;     //sensor_msgs::JointState, "camera_pos"
+
+  ros::Subscriber laserSubscriber;         //sensor_msgs::LaserScan, "laser_scan_horiz"
+  ros::Publisher laserScanPublisher;       //sensor_msgs::LaserScan, "laserscan_wide"
+
+  //************************************
+  //Function declarations
+
+  void callbackLaserPanCmd(const std_msgs::Bool::ConstPtr& panCmd);
+  void callbackCameraPos(const sensor_msgs::JointState::ConstPtr& camPos);
+  void callbackLaserscan(const sensor_msgs::LaserScan::ConstPtr& laserIn);
+
+  void initializeLaserOut(const sensor_msgs::LaserScan::ConstPtr& laserIn);
+  void copyLaserInToOut(const sensor_msgs::LaserScan::ConstPtr& laserIn,
+                        sensor_msgs::LaserScan& laserOut);
+  void sendCameraPanCmd(enum CameraPanStepType cameraPanStep);
+
+  //Nodelet initialization
+  virtual void onInit()
+  {
+    ros::NodeHandle& nodeHandle = getNodeHandle();
+    ros::NodeHandle& privateNodeHandle = getPrivateNodeHandle();
+    
+    //Get settle time for camera after movement in seconds
+    privateNodeHandle.getParam("kinect_fov", kinectFov);
+    privateNodeHandle.getParam("pan_error_limit", panAngleErrorLimit);
+    privateNodeHandle.getParam("settle_time", settleTimeSecs);
+    NODELET_INFO("ScanToWide kinect field of view: %f", kinectFov);
+    NODELET_INFO("ScanToWide pan error limit: %f", panAngleErrorLimit);
+    NODELET_INFO("ScanToWide settle time: %f", settleTimeSecs);
+
+    //Initialize private data
+    delayTime.fromSec(settleTimeSecs);
+    cameraPanCmd = false;
+    cameraPanMode = FIXED;
+    cameraPanStep = INIT;
+    cameraPanDirection = LEFTDIR;
+
+    //Set up to process a fixed laserscan
+    cameraPanModeSubscriber = nodeHandle.subscribe<std_msgs::Bool>("camera_pan_mode", 2, &ScanToWide::callbackLaserPanCmd, this);
+    cameraPanAnglePublisher = nodeHandle.advertise<std_msgs::Float32>("camera_pan_angle_cmd", 2);
+    cameraPosSubscriber = nodeHandle.subscribe<sensor_msgs::JointState>("camera_pos", 2, &ScanToWide::callbackCameraPos, this);
+
+    laserSubscriber = nodeHandle.subscribe<sensor_msgs::LaserScan>("scan_in", 2, &ScanToWide::callbackLaserscan, this);
+    laserScanPublisher = nodeHandle.advertise<sensor_msgs::LaserScan>("scan_out", 10);
+  };
+
+}; //class ScanToWide
+
+//*********************************************************
+//ROS message subscription callbacks
+
+//Laser panning command message received from user interface program
+void ScanToWide::callbackLaserPanCmd(const std_msgs::Bool::ConstPtr& panCmd)
+{
+  //cameraPanCmd = panCmd->data;  //save command state
+
+  if (panCmd->data == true) {
+    //Initiate panning
+    if (cameraPanMode == FIXED) {
+      cameraPanMode = PAN;
+      //Move to left position for first reading, then wait for callback
+      cameraPanStep = LEFT;
+      sendCameraPanCmd(cameraPanStep);
+    }
+  }
+  else {
+    //Stop panning, move to center
+    cameraPanMode = FIXED;
+    sendCameraPanCmd(CENTER);
+    cameraPanStep = DONE;
+    //Clear existing range values for the next laserscan
+    laserOut.ranges.assign(laserOut.ranges.size(), laserOut.range_max + 1.0);
+  }
+}
+
+//Camera position message received from hardware interface program
+//notify laserscan callback that it is in position to save scan
+void ScanToWide::callbackCameraPos(const sensor_msgs::JointState::ConstPtr& camPos)
+{
+  float panAngle;
+
+  //Process position if in panning mode
+  if (cameraPanMode == PAN){
+    panAngle = camPos->position[0];
+    if (fabs(panAngle - panAngleTarget) < panAngleErrorLimit) {
+      //Notify laserscan callback that camera is in correct position
+      if (cameraPanStep == LEFT)
+        cameraPanStep = LEFTSCAN;
+      else if (cameraPanStep == CENTER)
+        cameraPanStep = CENTERSCAN;
+      else if (cameraPanStep == RIGHT)
+        cameraPanStep = RIGHTSCAN;
+
+      //Save time of camera position message
+      positionTime = camPos->header.stamp;
+    } //if panAngle
+  } //if cameraPanMode
+} //callbackCameraPos
+
+//Laserscan message received from pointcloud_to_laserscan program
+void ScanToWide::callbackLaserscan(const sensor_msgs::LaserScan::ConstPtr& laserIn)
+{
+  //Format wide laserscan based on narrow laserscan on first pass (once)
+  if (cameraPanStep == INIT) {
+    //First pass, initialize laserOut properties based on laserIn
+    initializeLaserOut(laserIn);
+    cameraPanStep = DONE;
+  } //if camerPanStep = INIT
+
+  //Copy narrow laserscan to wide laserscan and publish
+  copyLaserInToOut(laserIn, laserOut);
+  laserOut.header.stamp = ros::Time::now();
+  laserScanPublisher.publish(laserOut);
+
+  if (cameraPanMode == PAN) {
+    //Control panning movement
+    //Wait for pan motion to settle and a new laserscan before moving again
+    if ((laserIn->header.stamp - positionTime) > delayTime) {
+
+      //At leftmost position
+      if (cameraPanStep == LEFTSCAN) {
+        //Move camera to next position
+        cameraPanStep = CENTER;
+        cameraPanDirection = RIGHTDIR;
+        sendCameraPanCmd(cameraPanStep);
+      } //if panStep LEFTSCAN
+
+      //At center position
+      else if (cameraPanStep == CENTERSCAN) {
+        //Move camera to next position, depending on previous position
+        if (cameraPanDirection == RIGHTDIR) {
+          cameraPanStep = RIGHT;
+          sendCameraPanCmd(cameraPanStep);
+        }
+        else {
+          cameraPanStep = LEFT;
+          sendCameraPanCmd(cameraPanStep);
+        }
+      } //if panStep CENTERSCAN
+
+      //At rightmost position
+      else if (cameraPanStep == RIGHTSCAN) {
+        //Move camera to next position
+        cameraPanStep = CENTER;
+        cameraPanDirection = LEFTDIR;
+        sendCameraPanCmd(cameraPanStep);
+      } //if panStep RIGHTSCAN
+
+    } //if position time
+  } //if cameraPanMode PAN
+} //callbackLaserscan
+
+//************************************
+//Function declarations
+
+//Initialize the laserOut message
+void ScanToWide::initializeLaserOut(const sensor_msgs::LaserScan::ConstPtr& laserIn)
+{
+  laserOut.header.frame_id = laserIn->header.frame_id;
+  laserOut.time_increment = laserIn->time_increment;
+  laserOut.scan_time = laserIn->scan_time;
+  laserOut.range_min = laserIn->range_min;
+  laserOut.range_max = laserIn->range_max;
+  laserOut.angle_min = laserIn->angle_min; //panned right
+  laserOut.angle_max = laserIn->angle_max;  //panned left
+  laserOut.angle_increment = laserIn->angle_increment;
+  laserOut.ranges.resize(laserIn->ranges.size(), laserOut.range_max + 1.0);
+  ROS_INFO("initializeLaserOut : wide laserscan initialized");
+}
+
+//Copy laserIn ranges to appropriate sector in laserOut
+void ScanToWide::copyLaserInToOut(const sensor_msgs::LaserScan::ConstPtr& laserIn,
+                      sensor_msgs::LaserScan& laserOut)
+{
+  //Display incoming laser scan range values for testing
+  //ROS_INFO("copyLaserInToOut cameraPanStep: %d", cameraPanStep);
+  //ROS_INFO("laserIn ranges.size: %d", laserIn->ranges.size());
+  //for (unsigned int i = 0; i < laserIn->ranges.size(); i++) {
+  //  ROS_INFO("index: %d, range: %f", i, laserIn->ranges[i]);
+  //}
+
+  //Copy input laserscan ranges to output laserscan
+  for (unsigned int i = 0; i < laserIn->ranges.size(); i++) {
+    if (laserIn->ranges.at(i) < laserIn->range_max)
+      laserOut.ranges.at(i) = laserIn->ranges.at(i);
+  }
+}
+
+//Send a camera pan position command message
+void ScanToWide::sendCameraPanCmd(enum CameraPanStepType cameraPanStep)
+{
+  std_msgs::Float32 panAngle;
+
+  //Set message parameter
+  if (cameraPanStep == LEFT) {
+    panAngleTarget = kinectFov;
+  }
+  else if (cameraPanStep == RIGHT) {
+    panAngleTarget = -kinectFov;
+  }
+  else if (cameraPanStep == CENTER) {
+    panAngleTarget = 0.0;
+  }
+  else {
+    panAngleTarget = 0.0; //center
+  }
+  panAngle.data = panAngleTarget;
+  //Send message, then wait for callback
+  cameraPanAnglePublisher.publish(panAngle);
+} //sendCameraPosCmd
+
+PLUGINLIB_DECLARE_CLASS(r2PointcloudToLaser, ScanToWide, r2PointcloudToLaser::ScanToWide, nodelet::Nodelet);
+} //r2PointcloudToLaser
+
+<launch>
+  <!-- kinect and frame ids -->
+  <include file="$(find openni_camera)/launch/openni_node.launch"/>
+
+  <!-- openni manager -->
+  <node pkg="nodelet" type="nodelet" name="openni_manager" output="screen" respawn="true" args="manager"/>
+
+  <!-- throttling -->
+  <node pkg="nodelet" type="nodelet" name="pointcloud_throttle" args="load r2PointcloudToLaser/CloudThrottle openni_manager">
+    <param name="max_rate" value="2"/>
+    <remap from="cloud_in" to="/camera/depth/points"/>
+    <remap from="cloud_out" to="cloud_throttled"/>
+  </node>
+
+  <!-- pointcloud to laser with transform -->
+  <node pkg="nodelet" type="nodelet" name="kinect_laser" args="load r2PointcloudToLaser/CloudToScanTf openni_manager">
+    <param name="base_frame" value="/base_footprint"/>
+    <param name="laser_frame" value="/camera_tower"/>
+    <param name="min_height" value="0.07"/>
+    <param name="max_height" value="0.75"/>
+    <remap from="cloud_in" to="cloud_throttled"/>
+    <remap from="scan_out" to="laser_scan_tf"/>
+  </node>
+
+  <!-- laser scan to laser scan wide -->
+  <node pkg="nodelet" type="nodelet" name="laser_wide" args="load r2PointcloudToLaser/ScanToWide openni_manager">
+    <param name="kinect_fov" value="1.02974"/>
+    <param name="pan_error_limit" value="0.035"/>
+    <param name="settle_time" value="2.0"/>
+    <remap from="scan_in" to="laser_scan_tf"/>
+    <remap from="scan_out" to="laser_scan_wide"/>
+  </node>
+
+  <node pkg="kinect_base" type="kinect_base_node" name="kinect_base_control" />
+</launch>
+
+Originally posted by Bart with karma: 856 on 2011-04-19
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Bart on 2011-04-23:
+I can report that a panning Kinect to laserscan can work well with gmapping. I only update the map when a new scan comes in and only send a wide scan when stationary, after a scan is completed. The scan matching localization in gmapping is impressive. Compensates for poor odometry.
+

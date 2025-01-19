@@ -1,0 +1,71 @@
+Q:
+
+showing error while using inverse kinematics "ikine" for 4 dof robotic arm
+
+I want to do forward dynamics but before that I got struck in inverse kinematics for 4 dof. My code is given below:
+preach = [0.2, 0.2, 0.3];
+% create links using D-H parameters
+L(1) = Link([ 0 0 0 pi/2 0], 'standard');
+L(2) = Link([ 0 .15005 .4318 0 0], 'standard');
+L(3) = Link([0 .0203 0 -pi/2 0], 'standard');
+L(4) = Link([0 .4318 0 pi/2 0], 'standard');
+%define link mass
+L(1).m = 4.43;
+L(2).m = 10.2;
+L(3).m = 4.8;
+L(4).m = 1.18;
+%define center of gravity
+L(1).r = [ 0 0 -0.08];
+L(2).r = [ -0.216 0 0.026];
+L(3).r = [ 0 0 0.216];
+L(4).r = [ 0 0.02 0];
+%define link inertial as a 6-element vector
+%interpreted in the order of [Ixx Iyy Izz Ixy Iyz Ixz]
+L(1).I = [ 0.195 0.195 0.026 0 0 0];
+L(2).I = [ 0.588 1.886 1.470 0 0 0];
+L(3).I = [ 0.324 0.324 0.017 0 0 0];
+L(4).I = [ 3.83e-3 2.5e-3 3.83e-3 0 0 0];
+% set limits for joints
+L(1).qlim=[deg2rad(-160) deg2rad(160)];
+L(2).qlim=[deg2rad(-125) deg2rad(125)];
+L(3).qlim=[deg2rad(-270) deg2rad(90)];
+%build the robot model
+rob = SerialLink(L, 'name','rob');
+qready = [0 -pi/6 pi/6 pi/3   ];
+m = [1 1 1 1 0 0];   % mask matrix
+T0 = fkine(rob, qready);
+t = [0:.056:2];
+% do inverse kinematics
+qreach =  rob.ikine(T0, preach, m); 
+[q,qd,qdd]=jtraj(qready,qreach,t);
+%compute inverse dynamics using recursive Newton-Euler algorithm
+tauf = rne(rob, q, qd, qdd);
+% forward dynamics
+[t1,Q,Qd] = rob.fdyn(2,tauf(5,:),q(5,:), qd(5,:));
+
+But due to
+qreach =  rob.ikine(T0, preach, m); 
+
+it shows error
+Index exceeds matrix dimensions.
+Error in SerialLink/jacobn (line 64) U = L(j).A(q(j)) * U;
+Error in SerialLink/jacob0 (line 56) Jn = jacobn(robot, q); % Jacobian from joint to wrist space
+Error in SerialLink/ikine (line 153) J0 = jacob0(robot, q);
+Can anybody explain me why this is happening and how to resolve it.
+Thanks.
+
+A:
+
+In the Robotics Toolbox 
+
+SerialLink.ikine()
+
+can only be used for 6 dof or higher structures. 
+The masking option you have used, can be used fo underactuated robots. There is an example in the documentation, how a 3dof robot could be considered a 6dof underactuated robot. However, it is also stated in the manual, that:
+
+For robots with 4 or 5 DOF this method is very difficult to use since
+  orientation is specified by T in world coordinates and the achievable
+  orientations are a function of the tool position.
+
+Using SerialLink.ikcon() instead might be viable alternative. 
+

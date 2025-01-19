@@ -1,0 +1,40 @@
+Q:
+
+Catkin Doesn't Play Nice With Google Mock
+
+My team is currently transitioning from Ubuntu 12.04 and ROS Fuerte to Ubuntu 14.04 and ROS Indigo. All of our software is heavily tested using gtest and gmock. The latter is proving particularly difficult during this migration.
+In Ubuntu 12.04, the gtest package is source-only, so rosbuild's public.cmake is hard-coded to check for that and compile it as needed. However, gmock's package includes a compiled library, so we just needed to make sure we added it to our linker and we were good to go.
+We didn't investigate any further at the time, but it turned out that this only worked out of pure luck. I've since learned that gmock is distributed with a version of gtest included, and must use that version. As luck would have it, the packages in the repos were in sync (i.e. the gtest version was the same as the version of gtest included in gmock).
+I learned that because now it's biting us in Ubuntu 14.04. Gmock has changed to also be distributed as source-only, but of course it still includes a version of gtest. However, this time the version of gtest contained within gmock was not in sync with the gtest package, so I spent some time tracking that down (ended up stealing a later version of the gtest package from the next Ubuntu release). Ideally I'd just uninstall the libgtest-dev package, but half the ROS packages depend upon it.
+Anyway, in Indigo, Catkin still has the hard-coded logic to look in /usr/src/gtest/src for gtest's source, which is where the libgtest-dev installs it. However, that makes it downright impossible to link in gmock without some serious alterations to gmock. When using gmock, ideally one would simply add it to the CMakeLists.txt and use as well as gtest (since gmock pulls in gtest). However, we can't do that since Catkin automatically pulls in the libgtest-dev's version of gtest, and pulling in gmock just defines the libgtest and libgtest_main targets twice, which obviously doesn't fly.
+I feel like my only option is to disable Catkin's testing and stop using Catkin's gtest macros and essentially roll my own version that uses gmock and its bundled gtest instead. Or move to another mocking framework, which would be... painful.
+I know other people were using gtest and gmock in 12.04 and rosbuild, but I've seen nothing for gmock and Catkin. What is everyone else doing?
+
+Originally posted by kyrofa on ROS Answers with karma: 347 on 2014-12-17
+Post score: 2
+
+A:
+
+catkin currently only provides functions to support the user in using gtest.
+We have added gmock support in a forked version but there these modifications are not easily deployable to ROS. The reason is that once any package is using gtest a later package within the same workspace can't use gmock since it requires to switch the gtest version being used (when the workspace is build without isolation.
+The only viable option would be to remove the dependency on gtest and replacing it with gmock - even if packages only use gtest. Such a change could be considered for the next ROS distro (Jade). I would hesitate to backport such a severe change into a long-ago released ROS release simply for stability reasons.
+Anyway, I don't think that your statement that catkin makes it "downright impossible" to use gmock is true. It does not provide any support for it but any package is "free" to use gmock and setup everything necessary for it on its own. The only thing you have to make sure is to "find" gtest (from within gmock) before finding catkin. In that case the whole logic in catkin to find gtest will be skipped (https://github.com/ros/catkin/blob/8033824d340d801eb7a9b2a94504b501173aaff9/cmake/test/gtest.cmake#L62).
+This approach will still have the caveat mentioned above when you try to build your package together with other packages without isolation.
+
+Originally posted by Dirk Thomas with karma: 16276 on 2014-12-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by kyrofa on 2014-12-18:
+According to catkin's gtest.cmake file, if gtest is found is still adds an imported lib called "gtest" and "gtest_main," which means at least with my knowledge of CMake, I can't build another target lib called "gtest" or "gtest_main". So are you suggesting I pre-build gtest and gmock?
+Comment by kyrofa on 2014-12-18:
+For what it's worth, it would be a pretty simple change for catkin to check to see if /usr/src/gmock/gtest exists before the test for /usr/src/gtest, and would be backward compatible. Wouldn't it?
+Comment by Dirk Thomas on 2014-12-18:
+That would be a good option. But the path-based lookup is only the second resolve strategy. If the first (find_package(GTest QUIET)) is successful we are not even looking at these hard-coded paths.
+I have created https://github.com/ros/catkin/issues/699 for using gmock together with catkin.
+Comment by kyrofa on 2014-12-18:
+Correct me if I'm wrong, but if I follow the Ubuntu ROS install guide and install ros-indigo-desktop-full, it pulls in libgtest-dev. libgtest-dev is source-only-- find_package(GTest QUIET) will fail! Which means on a default Ubuntu install, you're always using the second resolve strategy.
+Comment by kyrofa on 2014-12-18:
+So again, the only way to supercede the default behavior is to use find_package(GTest QUIET), which in my understanding requires a pre-built gtest, violating gtest recommendations (https://code.google.com/p/googletest/wiki/FAQ#Why_is_it_not_recommended_to_install_a_pre-compiled_copy_of_Goog).
+

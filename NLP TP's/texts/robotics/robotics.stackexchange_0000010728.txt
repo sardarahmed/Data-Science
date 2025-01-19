@@ -1,0 +1,37 @@
+Q:
+
+How do monocular visual odometry algorithms work?
+
+What is the core principle of a monocular visual odometry algorithm? I mean, after calibrating a single camera (undistortion etc.) images are fed into an algorithm - what exactly does this algorithm do with the images in order to get the translation/rotation between successive frames?
+Do various mono algorithms use various techniques or is the core principle same everywhere? I see some libraries use image features (indirect approach) and some use pixel intensity (direct approach) but I am not really able to understand the principles from the papers... I can only see the algorithms use various methods of estimating the translation/rotation matrix (5-point, 8-point algorithms...).
+Also, is it true that no mono algorithm is able to get the absolute scale of the scene? How does the relative scale work - is it set randomly?
+I found following mono odometry libraries:
+
+indirect methods (using image features)
+
+Avi Singh via OpenCV (blog post) - uses Nister’s 5-point algorithm
+VISO2 - uses 8-point algorithm (paper)
+ORB_SLAM / ORB_SLAM2 - indirect approach?
+
+direct approach (using whole edges etc.)
+
+SVO: Fast Semi-Direct Monocular Visual Odometry (paper)
+LSD-SLAM: Large-Scale Direct Monocular SLAM (paper) - needs ROS (but only for input/output)
+DSO: Direct Sparse Odometry (paper)
+
+I understand how stereo visual odometry works - they reconstruct 3D scene in each image frame and then compare (register) the point clouds of successive image frames and get directly the distance traveled like this - pretty simple principle.
+
+A:
+
+Monocular vision is a difficult and very interesting, particularly in its application to the general navigation problem. I will make an attempt at answering your questions, but if you find anything lacking, you can read through Szeliski's book Computer Vision: Algorithms and Applications.
+What is the core principle of a monocular visual odometry algorithm?
+Monocular or stereo, the objective of visual odometry is to estimate the pose of the robot based on some measurements from an image(s). It's hard to pin down a single core principle--Bayesian Probability Theory is likely to core principle, but epipolar geometry certainly important. 
+For stereo, the general idea is that if you know your camera parameters, and you know that the relationship between your camera is fixed, then a point $\textbf{p}$ that is viewed from both cameras projects onto each image plane an epipolar line segment. Using the epipolar plane defined by these line segments and the camera geometry, the distance to the point can be estimated, which can be used to estimate the pose of the robot.   
+For monocular vision, the task is trickier because there is only one camera. To get an image pair, an image is captured at time $t$; the robot is actuated, and another image is taken at time $t+1$ (e.g. a video stream). This pair of images can be used in the same way as any other stereo image, but because we don't know for certain the relationship between the cameras (due to deviations in motion from what the robot did and what it was instructed to do), in order to estimate the pose of the robot, the motion model has to be taken into account. In the end, monocular visual odometry is more difficult because there are more unknowns that have to be accounted for probabilistically.
+What exactly does this algorithm do with the images in order to get the translation/rotation between successive frames?
+The main objective is image matching. While there are numerous approaches to this problem, some approaches find feature point in the scene and match those between images to match the images themselves. A number of algorithms can be used to find feature points; SIFT is a good standard although other methods have been shown to outperform it. With features described, an algorithm that matches the points should be used; RANSAC is one such algorithm. Leveraging known relationships (such as accurate motion models or fixed cameras/projectors) can improve image matching. 
+Do various mono algorithms use various techniques or is the core principle same everywhere?
+Regardless of the approach, the techniques will boil down to probability theory. That said, there are many approaches. Feature point matching is one approach, others, such as LSD-SLAM that you reference, advocate for using the pixel values directly rather than isolating feature points. Machine learning also has a role--convolutional neural networks have been very successful at solving vision problems, so you should be able to find a wealth of literature about them.
+Is it true that no mono algorithm is able to get the absolute scale of the scene?
+Getting accurate distance measurements is difficult for camera-based vision in general. The main problem is that the distance between the cameras is relatively small compared to points in the scene that are very far away. As for determining the scale of objects, that may not be a problem of monocular vision so much as reasoning. Humans know the relative scale of objects based on priors, which is a very important and related problem for computer vision and robot perception.
+

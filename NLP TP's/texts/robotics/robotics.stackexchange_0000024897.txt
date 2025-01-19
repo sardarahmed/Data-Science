@@ -1,0 +1,98 @@
+Q:
+
+Take /rosout or /rosout_agg from bag play back or live and print to stdout as if running locally?
+
+Is there a utility node that can subscribe to /rosout_agg or /rosout and print the message to the current stdout using ROSCONSOLE_FORMAT, have it look the same as if I would have rosrun/launched it from that terminal?
+I think ros_comm clients/rospy/src/rospy/impl/rosout.py and tools/rosgraph/src/rosgraph/roslogging.py  show all the functionality needed but don't necessarily make it easy to import and use outside of those.
+
+A:
+
+Here's a function pulled from a fork of ros_comm function format_msg that only exists in this ros_comm branch https://github.com/lucasw/ros_comm/blob/salsa_noetic_aggregated/tools/rosgraph/src/rosgraph/roslogging.py#L235, it's adapted from the upsteram RosStreamHandler
+def format_msg(record_message, thread, name, pathname,
+               lineno, funcName, levelname, levelno,
+               extra_time):
+    level, color = _logging_to_rospy_names[levelname]
+    msg = os.environ.get(
+        'ROSCONSOLE_FORMAT', '[${severity}] [${time}]: ${message}')
+    msg = msg.replace('${severity}', level)
+    msg = msg.replace('${message}', str(record_message))
+    msg = msg.replace('${walltime}', '%.3f' % time.time())
+
+    while '${walltime:' in msg:
+        tag_end_index = msg.index('${walltime:') + len('${walltime:')
+        time_format = msg[tag_end_index: msg.index('}', tag_end_index)]
+        time_str = time.strftime(time_format)
+        msg = msg.replace('${walltime:' + time_format + '}', time_str)
+
+    msg = msg.replace('${thread}', str(thread))
+    msg = msg.replace('${logger}', str(name))
+    msg = msg.replace('${file}', str(pathname))
+    msg = msg.replace('${shortfile}', str(get_shortfile(pathname)))
+    msg = msg.replace('${line}', '{:4d}'.format(lineno))
+    msg = msg.replace('${function}', str(funcName))
+    try:
+        from rospy import get_name
+        node_name = get_name()
+    except ImportError:
+        node_name = '<unknown_node_name>'
+    msg = msg.replace('${node}', node_name)
+    time_str = '%.3f' % time.time()
+    if extra_time is not None:
+        time_str += ', %.3f' % extra_time
+    msg = msg.replace('${time}', time_str)
+
+    while '${time:' in msg:
+        tag_end_index = msg.index('${time:') + len('${time:')
+        time_format = msg[tag_end_index: msg.index('}', tag_end_index)]
+        time_str = time.strftime(time_format)
+
+        if self._get_time is not None and not self._is_wallclock():
+            time_str += ', %f' % self._get_time()
+
+        msg = msg.replace('${time:' + time_format + '}', time_str)
+
+    return msg, color
+
+And a node script that uses it (which depends on the fork, but the format_msg body could be copied into it):
+import logging
+import sys
+
+import rospy
+from rospy.impl.rosout import _rospy_to_logging_levels
+from rosgraph_msgs.msg import Log
+from rosgraph.roslogging import (
+    _color_reset,
+    format_msg,
+)
+
+def log_callback(log):
+    logger_levels_to_names = logging.getLevelNamesMapping()
+    names_to_logger_level = {}
+    for key, value in logger_levels_to_names.items():
+        names_to_logger_level[value] = key
+    logging_level = _rospy_to_logging_levels[log.level]
+    logger_name = names_to_logger_level[logging_level]
+    # print(f"log level {log.level} {logging_level} {logger_name}")
+    msg, color = format_msg(log.msg, None, log.name, log.file,
+                            log.line, log.function, logger_name, None,
+                            log.header.stamp.to_sec())
+    if color is None:
+        color = ""
+    text = color + msg + _color_reset
+
+    if logging_level < logging.WARNING:
+        print(text)
+    else:
+        print(text, file=sys.stderr)
+
+def main():
+    rospy.init_node("rosout_to_stdout")
+    rospy.Subscriber("rosout_agg", Log, log_callback, queue_size=8)
+    rospy.spin()
+
+if __name__ == "__main__":
+    main()
+
+https://github.com/lucasw/topic_state/blob/master/scripts/rosout_to_stdout.py
+rosrun topic_state rosout_to_stdout.py
+

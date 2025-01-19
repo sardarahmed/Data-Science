@@ -1,0 +1,79 @@
+Q:
+
+DH parameters and Kinematic Decoupling
+
+Is it possible to decouple a 5DOF manipulator? 
+This question I asked earlier and I believe I got the right answers but I never show the drawings of the manipulator and now I'm hesitating during setup of the DH parameters for Forward Kinematics. See drawing depicted here. 
+
+A:
+
+The first manipulator shown is a typical articulated arm without the final roll about the tool axis.  Just use the DH parameters for a Puma but set joint 6 = 0.  
+I don't know of any shortcuts for the second manipulator other than working out the DH parameters directly.  However, DH seems like overkill for this design.  DH allows you to handle things like joint twists and other offsets, which your manipulator does not have.  Rather than that, would you consider using simple rotation matrices and a vector loop to describe the end effector position and orientation with respect to the global coordinate system?
+
+In this picture I show your link lengths $L_1$, $L_2$, and $L_3$, along with coordinate systems $0$ through $5$. I left the $\hat Y$ axes out for clarity, but they follow the right-hand rule.
+Your positional vector loop is $$\vec P_t = L_1 \hat Z_1 + L_2 \hat X_2 + L_3 \hat Z_5$$
+where $\vec P_t$ represents the position of the center of your tool tip.
+Now find the rotation matrices to define the unit vectors $\hat Z_1$, $\hat X_2$, and $\hat Z_5$.
+I will use $_x^{x+1}R$ for the rotation matrix between coordinate systems $x$ and $x+1$, and $\theta_i$ to represent the $i$th joint angle.
+$$_0^1R = \begin{bmatrix}
+\cos \theta_1&-\sin \theta_1&0\\
+\sin \theta_1&\cos \theta_1&0\\
+0&0&1
+\end{bmatrix}
+$$
+$$_1^2R = \begin{bmatrix}
+\cos \theta_2&-\sin \theta_2&0\\
+0&0&1\\
+-\sin \theta_2&-\cos \theta_2&0
+\end{bmatrix}
+$$
+(notice $\hat Y_2$ should point "down")
+$$_2^3R = \begin{bmatrix}
+0&0&1\\
+-\sin \theta_3&-\cos \theta_3&0\\
+\cos \theta_3&-\sin \theta_3&0
+\end{bmatrix}
+$$
+$$_3^4R = \begin{bmatrix}
+\sin \theta_4&-\cos \theta_4&0\\
+0&0&1\\
+-\cos \theta_4&-\sin \theta_4&0
+\end{bmatrix}
+$$
+$$_4^5R = \begin{bmatrix}
+0&0&1\\
+\cos \theta_5&-\sin \theta_5&0\\
+\sin \theta_5&\cos \theta_5&0
+\end{bmatrix}
+$$
+Now find the unit vectors needed for your vector loop (all with respect to the global coordinate system $0$).  $\hat Z_1$ is the third column from $_0^1R$:
+$$\hat Z_1 = \left( \begin{array}
+{c}0\\
+0\\
+1
+\end{array} \right)
+$$
+$\hat X_2$ is the first column from $_0^2R$, which you find by multiplying $_0^1R _1^2R$:
+$$_0^2R = \begin{bmatrix}
+\cos \theta_1 \cos \theta_2&-\cos \theta_1 \sin \theta_2& -\sin \theta_1\\
+\sin \theta_1 \cos \theta_2&-\sin \theta_1 \sin \theta_2& \cos \theta_1\\
+-\sin \theta_2&-\cos \theta_2&0
+\end{bmatrix}
+$$
+$$\hat X_2 = \left( \begin{array}
+{c}\cos \theta_1 \cos \theta_2\\
+\sin \theta_1 \cos \theta_2\\
+-\sin \theta_2
+\end{array} \right)
+$$
+In a similar way you can find $\hat Z_5$:
+$$\hat Z_5 = \left( \begin{array}
+{c}\sin \theta_4 (\cos \theta_1 \sin \theta_2 \sin \theta_3 - \sin \theta_1 \cos \theta_3) - \cos \theta_1 \cos \theta_2 \cos \theta_4\\
+\sin \theta_4 (\sin \theta_1 \sin \theta_2 \sin \theta_3 + \cos \theta_1 \cos \theta_3) - \sin \theta_1 \cos \theta_2 \cos \theta_4\\
+\cos \theta_2 \sin \theta_3 \sin \theta_4 + \sin \theta_2 \cos \theta_4
+\end{array} \right)
+$$
+Plugging values for the link lengths, and unit vectors, into your vector loop equation gets you the tool tip position.
+For the upper left $3x3$ submatrix of your 4x4 DH matrix, you just use $_0^5R$ (assuming the coordinate system definitions are the same).
+Now back to your wrist partitioning question.  You can use the same technique to compute the origin of the $4$ coordinate system ($L_1 \hat Z_1 + L_2 \hat X_2$).  Rotations $\theta_3$, $\theta_4$ and $\theta_5$ do not affect the position of this point, which is often referred to as the wrist center.  Those three joints can then orient the tool with respect to the $4$ coordinate system.  
+

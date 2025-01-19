@@ -1,0 +1,60 @@
+Q:
+
+differential drive plugin in real robot
+
+Hello,
+I have used the differential drive plugin in the gazebo environment as described here (scroll below in the page) to do some tasks with a 3 wheel robot. The plugin as you can see requests some characteristics of the vehicle and it creates an interface so I can interact with my robot in gazebo. The main feature of this interface is the cmd_vel topic which is actually what moves the robot. The cmd_vel is a topic that understands geometry_msgs/Twist messages, which are simple messages like linear.x velocity commands in m/s or angular.z velocity commands in rad/s. With these messages you can move and control your robot easily in the gazebo environment.
+I want to create a similar real robot now and implement one similar plugin as this. I use Tiva microcontrollers to control my motors. I know that a way I can do this is by implementing a PID controller through Tiva and the encoders on my motors, so I can create a topic similar to cmd_vel, but this will require to build from scratch what the cmd_vel does. This means creating two controllers for the two seperate motors and then build a function that will somehow do what the cmd_vel does.
+To avoid building from scratch a differential drive and to save time I would like to ask if there is a simpler and faster way (ready packages provided by ROS for example) to actually create the cmd_vel topic for a real robot with Tiva microcontrollers ?
+Thank you for answering and for your time in advance,
+Chris
+
+Originally posted by patrchri on ROS Answers with karma: 354 on 2016-11-27
+Post score: 0
+
+A:
+
+I suggest taking a look at ros_control, in particular the diff_drive_controller plugin in ros_controllers. That would closely resemble the one you used in Gazebo.
+The 'only' thing you need to do is -- if one doesn't already exist -- write a hardware_interface sub class that knows how to communicate with your Tiva controllers. After that, you can 'layer' the diff_drive_controller on top of that and everything should start working.
+Take look at ros_control_boilerplate by Dave Coleman for an example implementation.
+
+Edit:
+
+...What exactly do you mean by saying:
+"The 'only' thing you need to do...should start working"
+
+ros_control provides everything you would need, except a way to interface with your specific piece of hardware (how can it: there is almost infinite variety). It does provide you with a suitable abstraction that you can use to implement such an interface. That is the hardware_interface.
+So the 'only' (and I place 'only' between quotes because it can of course still be quite some work) you need to do is implement such an interface. All the rest (controllers, action servers, etc) is provided to you by ros_control.
+
+Isn't the hardware_interface a package that implements the ROS interface for any microcontroller someone might use for the driving of actuators or I am understanding something wrong?
+
+Well, if with "that implements the ROS interface for any microcontroller" you mean that hardware_interface already has an interface for 'any microcontroller', then no, that is not the case (see my earlier comment).
+
+In the example you presented, I don't really understand how I could use it for the Tiva microcontrollers. What I mean is that I will probably send PWM to the motors and get their condition from the encoders to close the control loop. I cannot find this logic somewhere in the code.
+
+re: cannot find that logic anywhere: no, you won't find logic for dealing with PWM, motors or encoder counts. The ros_control_boilerplate provides you with everything else: setting up the loop, initialising datastructures (such as those that map URDFs to joints, etc), calling methods in the right order for you, etc. The 'only' thing you need to do is implement some code that can communicate with your Tiva controllers: here when new actuation comments should be written to the controllers, and here when the current state (ie: encoder counts) need to be read back from the controllers. How you do that is up to you (rosserial, some custom protocol?).
+
+Edit2: clarifying something that might not be apparent: the hardware_interface implementation that you write does not run on your Tiva controllers (it's a ROS node). Unless of course you can run ROS on your microcontroller.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-11-27
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by patrchri on 2016-11-27:
+Thank you for answering. I didn't completely understood a part of your answer. I don't have a lot of experience in working with ROS in real robots and because I don't have someone to ask these kind of questions, please bare with me...
+Comment by patrchri on 2016-11-27:
+...What exactly do you mean by saying:
+"The 'only' thing you need to do...should start working"
+I read about the ros_control and the diff_drive_controller plugin as you suggested. Shouldn't I use a node for tiva as a hardware interface ? Is it easy for you to post more examples to study?
+Comment by patrchri on 2016-11-27:
+Isn't the hardware_interface a package that implements the ROS interface for any microcontroller someone might use for the driving of actuators or I am understanding something wrong?
+Comment by patrchri on 2016-11-27:
+To sum it up, I have understood how the diff_drive_controller plugin might be useful and I also saw the chart presented in ros_control which is pretty clear. What is not clear is how I am going to implement the hardware_interface for Tiva...
+Comment by patrchri on 2016-11-27:
+In the example you presented, I don't really understand how I could use it for the Tiva microcontrollers. What I mean is that I will probably send PWM to the motors and get their condition from the encoders to close the control loop. I cannot find this logic somewhere in the code.
+Comment by patrchri on 2016-11-27:
+Thanks again for your help
+Comment by patrchri on 2016-11-28:
+Now the logic is much clearer...thank you for your suggestions
+

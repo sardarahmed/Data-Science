@@ -1,0 +1,80 @@
+Q:
+
+How can two identical nodelets in one process remap topics and services?
+
+I want to run a stereo pair of 1394 cameras as nodelets. It would be
+good to run both in the same address space with stereo_image_proc.
+But, I can't figure out how to remap the topic and service names to do
+that.
+With nodes, I can get the right topic and service names like this:
+<launch>
+ <group ns="stereo" >
+
+   <!-- left camera -->
+   <node pkg="camera1394" type="camera1394_node" name="left_node" >
+     <rosparam file="$(find camera1394)/tests/left.yaml" />
+     <remap from="camera" to="left" />
+   </node>
+
+   <!-- right camera -->
+   <node pkg="camera1394" type="camera1394_node" name="right_node" >
+     <rosparam file="$(find camera1394)/tests/right.yaml" />
+     <remap from="camera" to="right" />
+   </node>
+
+ </group>
+</launch>
+
+The equivalent nodelet launch script does not work:
+<launch>
+ <group ns="stereo" >
+
+   <!-- nodelet manager process -->
+   <node pkg="nodelet" type="nodelet" name="camera_nodelet_manager"
+         args="manager" />
+
+   <!-- left camera -->
+   <node pkg="nodelet" type="nodelet" name="left_camera"
+         args="load camera1394/driver camera_nodelet_manager" >
+     <rosparam file="$(find camera1394)/tests/left.yaml" />
+     <remap from="camera" to="left" />
+   </node>
+
+   <!-- right camera -->
+  <node pkg="nodelet" type="nodelet" name="right_camera"
+        args="load camera1394/driver camera_nodelet_manager" >
+     <rosparam file="$(find camera1394)/tests/right.yaml" />
+     <remap from="camera" to="right" />
+  </node>
+
+ </group>
+</launch>
+
+The failure is that neither <remap> works and both nodelets try to
+declare the same service names: /stereo/camera/set_camera_info,
+/stereo/camera/image_raw/compressed/set_parameters, etc..
+It seems that the <remap> has to be applied to the nodelet manager
+node, not the nodes doing the load.
+So, how do I remap camera-->left for one nodelet and camera-->right
+for the other?
+Or, is there some other way to solve this problem?
+
+Originally posted by joq on ROS Answers with karma: 25443 on 2011-02-15
+Post score: 3
+
+A:
+
+Nodelets are supposed to work exactly as nodes do.  This looks like a bug in the interaction between roscpp and nodelets.  I've filed a ticket: https://code.ros.org/trac/ros-pkg/ticket/4794
+
+Originally posted by tfoote with karma: 58457 on 2011-02-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by joq on 2011-02-16:
+I agree that it should work that way. I had not noticed that it does work when not using subordinate names. Let's discuss what to do using ticket #4794.
+Comment by marilia15 on 2014-03-28:
+have been this bug solved?
+Comment by joq on 2014-03-28:
+It was fixed 3 years ago in ROS Diamondback.
+

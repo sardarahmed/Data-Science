@@ -1,0 +1,44 @@
+Q:
+
+issue of ground filter in octomap_server
+
+I am testing the octomap_server
+and I used the sample data from http://vimeo.com/1451349?pg=embed&sec=1451349, which is a pcap file collected from a velodyne 64 laser.
+Judged from the video and the pointcloud display in rviz, the ground surface is obviously contained in the data set. In my testing, the base_frame_id is set to "base_footprint" which is exactly located at the ground surface; filter_ground is also set to "true". But the generated octomap never filters the ground... and this is the output from the node.
+[INFO] [1329732147.087671086] class OctomapServer starts
+[INFO] [1329732147.103789973] filter_ground 1
+[WARN][1329732208.260183596] No plane found in cloud.
+[WARN][1329732208.260282727] No ground plane found in scan
+Thanks for any help.
+
+Originally posted by clark on ROS Answers with karma: 393 on 2012-02-21
+Post score: 2
+
+A:
+
+hi, Hornung,
+After some debugging, I found the reason for the above filtering issue.
+Check the sequence of the following lines in the function OctomapServer::insertCloudCallback of OctomapServer.cpp,
+pass.setInputCloud(pc.makeShared());
+......
+
+pcl::transformPointCloud(pc, pc, sensorToBase);
+pass.filter(pc);
+filterGroundPlane(pc, pc_ground, pc_nonground);
+......
+
+Since the inputcloud for pass is allocated at the very beginning, so the actual "pc" passed to filterGroundPlane is the old one before transformPointCloud.
+So I moved pass.setInputCloud(pc.makeShared()) to right after the line of transformPointCloud, and the ground filtering now works as expected.
+The same change should also apply to the case when m_filterGroundPlane=false.
+regards
+
+Originally posted by clark with karma: 393 on 2012-02-23
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by AHornung on 2012-02-24:
+Thanks a lot! That must have sneaked in during some recent refactoring. I had assumed makeShared simply returns a Ptr to the cloud, while the docs clearly state: "Copy the cloud to the heap and return a smart pointer. [...] The changes of the returned cloud are not mirrored back to this one"
+Comment by AHornung on 2012-02-24:
+Fixed in trunk of octomap_mapping
+

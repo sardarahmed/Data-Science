@@ -1,0 +1,91 @@
+Q:
+
+Can it be ROS master is dropping remote connections
+
+Hi, I have RPi (Raspbian 9/kinetic) and a PC (bionic/melodic). They are connected directly via an Ethernet cable and dnsmasq. I would guess that there is no firewal, because (pi$ is the command line on Pi, pc$ is the command line on the pc)
+pi$ netcat -l 11311
+pc$ netcat pi 11311
+
+works fine, and in the opposite direction
+pc$ netcat -l 11311
+pi$ netcat pi 11311
+
+the two ends can talk one to another as well. Also, they say that there is no firewall by default in Raspbian9 and Ubuntu19, but I removed ufw just to be sure. Now when I run the master on pi, I can talk with it locally:
+pi$ netcat localhost 11311
+q
+<head>
+<title>Error response</title>
+</head>
+<body>
+<h1>Error response</h1>
+<p>Error code 400.
+<p>Message: Bad request syntax ('q').
+<p>Error code explanation: 400 = Bad request syntax or unsupported method.
+</body>
+
+But the same on the pc just exits:
+pc$ netcat pi 11311
+pc$
+
+I know that it looks like a firewall, but why netcat can talk with itself via 11311 in both directions on the same machines?
+Here is my .bashrc on pi:
+  export ROS_HOSTNAME=localhost
+  export ROS_MASTER_URI=http://$ROS_HOSTNAME:11311
+  source /opt/ros/kinetic/setup.bash
+  source ~/catkin_ws/devel/setup.bash
+
+and here on the pc:
+  export ROS_IP=10.42.0.216
+  export ROS_HOSTNAME=pi
+  export ROS_MASTER_URI=http://$ROS_HOSTNAME:11311
+  source /opt/ros/melodic/setup.bash
+  source ~/catkin_ws/devel/setup.bash
+
+ROS_IP is the IP of pi in /etc/hosts:
+  127.0.0.1       localhost
+  127.0.1.1       art
+  10.42.0.216     pi
+
+I just added it to be sure. This works fine as well:
+pc$ ssh pi@pi
+pi$ ssh art@rosmaster
+
+iptables on both systems:
+pi# iptables -L
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain FORWARD (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination    
+
+I wonder if ROS master drops remote connections for whatever purpose? If not, do you have any idea what a problem can it be? dnsmasq? An incompatibility between kinetic/bionic, whatever? But kinetic on Pi does not ask for anything, in particular it does not ask about the version of the other distribution.
+
+Originally posted by uthinu on ROS Answers with karma: 118 on 2018-09-14
+Post score: 0
+
+Original comments
+Comment by allenh1 on 2018-09-14:
+Did you try
+export ROS_IP=10.42.0.216
+export ROS_HOSTNAME=pi.local
+
+Comment by uthinu on 2018-09-14:
+I tried the same with pi instead of pi.local, as seen in .bashrc in the question; avahi sets pi as raspberrypi.local and  tried it as well
+Comment by uthinu on 2018-09-14:
+also, netcat, a low-level tool, sees nothing listening on both pi:11311 and raspberrypi.local:11311; it sees, however, the ports themselves as there is no "name or service not known" error; and it can talk fine if there is also netcat on the pi side instead of roscore
+
+A:
+
+I think rosmaster will drop remote connections if the ROS_HOSTNAME or ROS_MASTER_URI is set to localhost. On the pi, try setting ROS_HOSTNAME=pi .
+
+Originally posted by ahendrix with karma: 47576 on 2018-09-14
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by uthinu on 2018-09-14:
+You are right ahendrix. Now it works.
+

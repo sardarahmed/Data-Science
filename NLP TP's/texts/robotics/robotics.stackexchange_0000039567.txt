@@ -1,0 +1,45 @@
+Q:
+
+Visualizing search space for OMPL planner
+
+Hi,
+
+I am using the RRT-Connect planner in OMPL (through the ompl_ros_interface) to do planning for a pr2 arm. I was wondering if there was any way to obtain all of the states that the planner created while doing planning so I could see where the planner is searching in the environment that I created.
+
+Thank you
+
+Originally posted by clee2693 on ROS Answers with karma: 71 on 2012-04-15
+Post score: 2
+
+A:
+
+Hello,
+OMPL itself does support the functionality you would like to test (In fact, we are just about to push some changes to the OMPL repository that allow outputting GraphML structures for the trees OMPL planners generate).
+However, that functionality is not exposed through the ompl_ros_interface package in ROS Electric. This functionality is implemented for Fuerte, part of the upcoming MoveIt project (not yet released).
+So.. the way to do this with ROS Electric will require adding some local hacks on your side:
+In the ompl_ros_interface package, the file src/ompl_ros_planning_group.cpp contains the call to the solve() function of an OMPL planner:
+{{{
+bool solved = planner_->solve(request.motion_plan_request.allowed_planning_time.toSec());
+}}}
+This is Line 446 for me.
+After that line, you can do something like this:
+{{{
+const ompl::base::PlannerData &pd = planner_->getPlannerData();
+planning_models::KinematicState
+kstate(*collision_models_interface_->getPlanningSceneState());
+for (std::size_t i = 0 ; i < pd.states.size() ; ++i)
+{
+omplStateToKinematicStateGroup(pd.states[i], ompl_state_to_kinematic_state_mapping_
+kstate->getJointStateGroup(physical_joint_state_group_));
+kstate->getJointStateGroup(physical_joint_state_group_)->updateKinematicLinks();
+btTransform bt = kstate->getLinkState("some link")->getGlobalLinkTransform();
+// do whatever with this; a NodeHandle is available in the class, so this can be published.
+}
+}}}
+The only catch with the above code is that ompl_state_to_kinematic_state_mapping_ is not available in that class, so you have to change the planner class(es), e.g. ompl_ros_joint_planner.cpp, to pass that variable to the planning group.
+I'm sorry this is so complicated right now, but for the next version things should be easier.
+
+Originally posted by isucan with karma: 1055 on 2012-04-19
+This answer was ACCEPTED on the original site
+Post score: 2
+

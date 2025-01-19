@@ -1,0 +1,154 @@
+Q:
+
+Navigation stack hits obstacles
+
+Hello guys,
+I am trying to run my robot with navigation stack. It is a four track differential robot as it is shown in the picture below. I am using gmapping instead of amcl so I will discover and update the map as I go along.
+image description http://answers.ros.org/upfiles/14446438781100349.png
+The problem is my robot does not avoid obstacles. As can be seen in these two videos (video 1, video 2) although the obstacle is observed by the laser, local planner is not changing the directory in a way to go around it and instead simply drives through it. The obstacle is not part of the map and i set it up in a way that it appears to the rover when it rotates to reach the way point. In other words my global planner seems to be working fine, since it does not know about the obstacle.
+here is my yaml files:
+cost_map common parameters
+obstacle_range: 2.5
+raytrace_range: 3.0
+footprint: [[0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45], [0.5, 0.45], [0.6, 0.0]]
+#robot_radius: ir_of_robot
+inflation_radius: 0.55
+obstacles:
+ observation_sources: laser_scan_sensor point_cloud_sensor
+ laser_scan_sensor: {sensor_frame: base_laser, data_type: LaserScan, topic: /scan, marking: true, clearing: true}
+ point_cloud_sensor: {sensor_frame: base_laser, data_type: PointCloud, topic: /my_cloud, marking: true, clearing: true}
+
+local_costmap_params
+local_costmap:
+  global_frame: odom
+  robot_base_frame: base_link
+  update_frequency: 5.0
+  publish_frequency: 2.0
+  static_map: false
+  rolling_window: true
+  width: 6.0
+  height: 6.0
+  resolution: 0.05
+  map_type: costmap
+
+global_costmap_params
+global_costmap:
+  global_frame: /map
+  robot_base_frame: base_link
+  update_frequency: 3
+  static_map: true
+
+base_local_planner_params
+TrajectoryPlannerROS:
+  max_vel_x: 0.45
+  min_vel_x: 0.1
+  max_vel_theta: 1
+  min_in_place_vel_theta: 0.4
+
+  acc_lim_theta: 3.2
+  acc_lim_x: 2.5
+  acc_lim_y: 2.5
+  
+
+  holonomic_robot: false
+
+  meter_scoring: true
+
+any idea how to address the problem?
+Thank you very much in advance
+Edit: Here is my launch files:
+My first launch file which launches the laser scanner, my joystick node, my tf_setup node, point cloud creator out of laser scanner (This one i put to perhaps solve the problem and it didn't make any changes), and my odometry. (For some technical reasons I can communicate with the robot only in one node, so setting up the speeds from cmd_vel and also providing the odometry information are being done in rover_odom node)
+rovmap.launch
+<launch>
+  <arg name="host" default="192.168.0.1" />
+  <master auto="start"/>
+  <node pkg="lms1xx" name="lms1xx" type="LMS1xx_node" output="screen">
+  <param name="host" value="$(arg host)" />
+  </node>
+  <node pkg="joy" name="joy_node" type="joy_node" output="screen">
+  </node>
+  <node pkg="robot_setup_tf" name="tf_broadcaster" type="tf_broadcaster" output="screen">
+  </node>
+  <node pkg="donkey_rover" name="rover_odom" type="rover_odom" output="screen">
+  </node>
+
+  <!-- point cloud creator-->
+  <node pkg="laserscan_to_pointcloud" name="scanToPoint" type="scanToPoint" output="screen">
+  </node>
+</launch>
+
+My second launch file which simply launches gmapping node
+gmap.launch
+ <launch> 
+   <node pkg="gmapping" name="slam_gmapping" type="slam_gmapping" args="scan:=scan" respawn="true" output="screen">
+  </node>
+</launch> 
+
+and finally my move_base.launch, note that amcl is commented since I am using gmapping. Although I tested also with amcl instead of gmapping and it was the same, not avoiding obstacles.
+<launch>
+  <master auto="start"/>
+
+  <!-- Run the map server -->
+  <!--node name="map_server" pkg="map_server" type="map_server" args="~/map.yaml"/-->
+
+  <!--- Run AMCL -->
+  <!-- include file="$(find amcl)/examples/amcl_diff.launch" /-->
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <param name="controller_frequency" value="5.0" />
+    <rosparam file="$(find donkey_rover_2dnav)/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find donkey_rover_2dnav)/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find donkey_rover_2dnav)/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find donkey_rover_2dnav)/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find donkey_rover_2dnav)/base_local_planner_params.yaml" command="load" />
+  </node>
+</launch>
+
+Update: node_graph
+
+Originally posted by mohsen1989m on ROS Answers with karma: 397 on 2015-10-14
+Post score: 0
+
+Original comments
+Comment by Akif on 2015-10-15:
+It seems like you have a problem with your local costmap. The obstacle is not registered in the costmap. Are there any warnings or error on terminal? Also can you share your launch files?
+Comment by mohsen1989m on 2015-10-15:
+Thank you for your comment, I get absolutely no error or warning. I put the launch file in the question as you requested. looking forward to hearing your idea
+Comment by David Lu on 2015-10-19:
+Please check using rqt_graph that your sensor data is actually being fed into the move_base node.
+Comment by mohsen1989m on 2015-10-20:
+Yes, there is a problem since /scan topic is not being used by move_base according to the node_graph. But why? I put the node graph in the question.
+Thank you
+
+A:
+
+As far as I understand it, the problem is that your obstacles do not get inserted in the costmap.
+Could it be that you need to tell the local costmap that it finds the obstacle in the 'obstacles' list from the costmap_common_params.yaml file. Or you could try and change the costmap_common_params.yaml` file to
+obstacle_range: 2.5
+raytrace_range: 3.0
+footprint: [[0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45], [0.5, 0.45], [0.6, 0.0]]
+#robot_radius: ir_of_robot
+inflation_radius: 0.55
+observation_sources: laser_scan_sensor point_cloud_sensor
+laser_scan_sensor: {sensor_frame: base_laser, data_type: LaserScan, topic: /scan, marking: true, clearing: true}
+point_cloud_sensor: {sensor_frame: base_laser, data_type: PointCloud, topic: /my_cloud, marking: true, clearing: true}
+
+So basically simply get rid of the 'obstacles' list.
+Update
+Did you use the corect frame ID of the laser in the costmap_common_params.yaml? As far as I know the LMS1xx node publishes the LaserScan in the frame 'laser' by default, not 'base_laser'. You need to adjust the sensor_frame parameter if you haven't done it already. So something like this:
+
+inflation_radius: 0.55
+
+observation_sources: laser_scan_sensor point_cloud_sensor
+laser_scan_sensor: {sensor_frame: laser, data_type: LaserScan, topic: /scan, marking: true, clearing: true}
+
+Originally posted by nyquist09 with karma: 191 on 2015-10-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mohsen1989m on 2015-10-21:
+The "obstacles:" wasn't there first. It wasn't working and I was so desperate to make it work, so I found it in an answer so I did the same. The problem is when I use gmapping instead of amcl I need to set static_map to false in global_costmap_params which makes it heavy and a bit sluggish.
+Comment by mohsen1989m on 2015-10-22:
+Yes good to mention, I did it already in the main executable of lms1xx node
+

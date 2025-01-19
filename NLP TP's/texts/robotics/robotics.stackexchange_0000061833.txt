@@ -1,0 +1,87 @@
+Q:
+
+Why does the DWA Local Planner need an acceleration value of >= 1.0?
+
+Sometimes, in cluttered environments, our (differential wheeled) robot seems to accelerate too fast and navigates itself into places it cannot escape from. Just to test if a lower acceleration would do any good I tried reconfiguring it but it seems that setting the parameter /move_base/DWAPlannerROS/acc_lim_x lower than 1.0 causes move_base to not do anything any more. Since the parameter is a float value, I expect that the reason is not just an int cast somewhere. Does anyone know why an acceleration lower than 1.0 m/s^2 might not be supported?
+Edit: Just to give some more info, these are the other parameters we use:
+DWAPlannerROS:
+  acc_lim_x: 1.0
+
+  acc_lim_y: 0.0
+
+  acc_lim_th: 2.0
+
+  min_vel_y: 0.0
+  max_vel_y: 0.0
+  max_rot_vel: 1.0
+  min_rot_vel: 0.4
+
+  yaw_goal_tolerance: 0.1
+
+  xy_goal_tolerance: 0.3
+
+  latch_xy_goal_tolerance: true
+  sim_time: 1.7
+
+  path_distance_bias: 5.0 #default:32
+  goal_distance_bias: 9.0 #default:24
+  occdist_scale: 0.01 #default:0.01
+
+  oscillation_reset_dist: 0.05
+
+  prune_plan: true
+
+  holonomic_robot: false
+
+Not listed parameters use the default values.
+Edit2: To answere David's comment:
+These are the parameters we use for the local costmap:
+local_costmap:
+  update_frequency: 5.0
+  publish_frequency: 2.0
+  static_map: false
+  rolling_window: true
+  width: 4.0
+  height: 4.0
+  resolution: 0.05
+  plugins:  
+    - {name: obstacle_layer, type: "costmap_2d::VoxelLayer"}
+    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+So the resolution is 0.05 which is the default value if I'm not mistaken.
+
+Originally posted by Chrissi on ROS Answers with karma: 1642 on 2014-08-14
+Post score: 2
+
+Original comments
+Comment by David Lu on 2014-08-14:
+What is the resolution of your local costmap?
+Comment by David Lu on 2014-08-18:
+What ROS Distro are you on? Also, are you using the binaries for navigation, or are you compiling the code yourself?
+Comment by David Lu on 2014-08-18:
+Also, check two things: 1) What are the cmd_vels that are being published (if any) 2) If you set the parameter publish_traj_pc to true, what does the point cloud look like in rviz?
+Comment by Chrissi on 2014-08-20:
+We are on Hydro and use the binaries. I will check the other things asap.
+Comment by Chrissi on 2014-08-22:
+There is only 0 s published in /cmd_vel and I don't have the publish_traj_pc parameter in my set-up and under /move_base/DWAPlannerROS/trajectory_cloud there is nothing published.
+Comment by AReimann on 2014-10-01:
+Tested it with the stage simulator, turtlebot on ros indigo. Had no problems, maybe updating helps.
+
+A:
+
+This wouldn't be a permanent solution, but what happens when you set your resolution to .01?
+The measure of progress that DWA uses is how many grid cells closer to the goal did you get on this move. That means you're occasionally at the mercy of the resolution. If you're not moving fast enough to get out of the cell, there will be no viable trajectories that go anywhere.
+This is a bad implementation and I'm working on fixing it, but for now try the resolution change to see if that gets you anywhere.
+
+Originally posted by David Lu with karma: 10932 on 2014-08-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Chrissi on 2014-08-15:
+Thank you very much for the tip! I'll try that and report back.
+Comment by Chrissi on 2014-08-18:
+Today I finally had time to test it. Sadly, setting the resolution to .01 does not have any effect. As soon as I set the acc_lim_x below 1.0 (e.g. .9) move_base is not able to find a path any more.
+Comment by surfertas on 2017-05-08:
+@Chrissi Are you still having issues with this?
+

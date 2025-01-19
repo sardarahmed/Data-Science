@@ -1,0 +1,34 @@
+Q:
+
+3D Rigid Body Pose Optimization in flat euclidean space
+
+I am confused about what is the best way to optimize the 3D pose of an object and the best way to parametrize the translation and rotation for optimization in flat euclidean space.
+Assume I have a point $\pmb{x^o}$ given in the coordinate system of the Object which pose I want to optimize. I measure the distance between the object and the point through some function $f:\mathbb{R}^3 \to \mathbb{R}$. Goal of the optimization is to minimize this function by optimizing the object pose (translation + orientation).
+I can obtain the local spatial gradient of each point in the object coordinate frame $\nabla f \bigg|_{\pmb{x}^o}$.
+The pose of the Object is given by the translation vector $\pmb{t}_o^e$ and the rotation matrix $R_o^e$, such that points can be transformed from the object coordinate system into the ego coordinate system through $\pmb{x}^e = R_o^e \pmb{x}^o + \pmb{t}_o^e$ and the the other way around through $\pmb{x}^o = {R_o^e}^\top( \pmb{x}^e - \pmb{t}_o^e)$.
+Now for the calculation of the analytic Jacobian w.r.t to the translation $\pmb{t}_o^e$ it is clear to me how it can be obtained by applying the chain rule:
+$$
+\frac{\partial f(\pmb{x}^o)}{\partial \pmb{t}_o^e} = \nabla f \bigg|_{\pmb{x}^o} \cdot \frac{\partial \pmb{x}^o}{\partial \pmb{t}_o^e} = \nabla f \bigg|_{\pmb{x}^o} \cdot \frac{\partial ({R_o^e}^\top( \pmb{x}^e - \pmb{t}_o^e))}{\partial \pmb{t}_o^e} = \nabla f \bigg|_{\pmb{x}^o} \cdot (- {R_o^e}^\top)
+$$
+So the result simple means the gradient has to be multiplied with the negative inverse/transposed rotation matrix.
+However I am unsure how to do the same for the object orientation and which parametrization to use.
+I read that euler angle suffer from their bounds on pitch and roll angles as well as gimbal lock.
+I tried using quaternions which are not a minimal parametrization (7 parameters for 6 Degrees-of-Freedom).
+This will lead to deriving the rotation matrix after each quaternion parameter, which I have done, but results were not really promising.
+I know that the most general and robust solution is using Lie theory and se(3) lie algebra (also known as twist coordinates). However I don't think I can use this here as I don't want to optimize on the manifold but use a Gauss-Newton or BGFS optimizer in flat euclidean space for this problem (the ones offered by scipy.optimize).
+Edit:
+I noticed this is very broad and its unclear what kind of answer I am looking for. So here my post broken down into some specific questions
+
+What is the recommended parametrization of such a 3D rigid body optimization problem? (e.g. translation+Euler angles, translation+Quaternion, twist coordinates) Follow up is: How is the coordinate system transformation derived after these parameters?
+Can twist coordinates be used when I am trying to solve this with the optimization methods provided by pythons scipy package? Do I need to have parameters in the flat euclidean space to apply 'standard' (meaning not 'on manifold') Gauss-Netwon (Non-linear least squares) optimization method with analytic jacobian?
+Are there any example where a 3D rigid body optimization is solved using scipy?
+
+I welcome any kind of answer, comment or input.
+
+A:
+
+See https://www.cis.upenn.edu/~cjtaylor/PUBLICATIONS/pdfs/TaylorTR94b.pdf.
+You can absolutely use "flat" Euclidean space based optimizers while also optimizing on the manifold, but I agree the default scipy solvers don't give you an easy way to do that. Perhaps you can use pymanopt? See https://www.pymanopt.org/.
+Although I wouldn't be scared of implementing a "manifold" based optimizer yourself. In my experience, simple gradient descent works really well when optimizing for an orientation. This involves computing the gradient w.r.t the orientation parameters (shown in the PDF linked above) and then recomputing the orientation after every step. If you run into local minima, random restarts is a (conceptually) simple way to get to a global minimum.
+If you really want to use the scipy methods, and if you know your initial orientation is reasonably close to the solution (or use random restarts), I would use a local parameterization starting at your guess, so that any singularities would at least be far away no matter where you start from. This would be similar to the methods described in the PDF, but without the projection back into the manifold.
+

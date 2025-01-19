@@ -1,0 +1,102 @@
+Q:
+
+robot_localization 2nd instance not publishing map->odom transform
+
+Hi all,
+I'm trying to use robot_localization in Groovy to fuse information from several sensors (IMU, turn rate sensor and GPS).
+Following the tutorials from robot_localization (http://wiki.ros.org/robot_localization) and GPS integration (http://wiki.ros.org/robot_localization/Tutorials/GPS%20Integration) I have setup two instances of robot_localization. One fuses IMU and turn rate sensor data, and the second one fuses IMU, turn rate and GPS. world_frame of the 1st instance is set to odom, and world_frame of 2nd one is set to map.
+Both nodes seems to work fine and publish their respective odometries. However, according to the documentation, the 2nd instance should be publishing the map-->odom TF, but in my case, it publishes the TF odom-->base_link, just like the first instance.
+There must be something I'm missing, but I'm unable to find it. Any insight in the posible cause will be appreciated.
+Thank you and best regards.
+Solution:
+As pointed in the answers, I was using an outdated version of robot_localization. Worked fine after getting the source from the hydro-devel branch and compiling it.
+For compiling it in Groovy, I had also to uninstall gps_umd meta-package and install it manually from source, since robot_localization gave a compilation error.
+CMake Error at /opt/ros/groovy/share/catkin/cmake/catkinConfig.cmake:75 (find_package):   Could not find a configuration file for package gps_common.
+
+Link to rosrun tf view_frames output:
+frames.pdf
+Launch file:
+<launch>
+
+<!--    IMU localization-->
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_imu" respawn="true" output="screen">
+        <param name="map_frame" value="map"/>
+        <param name="odom_frame" value="odom"/>
+        <param name="base_link_frame" value="base_footprint"/>      
+        <param name="world_frame" value="odom"/>                
+
+        <param name="imu0" value="imu/imu"/>
+        <rosparam param="imu0_config">[false, false, false, true, true, true, false, false, false, false, false, false]</rosparam>
+        <param name="imu0_differential" value="false"/>
+        <param name="imu1" value="imu/pseaa"/>
+        <rosparam param="imu1_config">[false, false, false, true, true, true, false, false, false, false, false, true]</rosparam>
+        <param name="imu1_differential" value="true"/>
+        <param name="twist0" value="imu/twist"/>
+        <rosparam param="twist0_config">[false, false, false, false, false, false, true, true, false, false, false, false]</rosparam>
+        <param name="twist0_differential" value="false"/>
+        <remap from="/odometry/filtered" to="/odometry/imu"/>
+    </node>
+
+<!--robot_localization: utm_transform_node, ekf_localization_node -->
+    <node pkg="robot_localization" type="utm_transform_node" name="utm_transform_node" respawn="true" output="screen">
+        <!-- Compass reports magnetic north-->
+        <param name="yaw_offset" value="0"/>
+        <!-- Magnetic declination in Pasajes: -0º 49' W (http://magnetic-declination.com)-->
+        <param name="magnetic_declination_radians" value="-0.014253522"/>
+      
+        <remap from="/imu/data" to="imu/imu" />
+        <remap from="/gps/gps_utm" to="gps/utm" />
+        <remap from="/gps/fix" to="gps/fix" />
+        <remap from="/odometry/filtered" to="/odometry/imu"/>
+    </node>
+
+<!--    GPS integrated localization -->
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_gps" respawn="true" output="screen">
+        <param name="map_frame" value="map"/>
+        <param name="odom_frame" value="odom"/>
+        <param name="base_link_frame" value="base_footprint"/>      
+        <param name="world_frame" value="map"/>             
+
+        <param name="imu0" value="imu/imu"/>
+        <rosparam param="imu0_config">[false, false, false, true, true, true, false, false, false, false, false, false]</rosparam>
+        <param name="imu0_differential" value="false"/>
+        <param name="imu1" value="imu/pseaa"/>
+        <rosparam param="imu1_config">[false, false, false, true, true, true, false, false, false, false, false, true]</rosparam>
+        <param name="imu1_differential" value="true"/>
+        <param name="twist0" value="imu/twist"/>
+        <rosparam param="twist0_config">[false, false, false, false, false, false, true, true, false, false, false, false]</rosparam>
+        <param name="twist0_differential" value="false"/>
+        <param name="gpsodom0" value="gps/utm"/>    
+        <rosparam param="gpsodom0_config">[true, true, false, false, false, false, false, false, false, false, false, false]</rosparam>
+        <param name="gpsodom0_differential" value="false"/>
+    </node>
+
+</launch>
+
+Originally posted by IvanV on ROS Answers with karma: 329 on 2014-11-12
+Post score: 0
+
+Original comments
+Comment by Tom Moore on 2014-11-13:
+robot_localization has a dependency on gps_common, as I am using its lat/lon->UTM conversion logic. This allows me to eliminate the need for a GPS fix topic and a UTM topic in utm_transform_node. I take it rosdep didn't work?
+Comment by IvanV on 2014-11-13:
+No, it didn't work. Also, in my computer I had to delete also the package ' gpsd_client'  from ' gps_umd' , as it was unable to find gps_common/GPSFix.h. This problem didn't occur when I did the same thing in the USV, so I haven't included it in the edition, as it seem specific of my ROS instalation
+
+A:
+
+Did you compile this from source or use the package manager? When Groovy was EOL'd, I stopped updating its source and releases. Having said that, if you pull down the Hydro or Indigo versions, it ought to work. Also, if you got this from source, when did you get it?
+By the way, regardless of whether or not you're currently using a release or the source, you'll want to grab the source for now. There was a bug in version x.1.5 wherein the map->odom transform was inverted. It's been fixed and will roll out the next time the deb packages are updated, but until then, you  can just grab the source.
+
+Originally posted by Tom Moore with karma: 13689 on 2014-11-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by IvanV on 2014-11-13:
+Just using the package manager, no source. Since it was a legacy project, I was sticking to Groovy and rosbuild. I will try the sources from the devel branches of Hydro, as suggested.
+I will report back after testing.
+Thank you.
+Comment by IvanV on 2014-11-13:
+Compiling the hydro-devel branch on Groovy gave me some troubles (I will include them in the question), but it is working now. However, new questions have surged about the package, which I will put in another topic.
+Thank you.
+

@@ -1,0 +1,92 @@
+Q:
+
+subscriber in rqt plugin python
+
+I'm writing a rqt plugin in python, but can't get the subscriber to work. I want the string from "controller/mode" to show in "lineControlMode". For some reason this doesn't happen. Hope some of you can help me.
+import os
+import rospkg
+import rospy
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtWidgets import QWidget, QGraphicsView
+from std_msgs.msg import String
+
+class MyPlugin(Plugin):
+
+def __init__(self, context):
+    #PLUGIN CODE
+    super(MyPlugin, self).__init__(context)
+
+    # Give QObjects reasonable names
+    self.setObjectName('MyPlugin')
+    rp = rospkg.RosPack()
+
+    # Process standalone plugin command-line arguments
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    # Add argument(s) to the parser.
+    parser.add_argument("-q", "--quiet", action="store_true",
+                  dest="quiet",
+                  help="Put plugin in silent mode")
+    args, unknowns = parser.parse_known_args(context.argv())
+    if not args.quiet:
+        print 'arguments: ', args
+        print 'unknowns: ', unknowns
+
+    # Create QWidget
+    self._widget = QWidget()
+    ui_file = os.path.join(rp.get_path('rqt_vortex_control_mode'), 'resource', 'MyPlugin.ui')
+    
+    # Extend the widget with all attributes and children from UI file
+    loadUi(ui_file, self._widget)
+
+    # Give QObjects reasonable names
+    self._widget.setObjectName('MyPluginUi')
+
+    # Add widget to the user interface
+    context.add_widget(self._widget)
+
+    #MY CODE
+    self._widget.lineControlMode.setReadOnly(True)
+    self._widget.lineControlMode.setText("init")
+
+    #Subscriber
+    self.sub = rospy.Subscriber("/uranus_dp/controller/mode", String, self.callback)
+
+def shutdown_plugin(self):
+    self.sub.unregister()
+
+def callback(self, mode):
+    self._widget.lineControlMode.setText(mode)
+
+Here is the link to my repository just in case: https://github.com/vortexntnu/rov-gui
+
+Originally posted by fonstein on ROS Answers with karma: 43 on 2017-02-09
+Post score: 0
+
+Original comments
+Comment by lucasw on 2017-02-11:
+The plugin appears to work, but when you publish to /uranus_dp/controller/mode the lineControlMode widget doesn't show anything?
+
+A:
+
+Does the "init" test message successfully show up?
+If so then try this at the bottom of the init:
+temp = String("test string")
+self._widget.lineControlMode.setText(temp)
+
+If that works re-enable the subscriber and put a rospy.loginfo(mode) in the callback and publish test messages to the topic, and see if the callback is getting triggered.
+
+Originally posted by lucasw with karma: 8729 on 2017-02-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by fonstein on 2017-02-15:
+Thanks, that helped a lot. Got it to work now!
+Comment by lucasw on 2017-02-15:
+What was the issue?  Did setText not like taking a String?
+Comment by fonstein on 2017-02-15:
+I had to cast the data to String. There was also some bugs on the Subscriber, but with your tips on debugging I got it to work.
+

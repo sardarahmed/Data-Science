@@ -1,0 +1,53 @@
+Q:
+
+Problem setting up rosserial_arduino
+
+Hello!
+I am working on a project using ROS, and I want to integrate external hardware using an Arduino. So I thought that using the rosserial_arduino library would work wonders... I ran into trouble however.
+The arduino running the basic hello world code does not seem to be sending any serial data. The receiving python node never seems to connect, and if you bring up the internal serial monitor in the arduino IDE no data is sent from the board. Running nh.initNode() seems to kill all serial communication. If I comment that line and use Serial.begin(...) in setup and Serial.print(...) in the loop everything still works. I've been working on this for two days now and is just about ready to give up and use another frontend on the computer and write my own communication using the Serial commands...
+I use Ubuntu 11.04 (Natty), ros-electric from the repos, ros-electric-rosserial from the repos and arduino from the repos. I have also tried rosserial from hg, but the result is the same. I have a Duemilanove 168. I have tried on several computers with the same setup, and on two different arduinos.
+
+Originally posted by Per Lenander on ROS Answers with karma: 55 on 2011-09-08
+Post score: 0
+
+A:
+
+So, it would appear that we're just using too much RAM for the 168:
+$ avr-size HelloWorld.cpp.elf
+text       data     bss     dec     hex filename
+5132        144    1345    6621    19dd HelloWorld.cpp.elf
+
+The ATMEGA168 has only 1K of SRAM, but our bss and data is about 1.5k.
+You could do the following:
+
+checkout from hg, build and copy to your libraries directory as usual.
+
+edit line 48 of your /libraries/ros_lib/ros.h to read:
+typedef NodeHandle_<ArduinoHardware, 5, 5, 100, 100> NodeHandle;
+
+When I did this, I had the following for size:
+avr-size HelloWorld.cpp.elf
+text       data     bss     dec     hex filename
+5120        144     441    5705    1649 HelloWorld.cpp.elf
+
+This will limit you to only 5 publishers, 5 subscribers, and messages must be <100 bytes long. The buffers we maintain use a lot of memory since many messages can get quite large.
+Please let me know if this does solve your problem, if it does, I'll get a tutorial up on ros.org so that others can tune the performance of rosserial to their hardware.
+
+Originally posted by fergs with karma: 13902 on 2011-09-09
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Per Lenander on 2011-09-21:
+It worked without problems!
+Comment by Per Lenander on 2011-09-21:
+Thanks! I will try this and see if it works. Additionally, we are receiving an Arduino Mega (Atmega 128) pretty soon, so the basic example should work without problems. I will get back to you on this!
+Comment by rflmota on 2014-09-04:
+I'd really appreciate the tutorial you were talking about @Per Lenander
+Comment by Nightstalker on 2014-09-23:
+@fergs, please see this
+I tried all solutions, nothing worked. I am running this on a RasPi with Groovy. I only face this issue on my RasPi. When I use Indigo on Ubuntu Trusty, it works without any hassle.
+Comment by rflmota on 2014-10-13:
+Could you provide the tutorial you were talking about on tuning the performance of rosserial - @fergs ?
+I'm having some similar issues... Should I increase or decrease the buffer size on ros.h?
+

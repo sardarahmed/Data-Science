@@ -1,0 +1,65 @@
+Q:
+
+Bumpers with Turtlebot 2
+
+I would like to use a safety controller with my turtlebot 2, so that I can take into account bumper's state when navigating.
+Is there a safety controller that has been created for the turtlebot 2  or should I use the same one than for the kobuki base ?
+Is there a nodelet manager started in turtlebot_bringup/minimal.launch ?
+UPDATE :
+When I tried to do this tutorial : http://www.ros.org/wiki/kobuki/Tutorials/Write%20your%20own%20controller%20for%20Kobuki using only the kobuki_node/minimal.launch it works. But I would like to use turtlebot_bringup/minimal.launch but no nodelet manager seems to be started...
+Can someone help me ?
+
+Originally posted by CarolineQ on ROS Answers with karma: 395 on 2013-03-11
+Post score: 0
+
+Original comments
+Comment by Daniel Stonier on 2013-03-11:
+Should work - kobuki, turtlebot-kobuki and turtlebot-create all start nodelet managers with the name mobile_base_nodelet_manager. You can find the turtlebot nodelet manager in https://github.com/turtlebot/turtlebot/blob/master/turtlebot_bringup/launch/includes/kobuki/_mobile_base.launch
+Comment by Daniel Stonier on 2013-03-11:
+What version of the kobuki and turtlebot stacks do you have?
+
+A:
+
+Hi CarolineQ,
+the safety controller for Kobuki also works with Turtlebot 2. However, you have to adapt the launch file a bit. This modified version of kobuki_keyop/safe_keyop.launch file should allow you to drive your turtlebot around with the safety controller watching over it.
+<!--
+  Keyop configuration for working with the default Turtlebot launcher (minimal.launch). 
+ -->
+<launch>
+  <node pkg="nodelet" type="nodelet" name="kobuki_safety_controller" args="load kobuki_safety_controller/SafetyControllerNodelet mobile_base_nodelet_manager">
+    <remap from="kobuki_safety_controller/cmd_vel" to="cmd_vel_mux/input/safety_controller"/>
+    <remap from="kobuki_safety_controller/events/bumper" to="mobile_base/events/bumper"/>
+    <remap from="kobuki_safety_controller/events/cliff" to="mobile_base/events/cliff"/>
+    <remap from="kobuki_safety_controller/events/wheel_drop" to="mobile_base/events/wheel_drop"/>
+  </node>
+  
+  <node pkg="nodelet" type="nodelet" name="keyop_vel_smoother" args="load yocs_velocity_smoother/VelocitySmootherNodelet mobile_base
+_nodelet_manager">
+    <rosparam file="$(find kobuki_keyop)/param/keyop_smoother.yaml" command="load"/>
+    <remap from="keyop_vel_smoother/odometry" to="odom"/>
+    <remap from="keyop_vel_smoother/smooth_cmd_vel" to="cmd_vel_mux/input/teleop"/>
+  </node>
+  
+  <node pkg="kobuki_keyop" type="keyop" name="keyop" output="screen">
+    <remap from="keyop/motor_power" to="mobile_base/commands/motor_power"/>
+    <remap from="keyop/cmd_vel" to="keyop_vel_smoother/raw_cmd_vel"/>
+    <param name="linear_vel_step"  value="0.05" type="double"/>
+    <param name="linear_vel_max"   value="1.5"  type="double"/>
+    <param name="angular_vel_step" value="0.33" type="double"/>
+    <param name="angular_vel_max"  value="6.6"  type="double"/>
+    <param name="wait_for_connection_" value="true" type="bool"/>
+  </node>
+</launch>
+
+The major difference between kobuki_node/minimal.launch and turtlebot_bringup/minimal.launch is, that the latter already starts the velocity muxer. That plus few adjustments to the topic remappings is all that is needed.
+I suggest, you start with this launch file and adapt it to your needs.
+Good luck!
+
+Originally posted by bit-pirate with karma: 2062 on 2013-03-11
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by CarolineQ on 2013-03-11:
+Yes I think this will work ! Thanks for the answer !
+

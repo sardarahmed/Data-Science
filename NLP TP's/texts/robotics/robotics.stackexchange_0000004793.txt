@@ -1,0 +1,110 @@
+Q:
+
+Proportional controller error doesn't approach zero
+
+I'm reading this pdf. The dynamic equation of one arm is provided which is 
+$$
+l \ddot{\theta} + d \dot{\theta} + mgL sin(\theta) = \tau
+$$
+where 
+$\theta$ : joint variable. 
+$\tau$ : joint torque
+$m$ : mass
+$L$ : distance between centre mass and joint. 
+$d$ : viscous friction coefficient
+$l$ : inertia seen at the rotation axis. 
+
+I would like to use P (proportional) controller for now. 
+$$
+\tau = -K_{p} (\theta - \theta_{d})
+$$
+My Matlab code is 
+clear all
+clc
+
+t = 0:0.1:5;
+
+x0 = [0; 0];
+
+[t, x] = ode45('ODESolver', t, x0);
+
+e = x(:,1) - (pi/2); % Error theta1
+
+plot(t, e);
+title('Error of \theta');
+xlabel('time');
+ylabel('\theta(t)');
+grid on
+
+For solving the differential equation 
+function dx = ODESolver(t, x)
+
+dx = zeros(2,1);
+%Parameters:
+
+m  = 2;
+d  = 0.001;
+L  = 1;
+I = 0.0023;
+g  = 9.81;
+
+T = x(1) - (pi/2);
+
+dx(1) = x(2);
+
+q2dot = 1/I*T - 1/I*d*x(2) - 1/I*m*g*L*sin(x(1));
+
+dx(2) = q2dot;
+
+The error is 
+
+My question is why the error is not approaching zero as time goes? The problem is a regulation track, so the error must approach zero. 
+
+A:
+
+If you're only using proportional force, then at some point it will be balanced by the force of gravity -- your error will converge on that balance, not zero.
+To compensate for the mass of the arm, you'll need to add an integral force term.  This will increase over time to counterbalance the constant force of gravity.
+See also: this answer on the integral term.
+
+A:
+
+I would like to use P (proportional) controller for now.
+
+Just a proportional controller will never make your error stay at 0. Your system is not damped and a proportional controller acts like an undamped spring. Look at the controller equation that you wrote:
+
+τ=−K(θ−θd)
+
+and compare it to a spring equation:
+F=Kx or F=K(x1-x2)
+
+Your controller is acting like a spring, putting torque on the joint proportionally to it's deviation from the reference. You must use at least a PI (proportional and integrating) controller to get rid of the oscillation. 
+The integrating part of the controller is what makes the oscillations go away and make the steady state error approach 0. It will make your system a bit slower, but you'll have to tune the controller to behave the way you want, faster response means typically more overshoot and vice versa.
+If you really need to use a P controller, you have to include a damper on the system.
+
+A:
+
+Controllers type
+A more mathematical approach to the error.
+
+Suppose you have a close loop system like above. The equation is:
+$\hspace{2.5em}$ $Y(s) = \frac{G(s)C(s)}{1+G(s)C(s)} R(s)$ 
+The error equation is:
+$\hspace{2.5em}$ $E(s) = R(s) - Y(s)$ 
+$\hspace{2.5em}$ $E(s) = \frac{1}{1+G(s)C(s)} R(s)$ $\hspace{2.5em}[1]$
+The final value theorem states that:
+$\hspace{2.5em}$ $e(\infty) = \lim_{s \rightarrow 0}sE(s)$ $\hspace{2.5em}[2]$
+Using $[1]$ in $[2]$:
+$\hspace{2.5em}$ $e(\infty) = \lim_{s \rightarrow 0}s\frac{1}{1+G(s)C(s)} R(s)$
+Ok! Now, we can conclude some cool stuffs.
+
+Suppose $R(s) = \frac{1}{s}$:
+
+$\hspace{2.5em}$ $e(\infty) = \lim_{s \rightarrow 0}\frac{1}{1+G(s)C(s)}$ $\hspace{2.5em}$ From calculus, is the same as:
+$\hspace{2.5em}$ $e(\infty) = \frac{1}{1+\lim_{s \rightarrow 0} (G(s)C(s))}$
+$\hspace{2.5em}$ $e(\infty) = \frac{1}{1+G(0)C(0)}$
+If $C(s) = K$, where $K$ is a proportional gain, $G(0)$ have a finite DC gain, your system is going to be the responsible for the finite final term. But, however, you can apply a PD control, $C(s) = \frac{K}{s}$. 
+$\hspace{2.5em}$ $C(0) = \lim_{s \rightarrow 0}\frac{K}{s} = \infty$ 
+Then:
+$\hspace{2.5em}$ $e(\infty) = \frac{1}{1+G(0)(\infty)} = 0$
+And that's the resume why you can't get null error only with a proportional gain.
+

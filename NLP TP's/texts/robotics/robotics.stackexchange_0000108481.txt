@@ -1,0 +1,462 @@
+Q:
+
+I am willing to implement ros2_canopen with ros2_control
+
+I am willing to implement ros2_canopen with ros2_control. I am new to ros2_canopen.
+I have four wheels robot (in simulation) and using diff_drive as ros2_control. Everthing is working fine but when I am trying to use ros2_canopen with ros2_control, I am getting error: "Waiting for '/controller_manager' node to exist".
+Can someone guide me? ros2_canopen documentation is not friendly to understand things properly.
+May be I am doing something wrong with the bus.yml, ros2_control.yaml and ros2_control.xacro.
+
+bus.yml
+
+options:
+  dcf_path: "@BUS_CONFIG_PATH@"
+
+master:
+  node_id: 1
+  driver: "ros2_canopen::MasterDriver"
+  package: "canopen_master_driver"
+  sync_period: 10000
+
+defaults:
+  dcf: "cia402_slave.eds"
+  driver: "ros2_canopen::Cia402Driver"
+  package: "canopen_402_driver"
+  period: 10 # 1 ms
+  heartbeat_producer: 1000 # Heartbeat every 1000 ms
+  position_mode: 1 # Profile Position Mode
+  sdo: # SDO executed during config
+        - {index: 0x6081, sub_index: 0, value: 1000} # Set Profile Velocity
+        - {index: 0x6083, sub_index: 0, value: 10000} # Set Profile Acceleration
+        - {index: 0x6084, sub_index: 0, value: 10000} # Set Profile Deceleration
+        - {index: 0x6085, sub_index: 0, value: 10000} # Set Quickstop Deceleration
+        - {index: 0x6098, sub_index: 0, value: 0} # Set default Homing Method to 0 (No homing operation required)
+        - {index: 0x60C2, sub_index: 1, value: 50} # Set Interpolation Time Period Value to 50 ms
+        - {index: 0x60C2, sub_index: 2, value: -3} # Set Interpolation Time Index to 10-3s
+  tpdo:
+    1:
+      enabled: true
+      cob_id: "auto"
+      transmission: 0x01
+      mapping:
+        - {index: 0x6041, sub_index: 0} # Statusword
+        - {index: 0x6061, sub_index: 0} # Modes of Operation Display
+    2:
+      enabled: true
+      cob_id: "auto"
+      transmission: 0x01
+      mapping:
+        - {index: 0x6064, sub_index: 0} # Position Actual Value
+        - {index: 0x606C, sub_index: 0} # Velocity Actual Value
+    3:
+      enabled: false
+    4:
+      enabled: false
+  rpdo:
+    1:
+      enabled: true
+      cob_id: "auto"
+      mapping:
+      - {index: 0x6040, sub_index: 0} # Controlword
+      - {index: 0x6060, sub_index: 0} # Modes of Operation
+    2:
+      enabled: true
+      cob_id: "auto"
+      mapping:
+      - {index: 0x607A, sub_index: 0} # Target Position
+      - {index: 0x60FF, sub_index: 0} # Target Velocity
+    3:
+      enabled: false
+    4:
+      enabled: false
+
+nodes:
+  first_left_wheel_joint:
+    node_id: 2
+  first_right_wheel_joint:
+    node_id: 3
+  second_left_wheel_joint:
+    node_id: 4
+  second_right_wheel_joint:
+    node_id: 5
+
+diffbot_controllers.yaml
+
+controller_manager:
+  ros__parameters:
+    update_rate: 10  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    diffbot_base_controller:
+      type: diff_drive_controller/DiffDriveController
+
+diffbot_base_controller:
+  ros__parameters:
+      
+    joints:
+      left_wheel_names: ["first_left_wheel_joint", "second_left_wheel_joint"]
+      right_wheel_names: ["first_right_wheel_joint", "second_right_wheel_joint"]
+
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+    wheel_separation: 0.4
+    #wheels_per_side: 1  # actually 2, but both are controlled by 1 signal
+    wheel_radius: 0.1
+
+    wheel_separation_multiplier: 1.0
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
+
+    publish_rate: 50.0
+    odom_frame_id: odom
+    base_frame_id: base_link
+    pose_covariance_diagonal : [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    open_loop: true
+    enable_odom_tf: true
+
+    cmd_vel_timeout: 0.5
+    #publish_limited_velocity: true
+    #velocity_rolling_window_size: 10
+
+    # Velocity and acceleration limits
+    # Whenever a min_* is unspecified, default to -max_*
+    linear.x.has_velocity_limits: true
+    linear.x.has_acceleration_limits: true
+    linear.x.has_jerk_limits: false
+    linear.x.max_velocity: 1.0
+    linear.x.min_velocity: -1.0
+    linear.x.max_acceleration: 1.0
+    linear.x.max_jerk: 0.0
+    linear.x.min_jerk: 0.0
+
+    angular.z.has_velocity_limits: true
+    angular.z.has_acceleration_limits: true
+    angular.z.has_jerk_limits: false
+    angular.z.max_velocity: 1.0
+    angular.z.min_velocity: -1.0
+    angular.z.max_acceleration: 1.0
+    angular.z.min_acceleration: -1.0
+    angular.z.max_jerk: 0.0
+    angular.z.min_jerk: 0.0
+
+diffbot.ros2_control.xacro
+
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="diffbot_ros2_control" params="name 
+    use_mock_hardware
+    prefix 
+    bus_config
+    master_config
+    can_interface_name
+    master_bin
+  ">
+
+    <ros2_control name="${name}" type="system">
+      <xacro:unless value="${use_mock_hardware}">
+        <hardware>
+          <plugin>canopen_ros2_control/RobotSystem</plugin>
+          <param name="bus_config">${bus_config}</param>
+          <param name="master_config">${master_config}</param>
+          <param name="can_interface_name">${can_interface_name}</param>
+          <param name="master_bin">"${master_bin}"</param>
+          <param name="example_param_hw_start_duration_sec">0</param>
+          <param name="example_param_hw_stop_duration_sec">3.0</param>
+        </hardware>
+      </xacro:unless>
+      <xacro:if value="${use_mock_hardware}">
+        <hardware>
+          <plugin>mock_components/GenericSystem</plugin>
+          <param name="calculate_dynamics">true</param>
+        </hardware>
+      </xacro:if>
+      <joint name="${prefix}first_left_wheel_joint">
+        <param name="device_name">first_left_wheel_joint</param>
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="${prefix}first_right_wheel_joint">
+        <param name="device_name">first_right_wheel_joint</param>
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="${prefix}second_left_wheel_joint">
+        <param name="device_name">second_left_wheel_joint</param>
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="${prefix}second_right_wheel_joint">
+        <param name="device_name">second_right_wheel_joint</param>
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+
+  </xacro:macro>
+
+</robot>
+
+diffbot.urdf
+
+<?xml version="1.0"?>
+<!-- Basic differential drive mobile base -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="diffdrive_robot">
+  <xacro:arg name="prefix" default="" />
+  <xacro:arg name="use_mock_hardware" default="false" />
+
+  <xacro:include filename="diffbot_description.urdf.xacro" />
+
+  <!-- Import Rviz colors -->
+  <xacro:include filename="diffbot.materials.xacro" />
+
+  <xacro:arg name="can_interface_name" default="vcan0" />
+  <!-- Import diffbot ros2_control description -->
+  <xacro:include filename="diffbot.ros2_control.xacro" />
+
+  <xacro:diffbot prefix="$(arg prefix)" />
+
+  <xacro:diffbot_ros2_control
+    name="DiffBot" prefix="$(arg prefix)" use_mock_hardware="$(arg use_mock_hardware)"
+    bus_config="$(find panda_canopen)/config/cia402/bus.yml"
+    master_config="$(find panda_canopen)/config/cia402/master.dcf"
+    can_interface_name="$(arg can_interface_name)"
+    master_bin=""
+  />
+
+</robot>
+
+launch
+
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, OpaqueFunction, IncludeLaunchDescription
+from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+import yaml
+
+def launch_setup(context, *args, **kwargs):
+
+    can_interface_name = LaunchConfiguration("can_interface_name")
+
+    nodes_to_start = []
+
+    # Launch slaves nodes
+
+    slave_launch = PathJoinSubstitution(
+        [FindPackageShare("canopen_fake_slaves"), "launch", "cia402_slave.launch.py"]
+    )
+
+    bus_config = PathJoinSubstitution(
+        [FindPackageShare("my_robot"), "config", "cia402", "bus.yml"]
+    )
+
+    with open(bus_config.perform(context), 'r') as f:
+        bus_config_dict = yaml.safe_load(f)
+
+    joints = []
+    for key in bus_config_dict.keys():
+        if "joint" in key:
+            joints.append(key)
+
+    for joint in joints:
+        nodes_to_start.append(
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(slave_launch),
+                launch_arguments={
+                    "node_id": str(bus_config_dict[joint]["node_id"]),
+                    "node_name": f"slave_node_{joint}",
+                    "slave_config": PathJoinSubstitution([
+                         FindPackageShare("my_robot"), "config", "cia402", str(bus_config_dict[joint]["dcf"])
+                    ]),
+                    "can_interface_name": can_interface_name,
+                }.items(),
+            )
+        )
+
+    # Launch master node
+
+    master_launch = PathJoinSubstitution(
+        [FindPackageShare("canopen_core"), "launch", "canopen.launch.py"]
+    )
+
+    master_config = PathJoinSubstitution(
+        [FindPackageShare("my_robot"), "config", "cia402", "master.dcf"]
+    )
+
+    bus_config = PathJoinSubstitution(
+        [FindPackageShare("my_robot"), "config", "cia402", "bus.yml"]
+    )
+    
+    nodes_to_start.append(
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(master_launch),
+            launch_arguments={
+                "master_config": master_config,
+                "master_bin": "",
+                "bus_config": bus_config,
+                "can_interface_name": can_interface_name,
+            }.items(),
+        )
+    )
+
+    return nodes_to_start
+
+def generate_launch_description():
+      
+    # Declare arguments
+    declared_arguments = []
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gui",
+            default_value="true",
+            description="Start RViz2 automatically with this launch file.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "use_mock_hardware",
+            default_value="false",
+            description="Start robot with mock hardware mirroring command to its states.",
+        )
+    )
+
+    # Initialize Arguments
+    gui = LaunchConfiguration("gui")
+    use_mock_hardware = LaunchConfiguration("use_mock_hardware")
+
+    # Get URDF via xacro
+    robot_description_content = Command(
+        [
+            PathJoinSubstitution([FindExecutable(name="xacro")]),
+            " ",
+            PathJoinSubstitution(
+                [FindPackageShare("my_robot"), "urdf", "diff_robot.urdf"]
+            ),
+            " ",
+            "use_mock_hardware:=",
+            use_mock_hardware,
+        ]
+    )
+    robot_description = {"robot_description": robot_description_content}
+
+    robot_controllers = PathJoinSubstitution(
+        [
+            FindPackageShare("my_robot"),
+            "config",
+            "diffbot_controllers.yaml",
+        ]
+    )
+    rviz_config_file = PathJoinSubstitution(
+        [FindPackageShare("my_robot"), "diffbot/rviz", "diffbot.rviz"]
+    )
+
+    control_node = Node(
+        package="controller_manager",
+        executable="ros2_control_node",
+        parameters=[robot_description, robot_controllers],
+        output="both",
+    )
+    robot_state_pub_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="both",
+        parameters=[robot_description],
+        remappings=[
+            ("/diff_drive_controller/cmd_vel_unstamped", "/cmd_vel"),
+        ],
+    )
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        arguments=["-d", rviz_config_file],
+        condition=IfCondition(gui),
+    )
+
+    joint_state_broadcaster_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+    )
+
+    robot_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["diffbot_base_controller", "--controller-manager", "/controller_manager"],
+    )
+
+    # Delay rviz start after `joint_state_broadcaster`
+    delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[rviz_node],
+        )
+    )
+
+    # Delay start of robot_controller after `joint_state_broadcaster`
+    delay_robot_controller_spawner_after_joint_state_broadcaster_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[robot_controller_spawner],
+        )
+    )
+
+    nodes = [
+        control_node,
+        robot_state_pub_node,
+        joint_state_broadcaster_spawner,
+        delay_rviz_after_joint_state_broadcaster_spawner,
+        delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
+    ]
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "can_interface_name",
+            default_value="vcan0",
+            description="CAN interface name to run the master and, when in simulation, the fake slaves.",
+        )
+    )
+
+    return LaunchDescription(declared_arguments + nodes + [OpaqueFunction(function=launch_setup)])
+
+A:
+
+If you can share the full error that will help more.
+Second, you have
+
+bus.yml
+
+position_mode: 1 # Profile Position Mode
+
+it would help if you changed it to
+velocity_mode: 1 # Profile velocity Mode
+
+the same with the command interface should be velocity not position in
+
+diffbot_controllers.yaml
+
+command_interfaces:
+  - velocity
+
+these changes may not fix your error but these are the correct settings for the diffbot.
+

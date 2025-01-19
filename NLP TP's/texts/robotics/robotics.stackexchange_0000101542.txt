@@ -1,0 +1,59 @@
+Q:
+
+What controls the Python search path, and how?
+
+In my shell I first activate a Python virtual environment and then the Catkin workspace which results in this sys.path, which searches for Python modules in this order.
+[
+    '/home/user/project/devel/lib/python3/dist-packages',
+    '/opt/ros/noetic/lib/python3/dist-packages',
+    '/home/user/project/.venv/lib/python37.zip',
+    '/home/user/project/.venv/lib/python3.7',
+    '/home/user/project/.venv/lib/python3.7/lib-dynload',
+    '/usr/lib/python3.7',
+    '/home/user/project/.venv/lib/python3.7/site-packages',
+    '/home/user/.local/lib/python3.7/site-packages',
+    '/usr/local/lib/python3.7/dist-packages',
+    '/usr/lib/python3/dist-packages'
+]
+
+Yet when I run roslaunch from this shell, which in turn executes a Python node, this is the sys.path it sees. My virtual environment is no longer active.
+[
+    '/home/user/project/src/pkg/src',
+    '/home/user/project/devel/.private/pkg/lib/pkg',
+    '/home/user/project/devel/lib/python3/dist-packages',
+    '/opt/ros/noetic/lib/python3/dist-packages',
+    '/usr/lib/python37.zip',
+    '/usr/lib/python3.7',
+    '/usr/lib/python3.7/lib-dynload',
+    '/home/user/.local/lib/python3.7/site-packages',
+    '/usr/local/lib/python3.7/dist-packages',
+    '/usr/lib/python3/dist-packages'
+]
+
+I would expect it to add the first two entries (so that the ROS package's own Python modules take priority), but keep the rest which include my .venv directories.
+
+Originally posted by rgov on ROS Answers with karma: 130 on 2022-04-21
+Post score: 0
+
+Original comments
+Comment by rgov on 2022-04-21:
+It appears that it is due to the Python interpreter /usr/bin/python3 being executed instead of /home/user/project/.venv/bin/python3 even though the shebang line is #!/usr/bin/env python3 and the PATH (as the node sees it) should prioritize the one from my virtual environment.
+Comment by rgov on 2022-04-21:
+When roslaunch calls execve() to run my node, it is executing (via some symlinks) /home/user/project/devel/.private/pkg/lib/pkg/node which is a script that goes:
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# generated from catkin/cmake/template/script.py.in
+
+Which rather than just execute the program as any other executable, reads the entire thing and then executes it...
+
+A:
+
+Basically, my nodes were being launched with a different python3 executable than I expected.
+This is because roslaunch actually launches a trampoline script, based on this template, that provides a different shebang line which is fixed at build time.
+(Aside: This seems like very unusual behavior from Catkin. Why not just write out a file with #!/whatever/python3 pathtofile.py instead of this? Why the circuitousness?)
+To get the right shebang line in this trampoline, the virtual environment needs to be active while building.
+
+Originally posted by rgov with karma: 130 on 2022-04-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

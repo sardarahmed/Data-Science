@@ -1,0 +1,91 @@
+Q:
+
+ros node to follow walls to solve a maze.How to subscribe to LaserScan?
+
+#!/usr/bin/env python
+import rospy
+from geometry_msgs.msg import Twist
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Float32
+
+class wall_follow():
+    
+    def __init__(self,r1=0.0,r2=0.0,threshold=5.0,i=0):
+      self.r1=r1
+      self.r2=r2
+      self.threshold=threshold
+      self.i=i
+      rospy.init_node('wall_follow',anonymous=True) 
+      rospy.loginfo("Press Ctrl+C to Exit")
+      rospy.on_shutdown(self.shutdown)
+      self.cmd_vel = rospy.Publisher('cmd_vel_mux/input/navi', Twist, queue_size=50)
+      rate = rospy.Rate(.5)
+      while not rospy.is_shutdown():
+        rospy.loginfo("%g",self.i)
+        self.i=self.i+1
+        move_cmd=Twist()
+        self.sub=rospy.Subscriber('scan',LaserScan,self.wall_info)
+        ros.loginfo("range_1080 = %g range_720 = %g", self.r1,self.r2)
+        if self.r2-self.r1 > self.threshold:
+            move_cmd.angular.z=1.0
+            move_cmd.linear.x=0.0
+        elif self.r2-self.r1 < -1*self.threshold:
+            move_cmd.angular.z=-1.0
+            move_cmd.linear.x=0.0
+        else:
+            move_cmd.angular.z=0.0
+            move_cmd.linear.x=0.3
+        self.cmd_vel.publish(move_cmd)
+        rate.sleep()    
+
+    def wall_info(self,scan):
+      self.r1=scan.ranges[1080]
+      self.r2=scan.ranges[720]
+      rospy.spin()
+
+    def shutdown(self): 
+      rospy.loginfo("Stopping TurtleBot")
+      self.cmd_vel.publish(Twist())
+      # Give TurtleBot time to stop
+      rospy.sleep(1)
+
+if __name__ == '__main__':
+  try:
+    wall_follow()
+  except:
+    rospy.loginfo("End of the trip for TurtleBot")
+
+The is my Latest code for wall follower node.Logically the bot should move along its left wall(when placed near the left wall of maze entry point). But when I run this code on my turtlebot, I don't get any error, however it doesn't move.
+This is all I see :
+[INFO] [WallTime: 1477891660.282792] Press Ctrl+C to Exit
+[INFO] [WallTime: 1477891660.298116] 0
+[INFO] [WallTime: 1477891660.320208] End of the trip for TurtleBot
+[INFO] [WallTime: 1477891660.436050] Stopping TurtleBot
+Clearly since the first index i=0 is getting printed, the scope is entering the while loop, but is not carrying on.
+Since I am very new with ros I am not sure it this is a syntactical error, or perhaps a problem with the " self.sub=rospy.Subscriber('scan',LaserScan,self.wall_info) " statement,  or the wall_info(self,scan) function.
+Please Help.
+
+Originally posted by Shubhayu Das on ROS Answers with karma: 5 on 2016-10-31
+Post score: 0
+
+A:
+
+The first message you see is End of the trip for TurtleBot , which indicates that your code is going into the except section at the last 5 lines of your code:
+if __name__ == '__main__':
+  try:
+    wall_follow()
+  except:
+    rospy.loginfo("End of the trip for TurtleBot")
+
+Since this is getting into the except block, it means that there's some kind of exception being thrown in wall_follow(). I'd recommend that you either print the exception that's thrown, or remove the try/except block so that you can see where this exception is coming from.
+
+Originally posted by ahendrix with karma: 47576 on 2016-10-31
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Shubhayu Das on 2016-10-31:
+Thank you for the reply. I have updated the code. The problem there was that I wasn't running "rosrun hokuyo_node hokuyo_node"
+Sorry of the armature work. But i am still getting a error.
+Pls Check out my next post / question
+

@@ -1,0 +1,92 @@
+Q:
+
+depth_image_to_laserscan not publishing to /kinect_scan topic in ROS2 Galactic
+
+Hello,
+I am trying to convert a depth image to a laser scan using the depthimage_to_laserscan package in ROS2 Galactic, but I am having trouble getting the node to publish the converted LaserScan data. Despite being able to subscribe to the input depth image topic (/kinect_sensor/depth/image_raw), the node doesn't seem to be publishing the converted data to the /kinect_scan topic. Or the node is not properly doing its task: converting the data...
+
+Here's the launch file snippet for the depthimage_to_laserscan node:
+Kinect depthimage to laserscan conversion node
+depthimage_to_laserscan_node = Node(
+    package='depthimage_to_laserscan',
+    executable='depthimage_to_laserscan_node',
+    name='depthimage_to_laserscan',
+    parameters=[kinect_params_file, {'use_sim_time': use_sim_time}],
+    remappings=[('depth', '/kinect_sensor/depth/image_raw'),
+                ('scan', '/kinect_scan')],
+    output='screen')
+
+And my kinect_params.yaml file:
+depthimage_to_laserscan_node:
+  ros__parameters:
+    output_frame: kinect_depth_frame
+    scan_height: 1
+    range_min: 0.45
+    range_max: 10.0
+    scan_topic: /kinect_scan
+
+When I inspect the /depthimage_to_laserscan node using ros2 node info, it shows that the node subscribes to /kinect_sensor/depth/image_raw and publishes to /kinect_scan. However, when I echo the /kinect_scan topic, it is empty and produces no output.
+Here is a LINK to a video demonstrating the issue.
+I have already tried changing the scan_topic to the original /scan topic in the parameter file and have also checked that the frame_id in the header of the depth image messages is consistent with the output_frame parameter, but these didn't solve the issue.
+Could anyone please help me to understand what might be going wrong and how to get the depthimage_to_laserscan node to publish the LaserScan data correctly?
+I am facing a similar issue and behavior using other packages image-proc, as related here: https://github.com/ros-perception/image_pipeline/issues/832
+Thank you in advance for your help.
+
+Originally posted by Vini71 on ROS Answers with karma: 266 on 2023-07-25
+Post score: 0
+
+A:
+
+Solving QoS mismatch and compatibility issues when compiling depthimage_to_laserscan package for ROS2 Galactic
+The depthimage_to_laserscan package on the ros2 branch is not directly compatible with ROS2 distributions Galactic or later due to dependency errors related to image_geometry and rclcpp_components. Changes in the ROS2 API cause these errors.
+One solution is to compile the foxy-devel branch instead, which has been adapted to newer API changes and is confirmed to build successfully in Galactic. These modifications can be analyzed by comparing the ros2 and foxy-devel branches, as shown in this comparison link.
+However, even with these modifications, an additional problem can arise when running the nodes: mismatched the Quality of Service (QoS) settings for the depth camera plugin and the depthimage_to_laserscan package.
+The default Gazebo camera plugin publishes data with a "Best Effort" reliability policy, but the depthimage_to_laserscan package expects a "Reliable" QoS setting. This mismatch can be diagnosed by examining the QoS settings of the publishers and subscribers in the ROS system:
+ ros2 topic info -v /camera/depth/image_raw or 
+
+or
+ ros2 topic info -v /depthimage_to_laserscan/scan
+
+Type: sensor_msgs/msg/LaserScan
+Publisher count: 1
+Node name: depthimage_to_laserscan
+Node namespace: /
+Topic type: sensor_msgs/msg/LaserScan
+Endpoint type: PUBLISHER
+GID: 92.e2.10.01.7d.66.f8.f5.48.6d.4b.b3.00.00.17.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  Durability: VOLATILE
+  Lifespan: 9223372036854775807 nanoseconds
+  Deadline: 9223372036854775807 nanoseconds
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: 9223372036854775807 nanoseconds
+
+Subscription count: 1
+
+Node name: rviz
+Node namespace: /
+Topic type: sensor_msgs/msg/LaserScan
+Endpoint type: SUBSCRIPTION
+GID: e7.0b.10.01.a6.72.90.06.d0.aa.e8.d8.00.00.62.04.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: BEST_EFFORT
+  Durability: VOLATILE
+  Lifespan: 9223372036854775807 nanoseconds
+  Deadline: 9223372036854775807 nanoseconds
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: 9223372036854775807 nanoseconds
+
+After modifying the source code "DepthImageToLaserScanROS.cpp:
+DepthImageToLaserScanROS::DepthImageToLaserScanROS(const rclcpp::NodeOptions & options): rclcpp::Node("depthimage_to_laserscan", options){
+  // auto qos = rclcpp:: SystemDefaultsQoS(); // Changed because depth camera publisher does not use RELIABLE (default) QoS but BestEffort
+  auto qos = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+qos.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+
+, the workspace must be rebuilt using colcon build. The change should resolve the QoS mismatch and allow the depthimage_to_laserscan node to successfully subscribe to the depth camera images.
+A video displaying this fix working Depth to Scan
+
+Originally posted by Vini71 with karma: 266 on 2023-07-28
+This answer was ACCEPTED on the original site
+Post score: 0
+

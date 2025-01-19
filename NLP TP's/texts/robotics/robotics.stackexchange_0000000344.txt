@@ -1,0 +1,51 @@
+Q:
+
+With a 6-axis robot, given end-effector position and range of orientations, how to find optimal joint values
+
+Given a six-axis articulated robot arm holding a tool at its end-effector,  if I have a desired tool position and tool orientation,  there will be exactly 1 solution to the inverse kinematics equation for the robot to reach that position.
+(or rather up to 16 different solutions, depending on range of the joints)
+
+But if the robot is holding something like a pen, and I want the robot to mark a specific point with that pen on the target, then I do not care how the pen is oriented, as long as it is perpendicular to the marked surface.
+So the inverse-kinematics equation will have infinitely many solutions.
+How can I pick among these solutions the joint configuration that is closest to the current configuration: the one that will require the least amount of movement to reach?
+(or the joint configuration that is optimal according to some other similar criterion, such as that all joint angles are furthest from their maximum and minimum?)
+
+A:
+
+First, we need to define optimal. Since you do not say what you consider optimal, most people choose a quadratic expression. For example, suppose your current joint angles are given by the vector $\vec{\alpha}$. We can consider minimizing the movement required - with an error $\vec{x} = \vec{\alpha} - \vec{\alpha}_{start}$, you can define a cost function $J=\vec{x}^TQ\vec{x}$ for some matrix $Q$. We normally use a diagonal matrix, but any positive-definite matrix will do.
+In a simplified example with two joint angles, if joint $a$ had a cheaper motor (perhaps closer to end-effector), we might have a cost function of
+$J=\left[\begin{matrix}x_a\\x_b\end{matrix} \right]\left[\begin{matrix}1&0\\0&2\\\end{matrix} \right]\left[\begin{matrix}x_a&x_b\end{matrix} \right]$, ie. movement of joint $b$ is twice as costly as joint $a$.
+Now, the kinematic equation is a matrix formula, and in Denavit-Hartenberg notation might be:
+$\prod{T_i}=\left[\begin{matrix}1&0&0&x\\0&1&0&y\\0&0&1&z\\0&0&0&1\end{matrix} \right]$, where the right hand side represents the position $(x,y,z)$ and orientation (currently set as zero rotation), given the joint angles.
+Since we do not care about the orientation, and only the position, we can truncate the first 3 columns of the last transformation matrix, and the last row of the first transformation matrix. We can equivalently express this formula as:
+$\left[\begin{matrix}1&0&0&0\\0&1&0&0\\0&0&1&0\end{matrix}\right]\prod{T_i}\left[\begin{matrix}0\\0\\0\\1\end{matrix}\right]=\left[\begin{matrix}x\\y\\z\end{matrix} \right]$
+Multiplying out the left hand side, we get three equations. If the parameters were linear, it would be simple to solve. This is the case if all the actuators are linear actuators. In this case, the problem is actually a quadratic program. We can re-arrange the left hand side to get the equation:
+$K\vec{x}=\left[\begin{matrix}x\\y\\z\end{matrix}\right]$, for some matrix $K$.
+A quadratic program is a problem which can be expressed in the form:
+
+Minimize $J=\frac{1}{2}\vec{x}^TQ\vec{x}+\vec{c}^T\vec{x}$
+Subject to $A\vec{x}\leq\vec{b}$, $E\vec{x}=\vec{d}$
+
+To solve this, there are a number of algorithms you can use, for example, interior point, active set, ... . Just find a suitable library, and it will solve it for you.
+A non-linear system of equations is more difficult to solve. This is called non-linear programming, but it is what you have if you have rotating joints.
+Essentially, in place of matrix equations, you have nonlinear functions.
+
+Minimize $f(x)$ subject to $\vec{h}(x) = 0$, $\vec{g}(x) \leq 0$ (re-arrange if necessary to make the RHS of the constraints zero)
+
+The algorithms used to solve this are even more complex, but includes Interior-point, Sequential quadratic programming (SQP), Active-set, Trust-region reflective algorithms. Obviously, the explanation of how these algorithms work is very lengthy, and I will leave it out of the scope of this answer. Suffice it to say, the amount of content on the algorithms used for just quadratic programming could be a whole course by itself.
+You should just find a library to solve the problem, it would take a long time to code up an efficient implementation, and efficient implementations can handle 100 (or more) variables at a time. For example, if you use MATLAB, then there is documentation on how to use the function fmincon from the Optimization Toolbox.
+To solve it online, you might want C++ or other native implementation, for example, NLopt. Do note that this may not be something a microcontroller can solve quickly, and many libraries may have other dependencies which are not easy to use on a microcontroller (since they are intended for a computer).
+
+If you are not worried about efficiency, and just want something you can code yourself, then assuming there is a function you can call to solve the inverse kinematic problem, you can simply do a gradient descent method. For example, arbitrarily choosing a random starting orientation, solve the inverse problem, then check the cost function. Then you can use perturbation analysis to check how you should vary the orientation. For example, if you check similar orientations around your current orientation (ie. 8 points in a cubic grid), you can get a second order approximation of how the cost function varies in each direction.
+Using the second order approximation (known as a Hessian matrix since it is multivariate - 3-dimensional for orientation), you can find the zero-crossing of the gradient of the cost function (ie. the predicted local minima).
+With the new predicted orientation, just put it through the inverse solver again, and repeat until the accuracy is sufficient.
+Do note that this will probably not be as efficient, because the inverse kinematic problem itself must be iteratively solved (so you are repeatedly using a function which itself takes a while to solve). Also, the code involved may be less than a fully-fledged optimization algorithm, but it is still quite substantial, and not an insignificant investment of time.
+
+Using either method (formally solving as a nonlinear program or using the iteratively using a function to solve the inverse problem), the solution may not be optimal if there are multiple local minima. In this case, you can try to find the global minima by using various approaches. Even with a non-linear programming solver, you will be expected to seed it with initial values (eg. joint angles). You can repeatedly run either method with the seed generated in various ways:
+
+random restart (it is generated randomly)
+grid-based
+
+or other custom methods.
+However do note that if there are many minima, there is no good way to guarantee that you will find the global minima. You can only improve your chances.
+

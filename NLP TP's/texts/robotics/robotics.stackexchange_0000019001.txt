@@ -1,0 +1,65 @@
+Q:
+
+How do I set all objects in my scene to be aligned with respect to the camera in Unity 3D?
+
+To elaborate further - How do I fix the camera as the origin of the 3D world?
+The context is I am trying to create some synthetic image data for a robotics project, and I have the coordinates of the End Effector in the camera frame (basically the position of the object and its orientation in the camera coordinates) How do I set the Unity setup such that if I set the X, Y, Z and rotation of the object in camera coordinates, it recreates the scene?
+[Unity 3D]
+
+A:
+
+I think the function you're looking for is TransformPoint(Vector3 position). You can describe something in coordinates that are local to the camera and use the TransformPoint() method to convert from local camera coordinates to world coordinates. 
+It sounds like you're trying to make a scene to generate some test data, in which case you'll have to have a list of objects you want to arrange and a list of positions and rotations that are local to the camera. You can try maintaining these as separate objects, but you should consider making the "local objects" into a class of its own. You can use a [System.Serializable] tag before the class definition to have the class be able to populate in the editor. 
+So, for example, you might have:
+[System.Serializable]
+public class LocalObject
+{
+    public GameObject localObject;
+    public Vector3 localPosition;
+    public void UpdateTransform()
+    {
+        if(localObject!=null)
+        {
+            localObject.transform.position = Camera.main.transform.TransformPoint(localPosition);
+        }
+    }
+}
+
+So with that code you have a LocalObject that consists of a GameObject and a Vector3 that describes the transform in local coordinates, and then finally a method that will set the position by transforming the location from main camera coordinates to world coordinates via the TransformPoint() command. 
+Since it's using the [System.Serializable] tag, it can be exposed in the editor, such that you can have something like:
+public class YourScript : MonoBehaviour
+{
+    public List<LocalObject> localObjects = new List<LocalObject>();
+
+Then later, in Start() or Update(), you can iterate through your list and set the positions:
+void Start()
+{
+    foreach(LocalObject localObject in localObjects)
+    { 
+        localObject.UpdateTransform();
+    }
+}
+
+The rotations relative to the camera is a going to be a little trickier because Unity represents the rotations as quaternions, but I think the approach I would take would be to use the forward, right, and up properties of the Transform as an input for the Quaternion.AngleAxis command, then build a series of quaternions using that command and setting the rotation that way. For example, by modifying the LocalObject class:
+[System.Serializable]
+public class LocalObject
+{
+    public GameObject localObject;
+    public Vector3 localPosition;
+    public Vector3 localRotation; // new
+    private Transform cam = Camera.main.transform; // new, just to make referencing easier
+    public void UpdateTransform()
+    {
+        if(localObject!=null)
+        {
+            localObject.transform.position = cam.TransformPoint(localPosition);
+            Quaternion roll = Quaternion.AngleAxis(localRotation.x, cam.forward); // new
+            Quaternion pitch = Quaternion.AngleAxis(localRotation.y, cam.right); // new
+            Quaternion yaw = Quaternion.AngleAxis(localRotation.z, cam.up); // new
+            localObject.transform.rotation = yaw*pitch*roll; // new
+        }
+    }
+}
+
+I think that would do it, but I'm just typing this into the text box here and haven't tried any of this in Unity. Also Unity uses left-handed coordinates with y-axis as up, but I think most people would be most familiar as entering the angles as roll-pitch-yaw and would like yaw to be about the vertical axis, which again is y in Unity, so there might be some sign errors or something in the above, but this should give you a good idea of how to do what you want. 
+

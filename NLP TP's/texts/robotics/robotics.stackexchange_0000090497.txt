@@ -1,0 +1,63 @@
+Q:
+
+What is the ros::spin rate?
+
+Hi, I need to run a moving robot in simulation and I need to know the translation and rotation of this robot. I was thinking to use the translation = linear.velocity *dt, and rotation = linear.velocity.z * dt. But I don't know what dt is. I have a subscriber with ros::spin() to subscriber the /cmd_vel topic.
+
+How can I get the dt?
+
+Does the dt strictly equal to the (1/publisher node's rate) ?
+
+Thank you!
+
+Originally posted by Pujie on ROS Answers with karma: 106 on 2019-02-13
+Post score: 1
+
+Original comments
+Comment by Pujie on 2019-02-13:
+I can also use the data in /odom. But I still want to know the dt. Thank you!
+
+A:
+
+I need to know the translation and rotation of this robot. I was thinking to use the translation = linear.velocity *dt, and rotation = linear.velocity.z * dt. But I don't know what dt is. I have a subscriber with ros::spin() to subscriber the /cmd_vel topic.
+
+The cmd_vel topic is typically used to command new velocity setpoints to a mobile base. It doesn't carry any state information in those cases -- only desired state. It would seem strange to me to use that to derive actual state of your robot, unless you don't care about discrepancies between commanded and actual state of course.
+
+I can also use the data in /odom.
+
+The odom topic (nav_msgs/Odometry) does carry information about the actual state of your system. Both position and velocity, so the integration step has already been done for you (and possibly in a more advanced and robust way than simply integration velocity over a time interval, but that depends on the driver used and how that is written).
+
+But I still want to know the dt.
+
+For message types that include a header (such as Odom and TwistStamped), I would advise you to make use of the stamp field in the header. If the publisher has correctly populated the fields, the stamp field should correspond to when the measurement (or calculation) that was used to populate the fields in the message associated with the timestamp took place (or was performed).
+In that case, dt would simply be msg1.header.stamp - msg0.header.stamp. As long as you keep a single-message history in your receiving node, you can calculate the dt between two successive messages that way.
+For messages that don't have headers (such as a regular Twist), you have two options:
+
+use ros::Time::now() to approximate the time your code received the message as shown by @HankYuan in his answer
+use a callback for a ros::MessageEvent<M> instead of the message type itself and use the receipt time as an approximation of when the message was received by the middleware
+
+Refer to wiki/roscpp/Overview/Publishers and Subscribers: Subscribing to a Topic - MessageEvent for information on MessageEvent.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-02-13
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Pujie on 2019-02-13:
+Thank you very much! This helps a lot!
+Comment by gvdhoorn on 2019-02-13:
+One thing to keep in mind: in message "processing pipelines" it's customary to keep the header.stamp of the source or origin message that was fed into the pipeline. All subsequent processing steps copy the timestamp of the incoming msgs into the outgoing msgs.
+An example would be image ..
+Comment by gvdhoorn on 2019-02-13:
+.. processing pipelines: the original image message gets a timestamp and every subsequent operation on that image results in a new msg which gets the same timestamp. Results of object recognition -- in a new msg -- also get the same timestamp.
+This may complicate dt(..)calculation, but ..
+Comment by gvdhoorn on 2019-02-13:
+.. but is often done to allow the use of packages like message_filters to keep related (sensor) data temporally linked without having to create large messages that carry all results of the processing pipeline.
+Comment by Pujie on 2019-02-13:
+@gvdhoorn. Thank you. You mean there is some kind of time delay if the message has too much data? Do you think the message from 2d Lidar will be influenced?
+Comment by gvdhoorn on 2019-02-13:
+No, I meant to say that the stamp field does not always represent the time at which a msg was published by the preceding publisher (ie: the one that published that msg "last", in a manner of speaking).
+It could be an older timestamp -- preserved -- such that temporal correlations can be saved.
+Comment by Pujie on 2019-02-13:
+Got it ! Thank you!
+

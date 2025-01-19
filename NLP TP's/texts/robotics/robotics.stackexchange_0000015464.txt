@@ -1,0 +1,47 @@
+Q:
+
+Why do we need a marginalization in Bundle Adjustment?
+
+A common practice in Bundle Adjustment is to reduce the state dimension by marginalizing structure or pose states to improve the optimization speed.
+In case 3d points(structure) $\textbf{p}_i$ are marginalized out as follows, $\textbf{p}_i$ are triangulated to calculate residual $\textbf{e} $.
+$\textbf{e} = \textbf{z}_{ij} - \pi(\textbf{T}_j\textbf{p}_i)$ 
+where $\textbf{T}_j\in SE(3), \textbf{p}_i\in R^3$ are the states we want to estimate and $\textbf{z}_{ij}$ is the observed feature in $R^2$.
+And just optimize the pose related terms only.
+$\begin{bmatrix}
+ \textbf{H}_{cc}& \textbf{H}_{cs} \\ 
+\textbf{H}_{sc} & \textbf{H}_{ss} 
+\end{bmatrix}
+\begin{bmatrix}
+ \mathbf{\xi}_c \\ 
+\textbf{p}_s 
+\end{bmatrix}=
+\begin{bmatrix}
+ \textbf{g}_{c} \\ 
+\textbf{g}_{s}  
+\end{bmatrix}$
+$\bar{\textbf{H}}_{cc}=\textbf{H}_{cc}-\textbf{H}_{cs}{\textbf{H}_{ss}}^{-1}\textbf{H}_{sc}$
+$\bar{\textbf{g}}_{c}=\textbf{g}_{c}-\textbf{H}_{cs}{\textbf{H}_{ss}}^{-1}\textbf{g}_{s}$
+$\bar{\textbf{H}}_{cc}\mathbf{\xi}_c =\bar{\textbf{g}}_{c}$
+Here my question arises. If we can calculate 3d points $\textbf{p}_i$ by the triangulation, only $\textbf{T}_j$ are the state variable to be estimated. 
+Then, why are we bothered to calculate marginalization related terms $-\textbf{H}_{cs}{\textbf{H}_{ss}}^{-1}\textbf{H}_{sc}$ and $-\textbf{H}_{cs}{\textbf{H}_{ss}}^{-1}\textbf{g}_{s}$ instead of optimizing only poses by ${\textbf{H}}_{cc}\mathbf{\xi}_c ={\textbf{g}}_{c}$ (note that H and g are without bar).
+I guess  ${\textbf{H}}_{cc}\mathbf{\xi}_c ={\textbf{g}}_{c}$ is enough to find the optimal poses $\textbf{T}_j$.
+So, my question is why do we use $\bar{\textbf{H}}_{cc}\mathbf{\xi}_c =\bar{\textbf{g}}_{c}$ instead of ${\textbf{H}}_{cc}\mathbf{\xi}_c ={\textbf{g}}_{c}$? 
+
+A:
+
+I am still not entirely sure what you are asking, but I believe this may answer your question. Also note I myself don't fully understand all the details behind the marginalization trick, but I will attempt to explain why it is used.
+Lets first setup how the optimization problem looks for your two different possibilities with just 2 cameras. So we are only solving for 1 pose.
+Here is the actual bundle adjustment reprojection error.
+$ \displaystyle \min_{T,p} \sum_{i=1}^{p}  (P_i-T(\pi(p_i))^2 $ $\quad Eq1$
+You solve for $T$(pose/transform) and $p$(points) in one optimization problem.
+And here is the 2nd version to only find the poses.
+$ \displaystyle \min_{T} \sum_{i=1}^{p}  (P_i-T(\pi(p_i))^2 \quad Eq2$
+After solving for the pose($T$) with $Eq2$ you would then apply some sort of triangulation method to solve for the 3d points. 
+Lets agree on the fact that $Eq1$ will be more accurate then applying the 2nd method when it comes to finding the position of the poses. This is because it allows for error in the 3d points. The 2nd method assumes that the positions of the 3d points is correct. However, $Eq1$ is also a lot slower than $Eq2$ cause you are also optimizing for the points($p$).
+Now for why we use the marginalization trick. We would apply the marginalization to Eq1. You do all the math you have written above, and are able to solve for the $T$ without also optimizing the points($p$). Remember how I said $Eq1$ was more accurate, but slower. Well with the marginalization we are able to reduce the problem into only solving for the pose($T$), but still keep most of the accuracy. So with marginalization we can almost do the exact same as $Eq2$, but with the accuracy of $Eq1$.
+I typically know this trick as the Schur complement, however it also appears in the EKF formulations as some sort of null space trick.
+References:
+GTSAM Smart Factors
+MSCEKF
+Bundle Adjustment
+

@@ -1,0 +1,52 @@
+Q:
+
+Have registered depth image adopt color image timestamp
+
+We're use the code underneath to register depth images with color images. With this code a registered depth image keeps the time stamp of its original depth image.
+However, since the depth image is now registered with the color image, I'd like the registered depth image to adopt the timestamp of the color image as well. Is there a built-in option to do so? Or do we really need to add a second node to make this happen?
+   register_node = ComposableNodeContainer(
+        name='container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='depth_image_proc',
+                plugin='depth_image_proc::RegisterNode',
+                name='register_node',
+                remappings=[
+                    ('depth/image_rect', DEPTH_IMAGE_TOPIC),
+                    ('depth/camera_info', DEPTH_CAMERA_INFO_TOPIC),
+                    ('rgb/camera_info', COLOR_CAMERA_INFO_TOPIC),
+                    ('depth_registered/image_rect', DEPTH_IMAGE_REGISTERED_TOPIC),
+                    ('depth_registered/camera_info', DEPTH_CAMERA_INFO_REGISTERED_TOPIC)
+                ],
+                parameters=[
+                    {'queue_size': 20}
+                ]
+            ),
+            ComposableNode(
+                package='depth_image_proc',
+                plugin='depth_image_proc::PointCloudXyzNode',
+                name='point_cloud_xyz_node',
+                remappings=[
+                    ('camera_info', DEPTH_CAMERA_INFO_REGISTERED_TOPIC),
+                    ('image_rect', DEPTH_IMAGE_REGISTERED_TOPIC),
+                    ('points', DEPTH_POINTS_TOPIC)
+                ]
+            )
+        ],
+        output='screen',
+    )
+
+A:
+
+The timestamp of the data is associated with the time of observation. The default behavior of most elements of processing is to maintain that timestamp through the processing. This is important information to keep the data referenced globally.
+If you change the timestamp on the registered point cloud to match the camera image naively by just adjusting the timestamp, if you have moving coordinate frames in your system, you will likely observe that it will no longer be registered exactly the same as the original point cloud in rviz.
+To resolve this you need to transform the point cloud to compensate for any potential motion during the delta T. And to compute that motion you need to be able to make an assumption about what coordinate frame the point cloud is static in during that transition. What you'll note is that this is exactly what the tf2 library advanced API provides.
+
+Is there a built-in option to do so? Or do we really need to add a second node to make this happen?
+
+There's not just "built-in option" to do this is that you need more information and context that is often use case specific in it's application.
+You haven't explained your use case or motivation. And I would suggest that you consider asking a question about your higher level design and why you're looking to change the timestamp. From what I can read here this sounds like an X-Y problem to me overall.
+

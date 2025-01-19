@@ -1,0 +1,100 @@
+Q:
+
+libopenni-sensor-primesense0 conflict
+
+We've run into a debian packages conflict on Ubuntu 14.04 with Indigo the past week, concerning libopenni-sensor-primesense0 package and the libopenni-sensor-pointclouds0 package. We worked around it by forcing the install of the /etc/openni/GlobalDefaults.ini from libopenni-sensor-primesense0, but there's definitely an upstream conflict between libopenni-sensor-primesense0 package and the libopenni-sensor-pointclouds0 package that needs to be resolved.
+We did some digging and it looks like the /etc/openni/GlobalDefaults.ini file one of those packages installs has windows-based line endings while the other has the correct Unix line endings. Thus they conflict when you try to install both. Getting ROS setup on 14.04 is going to cause pain for anyone until that gets resolved.
+(reposted from an email by Andy Sayler)
+
+Originally posted by Dave Coleman on ROS Answers with karma: 1396 on 2014-09-26
+Post score: 0
+
+A:
+
+Update: This should be fixed by removing the masking package version from the PCL ppa: https://github.com/ros/rosdistro/issues/5462
+Those two libraries do conflict on purpose. They both provide the same functionality, "libopenni_sensor" and conflict with other providers of "libopenni_sensor"
+I don't believe you're supposed to be able to install them side by side.
+
+https://launchpad.net/ubuntu/trusty/amd64/libopenni-sensor-pointclouds0/5.1.0.41.1-1
+
+https://launchpad.net/ubuntu/trusty/amd64/libopenni-sensor-primesense0/5.1.0.41-3
+
+Edit:
+It's not just that one file. That one file is just the first conflicting file.
+If you install ros-indigo-openni-camera it does seem to lock up as described by @asayler That is a bad failure of apt
+To recover you can do:
+ apt-get -o Dpkg::Options::="--force-overwrite" -f install
+
+Where you'll see that the two packages completely clobber each other.
+Unpacking libopenni-sensor-primesense0 (5.1.0.41-3+trusty1) ...
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/etc/openni/GlobalDefaults.ini', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libXnDeviceSensorV2.so.0', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libXnDeviceFile.so.0', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libXnFormats.so.0', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libXnDDK.so.0', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libXnCore.so.0', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+dpkg: warning: overriding problem because --force enabled:
+dpkg: warning: trying to overwrite '/usr/lib/libopenni-sensor-primesense0/XnSensorServer', which is also in package libopenni-sensor-pointclouds0 5.1.0.41.1-1
+Setting up libssl1.0.0:amd64 (1.0.1f-1ubuntu2.5) ...
+
+And it will continue installing.
+I retried with --no-install--recommends and it worked installed successfully.
+This is probably worth filing upstream as a bug for libopenni developers to possibly remove the recommends. As the ros package can't do much more than declare it's dependencies, which are correct.
+It's also a bug in apt that it doesn't catch the declared conflict.
+Another work around is to install libopenni-sensor-primesense0 before or explicitly:
+root@4529e16a9555:/# sudo apt-get install libopenni-sensor-primesense0 ros-indigo-openni-camera
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+The following extra packages will be installed:
+  libopenni-dev libopenni-sensor-primesense-dev libopenni0 openni-utils
+Suggested packages:
+  openni-doc
+The following NEW packages will be installed:
+  libopenni-dev libopenni-sensor-primesense-dev libopenni-sensor-primesense0 libopenni0 openni-utils ros-indigo-openni-camera
+0 upgraded, 6 newly installed, 0 to remove and 41 not upgraded.
+Need to get 1161 kB of archives.
+After this operation, 6668 kB of additional disk space will be used.
+Do you want to continue? [Y/n] n
+Abort.
+
+WIthout explicitly calling it out this won't work.
+root@4529e16a9555:/# sudo apt-get install ros-indigo-openni-camera
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+The following extra packages will be installed:
+  libopenni-dev libopenni-sensor-pointclouds0 libopenni-sensor-primesense-dev libopenni-sensor-primesense0 libopenni0 openni-utils
+Suggested packages:
+  openni-doc
+The following NEW packages will be installed:
+  libopenni-dev libopenni-sensor-pointclouds0 libopenni-sensor-primesense-dev libopenni-sensor-primesense0 libopenni0 openni-utils ros-indigo-openni-camera
+0 upgraded, 7 newly installed, 0 to remove and 41 not upgraded.
+Need to get 1461 kB of archives.
+After this operation, 8027 kB of additional disk space will be used.
+Do you want to continue? [Y/n] n
+
+Overall this is a problem of delayed conflict detection. I'm not sure why apt doesn't catch it earlier, it seems like it should. I tested aptitude as well and it gets into the same problem.
+
+Originally posted by tfoote with karma: 58457 on 2014-09-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mmonaco on 2014-09-26:
+That may be the case, but surely there is a way to define this in the package metadata which doesn't break apt-get. Also, windows line endings in one of the two doesn't make any sense.
+Comment by tfoote on 2014-09-26:
+apt-get is not broken, it's correctly refusing to install the two things declared as conflicting. This is an Ubuntu/Debian level package. If you want you can file tickets against libopenni on launchpad, but these packages seem to be clearly defined as conflicting.
+Comment by Dave Coleman on 2014-09-26:
+@asayler why do we need both debs? Are they both in ros-indigo-desktop-full? If it is because of Baxter packages, I'd say the Baxter packages are just broken.
+Comment by asayler on 2014-09-26:
+ros-indigo-desktop-full installs fine. The issue occurs when installing ros-indigo-openni-launch, which installs ros-indigo-openni-camera, which triggers the error above. ros-indigo-openni-launch was requested by Mike for 3302, I assume to satisfy your build directions on github.
+Comment by tfoote on 2014-09-29:
+Both are not required. ros-indigo-openni-camera will work fine as long as you explicitly ask for libopenni-sensor-primesense0 as well. apt is resolving the first of the ORd recommendations if unspecified, despite libopenni-sensor-primesense0 being required by upstream dependencies and conflicting.
+

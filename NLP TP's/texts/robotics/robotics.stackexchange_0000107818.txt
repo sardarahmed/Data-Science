@@ -1,0 +1,70 @@
+Q:
+
+YAML-standard parameter specification not one of the allowed types
+
+I'm having a problem regarding code migration from ROS Noetic to ROS Foxy.
+The problem is related to parameter access from scripts. I'm using Python nodes for my code.
+Originally these sorts of YAML parameters were acceptable for rospy:
+
+YAML file section:
+    tf_static: [
+      {"frame_id": "map",
+      "child_frame_id": "odom",
+      "translation": [0.0,0.0,0.0],
+      "rotation": [0.0,0.0,0.0,1.0]
+      },
+      {"frame_id": "base_link",
+      "child_frame_id": "cam_link",
+      "translation": [0.06,0.0,0.08],
+      "rotation": [-0.5,0.5,-0.5,0.5]
+      },
+    ]
+    a: {
+        b: 1,
+        c: 2.0,
+        d: "hello",
+        e: true
+    }  
+
+rospy script section (using if-else rather than get_param w/ defaults for better visibility wherever necessary):
+    if rospy.has_param('tf_static'):
+      tf_static = rospy.get_param('tf_static')
+    else: #defaults
+      tf_static = [
+                        {"frame_id": "map",
+                        "child_frame_id": "odom",
+                        "translation": [0.0,0.0,0.0],
+                        "rotation": [0.0,0.0,0.0,1.0]
+                        },
+                        {"frame_id": "base_link",
+                        "child_frame_id": "cam_link",
+                        "translation": [0.05,0.0,0.08],
+                        "rotation": [-0.5,0.5,-0.5,0.5]
+                        },
+                      ]
+    another_param_dict = rospy.get_param('a', default={'b':1,'c':2.0,'d':"hello",'e':True})
+    just_a_field = tf_static[0]['frame_id'] # just an example
+    just_another_field = another_param_dict['d'] # just another example to expand
+
+Considering that parameter.py in the source code does not include this functionality with get_parameter_value, and parameter_dict_from_yaml_file simply points to a YAML file to go through the same thing recursively, this becomes a great hassle.
+Declaration is another problem, considering nothing in this case is allowed in the first place. I can (only) get a to work, by explicitly specifying a.b, a.c, a.d, and a.e, but a list of dictionaries is "non-standard" (not by YAML conventions, of course) so I am completely stuck there.
+# self refers to the Node, i.e. `class my_node(Node)`
+...
+# ridiculously messy, and only works with "standard" types
+self.declare_parameter('a.b',"1")
+self.declare_parameter('a.c',"2.0")
+self.declare_parameter('a.d',"hello")
+self.declare_parameter('a.e',"true")
+self.b = self.get_parameter('a.b').get_parameter_value().integer_value
+self.c = self.get_parameter('a.c').get_parameter_value().double_value
+self.d = self.get_parameter('a.d').get_parameter_value().string_value
+self.e = self.get_parameter('a.e').get_parameter_value().bool_value
+
+Furthermore, the original idea of using lists of dictionaries for me was to have as many of these descriptions as I wanted for my static frame definitions so I could simply enter them in my YAML file in this manner. Now I can't even think about using many parameters without typing them in one by one in my rclpy node initialization.
+Is this seriously what we are stuck with for moving on with ROS 2, or is there a way to properly get parameters from YAML files? I seriously am considering hacking into the parameter file using ament packages, or some relative address definitions, and yaml to just parse the parameter file myself and eliminate the problem. I am not even interested in modifying these parameters at runtime either.
+
+A:
+
+It sounds like you're trying to use the wrong tool for what you're looking to do. ROS parameters are designed to provide runtime adjustable parameters for nodes that are introspectable and can be interacted with remotely. In the ROS 2 design their functionality was extended to be able to be more dynamic and support parameter charge events we tc. But to provide those capabilities what is allowed as a parameter is more restricted. For example mixed types that you're looking to use. Parameters are not designed to carry arbitrary unstructured data.
+From your description it sounds like what you're looking for is more of a configuration file that can be read in at startup of the node. You can do this with your choice of configuration system, such as loading a yaml file. This configuration file can follow whatever semantics that you'd like.
+

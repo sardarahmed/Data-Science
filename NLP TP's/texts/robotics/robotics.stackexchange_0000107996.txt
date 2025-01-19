@@ -1,0 +1,63 @@
+Q:
+
+Lidar LD19 Hardware Configuration with slam_toolbox
+
+I apologize for the discomfort. But I'm desperate with this LIDAR (LD19).
+I am a beginner in ROS2. My entire life I have only used CoppeliaVREP.
+I will detail the steps we followed and if you can help me, I would be grateful.
+Basically I wanted to generate a map from the measurements of my LIDAR LD-19. As long as it is not connected to any type of robot. Lidar is static.
+This is my Tf Tree
+
+According to the documentation for this Lidar, I was able to take readings from its LaserScan on the Rviz.
+Document
+https://github.com/Myzhar/ldrobot-lidar-ros2
+According to some responses from some users, this lidar seems to be problematic compared to slam_toolbox, which waits for standard Lidar observations of the type Hokuyo, Velodyne, SICK, etc.
+Then it is necessary to configure your TF tree, odom etc.
+This way I got a standard yaml file template from the slam toolbox.
+https://github.com/SteveMacenski/slam_toolbox/tree/ros2/config
+I used mapper_params_online_async.yaml
+Later I created a ROS2 package, with this launch, to change this default yaml file and start SLAM_toolbox
+return LaunchDescription([
+Node(
+    package='slam_toolbox',
+    executable='async_slam_toolbox_node',
+    name='slam_toolbox',
+    output='screen',
+    parameters=[{'use_sim_time': False}, config_path],
+    remappings=[('/scan', '/lidar_node/scan')],
+    # Adicione a seguinte linha para usar o quadro base como fonte de odometria
+    arguments=['--odom', 'ldlidar_base']
+),
+Node(
+    package='tf2_ros',
+    executable='static_transform_publisher',
+    name='static_transform_publisher',
+    output='screen',
+    arguments=['0', '0', '0', '0', '0', '0', 'ldlidar_base', 'ldlidar_link']
+)`
+
+I changed some Yaml parameters manually too
+odom_frame: odom
+map_frame: map
+base_frame: ldlidar_base
+lidar_frame: ldlidar_link
+scan_topic: /scan
+use_map_saver: true
+mode: mapping #localization
+
+When running the launch file with the LD19 node active I had the following messages
+    async_slam_toolbox_node-1] [INFO] [1706802034.671548971] [slam_toolbox]: Message Filter dropping message: frame 'ldlidar_link' at time 1706802034.471 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[async_slam_toolbox_node-1] [INFO] [1706802035.169091151] [slam_toolbox]: Message Filter dropping message: frame 'ldlidar_link' at time 1706802035.069 for reason 'discarding message because the queue is full'
+[async_slam_toolbox_node-1] [INFO] [1706802035.369192791] [slam_toolbox]: Message Filter dropping message: frame 'ldlidar_link' at time 1706802035.169 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+[async_slam_toolbox_node-1] [INFO] [1706802035.669001600] [slam_toolbox]: Message Filter dropping message: frame 'ldlidar_link' at time 1706802035.469 for reason 'the timestamp on the message is earlier than all the data in the transform cache'
+
+What it seems to me is that the messages from my ldlidar_scan node are not up to the standard that slam_toolbox expects and it is discarding the messages. I'm already desperate because I really need this mapping.
+As I said, the LaserScan on the Rviz is perfect, only the mapping is not working properly.
+Can anybody help me?
+If anyone knows of an easier way to generate a SLAM or real-time mapping, I'd welcome any suggestions.
+
+A:
+
+SLAM Toolbox uses a MessageFilter that won't return laser scans to the callback unless an appropriate odometry transformation can be made. The issue you're running into is that you don't have "enough" setup to actually run the SLAM Toolbox stack, you need odometry.
+You can fake this out for the purposes of a demo (probably?) by setting the odom_frame parameter to your lidar's base frame. It won't work-work - you can't move the lidar and build a map - but you should be able to see that something shows up then, until you attach to an actual robot base.
+

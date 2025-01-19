@@ -1,0 +1,57 @@
+Q:
+
+cross compile ROS fuerte: Log4cxx cmake
+
+I am trying to compile ROS Fuerte for the Nao (atom) platform but ran into some errors.
+I downloaded ros-underlay, created the build folder and called cmake, but it fails with:
+ CMake Warning at ros_comm/tools/rosconsole/CMakeLists.txt:28 (find_package):
+  Could not find module FindLog4cxx.cmake or a configuration file for package
+  Log4cxx.
+
+  Adjust CMAKE_MODULE_PATH to find FindLog4cxx.cmake or set Log4cxx_DIR to
+  the directory containing a CMake configuration file for Log4cxx.  The file
+  will have one of the following names:
+
+    Log4cxxConfig.cmake
+    log4cxx-config.cmake
+
+  CMake Error at ros_comm/tools/rosconsole/CMakeLists.txt:34 (message):
+  Couldn't find log4cxx library
+
+Apparently, it is missing a log4cxx cmake config or a FindLog4cxx.cmake file. As log4cxx is a automake project, there are no cmake config files shipped with it, so where am I supposed to get that file from? In my case, I cross-compiled log4cxx, so I cannot use the system-wide installed version. Is there an easy workaround? I tried cmake-gui and set the path to the library, but it failed to find the log4cxx-includes when building rosconsole.
+
+Originally posted by daniel_maier on ROS Answers with karma: 290 on 2012-05-09
+Post score: 2
+
+A:
+
+I created a similar log4cxx-config.cmake file for cross-compiling mingw. Should be similar for what you need to do here.
+set(LOG4CXX_VERSION 0.10.0)
+
+get_filename_component(LOG4CXX_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
+set(LOG4CXX_INCLUDE_DIR "${LOG4CXX_CMAKE_DIR}/../../../include" CACHE FILEPATH "Log4cxx include directory")
+set(LOG4CXX_INCLUDE_DIRS "${LOG4CXX_INCLUDE_DIR}")
+set(LOG4CXX_LIBRARY_DIRS "${LOG4CXX_CMAKE_DIR}/../../../lib")
+set(LOG4CXX_LIBRARIES "log4cxx;aprutil-1;iconv;expat;apr-1;rpcrt4;shell32;ws2_32;advapi32;kernel32;msvcrt")
+
+I installed this into SYSROOT/share/cmake/log4cxx/log4cxx-config.cmake. The only real difference should be your library list which can be quite a bit smaller if linking to shared libraries (I was using static where you need to link to the whole chain of dependencies).
+
+Originally posted by Daniel Stonier with karma: 3170 on 2012-05-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by daniel_maier on 2012-05-09:
+Thanks! I have my log4cxx library outside the SYSROOT directory, and placed the log4cxx-config.cmake accordingly. Yet, the rosconsole CMakeLists.txt does not respect LOG4CXX_LIBRARY_DIRS and LOG4CXX_INCLUDE_DIRS, so I added link_directories and include_directories commands. Now it compiles rosconsole.o but failes to link against log4cxx, because the -L options is missing in the linker command (using make VERBOSE=1).
+Comment by Daniel Stonier on 2012-05-10:
+Just curious, does your rosconsole CMakeLists.txt have this update? That was done the same time I started using the log4cxx-config above, but it is only a recent addition (03/20/12).
+Comment by Daniel Stonier on 2012-05-10:
+You might also want to use CMAKE_PREFIX_PATH variable to help your system find the log4cxx-config.cmake if it is outside your sysroot.
+Comment by daniel_maier on 2012-05-10:
+It has the update from your link. I tried CMAKE_PREFIX_PATH and Log4cxx_DIR, both yielding the same results. CMake seems to ignore the link_directories command.. Anyways, I find the missing include_directories, link_directories command and the missing log4cxx-config.cmake to be a bug in ROS, right?
+Comment by Daniel Stonier on 2012-05-10:
+log4cxx-config.cmake : that would be part of the log4cxx package (like pkgconfig), so not really ros' problem. I'd like to update eros_log4cxx later to do that properly. You're right about the LOG4CXX_LIBRARY_DIRS and LOG4CXX_INCLUDE DIRS though - it really should use that information.
+Comment by Daniel Stonier on 2012-05-10:
+Can you make a patch for rosconsole/CMakeLists.txt?
+

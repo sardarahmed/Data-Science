@@ -1,0 +1,76 @@
+Q:
+
+Slam_gmapping tutorial problem with time sync on rosbag
+
+Hello. I finished gmapping tutorial and started rosbag play and slam_gmapping (rosrun gmapping slam_gmapping scan:=base_scan). I needed to read tf from that gmapping, lets say between odom->map.
+Once started rosbag and slam_gmapping time wasn't right, solved it with 'param set /use_sim_time true' before starting rosbag.
+With the code bellow I was reading tf and got this values:
+x = 1134749241 y = -1078897170 z = -1255994495
+x = 1134749241 y = -1078897170 z = -1255994495
+x = 1134749241 y = -1078897170 z = -1255994495
+x = 1134749241 y = -1078897170 z = -1255994495
+
+not same every time, only in this example <- not an issue
+
+Those values are too big to be real tf, so i need help with correct reading of tf from rosbag AND slam_gmapping.
+Code to read tf:
+tf::TransformListener listener;
+
+ros::Rate rate(1.0);
+while (nh.ok()){
+tf::StampedTransform tfTransform;
+
+try { 
+    listener.lookupTransform("/odom",
+    "/map",       
+    ros::Time(0), 
+    tfTransform);
+}
+catch(tf::TransformException &exception) { 
+    ROS_ERROR("%s", exception.what());
+}
+
+ROS_INFO("%d %d %d", tfTransform.getOrigin().x(), tfTransform.getOrigin().y(), tfTransform.getOrigin().z());
+rate.sleep();
+}
+
+Originally posted by mdm on ROS Answers with karma: 11 on 2013-02-27
+Post score: 1
+
+A:
+
+Hey have u published clock while playing bag file using --clock parameter??
+Also try tf_echo for getting transformation between map and odom.
+Once u plat bag file just run following command in new terminal
+rosrun tf tf_echo /map /odom
+If u get correct tf then there is a bug in ur code but if this command is also publishing same tf as u have mentioned in ur question then there is a problem with the way you are playing bag file.
+Try using this code:
+
+tf::StampedTransform transform;
+try{
+listener.waitForTransform("map", "/robot1/odom",ros::Time(0), ros::Duration(0.1));
+listener.lookupTransform("map", "/robot1/odom",
+ros::Time(0), transform);
+}
+catch (tf::TransformException ex){
+ROS_ERROR("Error looking up transformation\n%s",ex.what());
+return;
+}
+
+This works fine for me..
+
+Originally posted by ayush_dewan with karma: 1610 on 2013-02-28
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mdm on 2013-02-28:
+now i totally lost you.
+there is no frame "/robot1/odom" anywhere. i did tf monitor and there isn't any with that name/id
+Comment by ayush_dewan on 2013-02-28:
+Sorry i just copied it from my own code which looks for tf between "/robot1/odom" and map. Replace that with odom and test it.
+Comment by mdm on 2013-02-28:
+did that and i says "frame /map doesn't exist"
+Comment by ayush_dewan on 2013-02-28:
+ok do one thing play rosbag file with clock and see the complete tf tree and check where odom is defined..map should exist as u said ur getting transformation wen you use tf_echo..
+

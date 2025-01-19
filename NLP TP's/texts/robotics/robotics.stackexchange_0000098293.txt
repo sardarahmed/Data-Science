@@ -1,0 +1,83 @@
+Q:
+
+clear_costamps recovery clear only one layer
+
+Hi,
+is it possible to configure the clear costmaps recovery to only clear one specific layer in both?
+I found the following question in the forum here but cant get it to work. I don't even know howto set up all the requiered parameters for the recovery behaviours and can't find any documenation about it.
+https://answers.ros.org/question/252530/static-global-map-updating/
+I would appreciate any help and ideas,
+thanks in advance
+
+Originally posted by Tristan9497 on ROS Answers with karma: 220 on 2021-02-12
+Post score: 0
+
+A:
+
+The documentation for recovery behaviors is in the move_base wiki.  Basically, you just list the plugins you want to use, and since you specifically mention clear_costmap_recovery, we'll go with that.  I agree the clear_costmap_recovery documentation isn't the most informative, but you can get a look at the plugin's parameters by looking at the source code.  This line indicates the most relevant parameter to your question, layer_names:
+private_nh.param("layer_names", clearable_layers, clearable_layers_default);
+
+This code is a plugin to move_base, so it's parameters are set through that node.  Here's an example of how I might set this recovery behavior's parameters in move_base_params.yaml:
+recovery_behaviors:
+  - name: costmap_reset
+    type: clear_costmap_recovery/ClearCostmapRecovery
+
+costmap_reset:
+  reset_distance: 0.0
+  layer_names: ["my_layer"]
+
+I set the recovery_behaviors parameter of the move_base node to a single-item list (sequence), where the item is indicated by the dash.  Note that in the move_base wiki, it shows the default value as an bracketed list (flow style); this is simply a different syntax for the same type of YAML collection.  I name the the specific recovery behavior "costmap_reset," and indicate its type.  To change its parameters, I define them under its namespace (same as the behavior name) on the same level as recover_behaviors.  I tell the plugin to only clear my_layer by giving the layer_names parameter single-item sequence of strings.  The actual definition of my_layer is something that happens in the costmap configuration files (see the question you linked), but you can reference those layers here since the move_base node handles all of it.
+If you've tried this, and it's not working, please clarify what happens (errors, warnings, behavior, etc.) and post your own files and output for troubleshooting.
+
+###Update
+
+i am not sure if it makes a difference when its triggered via rosservice call or move_base directly
+
+The clear_costmaps service and recovery behavior are separate.  The service resets all layers and doesn't take parameters, so that's not something you can change without modifying the source code:
+bool MoveBase::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
+  //clear the costmaps
+  boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_controller(*(controller_costmap_ros_->getCostmap()->getMutex()));
+  controller_costmap_ros_->resetLayers();
+
+  boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_planner(*(planner_costmap_ros_->getCostmap()->getMutex()));
+  planner_costmap_ros_->resetLayers();
+  return true;
+}
+
+The service simply calls resetLayers() for both the local (controller_costmap_ros_) and global (planner_costmap_ros_) costmaps.
+
+Originally posted by tryan with karma: 1421 on 2021-02-13
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Tristan9497 on 2021-02-13:
+Hey man,
+thanks for your intuitive answer.
+I want to clear my custom layer with the recovery and trigger the recovery manually, not only when move_base doesn't find a valid path.
+I configured it like your suggestion and triggered the service via the terminal using rosservice call ...
+(i am not sure if it makes a difference when its triggered via rosservice call or move_base directly).
+recovery_behaviors:
+
+name: 'costmap_reset_conservative'
+type: 'clear_costmap_recovery/ClearCostmapRecovery'
+
+costmap_reset_conservative:
+reset_distance: 1.5
+layer_names: ["my"]
+with my layer configuration beeing:
+my:
+
+enabled: true
+The only problem i got with this, is that it has cleared every layer, not only my custom one.
+To solve this i just implemented a service in the source code of my custom layer which sets every cell of the layer to 0. This seems to work quiet nicely so i wont spend more time trying to abuse the recovery behaviour by triggering it myself.
+Comment by Tristan9497 on 2021-02-13:
+not sure why the formating is messed up sorry
+Comment by tryan on 2021-02-13:
+Ah, I see.  The service is separate from the recovery behaviors and resets all layers, so your approach with a custom service is the way to go.  I updated my answer with some more information.
+The code format just adds 4 spaces at the beginning of each line, but sometimes multiple lines come out weird.  If you add the spaces manually (plus indentation), it should come out right.
+Comment by Tristan9497 on 2021-02-13:
+Ah, ok that makes sense i should have clarified that at the start of my question...
+But i guess it's nice to have that information now atleast here at answers.ros for future readers
+Thanks for the tip with the formating aswell, ill try to fix that :)
+

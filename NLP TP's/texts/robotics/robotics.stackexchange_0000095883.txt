@@ -1,0 +1,98 @@
+Q:
+
+Moveit planners trajectory vs path planning
+
+Does any of the current planners in Moveit set estimate the velocity for the joints or is this done in post-processing with e.g. Iterative Parabolic Time Parameterization or Iterative Spline Parameterization?
+
+MoveIt is currently primarily a
+kinematic motion planning framework -
+it plans for joint or end effector
+positions but not velocity or
+acceleration. However, MoveIt does
+utilize post-processing to time
+parameterize kinematic trajectories
+for velocity and acceleration values.
+Below we explain the settings and
+components involved in this part of
+MoveIt.
+
+Is this time parameterization to estimate velocities/accelerations always done in the post-processing step?
+According to the CHOMP page on the Moveit tutorials:
+
+CHOMP: While most high-dimensional
+motion planners separate trajectory
+generation into distinct planning and
+optimization stages, CHOMP capitalizes
+on covariant gradient and functional
+gradient approaches to the
+optimization stage to design a motion
+planning algorithm based entirely on
+trajectory optimization. Given an
+infeasible naive trajectory, CHOMP
+reacts to the surrounding environment
+to quickly pull the trajectory out of
+collision while simultaneously
+optimizing dynamical quantities such
+as joint velocities and accelerations.
+It rapidly converges to a smooth
+collision-free trajectory that can be
+executed efficiently on the robot. A
+covariant update rule ensures that
+CHOMP quickly converges to a locally
+optimal trajectory.
+
+Does this imply that CHOMP is in fact trajectory planning or that CHOMP is path planning with more constraints?
+To be more specific:
+in the planner response planning_interface::MotionPlanResponse, does the planner fill out this message with time parameterization in mind?
+Edit: sorry for multiple updates
+
+Originally posted by bob-ROS on ROS Answers with karma: 525 on 2020-05-18
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-05-18:
+Could you please not overwrite your earlier text, but append clarifications and rephrasings?
+It'll become increasingly difficult for (future) readers to match answers with your question text, as you keep changing it.
+Comment by bob-ROS on 2020-05-18:
+I edited it slightly as I realize that the velocity/acceleration field in the planning_interface::MotionPlanResponse has more to do with the trajectory_controller/hardware_interface rather than time parameterization.
+Comment by gvdhoorn on 2020-05-18:
+Your initial question did not go further than the first paragraph. That's not a "slight edit" any more.
+
+A:
+
+OMPL (default MoveIt planner) plans paths. These are converted into trajectories by the time-parameterisation planning adapters. Or as the MoveIt documentation describes it (from the linked time-parameterisation page):
+
+MoveIt is currently primarily a kinematic motion planning framework - it plans for joint or end effector positions but not velocity or acceleration. However, MoveIt does utilize post-processing to time parameterize kinematic trajectories for velocity and acceleration values.
+
+I'm not entirely sure about STOMP, CHOMP or TrajOpt. I've seen configurations where they are able to generate timing information (and the time-parameterisation post-processing of MoveIt is disabled), but at least the default configurations of these planners (and the tutorials, such as the one for STOMP) do still include it.
+Perhaps @fvd, @rhaschke or @v4hn could say something more conclusive here.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-05-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by fvd on 2020-05-18:
+I think @bence-magyar is the person to tag here, but I'm not sure it's working inside the comments.
+Comment by v4hn on 2020-05-18:
+I believe your answer is quite conclusive @gvdhoorn.
+Nothing in MoveIt prevents a planner from reasoning about dynamics, but usually planners only aim for a smooth trajectory (i.e., one with small derivatives) and the full time parameterization is added in the request adapters.
+I would love to see more dynamics-aware planners available though.
+
+To be more specific: in the planner response planning_interface::MotionPlanResponse, does the planner fill out this message with time parameterization in mind?
+
+The planner usually does not, but the time parameterization PlanningRequestAdapter in your PlanningPipeline does add it and the resulting response does include it.
+Comment by bob-ROS on 2020-05-18:
+It would be interesting to hear the reasoning for when to avoid using the PlanningRequestAdapter and rely on the planner's own time parametrization. Especially with how the STOMP page states it doesn't need the post-processing but still uses it. My guess is that it is just a matter of performance with the additional post processing.
+Comment by gvdhoorn on 2020-05-18:\
+
+It would be interesting to hear the reasoning for when to avoid using the PlanningRequestAdapter and rely on the planner's own time parametrization. Especially with how the STOMP page states it doesn't need the post-processing
+
+wait.
+The "post-processing" you refer to (which is what "the STOMP page states") is not the same necessarily as time-parameterisation.
+The text on that page is pretty clear about what sort of post-processing is meant (from the STOMP page you refer to):
+
+Some of the moveIt planners tend to produce jerky trajectories and may introduce unnecessary robot movements. A post processing smoothing step is usually needed. In contrast as STOMP tends to produce smooth well behaved motion plans [..], there is no need for a post processing smoothing step as required by some other motion planners.
+
+This post-processing is the smoothing step. It does not state anything -- as far as I can tell -- about time-parameterisation itself.
+

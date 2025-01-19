@@ -1,0 +1,48 @@
+Q:
+
+Intermittent subscription to a topic with/without timer possible?
+
+Hello,
+It is really important for me to know this before I start any coding. Here is what I want:
+
+A continuous stream of data is being published as a topic. (At frequency >= 50Hz).
+
+I want to read from this stream, and write the data to a text file when a parameter in the parameter server is set. Whenever I take readings from the stream, I want data to be written to the file at 50Hz (this frequency is important. Cannot reduce this).
+
+I made a node which is dedicated to publishing the topic for this data. I then tried subscribing to it at different time intervals. IT DOES NOT WORK. I got numerous suggestions from you guys (for which I am really thankful), but I am still stuck with my problem. I basically want to tap into the topic whenever I want, read data and write it to a text file, and then leave reading the topic till the next time I feel like writing to the file again. Never thought it would be so hard.
+Anyway, I tried using [ delays (sleep(n) commands) and spinOnce() ] combinations in while loops but that did not work as well. I have a question here:
+--> Does that mean, that a subscriber in ROS HAS to CONTINUOUSLY listen to the topic being published? What if I don't want to? What if I want to listen to a topic say, only when 'flag' is set to 1?
+I then stumbled upon timers. Timers basically take a callback function, and execute that function every T seconds (where T is the time period). A clever way to publish a topic is then to use the publish() command in the timer callback. An even more clever way to exploit this structure, is to declare the callback function as a member function of your node class [ I got the above two 'clever ideas' from people who helped me out in previous related questions asked by me. Thanks!]. I have a question here:
+--> What if my timer has time period say, 0.2 seconds, and my callback function requires 0.3 seconds to execute? What happens then? Is there some sort of queue where timer callbacks are lined up?
+I am sorry if I am repeating stuff from previous questions, or if my questions sound too basic. It just bothers me that ROS being such an amazing platform, does not seem to have a simple solution to intermittent/'at will' subscription to a topic!
+All help is greatly appreciated. Thank you for the patience to go through this post!
+
+Originally posted by Nishant on ROS Answers with karma: 143 on 2012-07-10
+Post score: 0
+
+A:
+
+50Hz is not much. There is no problem with being subscribed all the time as long as the messages you send around are not too big.
+I wouldn't use a ROS parameter for enabling/disabling recording because you needed to poll if the parameter is set all the time. This required doing XMLRPC calls to the master all the time which can be slow. Instead, I would use a ROS service.
+You shouldn't require to deal with any timings or whatever in the subscriber. Just subscribe to a topic and write to your file whenever your callback is executed. Then the rate is controlled by the publisher. If you need a specific rate, use a throttle node (see topic_tools) as mentioned in your previous question.
+
+Originally posted by Lorenz with karma: 22731 on 2012-07-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Nishant on 2012-07-10:
+So the data I am reading is from a load sensor. I want it to record load values at 50Hz, only when the robot touches it. The thing is, I have another node running the code to execute robot motions. So I want the load sensor to record sort of "in the background".
+Comment by Lorenz on 2012-07-10:
+Can't you just extend your node that reads the sensor to publish on a separate topic only if the robot touches?
+Comment by Nishant on 2012-07-10:
+So with a service, I can tell it to start recording when the robot motions start, and in the service callback, it will start looping through the serial read commands for the load sensor. But then how do I tell it to stop after the robot motions are over?
+Comment by Nishant on 2012-07-10:
+You are right, and I am thinking of doing exactly that. But how does the node that reads the sensor know that the robot is about to touch? The robot motion program is a different node altogether. So each node has to know what the other's state is right? That's why I thought of parameters initially.
+Comment by Lorenz on 2012-07-10:
+Just do as @ipso said. Just call Subscriber::shutdown(). When the enable service gets called, instantiate a new subscriber and when the disable service is called, just shut id down. Don't use spinOnce but spin in the main loop, the rest is managed by the callbacks.
+Comment by Nishant on 2012-07-10:
+Ohh!! So I should make TWO services huh! And I was thinking of having a variable 'int16 resp' which flips between 1 and 0 as enable/disable toggle. But this is where I was getting a mind block. I was thinking how to return from a callback once an enable has been detected. Solution: TWO services! :)
+Comment by Nishant on 2012-07-10:
+Thanks Lorenz! This has been one of the most helpful posts. :)
+

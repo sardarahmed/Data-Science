@@ -1,0 +1,207 @@
+Q:
+
+Sensor messages not working properly in rviz for multiple turtlebots simulated in gazebo
+
+I have spawned 2 turtlebots in gazebo. All the topics seem to be working fine. Even the move base seems to be working when given a goal to accomplish. If i check with a topic echo, all the concerned topics seem to be working fine. But I could not visualize all the topics in rviz. I have a feeling that this has something to do with the tf being broadcasted, as when i try to observe the laser scans and point clouds in rviz I get some errors like these.
+Error For pointcloud in riviz
+Transform [sender=unknown_publisher]
+For frame [robot1/robot1/camera_depth_optical_frame]: Frame [robot1/robot1/camera_depth_optical_frame] does not exist
+Error For laser scan:
+Transform [sender=unknown_publisher]
+For frame [camera_depth_frame]: Frame [camera_depth_frame] does not exist
+The robot and the camera raw image appears perfect in rviz.
+My Launch file for getting the robots in:
+<launch>
+  <arg name="world_file"  default="$(env TURTLEBOT_GAZEBO_WORLD_FILE)"/>
+  <arg name="base"      value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
+  <arg name="battery"   value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 --> 
+  <arg name="stacks"    value="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons --> 
+  <arg name="3d_sensor" value="$(optenv TURTLEBOT_3D_SENSOR kinect)"/>  <!-- kinect, asus_xtion_pro --> 
+  
+
+  <include file="/opt/ros/indigo/share/gazebo_ros/launch/empty_world.launch">   <!-- $(find gazebo_ros) -->
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="world_name" value="$(arg world_file)"/>
+  </include>
+  
+ <group ns="robot1">
+  <param name="tf_prefix" value="robot1"/>
+   <include file=".../launch/turtlebot.launch">
+     <arg name="robot_name" value="robot1"/>
+     <arg name="init_pose" value="-z 3 -x 3"/>
+   </include>
+<node pkg="tf" type="static_transform_publisher" name="$(anon odom_map_broadcaster)" args="3 0 0 0 0 0 map robot1/odom 100"/>
+</group>
+ <group ns="robot2"> 
+  <param name="tf_prefix" value="robot2"/> 
+   <include file=".../turtlebot.launch">
+     <arg name="robot_name" value="robot2"/>
+     <arg name="init_pose" value="-z 3 -x -3"/>
+   </include>
+<node pkg="tf" type="static_transform_publisher" name="$(anon odom_map_broadcaster)" args="-3 0 0 0 0 0 map robot2/odom 100"/>
+</group>
+</launch>
+
+My navigation launch file
+<launch>
+  <param name="/use_sim_time" value="true"/>
+<!-- Map server -->
+  <arg name="map_file" default="$(env TURTLEBOT_GAZEBO_MAP_FILE)"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" >
+    <param name="frame_id" value="/map" />
+  </node>
+
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1" />
+    <param name="amcl/initial_pose_x" value="3" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="..navigation/launch/amcl_0.1.launch" /> 
+  </group>
+
+<group ns="robot2">
+    <param name="tf_prefix" value="robot2" />
+    <param name="amcl/initial_pose_x" value="-3" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="..navigation/launch/amcl_0.1.launch" /> 
+  </group>
+</launch>
+
+Originally posted by Usman Arif on ROS Answers with karma: 58 on 2015-11-20
+Post score: 1
+
+Original comments
+Comment by Usman Arif on 2015-11-20:
+One more thing. The tf tree seems perfect. map is the root node with two branches robot1/odom & robot2/odom and then the rest of the transforms. No unconnected ones
+
+A:
+
+Problem solved :)
+Made a few changes. Posting the updated files
+<launch>
+  <arg name="world_file"  default="$(env TURTLEBOT_GAZEBO_WORLD_FILE)"/>
+  <arg name="base"      value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
+  <arg name="battery"   value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 --> 
+  <arg name="stacks"    value="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons --> 
+  <arg name="3d_sensor" value="$(optenv TURTLEBOT_3D_SENSOR kinect)"/>  <!-- kinect, asus_xtion_pro --> 
+  
+
+  <include file="/opt/ros/indigo/share/gazebo_ros/launch/empty_world.launch">   <!-- $(find gazebo_ros) -->
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="world_name" value="$(arg world_file)"/>
+  </include>
+ 
+<!-- Robot Description, Global (one description for all robots) -->
+<arg name="urdf_file" default="$(find xacro)/xacro.py '$(find turtlebot_description)/robots/kobuki_hexagons_kinect.urdf.xacro'" />
+  <param name="robot_description" command="$(arg urdf_file)" />
+
+ <group ns="robot1">
+  <param name="tf_prefix" value="robot1_tf"/> 
+   <include file="/home/.../launch/turtlebot.launch">
+     <arg name="robot_name" value="robot1"/>
+     <arg name="robot_prefix" value="robot1_tf"/>
+     <arg name="init_pose" value="-z 3 -x 3"/>
+   </include>
+<node pkg="tf" type="static_transform_publisher" name="$(anon odom_map_broadcaster)" args="3 0 0 0 0 0 map robot1_tf/odom 100"/>
+</group> 
+</launch>
+
+So publishing the static map transform in the above launch file. And this should be done for every robot you have in your environment (multiple robots), notice that the "map" is global as it doesn't have a "/" before it.
+Next file is the turtlebot.launch which I am using
+<launch>
+    <arg name="robot_name"/>
+    <arg name="init_pose"/>
+    <arg name="robot_prefix"/>
+  
+    <!-- Gazebo model spawner -->
+  <node name="spawn_turtlebot_model" pkg="gazebo_ros" type="spawn_model"
+        args="$(arg init_pose) -unpause -urdf -param /robot_description -model $(arg robot_name)"/>
+  
+
+  <!-- Velocity muxer -->
+  <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager"/>
+  <node pkg="nodelet" type="nodelet" name="cmd_vel_mux"
+        args="load yocs_cmd_vel_mux/CmdVelMuxNodelet mobile_base_nodelet_manager">
+    <param name="yaml_cfg_file" value="$(find turtlebot_bringup)/param/mux.yaml" />
+    <remap from="cmd_vel_mux/output" to="mobile_base/commands/velocity"/>
+  </node>
+
+   <!--Bumper/cliff to pointcloud (not working, as it needs sensors/core messages) -->
+  <include file="$(find turtlebot_bringup)/launch/includes/kobuki/bumper2pc.launch.xml"/>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="30.0" />
+  </node>
+  
+  <!-- Fake laser -->
+  <node pkg="nodelet" type="nodelet" name="laserscan_nodelet_manager" args="manager"/>
+  <node pkg="nodelet" type="nodelet" name="depthimage_to_laserscan"
+        args="load depthimage_to_laserscan/DepthImageToLaserScanNodelet laserscan_nodelet_manager">
+    <param name="scan_height" value="10"/>
+    <!-- publishing my output frame id with the robot tf prefix, this would end any errors in rviz saying no transform exist from /camera_depth_frame to /camera_depth_frame  -->
+    <param name="output_frame_id" value="$(arg robot_prefix)/camera_depth_frame"/>
+    <param name="range_min" value="0.45"/>
+    <remap from="image" to="camera/depth/image_raw"/>
+    <remap from="scan" to="scan"/>
+  </node>
+</launch>
+
+The one important thing here to note is the output_frame_id of the fake laser. Please refer to the comment above this line
+Next inline is my move_base and amcl launch file (combined)
+<launch>
+  <param name="/use_sim_time" value="true"/>
+
+<!-- Map server -->
+  <arg name="map_file" default="$(env TURTLEBOT_GAZEBO_MAP_FILE)"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" >
+    <param name="frame_id" value="/map" />
+  </node>
+
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <param name="amcl/initial_pose_x" value="3" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="/home/..../launch/amcl_0.1.launch" /> 
+  </group>
+</launch>
+
+Keeping the amcl call inside robot1 namespace would made sure that for every robot an amcl and move base is launched which lives within the tf_prefix of that robot.
+Next my amcl_0.1.launch
+<launch>
+<!-- Localization -->
+  <arg name="robot_name" default="robo"/>
+  <arg name="initial_pose_x" default="0.0"/>
+  <arg name="initial_pose_y" default="0.0"/>
+  <arg name="initial_pose_a" default="0.0"/>
+  <include file="/home/..../amcl.launch.xml">
+    <arg name="initial_pose_x" value="$(arg initial_pose_x)"/>
+    <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
+    <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
+    <arg name="use_map_topic"   value="false"/>
+    <arg name="scan_topic"      value="scan"/> 
+    <arg name="odom_frame_id"   value="odom"/>
+    <arg name="base_frame_id"   value="base_footprint"/>
+    <arg name="global_frame_id" value="/map"/>
+
+  </include>
+  <!-- Move base -->
+  <include file="/home/..../launch/includes/move_base_altered.launch.xml">
+    <arg name="odom_frame_id"   value="odom"/>
+    <arg name="base_frame_id"   value="base_footprint"/>
+    <arg name="global_frame_id" value="/map"/>
+    <arg name="odom_topic" value="odom" />
+    <arg name="laser_topic" value="scan" /> 
+</include>
+</launch>
+
+<!-- in both the cases keeping the map topic as /map coz it is only one topic for all the robots and must be an absolute one hense / which would not let it change with changing namespaces for the remaining topics -->
+
+My amcl xml referred in the code above is same as the original.
+The xml for move_base only points out to the parameters I have setup for my environment (global costmap, local costmap, move_base_params etc).
+Hope this helps anyone who is stuck with multiple robot navigation in gazebo using ros.
+
+Originally posted by Usman Arif with karma: 58 on 2015-12-10
+This answer was ACCEPTED on the original site
+Post score: 1
+

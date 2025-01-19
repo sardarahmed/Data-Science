@@ -1,0 +1,28 @@
+Q:
+
+What is the ROS2 equivalent of rospy.AnyMsg?
+
+Currently in ROS I am using rospy.AnyMsg. I would like to convert the ROS code to ROS2. I tried doing an import AnyMsg from rclpy but it does not work. I tried to search for AnyMsg for ROS2 and I could not find anything. Does AnyMsg exist in ROS2? If so, how do I access it? If not, is there an alternative and what is it?
+
+A:
+
+rospy.AnyMsg was generally used to subscribe to serialized messages in ROS 1.  These would come to the user-specified callback as an array of bytes that the user could do something with.  This was helpful if you didn't need to deserialize the message and instead just store it or use it for bandwidth computations (eg rostopic bw)
+In ROS 2, the correct way to get this behavior is by utilizing the raw flag on Node.create_subscription.  You still need a message type for the subscription in this case, but you can construct this at runtime from a string argument:
+from rosidl_runtime_py.utilities import get_message
+
+def callback(data):
+    # 'data' here is just bytes, it is up to the callback implementor
+    # to do something with it.
+    print(len(data))
+
+node.create_subscription(
+    get_message('my_cool_message_type'),
+    topic,
+    callback,
+    qos_profile_sensor_data,
+    raw=True
+)
+
+If you do not have ready access to the message type as a string or a python object, you can use something like ros2cli uses to figure out the type at runtime: get_message_class
+This uses graph introspection to determine what available message types are available on a given topic and then returns the corresponding message class.
+

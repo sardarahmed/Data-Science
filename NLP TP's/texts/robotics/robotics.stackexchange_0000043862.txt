@@ -1,0 +1,45 @@
+Q:
+
+ROS Answers SE migration: hector sonar
+
+I want to know if libhector_gazebo_sonar works with only one array of Ray data in it field of view. I am testing the sonar right now but the lectures are very bad. If the object is inside the range and inside the field of view, over the mid of the field of view the range becomes the max range without detecting any object. I need detect all objects in the field of view because I want to know where I have to put my sensors.
+I upload some images to explain better the case.
+http://s15.postimage.org/k1gsg4k6j/sonarwrong_c.png
+http://postimage.org/image/p04aunnzb/
+4 images:
+The first the sonar sensor works very well.
+The second: only a little up the sensor doesn't detect anything.
+The third and forth the same case but another perspective.
+The field of view in libhector_gazebo_ros_sonar is calculate in this line of code:
+range_.field_of_view = std::min(fabs((sensor_->GetAngleMax() - sensor_->GetAngleMin()).GetAsRadian()), fabs((sensor_->GetVerticalAngleMax() - sensor_->GetVerticalAngleMin().GetAsRadian()).GetAsRadian()));
+
+I notice GetVerticalAngleMax() don't have the method .GetAsRadian() as angle min has. I don't know if this is the bug.
+range_.field_of_view = std::min(fabs((sensor_->GetAngleMax() - sensor_->GetAngleMin()).GetAsRadian()), fabs((sensor_->GetVerticalAngleMax() - sensor_->GetVerticalAngleMin()).GetAsRadian()));
+
+Any Ideas?
+
+Originally posted by pmarinplaza on ROS Answers with karma: 330 on 2012-09-04
+Post score: 0
+
+Original comments
+Comment by Johannes Meyer on 2012-09-05:
+Which ROS distribution and version of Gazebo do you use? There was a bug in ray sensor simulation in the released simulator_gazebo stack for fuerte prior to 1.6.13, which caused the simulated rays to be shot towards the x-axis instead of downwards.
+Comment by pmarinplaza on 2012-09-05:
+I am working in Fuerte with Gazebo 1.0.2 (release version last update 5 Sept 2012) How Could I fix this bug? If I roll pi/2 the sensor, works very well only with horizontal sensors. The vertical sensors don't work.
+
+A:
+
+I fixed the calculation of the field_of_view in gazebo_ros_sonar.cpp. Thanks for reporting. Unfortunatly this is not the source of your problem.
+The start and end points of each ray are calculated in gazebo's MultiRayShape.cc. I did a quick test with debug outputs to verify that the calculated directional vectors for each ray are as expected.
+The gazebo_ros_sonar plugin uses Gazebo's ray sensor and gives you the minimum distance out of all rays. With the default parameters from hector_quadrotor three samples are used for both the horizontal and the vertical axis equally distributed from min_angle to max_angle. So the simulated ultrasound cone is more like a pyramid than a geometric cone. Small obstacles at larger distances might be missed. You can increase the sample count if you need higher accuracy. The calculated field_of_view for the sensor_msgs/Range message is only a very coarse approximation and the visualization in rviz might lead to the impression that the distance readings are faulty.
+Although these explanations are not really a solution to your problem, they might help to solve it.
+UPDATE: Thanks to the video you have posted I could reproduce the problem and traced it down to the wrong usage of gazebo's RaySensor::getRangeCount() method. Seems that it only returns the number of horizontal samples and therefore only the first three rays out of nine are considered for the calculation of the minimal distance. Thanks for your efforts to point that out! The problem should be fixed now in r631 of tu-darmstadt-ros-pkg and in the upcoming 0.1.2 release of the hector_gazebo stack.
+
+Originally posted by Johannes Meyer with karma: 1266 on 2012-09-06
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by pmarinplaza on 2012-10-09:
+Works very well. Thanks a lot
+

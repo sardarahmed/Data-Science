@@ -1,0 +1,29 @@
+Q:
+
+Velocity control with position setpoints
+
+I'm trying to control the toyota HSR with a higher level whole-body controller that computes velocities, but the robot only offers JointPositionInterfaces in it's ros_control HardwareInterface implementation.
+As none of the standard ROS controllers accept a velocity and output a position my approach so far included to write an integrator as an ROS controller plugin that continuously integrates the velocity command into an position set point.
+This works more or less, but some of the joints react with shaky movements to this, and none of the joints reach the desired velocity.
+I would assume that i have to tune the integrator gain for each joint to track the desired velocities, but i'm wondering if there exist other methods to achieve this?
+As the robot offers position and velocity feedback i was thinking about using the velocity error to improve the position set point calculation, but somehow do not think that a classical PID loop will work. Has anyone encountered a similar situation or knows some literature on that topic?
+
+A:
+
+As the robot offers position and velocity feedback i was thinking about using the velocity error to improve the position set point calculation, but somehow do not think that a classical PID loop will work.
+
+Why do you think a PID won't help you out here?
+I would try it, actually:
+$$
+q_c = \frac{\dot{q}_d}{s} + \text{PID} \left( \dot{q}_d - \dot{q} \right),
+$$
+where $q_c$ is the position command, $\dot{q}_d$ is the desired velocity provided by the whole-body controller and $\dot{q}_d-\dot{q}$ is the velocity error, with $\dot{q}$ being the velocity feedback.
+It's easy to recognize the feed-forward and the feedback terms in the law. $\text{PID}(\cdot)$ can be a simple integrator to begin with.
+The control performance will depend on:
+
+the quality of $\dot{q}_d$, hence of the whole-body controller.
+the quality of $\dot{q}$ (you may think of replacing the standard velocity feedback offered by the system with a more accurate ad-hoc observer).
+
+Assuming that the whole-body controller is, well, a controller and not a planner, you'll end up with two nested closed loops, the inner and the outer loop. The property of closed-loop systems to compensate for unmodelled quantities and impairments will help you track the desired velocity quite well.
+Make sure that the inner loop (i.e., the feed-forward+PID) can run faster and be more reactive than the outer loop (i.e., the whole-body controller).
+

@@ -1,0 +1,50 @@
+Q:
+
+Prototyping a device with 25-100 small DC 3.0V motors, is Arduino a good fit?
+
+I want to prototype a therapeutic device that will have a lot of tiny mobile-phone type vibration motors like this one in it, and I want to be able to activate them in any configuration I want.  I'm going to need analogue control, and support for logic like perlin noise functions and so on.  I'm not really going to need sensor data or any other kind of feedback beyond a few buttons for control.  I just need fine control over lots of little motors.  Depending on what results I can get out of, say, 25 motors on the initial prototype, I may decide that I'm done, or that it needs more motors.  I also don't have an enormous budget.
+So the question is, is Arduino a good fit for a project like this?  Is it feasible to get that many motors working off the same controller?  I know some of the Arduino boards have up to 50-something serial outputs, but from what I can tell, that may only translate to 25 or so motors, so I'd need a way to extend the board with more serial outputs if I wanted to try more.
+Additionally, if Arduino isn't a good fit, what would be better?  Could I try something directly out of a serial port on my PC?  I've never tried to home-cook a robotics application before, so I'm not really aware of the options.
+
+A:
+
+The issue may not be what micro is the best choice. Note 25 to 50 IO can be expensive if implemented on the micro itself. A ATmega2560 with the most pins is significantly more in price then a 328 or Tiny. Same goes for other chips. All those additional pins may not have the function you need. 
+You can use the micro's SPI (or I2C) port to shift out the IO. For SPI you could daisy chain as many 74HC595 as you need until you get your desired amount of Digital Output. There are equivalents for Input. 
+And if you wanted to control the intensity of the motor, you can use PWM. And there are SPI or I2C chips for these too.
+Note a big problem will be power. If you were to connect 25 motors to a single micro the initial inrush if not the continuous load of turning on all the motors would likely brown out the micro as each IO may individually support the supply for the motor. Combined they all need to feed through the chips VCC pins. Hence breaking it up to individual 74HC595 would spread out the heat and load away from the micro. These are cheap chips and easily ported to any micro. You can even get evals of them on break out PCB's.
+
+A:
+
+"I'm going to need analogue control"
+
+This is almost always done by rapidly connecting and disconnecting the motor to power, using PWM or something similar.
+The switching is faster than the motor can respond, and often the designer picks a switching frequency faster than the 20 kHz humans can hear.
+generating PWM signals
+There are 3 popular methods of generating PWM signals: ( a, b )
+
+Generate the PWM in software ("Bit-banging Pulse Width Modulation"). Typically this is the lowest-cost approach. With enough 74HC595 or TPIC6595 chips, one Arduino can control any number of motors. (But I doubt you'll be able to get 20 kHz PWM frequency this way).
+Generate the PWM using on-chip PWM hardware on the microcontroller. With enough Arduinos, you can control any number of motors at a high PWM frequency with 3 or 4 motors per Arduino.
+Generate the PWM using dedicated PWM peripheral chips such as the TLC5947, which the microcontroller occasionally loads with a new PWM duty cycle. With enough TLC5947 chips, one Arduino can control any number of motors and still maintain a high PWM frequency.
+
+Converting PWM signals into something that can drive a motor
+It appears your motors are rated at 85 mA start, 75 mA continuous.
+That is really tiny for a motor.
+But it's still more power than most digital logic chips can drive directly.
+As you can see from this list, only one of the chips mentioned above (the TPIC6595) is really designed to directly drive that amount of power:
+
+TPIC6595 datasheet: test conditions ... 250 mA continuous sink current capability.
+TLC5947 datasheet: test conditions ... 30 mA continuous sink current
+ATmega328P datasheet: "test conditions ... 20 mA at VCC = 5V, 10 mA at VCC = 3V... Pins are not guaranteed to source current greater than the listed test condition."
+74HC595 datasheet: test conditions ... 7.8 mA.
+
+We typically use some kind of "buffer" between the digital logic chips (any of the above chips) and a motor.
+For motors that we only need to turn in one direction, we typically we use flyback diode and either a nFET or a npn transistor as the "buffer":
+
+ULN2803A or ULQ2803A (transistor + flyback diode array) datasheet: test conditions ... over 150 mA continuous.
+There are thousands of discrete transistors and diodes that can easily handle: 10 V, 1 A. ( a )
+
+For motors that we need to turn both "forwards" and "reverse", we typically use 4 transistors arranged in a H bridge as the "buffer":
+
+L293D H bridge datasheet: test conditions ... 600 mA.
+There are thousands of discrete transistors and diodes that can easily handle: 10 V, 1 A.
+

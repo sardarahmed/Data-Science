@@ -1,0 +1,74 @@
+Q:
+
+Where is the style.qss in the OS? Is it possible to customize the gzclient menus at runtime?
+
+Hi all,
+I'm trying to customize the gzclient menus.
+I see the menus are added on MainWindow.cc
+It seems they are customized at runtime by loading the :/style.qss file at runtime.
+I tried to find that file in the osrf/ros:kinetic-desktop-full docker with find / -name style.qss but I couldn't find the file.
+Does anybody know where that file is located? I didn't understand the : in the filename when loading with QFile file(":/style.qss");
+PS: I saw a similar question, but there was no answer there, that is why I asked here.
+
+EDIT 1:
+Thanks to @chapulina we have the custom_gazebo_style that should do the job.
+However, to be able to Compile I had to modify the CMakeLists.txt to:
+cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_CXX_FLAGS "-std=c++11")
+
+find_package(Qt5Core REQUIRED)
+find_package(Qt5X11Extras REQUIRED)
+find_package(Qt5Widgets REQUIRED)
+find_package(Qt5Gui REQUIRED)
+find_package(gazebo REQUIRED)
+
+QT5_ADD_RESOURCES(resources_RCC resources.qrc)
+
+include_directories(SYSTEM ${GAZEBO_INCLUDE_DIRS})
+link_directories(${GAZEBO_LIBRARY_DIRS})
+
+add_library(custom_gazebo_style SHARED
+  CustomGazeboStyle.cc
+  ${resources_RCC}
+)
+target_link_libraries(custom_gazebo_style ${GAZEBO_LIBRARIES}
+    ${Qt5Widgets_LIBRARIES}
+    ${Qt5X11Extras_LIBRARIES}
+    ${Qt5Gui_LIBRARIES}
+    ${Qt5Core_LIBRARIES}
+    ${Qt5Widgets_LIBRARIES})
+
+I modified because of the 5 errors below:
+
+/usr/include/c++/5/bits/c++0x_warning.h:32:2: error: #error This file requires compiler and library support for the ISO C++ 2011 standard. This support must be enabled with the -std=c++11 or -std=gnu++11 compiler options.
+
+/usr/include/gazebo-7/gazebo/gui/qt.h:23:17: fatal error: QtGui: No such file or directory
+
+/usr/include/gazebo-7/gazebo/gui/qt.h:24:20: fatal error: QX11Info: No such file or directory
+
+/usr/include/gazebo-7/gazebo/gui/qt.h:24:20: fatal error: QX11Info: No such file or directory
+
+/usr/include/gazebo-7/gazebo/gui/qt.h:25:19: fatal error: QWidget: No such file or directory
+
+I'm probably missing something.
+After the modifications on CMakeLists.txt everything compiled, but I couldn't load the plugin. If I call gazebo worlds/empty.world --gui-plugin $(pwd)/libcustom_gazebo_style.so --verbose the program finishes right away with code 255.
+If I run gzserver instead of gazebo (using the same parameters) and then launch gzclient (also with the same parameters), gzclient crases with Segmentation fault (core dumped).
+I checked there was no other gzclient running and GAZEBO_MASTER_URI=http://localhost:11345.
+Well, maybe is the version 7.16.0 I'm using with Docker. I may try a different gazebo version to see whether the error goes away.
+
+EDIT 2:
+With gazebo 9.0.0, the custom_gazebo_style works like a charm.
+
+Originally posted by Ruben on Gazebo Answers with karma: 11 on 2019-11-11
+Post score: 0
+
+A:
+
+Hm, the style.qss that is found in resources.qrc is "compiled" inside the binary as explained in Qt documentation.
+If I understood well, I basically have to recompile the client after modifying the style.qss.
+
+Originally posted by Ruben with karma: 11 on 2019-11-11
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,50 @@
+Q:
+
+How do I find OccupancyGrid message data, and how do I use it with QImage?
+
+Hello, I'm a real amateur and just started not long ago, and I'm currently using LIDAR and an aerial vehicle. Basically I'm stucked at this situation where I don't know how am I gonna find out the OccupancyGrid message data and how to use it.
+void QNode::parsemap( const nav_msgs::OccupancyGrid::ConstPtr& msg )
+{
+if( mapImage == NULL ) {
+mapImage = new QImage( 240, 350, QImage::Format_RGB888 );
+}
+// copy map from msg to mapImage.
+yeah, I'm stucked here trying to copy the map from the message data to mapImage(QImage).
+I'm a real real real amateur... so don't be too hard on me if I'm asking a very simple question. I really hope that you guys would be able to help this friend in need. Thank you all, in advance. :)
+
+Originally posted by jeremyethankoh on ROS Answers with karma: 1 on 2014-07-29
+Post score: 0
+
+A:
+
+If you look at the OccupancyGrid message (i.e., rosmsg show nav_msgs/OccupancyGrid), there are member fields for width, height, and the binary data. There are multiple ways of creating a QImage given that data; I haven't run the following (you may need to futz with the cast of the msg->data), but you can do something like:
+const unsigned char* databeg = &(msg->data.front());
+QImage img(databeg, msg->info.width, msg->info.height, QImage::Format_RGB888);
+Note that there are additional considerations of which you must be aware. For instance, as stated in the QImage documentation, the data buffer must remain valid throughout the life of the QImage. So you might want to store the data, say as a QByteArray:
+QByteArray m_data;
+...
+void QNode::parsemap( const nav_msgs::OccupancyGrid::ConstPtr& msg ) {
+    const unsigned char* databeg = &(msg->data.front());
+    m_data = QByteArray(databeg, msg->data.size());
+    QImage img((uchar*)m_data.data(), msg->info.width, msg->info.height, QImage::Format_RGB888);
+    ...
+}
+
+That should be enough to get you on your way...
+
+Originally posted by kramer with karma: 1470 on 2014-07-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by jeremyethankoh on 2014-08-03:
+Hey Kramer, I've tried it and I have some debugging problems. I've an error stating "invalid conversion from 'const signed char*' to 'const unsigned char*' [-fpermissive]". I not sure how to get pass it! ):
+Comment by kramer on 2014-08-07:
+As I mentioned, you may need to cast. For instance, the line:
+QImage img((uchar*)m_data.data(), msg->info.width, msg->info.height, QImage::Format_RGB888);
+casts the const signed char* result of m_data.data() to a const unsigned char*.
+Comment by jeremyethankoh on 2014-08-07:
+Ahhhh, understand. I got it going already, somehow. :) But I have a new problem.. it's that the QImage is flipped vertically even though the codes are for the first pixels to the last... @kramer
+Comment by kramer on 2014-08-08:
+Yes, it happens. :) You may have to do some byte moving, depending on the received data's ordering. You can write that yourself (fast & efficient data manipulation within an array is kinda a bread-and-butter CS task), but I suggest you look at QImage's functions (e.g., mirrored).
+

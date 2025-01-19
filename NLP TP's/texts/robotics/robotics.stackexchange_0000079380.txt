@@ -1,0 +1,82 @@
+Q:
+
+dyn_recfg c++: compiling but no items in rqt_reconfigure
+
+HI, I try to get the dynamic reconfigure to run in c++.
+My Project is compiling without problems, but the variables do not appear in rqt?
+I have a class based structure like following:
+//Class Instance: class_instance.h
+#include "ros/ros.h"
+#include "project_name/ManipulatorConfig.h"
+#include <dynamic_reconfigure/server.h>
+#include <boost/bind.hpp>
+
+class ClassInstance{
+    void ClassInstance::subReconfigureCallback(project_name::ProjectConfig &config, uint32_t level) {
+      ROS_INFO("Reconfigure Request: %f", config.joint1_angle);
+      ROS_INFO("Reconfigure Request: %f", config.joint2_angle);
+      ROS_INFO("Reconfigure Request: %f", config.joint3_angle);
+   }
+   ClassInstance(){
+     dynamic_reconfigure::Server<project_name::ProjectConfig> server;
+     dynamic_reconfigure::Server<project_name::ProjectConfig>::CallbackType f;
+     f = boost::bind(&ClassInstance::subReconfigureCallback, this, _1, _2);
+     server.setCallback(f);
+   }
+}
+
+//Main: main.cpp
+#include "ros/ros.h"
+#include "class_instance.h" 
+int main(int argc, char **argv){
+    ros::init(argc, argv, "project_name_node");
+    ClassInstance class_instance;
+    ros::spin();    
+    return 0; 
+}
+
+//ProjectConfig.cfg
+#!/usr/bin/env python
+PACKAGE = "project_name"
+from dynamic_reconfigure.parameter_generator_catkin import *
+gen = ParameterGenerator()
+gen.add("var1", double_t, 0, "A double parameter",    0, 0.0,  2.0)
+gen.add("var2", double_t, 0, "A double parameter",    0, 0.0,  2.0)
+gen.add("var3", double_t, 0, "A double parameter",    0, 0.0,  2.0)
+exit(gen.generate(PACKAGE, "project_name", "Project"))
+
+The CMAKELISTS and PACKAGE are created according to the dynamix reconfigure tutorial.
+Do you have any idea?
+Thanks a lot!
+
+Originally posted by JanOr on ROS Answers with karma: 170 on 2017-03-07
+Post score: 0
+
+A:
+
+class ClassInstance{
+
+   ...
+   ClassInstance(){
+     dynamic_reconfigure::Server<project_name::ProjectConfig> server;
+     dynamic_reconfigure::Server<project_name::ProjectConfig>::CallbackType f;
+     f = boost::bind(&ClassInstance::subReconfigureCallback, this, _1, _2);
+     server.setCallback(f);
+   }
+}
+
+This is really more a C++ issue than something to do with ROS, but: you're server variable is not a member of your class, but just an instance that has a scope that is local to the ClassInstance constructor.
+On other words: server will only exist for the short time that the c'tor is executed, after which it will be destroyed.
+Make server a member variable and then initialise it in your c'tor, that should resolve your issue.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-03-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by JanOr on 2017-03-07:
+Wow that was fast.
+You are absolutely right.
+It works now.
+Thanks a lot!
+

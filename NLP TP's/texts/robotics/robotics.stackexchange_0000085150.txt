@@ -1,0 +1,58 @@
+Q:
+
+Hard iron correction of IMU from rosbag
+
+Hello all,
+I am using the phidgets_imu package with four Phidgets Spatial 3/3/3 IMU sensors to get pose estimation of both sections of an articulated vehicle. The vehicle has 2 DOF articulation at the center of the vehicle. I.e. the front and rear of the vehicle can yaw and roll independently. The machine is primarily steel which, obviously, messes with the magnetometers. There is one IMU on each corner of the vehicle.
+I have them all connected to a central unit using ROS, but can't do so on Windows (transmission distance has been an issue with USB but LAN works fine). I have collected several hours worth of IMU data in bag files so far.
+I am using imu_filter_madgwick to the filter the IMUs. I'm aware that hard iron corrections can be added to the filter but I don't know how to compute them. From what I understand, the points should form a sphere and the coordinates of center of that sphere are the correction parameters. I tried finding the average of the max and min for x, y, z axes but that has obvious flaws. How do I fit a sphere to the points? Is that even the correct procedure? Or, has some brilliant person already got a script to do this?
+Also, is it possible to set the corrections in the phidgets_imu node itself? I want to implement an EKF anyway so I'd rather not include the madgwick filter as well.
+UPDATE 1:
+I've collected IMU data over a 7.5 hour period. This is the raw (unfiltered) data from the /imu_data/mag (sensor_msgs/MagneticField) topic. The vehicle trajectory during this period was tracked via GPS. The output is below. For reference, the straight section at the top is about 250m long.
+
+One of the IMUs attached to the machine has the following output over the period.
+xy plane
+
+xz plane
+
+yz plane
+
+All four IMUs (yup.... four) attached to the vehicle have different outputs, as is to be expected being uncalibrated.
+Either way, I expected the points to normalized about some point (which could be used for calibration). And, while these points do seem to lie in a rough ellipse, the variation can't easily be explained by noise (at least to me).
+UPDATE 2:
+Here is a quick test with a calibrated (not perfectly, but close enough) IMU (same type). Fitting a sphere works very well. The square at the center of the sphere is the origin.
+
+Its not easy to see from a 2D image, but it looks like the IMU on the machines' output is being distorted from the expected sphere into an ellipsoid. So it appears that I have to transform the points into a sphere and then use the center of that sphere to calibrate the IMU. Anyone know how to do that with such a small section of the ellipsoid defined?
+
+Originally posted by Tyrone Nowell on ROS Answers with karma: 48 on 2018-02-06
+Post score: 0
+
+A:
+
+1- The earth magnetic field at point P in space is a vector with constant magnitude.
+Ideally, you should rotate the magnetometer in one point. This way you obtain the components of the same vector in different frames. Do this in the setting you're planning to use the sensor.
+The magnitude of a vector is independent of the frame. Therefore for any data point you should have
+||v|| = c
+
+Where c is the magnitude of the magnetic field at point P. That is equation of a sphere with the origin as center!  So we have to transform our data such that they are all on the same sphere.
+It involves subtracting a vector and multiplying a matrix.
+Read more about the theory here.
+2-  I have written a nice and simple Matlab function. It uses the ellipsoid_fit function found here. An example output with real data:
+
+As you can see it is possible to fit a spherical shape on the raw data which means that the matrix is close to identity. But the center of the sphere should be transferred to the origin ( [0,0,0]) and you can do so by subtracting the vector.
+TLDR: 1- Obtain magnetic field data by rotating the sensor while staying close to one point while it's on the robot. If the sensor is close to the motors, turn them on. Their magnetic field might also distort the readings!
+2- Use the Matlab function.
+Update:
+1- This  method works on the basis of staying close to a point (constant magnetic field). I'm not sure about the earth's magnetic field gradients on the course you have taken (which seems very long) but maybe the assumption of constant field is not valid. Perhaps you should check the data for earth's magnetic field.
+2- Have you tried running the Matlab script that I posted above with your data set?
+
+Originally posted by mohsen with karma: 249 on 2018-02-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Tyrone Nowell on 2018-02-07:
+Thank you very much for the prompt answer Moshen. I'll give it a go and let you know how it goes.
+Comment by Tyrone Nowell on 2018-03-12:
+I'll try the matlab script, I've only just got my hands on matlab now. Thanks.
+

@@ -1,0 +1,125 @@
+Q:
+
+Hector mapping generates empty map
+
+I use following launch file to run hector mapping on turtlebot. It don't gives any error also don't create any map. When I enter rosrun map_server map_saver -f ~/mymap mymap.pgm is light gray image.
+Original launch file
+<launch>
+  <include file="$(find turtlebot_gazebo)/launch/turtlebot_empty_world.launch" />
+  <include file="$(find hector_mapping)/launch/mapping_default.launch">
+    <arg name="pub_map_odom_transform" value="true" />
+    <arg name="base_frame" value="base_footprint" />
+    <arg name="odom_frame" value="odom" />
+  </include>
+  <include file="$(find hector_geotiff)/launch/geotiff_mapper.launch">
+    <arg name="trajectory_publish_rate" value="4" />
+  </include>
+  <node pkg="hector_pose_estimation" type="pose_estimation" name="hector_pose_estimation" output="screen" />
+  <include file="$(find turtlebot_rviz_launchers)/launch/view_robot.launch" />
+</launch>
+
+Graph of this launch file is like this. I couldn't find the problem.
+
+rqt_graph
+
+tf view_frames
+Latest launch file
+<launch>
+    <include file="$(find turtlebot_gazebo)/launch/turtlebot_empty_world.launch" />
+    <include file="$(find turtlebot_rviz_launchers)/launch/view_robot.launch" />
+    <include file="$(find hector_mapping)/launch/mapping_default.launch">
+        <arg name="pub_map_odom_transform" value="false" />
+    </include>
+    <include file="$(find hector_geotiff)/launch/geotiff_mapper.launch">
+        <arg name="trajectory_publish_rate" value="4" />
+    </include>
+    <node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 /map /odom 100"/>
+</launch>
+
+Bag file with /scan and /tf topics
+All of the sollutions are merged as a package at Github
+
+Originally posted by serdar on ROS Answers with karma: 3 on 2014-09-21
+Post score: 0
+
+Original comments
+Comment by bvbdort on 2014-09-21:
+cross check laser is published in base_footprint frame.
+Comment by serdar on 2014-09-22:
+@bvbdort Is it wrong that laserscan_nodelet_manager is publishing scan? In rviz I can see laser scan in /scan topic.
+Comment by bvbdort on 2014-09-22:
+check the frame id of laser scan it should be base_footprint or any other frame which has tf with base_footprint. Can you share your rosrun tf view_frames output.
+Comment by serdar on 2014-09-22:
+@bvbdort I added rosrun tf view_frames output to question body.
+Comment by bvbdort on 2014-09-22:
+what is the frame id of laser; you can view it from rostopic echo /scan
+Comment by bvbdort on 2014-09-22:
+Also use  
+Comment by serdar on 2014-09-22:
+@bvbdort frame id of scan is /camera_depth_frame.
+Comment by bvbdort on 2014-09-22:
+use <arg name="pub_map_odom_transform" value="false"/> , hope it works
+Comment by serdar on 2014-09-22:
+@bvbdort When I pass false to pub_map_odom_transform, in rviz Transform status section it prints No transform from [map] to [base_footprint].
+Comment by bvbdort on 2014-09-22:
+Change frame in rviz to map to view map
+Comment by serdar on 2014-09-22:
+I always change but it always shows light gray square, never draws map.
+
+A:
+
+use <arg name="pub_map_odom_transform" value="false"/>
+and add static tf between /map and /odom in your .launch file
+<node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 /map /odom 100"/>
+
+Edit :
+remove running hector_pose_estimation from launch file. Pose not required for hector slam.
+<node pkg="hector_pose_estimation" type="pose_estimation" name="hector_pose_estimation" output="screen" />
+
+Originally posted by bvbdort with karma: 3034 on 2014-09-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by serdar on 2014-09-23:
+Now map rotates with movement but map is empty again.
+Comment by serdar on 2014-09-23:
+I added latest launch file to question. It is not working.
+Comment by bvbdort on 2014-09-23:
+can you share your bag file with /tf and /scan topics
+Comment by serdar on 2014-09-23:
+I added bag file to question.
+Comment by bvbdort on 2014-09-24:
+@serdar i am able to see the map screen shot here  but it was not proper. I used default launch file  tutorial.launch in hector_slam_launch . try moving view_robot.launch before maping.launch
+Comment by serdar on 2014-09-25:
+I don't know what problem is. First I run rosbag play hector_mapping_turtlebot.bag then roslaunch hector_slam_launch tutorial.launch. When rviz opens I add map from by topic section. There is no error but, there is no map.
+Comment by bvbdort on 2014-09-25:
+first run roslaunch hector_slam_launch tutorial.launch and then rosbag play hector_mapping_turtlebot.bag --clock
+Comment by serdar on 2014-09-25:
+@bvbdort Thanks. I see some inaccurate map. Did you have any idea what is problem and why I cannot generate map from my launch file?
+Comment by bvbdort on 2014-09-25:
+Issue might be with low laser frequency fr your bag its around 10hz, but hector slam need around 40 hz. Did you try with first mapping.launch  and later robot.launch ?
+Comment by serdar on 2014-09-25:
+It didn't make any difference.
+Comment by bvbdort on 2014-09-25:
+try removing args from launch file
+<arg name="base_frame" value="base_footprint" />
+        <arg name="odom_frame" value="odom" />
+
+Comment by bvbdort on 2014-09-25:
+i didnt see any problem in launch file. Can you update current frames.pdf and rqt_graph in question.
+Comment by serdar on 2014-09-25:
+I updated rqt_graph and framed.pdf.
+Comment by Stefan Kohlbrecher on 2014-09-26:
+Note that running hector_mapping with simulated laserscans from Kinect is probably not going to work very well (see also http://answers.ros.org/question/33933/kinect-doing-hector-slam/)
+Comment by serdar on 2014-09-26:
+@Stefan Kohlbrecher Thanks. I can try it with another robot. Do you have any suggestion for robot on gazebo ?
+Comment by Stefan Kohlbrecher on 2014-09-26:
+Well, if you´re only in Gazebo, you can easily install a (simulated) LIDAR on your robot :)
+Comment by serdar on 2014-09-26:
+Your turtlebot on github worked. Thanks.
+Comment by bvbdort on 2014-09-27:
+did your map worked finally ?
+Comment by serdar on 2014-09-28:
+@bvbdort Turtlebot at this link worked. With laser it worked. But it moves autonomously. I am trying to figure out what is causing it. Teleop isn't working. After that I will post proper launch file. Thanks for your support.
+

@@ -1,0 +1,99 @@
+Q:
+
+Move_base and costmap_layers
+
+Hi.
+I would like to use a new layer in the costmap.
+I followed this tutorial : http://wiki.ros.org/costmap_2d/Tutorials/Creating%20a%20New%20Layer to create a new layer. Now my layer is defined but when I launch move_base the plugin is not loaded. I didn't find where I should add my layer...
+Here is my launch file :
+<launch>
+<arg name="urdf_file" default="$(find xacro)/xacro.py '$(find emoxone_description)/robots/emox.urdf.xacro'" />
+<param name="robot_description" command="$(arg urdf_file)" />   
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" />
+<node pkg="tf" type="static_transform_publisher" name="base_to_laser" args="0.105 0 0.123 0 0 0 base_link base_laser_link 100" />
+<node name="map_server" pkg="map_server" type="map_server" args="$(find morse_2dnav)/map.yaml"/>
+<node name="amcl" pkg="amcl" type="amcl" />
+
+<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen" clear_params="true">
+    <param name="footprint_padding" value="0.01" />
+    <param name="controller_frequency" value="10.0" />
+    <param name="controller_patience" value="100.0" />
+    <param name="planner_frequency" value="2.0" />
+    <rosparam file="$(find morse_2dnav)/morse_move_base/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find morse_2dnav)/morse_move_base/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find morse_2dnav)/morse_move_base/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find morse_2dnav)/morse_move_base/global_costmap_params.yaml" command="load" />
+    <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
+<rosparam file="$(find morse_2dnav)/morse_move_base/dwa_planner_ros.yaml" command="load" />
+</node>
+
+Here is the output in the console :
+[ INFO] [1380101096.724416286]: Loading from pre-hydro parameter style
+[ INFO] [1380101096.744456439]: Using plugin "static_layer"
+[ INFO] [1380101096.817861305]: Requesting the map...
+[ INFO] [1380101097.039012071]: Received a 4000 X 4000 map at 0.050000 m/pix
+[ INFO] [1380101097.268514429]: Using plugin "obstacle_layer"
+[ INFO] [1380101097.286262517]:     Subscribed to Topics: laser
+[ INFO] [1380101097.308587570]: Using plugin "footprint_layer"
+[ INFO] [1380101097.313275592]: Using plugin "inflation_layer"
+
+I was expecting the plugin simple_layer to be used. But it's not.
+What did I miss ?
+Thanks,
+Caroline
+
+Originally posted by CarolineQ on ROS Answers with karma: 395 on 2013-09-24
+Post score: 1
+
+A:
+
+Your settings are loaded from a default configuration which is indicated by the message "Loading from pre-hydro parameter style". That means that move_base cannot find any plugins settings for your local or global costmap.
+Plugins are loaded from the YAML files. Here's for example my YAML file for my local costmap configuration:
+local_costmap:
+  global_frame: '/map'
+  robot_base_frame: 'base_link'
+  update_frequency: 1
+  publish_frequency: 1
+  static_map: false
+  rolling_window: false
+  width: 3
+  height: 3
+  resolution: 0.01
+  plugins:
+   -
+     name: footprint
+     type: "costmap_2d::FootprintLayer"
+   - 
+     name: obstacles
+     type: "costmap_2d::ObstacleLayer"
+   - 
+     name: inflater
+     type: "costmap_2d::InflationLayer"
+
+You have to place the plugins parameter (a yaml list) inside the corresponding namespace (local_costmap in this case). That's the important part.
+In your particular case a new entry to the plugins list might look like that:
+   - 
+     name: yourlayer
+     type: "your_layer_namespace::YourLayerClassName"
+
+Originally posted by Hendrik Wiese with karma: 1145 on 2013-09-25
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by CarolineQ on 2013-09-25:
+Thanks for your answer, it's exactly what I missed.
+I still have a problem, when I add the plugins in the parameters for the local map, the plugins are all loaded but I see nothing in the Occupancy grid in Rviz, do you have any idea why ?
+Comment by Hendrik Wiese on 2013-09-25:
+I can't tell exactly what's causing that for you but I had a similar problem that came with Hydro. I couldn't see my costmaps anymore (no topic available for GridCell). Reason was that in Hydro costmaps get posted as actual Map. That's what I had to use instead of GridCell. Hope that helps too.
+Comment by David Lu on 2013-09-25:
+SeveQ is correct. GridCells are no longer published with Layered Costmaps.
+Comment by CarolineQ on 2013-09-25:
+Thanks for the answer but I already used a Map in Rviz. With the default parameter I can see a costmap but as soon as I put the list of plugins in the yaml file I can't see the obstacles anymore. I tried the simple layer tutorial and this is working, the problem seems to be in the Obstacle layer.
+Comment by Hendrik Wiese on 2013-09-25:
+Could you please open another question for this issue? The comments section is too cramped for helping.
+Comment by CarolineQ on 2013-09-25:
+I add a new question : http://answers.ros.org/question/83471/layered-costmap-problem/
+Comment by Hendrik Wiese on 2013-09-25:
+Alright, I'll see how I can help.
+

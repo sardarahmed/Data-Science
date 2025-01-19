@@ -1,0 +1,103 @@
+Q:
+
+TF Lookup would require extrapolation into the future
+
+I would appreciate some guidance to understand what may be going on here.
+I am trying to use the very nice robot_localization package to integrate GPS, IMU, Optical Flow and a few other sensors to localize a drone.
+When running my configuration with sensor data coming from a recorded bag file, I get the following error from the ekf_localization_node node:
+[ WARN] [1406560584.464395417, 1406223582.586091240]: Could not obtain transform from utm to nav. Error was Lookup would require extrapolation into the future. Requested time 1406223583.213000000 but the latest data is at time 1406223582.576022606, when looking up transform from frame [utm] to frame [nav]
+
+I've been trying to understand why this is happening and I've gathered the following information:
+
+The CPU usage is pretty low. I don't think this could be happening because of lack of processing capacity
+
+What the code seems to be trying to do is using lookupTransform to calculate TF using the timestamp of the GPS message received
+
+The transformation between [utm] and [nav] is being published at 50Hz. GPS messages are being published at 1Hz.
+
+I can see GPS messages being published with timestamps matching the warning messages. I can also see TF publishing transformations matching the timestamp of "the latest data is at time ..." but also many more later messages:
+
+--
+      stamp: 
+        secs: 1406223582
+        nsecs: 576022606
+      frame_id: nav
+    child_frame_id: utm
+    transform: 
+      translation: 
+        x: -5918718.00919
+        y: 1789119.24381
+--
+      stamp: 
+        secs: 1406223582
+        nsecs: 596210609
+      frame_id: nav
+    child_frame_id: utm
+    transform: 
+      translation: 
+        x: -5918718.00919
+        y: 1789119.24381
+--
+      stamp: 
+        secs: 1406223582
+        nsecs: 616362896
+      frame_id: nav
+    child_frame_id: utm
+    transform: 
+      translation: 
+        x: -5918718.00919
+        y: 1789119.24381
+--
+      stamp: 
+        secs: 1406223582
+        nsecs: 636493509
+      frame_id: nav
+    child_frame_id: utm
+    transform: 
+      translation: 
+        x: -5918718.00919
+        y: 1789119.24381
+--
+...
+
+So if there are other, more recent transforms available, published by TF, why is lookupTransform complaining that the latest data is so old, when in fact there is much newer data being published?
+For now, I am using the workaround of requesting the transformation for ros::Time(0) instead of the timestamp for the GPS message, but I am not sure that is the correct thing to do.
+Any ideas?
+
+Originally posted by jcerruti on ROS Answers with karma: 113 on 2014-07-28
+Post score: 6
+
+Original comments
+Comment by ahendrix on 2014-07-28:
+Would using waitForTransform make sense for your use case?
+Comment by jcerruti on 2014-07-29:
+I am going to try that out next. Thanks!
+
+A:
+
+The closest data in time is only relevant for the specific spanning set across the transform tree. My guess is that there is a tf source in you spanning set which is publishing at low rates which is causing your issue. If the value is static you should use a static publisher so that tf can assume that the value has not changed and use the data at any time.
+To debug more I suggest taking a look at the output of tf_monitor or view_frames which will both show you latency per link.
+Whether or not you can speed up your sources like above your code needs to be robust to this race condition. If it's a high throughput field you should be using a tf MessageFilter or if it's a low throughput process and you can afford to block. waitForTransform will be adequate.
+
+Originally posted by tfoote with karma: 58457 on 2014-07-28
+This answer was ACCEPTED on the original site
+Post score: 7
+
+Original comments
+Comment by jcerruti on 2014-07-29:
+Thanks Tully. I am more interesting in understanding this in depth than in producing a workaround.
+My TF tree in this case is very simple: there is only [nav] --> [utm]. view_frames reports an average rate of 50Hz and tf_monitor an Average Delay: -4.77186e-05 and Max Delay: 0 for utm.
+Given this set-up, which tf source could be the one publishing at too low a rate? If I understand correctly, there is only one transform in the tree and it is publishing at a very decent rate.
+Comment by tfoote on 2014-07-29:
+That looks like there's not a delay in your tree. So where is your timestamp that you are querying with coming from? Is it on a machine with a synchronized clock?
+Comment by jcerruti on 2014-07-29:
+This is happening entirely on a single computer. The sensor data comes from a bag file which is run through a few nodes (basically localization and helpers). What I am debugging here is not my own code but rather the localization. The timestamp being queried is from the GPS message, which is at 1Hz.
+Comment by tfoote on 2014-07-29:
+If everything is coming from a bag file the offset existed at the time of recording and the bag is just playing it back as it arrived. You will need to hold the data until the transforms are available. This is the purpose of the tf MessageFilter.
+Comment by jcerruti on 2014-07-29:
+The GPS data comes from the bag file, the transforms are being published in real-time. I guess the solution will be to use a message filter or waitForTransform, but I still don't understand why there is such a big delay in processing the TF messages.
+Comment by Rufus on 2019-11-21:
+@tfoote is it possible to publish transforms such that a published transform (tf_A) remains valid until a newer transform (tf_A') gets published?
+Comment by tfoote on 2019-11-22:
+Please ask this as it's own question it's much more than should be considered in a comment on a 5 year old question.
+

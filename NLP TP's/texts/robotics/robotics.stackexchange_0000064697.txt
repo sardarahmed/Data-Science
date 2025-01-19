@@ -1,0 +1,43 @@
+Q:
+
+Image viewer in undecorated window?
+
+Are there any solutions for viewing sensor_msgs::Image messages in an undecorated window (no menu or border) with ros dynamically controlled width, height, x and y screen position?
+I think I can implement this in Qt, or barring that X or maybe GDK (I want some optimal mix of ease-of-implementation and performance, and portability at least across linux distributions), but if it already exists, or something close to it I can adapt exists, I'd rather use that.
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2014-12-17
+Post score: 0
+
+A:
+
+Qt in python turned out to be a lot easier than I was expecting.
+The full code is https://github.com/lucasw/vimjay/blob/master/scripts/display.py, and the important lines are
+class UndecoratedWindow(QtGui.QLabel): 
+...
+    self.setWindowFlags(Qt.FramelessWindowHint)
+
+And in response to a new x,y and width and height:
+    self.resize(roi.width, roi.height)
+    self.move(roi.x_offset, roi.y_offset)
+
+and converting the image for use in Qt:
+def imageCallback(self, msg):
+    np_arr = np.fromstring(msg.data, np.uint8)
+    sz = (msg.height, msg.width, msg.step / msg.width)
+    image = np.reshape(np_arr, sz)
+
+    ... do some stuff with image to keep aspect raio ...
+
+     self.qimage = QImage.rgbSwapped(QImage(image.tostring(), 
+            self.wd, self.ht, 
+            QImage.Format_RGB888))
+
+Do this in qt thread to update the display, not the callback thread:
+    self.setPixmap(QtGui.QPixmap.fromImage(self.qimage))
+
+(I think my code might lack some thread safetyness regarding self.qimage)
+
+Originally posted by lucasw with karma: 8729 on 2014-12-19
+This answer was ACCEPTED on the original site
+Post score: 0
+

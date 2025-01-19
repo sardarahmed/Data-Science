@@ -1,0 +1,76 @@
+Q:
+
+Gazebo model plugin for ROS2
+
+Hi All,
+I would like to create a model plugin for Gazebo 11 and ROS2 (Foxy). The robot would be a manipulator arm which would get commands via ROS topic and use a custom controller to calculate the joint torques to be passed to Gazebo. The robot model is given in URDF, which I have turned into SDF for Gazebo use.
+I already can load the URDF in ROS2 node, I have the necessary Python launch file.
+so I can do ros2 launch src/link-intersection-brute-force/launch/link-intersection-brute-force.py and it starts.
+I also have a minimal stub for Gazebo plugin called gazebo-plugin.cpp which compiles.
+I know there are some official ROS2 / Gazebo examples but I could not put them together. My problem is I can't go forward from here. Could you please give an example with a launcy.py file and perhaps other needed stuff, which lets me fire up Gazebo with my plugin and my SDF file?
+Thank you in advance.
+Best regards: Balázs Bámer
+
+Originally posted by balazs-bamer on ROS Answers with karma: 15 on 2021-04-02
+Post score: 1
+
+Original comments
+Comment by shonigmann on 2021-04-02:
+What you are describing sounds more like it would be better accomplished in ROS2 than as a Gazebo plugin...
+Have you considered trying gazebo_ros2_control for the gazebo joint interfaces? Then you can write a custom controller if you want as a ROS2 package. This library has some tutorials and examples that could help you get started.
+Comment by balazs-bamer on 2021-04-03:
+I've seen this package, but I have very little background in ROS and Gazebo, and did not realize why it is good for me. I need the physics from Gazebo. On the other hand, once I've found a CDPR example as a Gazebo plugin (for ROS1) and used it in an older project.I know this works and wanted something similar.
+
+A:
+
+This repository has an example of a robot description with a Gazebo plugin and a launch file to spawn them for ROS 2:
+https://gitlab.com/boldhearts/ros2_boldbot
+This was used amongst others in this workshop:
+https://gitlab.com/boldhearts/ros2_workshop
+Without more info it is difficult to know where you're exactly stuck, but for me the trickiest was to get all the paths set up correctly so that everything was loaded correctly.
+Note for instance the model path set in the package.xml file of the description package:
+  <export>
+    <build_type>ament_cmake</build_type>
+    <gazebo_ros gazebo_model_path="${prefix}/.." />
+  </export>
+
+, which is then picked up in the launch file using GazeboRosPaths:
+model_path, plugin_path, media_path = GazeboRosPaths.get_paths()
+
+Most of the complexity is because ${prefix} in package.xml, get_package_share_directory in the launch file, and package:// in the URDF don't all point to the same directory under your installation, especially if you involve Rviz. See especially this commit to see some changes I had to make along the way to get it all to work:
+https://gitlab.com/boldhearts/ros2_boldbot/-/commit/3196c6449f405a2642ec5707b0ddb4a636e81a13
+Hopefully this helps you in the right direction! Let us know of specific issues/error messages you're getting, so that I can then try to make this answer more specific.
+
+Originally posted by sgvandijk with karma: 649 on 2021-04-02
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by gvdhoorn on 2021-04-03:
++100 for answering, and I realise it can be difficult because of layout-problems here on ROS Answers, but please try to include the relevant parts of the code in your answer.
+You're currently linking to a repository, which will disappear (maybe not now, not in 6 months, but it will, at some point).
+In order to keep answers stand-alone (ie: depend as little as possible on external resources), always include the relevant parts of source files, pages or other documents in the answer itself.
+If you absolutely must link to repositories, use permalinks (Gitlab has similar functionality). Don't link to a branch, as that's a moving target.
+Comment by balazs-bamer on 2021-04-03:
+Thanks for the example. Now I adapt my stuff to your layout. Why do you have separate packages for the Gazebo plugin, the URDF stuff and the simulation (bring up)?
+Comment by balazs-bamer on 2021-04-03:
+Hi Sgvandijk,
+I've integrated your 3 packages into one by merging CMakeLists and package.xml 's. It has some file problems, it wants to reach the sdf in /home/balazs/munka/cuda-trajectory-planner/ros-workspace/install/link-intersection-brute-force/share/link-intersection-brute-force/px150_coll.sdf but the CMake does not copy it there, which I don't understand. The install lines simply do not run:
+
+install(FILES urdf/px150_coll.sdf
+DESTINATION share/${PROJECT_NAME})
+
+Comment by gvdhoorn on 2021-04-04:\
+
+Why do you have separate packages for the Gazebo plugin, the URDF stuff and the simulation (bring up)?
+
+because it's a best-practice to separate concerns as much as possible.
+Comment by sgvandijk on 2021-04-04:\
+
+Why do you have separate packages for the Gazebo plugin, the URDF stuff and the simulation (bring up)?
+
+To elaborate on @gvdhoorn, here specifically it is good practice so that users of the URDF do not necessarily need to build the Gazebo plugin and have all of its dependencies installed. For instance when you want to use the URDF on your actually robot, you don't want to have to have any gazebo stuff installed on it.
+Regarding the install not working, I unfortunately don't immediately know why that is either.
+Comment by balazs-bamer on 2021-04-05:
+I see. You are right.
+

@@ -1,0 +1,59 @@
+Q:
+
+Fail at ROS2 IDL generation
+
+I tried to add support for ROS2 IDL generation with Rust.
+It happens to work only when find_package are declared in packages containing message definitions with
+find_package(rosidl_default_generators REQUIRED) first.
+It means that in std_msgs for example, the following will make the whole generation work.
+find_package(rosidl_default_generators REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+
+While this will fail :
+find_package(builtin_interfaces REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+With the following error.
+CMake Error at /opt/ros/crystal/share/rosidl_cmake/cmake/rosidl_target_interfaces.cmake:44 (message):
+  rosidl_target_interfaces() the second argument 'std_msgs' concatenated with
+  the third argument 'rosidl_typesupport_c' using double underscores must be
+  a valid target name
+Call Stack (most recent call first):
+  /home/sisyphe/Projects/tests/ros2_rust_ws/install/share/rosidl_generator_rs/cmake/rosidl_generator_rs_generate_interfaces.cmake:200 (rosidl_target_interfaces)
+  /opt/ros/crystal/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:38 (include)
+  /opt/ros/crystal/share/rosidl_cmake/cmake/rosidl_generate_interfaces.cmake:280 (ament_execute_extensions)
+  CMakeLists.txt:49 (rosidl_generate_interfaces)
+
+The file rosidl_generator_rs_generate_interfaces.cmake generating this error can be found in this repository.
+I seems that the required target does not exist at the right time but I don't know what dependency to add to fix this.
+I don't understand the whole ROS2 IDL generation process yet and any help on how to be more knowledgeable on this matter might be useful.
+
+Originally posted by lelongg on ROS Answers with karma: 50 on 2019-02-09
+Post score: 1
+
+Original comments
+Comment by Dirk Thomas on 2019-02-11:
+Trying to build a workspace containing the referenced repository works fine for me (at least until rclrs_examples which fails to invoke cargo which I don't have installed). Please describe the exact steps when you see the error.
+Comment by lelongg on 2019-02-12:
+You're right, the repository compiles because I have manually edited all message packages to reorder find_package.
+I have created a dedicated branch std_msgs_fail which reproduce the issue and should not compile.
+Comment by Dirk Thomas on 2019-02-19:
+I just tried to build a workspace using the std_msgs_fail branch and it passed (at least as far as the previous build) without a problem.
+Comment by lelongg on 2019-02-19:
+I've just figured that I cannot reproduce my issue without the --merge-install argument on colcon build, which I was always using until now. Could you try again ?
+
+A:
+
+With colcon build --merge-install (for performance --packages-up-to std_msgs) I can reproduce the failure.
+The problem is that when your code generator is being executed (the logic in rosidl_generator_rs_generate_interfaces.cmake) it tries to depend on the rosidl_typesupport_c target. But your package didn't make sure that rosidl_typesupport_c was find_package-ed. That needs to happen before you register your own message generator in rosidl_generator_rs_extras. Otherwise the rosidl_typesupport_c might only be found later and therefore will only try to generate its code after your package has done so.
+The easiest fix is to insert the following line in rosidl_generator_rs-extras.cmake.in before calling the macro:
+find_package(rosidl_typesupport_c REQUIRED)
+
+Originally posted by Dirk Thomas with karma: 16276 on 2019-02-19
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by lelongg on 2019-02-20:
+Nice! I wasn't able to figure where I should add it, so it's was there! Thanks
+

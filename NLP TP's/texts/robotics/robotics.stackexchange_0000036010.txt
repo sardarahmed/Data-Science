@@ -1,0 +1,82 @@
+Q:
+
+Android Control not working after upgrading to Electric-Turtle
+
+Is it just me or does the Android Control not work after upgrading to Electric-Turtle?
+Below are the relevant sections of the logs and messages from me launching android_teleop.launch from the command line.
+Removing the follow offending line "" from android_teleop.launch gets me a bit further. The android_teleop application now successfully launches and Kinect camera works but I can not navigate around using the controls. It seems that turtlebot_bringup/base.launch no longer exists in Electric. Was it just removed, renames or replaced?
+Please let me know if I should create a ticket for this under turtlebot_apps and if there is anything else that I can do.
+James Ronald
+1322410844.661567926 INFO [:0() [topics: /turtlebot/app_list, /rosout, /turtlebot/application/app_status] start_app: turtlebot_teleop/android_teleop
+1322410844.662949085 INFO [:0() [topics: /turtlebot/app_list, /rosout, /turtlebot/application/app_status] Loading app: turtlebot_teleop/android_teleop
+1322410844.714994907 INFO [:0() [topics: /turtlebot/app_list, /rosout, /turtlebot/application/app_status] Launching: /opt/ros/electric/stacks/turtlebot_apps/turtlebot_teleop/app/android_teleop.launch
+1322410844.747560977 ERROR [:0() [topics: /turtlebot/app_list, /rosout, /turtlebot/application/app_status] app start failed
+turtlebot@jr-EeePC:~/.ros/log/47bcf768-1913-11e1-bbf8-485d60f548c1$ 
+
+[rosout][INFO] 2011-11-27 11:20:44,660: start_app: turtlebot_teleop/android_teleop
+[rosout][INFO] 2011-11-27 11:20:44,662: Loading app: turtlebot_teleop/android_teleop
+[rosout][INFO] 2011-11-27 11:20:44,713: Launching: /opt/ros/electric/stacks/turtlebot_apps/turtlebot_teleop/app/android_teleop.launch
+[roslaunch][INFO] 2011-11-27 11:20:44,729: loading roscore config file /opt/ros/electric/stacks/ros_comm/tools/roslaunch/roscore.xml
+[roslaunch][INFO] 2011-11-27 11:20:44,734: Added core node of type [rosout/rosout] in namespace [/]
+[roslaunch.config][INFO] 2011-11-27 11:20:44,734: loading config file /opt/ros/electric/stacks/turtlebot_apps/turtlebot_teleop/app/android_teleop.launch
+[rosout][ERROR] 2011-11-27 11:20:44,746: app start failed
+turtlebot@jr-EeePC:~/.ros/log/47bcf768-1913-11e1-bbf8-485d60f548c1$ 
+
+# launch android_teleop.launch from the command line for debugging...
+roslaunch turtlebot_teleop android_teleop.launch
+
+while processing /opt/ros/electric/stacks/turtlebot/turtlebot_bringup/base.launch:
+Invalid roslaunch XML syntax: [Errno 2] No such file or directory: u'/opt/ros/electric/stacks/turtlebot/turtlebot_bringup/base.launch'
+
+Update:
+I installed electric-turtle from source and replaced turtlebot_apps with turtlebot_apps from mercurial tip which includes Ferg's updates. The controls that move the base now work but there there is no video. The issue seems to be with openni_camera.
+[ INFO] [1323567493.121062272]: [/openni_camera] Opened 'Xbox NUI Camera' on bus 1:22 with serial number 'A00363A05323110A'
+[ INFO] [1323567493.167941518]: rgb_frame_id = 'kinect_rgb_optical_frame'
+[ INFO] [1323567493.176681304]: depth_frame_id = 'kinect_depth_optical_frame' 
+terminate called after throwing an instance of 'openni_wrapper::OpenNIException'
+  what():  virtual void openni_wrapper::OpenNIDevice::setSynchronization(bool) @ /home/turtlebot/ros-electric-turtle/perception_pcl/pcl/build/pcl/io/src/openni_camera/openni_device.cpp @ 489 : could not turn on frame synchronization. Reason: Device Protocol: Bad Parameter sent!
+[openni_manager-3] process has died [pid 15180, exit code -6].
+log files: /home/turtlebot/.ros/log/a7a71c46-2398-11e1-920d-485d60f548c1/openni_manager-3*.log
+respawning...
+[openni_manager-3] restarting process
+
+Also chirp app (Moo) seems to be broken:
+process[chirp-1]: started with pid [14611]
+[INFO] [WallTime: 1323567460.712049] Waiting for foreign master [http://localhost:11312] to come up...
+Invalid card number.
+Invalid card number.
+[INFO] [WallTime: 1323567460.724738] Foreign master is available
+Playing WAVE 'cow.wav' : Signed 16 bit Little Endian, Rate 11025 Hz, Mono
+[chirp-1] process has finished cleanly.
+
+Originally posted by JamesRonald on ROS Answers with karma: 81 on 2011-11-27
+Post score: 0
+
+Original comments
+Comment by fergs on 2011-12-18:
+Stack maintainers must do a release before updates are pushed from source to debs. TurtleBot has not been re-released yet.
+Comment by JamesRonald on 2011-12-17:
+Fergs, I just received a bunch of ros-electric-turtle updates via apt and was surprised to that your android_teleop changes were not included in the updates.
+Comment by JamesRonald on 2011-12-11:
+Fergs, thanks for your answers. After restarting everything the chirp app is now working. As for Teleop, I'm pretty sure that it's not a breaker issue as the in-line green LED on cord of the Kinect toggles and the "Follower" application works.
+Comment by fergs on 2011-12-10:
+James, the openni issue probably is the breaker not being on before starting the app? As for Moo, I would open a new question for that, and note that sound_play is failing -- as I know chirp is working (I've now tested the Android apps), and it looks like an audio card problem (Invalid card number).
+
+A:
+
+The "base.launch" file previously started the EKF filter (which would publish /odom->/base_link transfrom). That launch file has been merged into minimal.launch (as that transform is needed very often, and we were trying to reduce the number of launch files). It looks like a number of launch files in the /apps directory didn't get updated, I'll get those patches pushed into mercurial tomorrow.
+The lack of movement, is probably due to a different change: we've stopped mapping "cmd_vel" into "turtlebot_node/cmd_vel" as it's really the wrong thing to do. So, it is likely that turtlebot_node/cmd_vel is still running around somewhere (although I can't seem to find it). In the meantime, you should be able make this work with a relay:
+rosrun topic_tools relay turtlebot_node/cmd_vel cmd_vel 
+
+UPDATE: As of today, 12/05, changes have been committed to the turtlebot_apps stack which shuold fix this problem.
+
+Originally posted by fergs with karma: 13902 on 2011-11-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by JamesRonald on 2011-12-09:
+Never mind... I found your changes and figured out how to get the turtlebot_apps source via mercurial.
+Comment by JamesRonald on 2011-12-09:
+I installed electric from source, source setup.bash and ran rosmake -a. I'm still seeing the same error and base.launch is still being included in android_teleop.launch. I'm now guessing that rosinstall does not pull from the mercurial repo. Is there a way to tell it to do so?
+

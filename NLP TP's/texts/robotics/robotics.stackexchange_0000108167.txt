@@ -1,0 +1,55 @@
+Q:
+
+Get robot position wrt world frame in ROS2-Gazebo Garden
+
+I'm trying to understand how I can possibly get the global position of a model in a Gazebo simulation through ROS2.
+I've seen that Gazebo publishes data to the /world/<world_name>/pose/info topic via messages of type gz.msgs.Pose_V. Following this, I created a bridge to ROS2 via ros_gz_bridge:
+ros2 run ros_gz_bridge parameter_bridge /world/world_demo/dynamic_pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V
+
+(I got the corresponding ROS2 message from the ros_gz_bridge README
+Unfortunately, the "translation" is incomplete and in the messages received in ROS2 there's no indication of the entity each portion refers to.
+
+Am I missing something here? Is there a way to accomplish this at the moment?
+I'm using:
+ROS2 humble
+Gazebo Garden
+
+A:
+
+ok, in the end that was the right way, but the wrong tool.
+To publish global positions the right plugin to use is the OdometryPublisher (docs). It works more or less the same way as the PosePublisher, apart from the published messages of course.
+
+ORIGINAL ANSWER
+Found the solution after struggling some more...
+Scratch that, this publishes
+
+the transform of its child entities
+
+as per docs...
+I don't know about the seemingly incomplete conversion of the /world/<world_name>/pose/info topic, but I've found out that to get a model position in the world you need to add the PosePublisher plugin to the model.
+<?xml version="1.0"?>
+<sdf version="1.6">
+    <model name="quadcopter">
+        <pose>0 0 0 0 0 0</pose>
+
+        <link name="base">
+            <pose frame="">0 0 0 0 0 0</pose>
+            <!-- ......... -->
+        </link>
+
+        <!-- ......... -->
+
+        <plugin
+            filename="gz-sim-pose-publisher-system"
+            name="gz::sim::systems::PosePublisher">
+            <publish_link_pose>true</publish_link_pose>
+            <publish_collision_pose>false</publish_collision_pose>
+            <publish_visual_pose>false</publish_visual_pose>
+            <publish_nested_model_pose>false</publish_nested_model_pose>
+        </plugin>
+
+    </model>
+</sdf>
+
+This will enable a /model/<model_name>/pose topic that you can then bridge to ROS2 via ros_gz_bridge.
+

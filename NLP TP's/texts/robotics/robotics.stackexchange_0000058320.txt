@@ -1,0 +1,61 @@
+Q:
+
+Acquiring new data/message from a subscribed topic
+
+I have subscribed to the following topic
+ /camera/depth_registered/points
+
+I have a callback function defined as the following in a c++ file :
+ros::Subscriber sub = nh.subscribe ( "/camera/depth_registered/points", 1, process_cloud );
+
+I want to obtain the latest data from the above topic when I want it. Is there a way to acquire the latest data from the topic whenever I want inside my callback function ?
+
+I also tried a workaround using the ros::spinOnce() function. But sometimes my callback function does not get called.
+
+When and why will this happen ? - the callback function not being called.
+
+Is there a way to check if the callback got called when using the ros::spinOnce() ?
+
+proccess_cloud is the only callback function i have in my program
+I am using ros - groovy on a Ubuntu-12.04 machine
+
+I appreciate any help anyone can provide. Please post if you require anymore information.
+___ UPDATE ____
+Essentially this is what I am trying to do :
+
+I have a UDP communication setup in the above program, between the computer that runs the above code that I am having an issue with, I will call  this PC 1
+
+PC2 sends a request to PC1 over UDP communication - at which time i want to acquire latest data from my Prime Sense Carmine 1.09 sensor.
+
+Thus in my above code, in PC1, I want to wait for this UDP request and then acquire a data from the prime Sense sensor and process the data.
+
+I have tried two versions of code to accomplish the above problem
+a) 1st version - I use the UDP - recvfrom function inside the callback function : thus the code essentially gets held at this line waiting to request from PC2(which how the recvfrom function works). And when it recieves the request from PC2 rest of the processing occurs - thus working on old data. Which led to my question here as to how to obtain new data in my callback function.
+b) To work around the above problem I came up with the 2nd version : Here I use the spinOnce function , thus in my main function I wait for the request from PC2 using the recvfrom function. And then I use spinOnce function - to run my callback function. All this essentially inside a while loop. - But in this case sometimes the callback does not get called sometime. - Also in this case is it ensured that the latest available data from my topic used ?
+And my 1st line in the callback function a print to the command line saying I was called ( using std::cout ). Which is how I figure out that the callback does not get called( in my 2nd case).
+I am using the following command to obtain data from the prime sense sensor.
+roslaunch openni_launch openni.launch
+
+Also is this the best way to obtain data from the prime sense sensor
+
+Originally posted by Bharadwaj on ROS Answers with karma: 41 on 2014-03-29
+Post score: 0
+
+A:
+
+Whenever a callback is called, it is called with the latest data. But, if your callback takes too much time, and another message arrives when you are processing your current callback, then you will most likely lose the message. Too much processing is discouraged in callback functions. The reason for this should be obvious if you try thinking of callbacks as interrupts. It is essentially an interrupt handler in the context of ROS.
+Please paste the entire code. The work of spinOnce can be thought of like this - enable interrupts and call the interrupt handler for one interrupt (or in ROS language - look at the callback queue and fetch the fellow at the start). This means that spinOnce should be used inside a while/for loop for it to be called periodically. There is a possibility - if your program has a spinOnce() function that is standing alone, it might never trigger callback at all. Please read more on callback queues if you want a deeper understanding. Also, if there is no spinOnce or spin, the callback will never happen.
+Simple - put a print statement inside the callback that says, "I was called" or what have you.
+
+Also, what launch are you using to obtain the depth_registered image? Are you running a custom launch which has the parameter depth_registration set to true? If it is set to false, you will see the topic but depth registration won't happen and you can't get a callback at all. Please be sure that depth registration is actually happening.
+Please see this: might be useful - http://answers.ros.org/question/11939/activating-openni-depth-registration-by-default/
+I have tried my best to answer you. Please tell me if that solves it.
+
+Originally posted by McMurdo with karma: 1247 on 2014-03-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Bharadwaj on 2014-03-30:
+Dear Mr.McMurdo, I appreciate ur detailed reply. I have update my question based on your reply. It does help me get a better understanding but does not solve my issue. Can u pls give me the right link to study about spinOnce function standing alone. I think this might be my issue.
+

@@ -1,0 +1,129 @@
+Q:
+
+Using roslaunch to run distributed systems over ssh
+
+I'm just trying to make my distributed ROS system run with one single command for the first time. I went through roslaunch/Architecture and roslaunch tips for larger projects which helped me a lot, but not enough.
+My system is disributed over 2 machines, say Alpha and Beta, the second being localhost (authorized_keys defined, hostnames checked, communication works flawlessly). So my launchfile looks like this:
+<launch>
+  <machine name="alpha" address="alpha" user="alpha_user" 
+    ros-root="/correct/path/on/alpha/machine" 
+    ros-package-path="/very/true/package/path" default="true" />
+  <machine name="beta" address="beta" user="beta_user" 
+    ros-root="$(env ROS_ROOT)" 
+    ros-package-path="$(env ROS_PACKAGE_PATH)" default="false" />
+
+  <node pkg="hokuyo_node" type="hokuyo_node" name="hokuyo_node" output="screen">
+    <param name="frame_id" value="/laser"/>
+    <param name="port" value="/dev/ttyACM0"/>
+  </node>
+
+  <node pkg="laser_scan_matcher" type="laser_scan_matcher_node"
+    name="laser_scan_matcher_node" output="screen">
+  </node>
+
+  <node pkg="tf" type="static_transform_publisher" name="laser_link" 
+    args="0.0 0.0 0.10 0.0 0.0 0.0 /base_link /laser 40" />
+
+  <node pkg="gmapping" type="slam_gmapping" name="gmapping" 
+    output="screen" machine="beta">
+    <param name="odom_frame" value="/world" />
+  </node>
+</launch>
+
+Running this on beta yields:
+started roslaunch server http://beta:59751/
+remote[alpha-0] starting roslaunch
+remote[alpha-0]: creating ssh connection to alpha:22, user[alpha_user]
+remote[alpha-0]: ssh connection created
+
+SUMMARY
+========
+
+PARAMETERS
+ * /gmapping/odom_frame
+ * /rosdistro
+ * /laser_scan_matcher_node/max_iterations
+ * /laser_scan_matcher_node/use_odom
+ * /hokuyo_node/max_ang
+ * /rosversion
+ * /hokuyo_node/port
+ * /laser_scan_matcher_node/use_imu
+ * /laser_scan_matcher_node/fixed_frame
+ * /hokuyo_node/frame_id
+ * /laser_scan_matcher_node/use_alpha_beta
+ * /hokuyo_node/min_ang
+
+MACHINES
+ * beta
+ * alpha
+
+NODES
+  /
+    hokuyo_node (hokuyo_node/hokuyo_node)
+    laser_scan_matcher_node (laser_scan_matcher/laser_scan_matcher_node)
+    laser_link (tf/static_transform_publisher)
+    gmapping (gmapping/slam_gmapping)
+
+auto-starting new master
+process[master]: started with pid [3002]
+ROS_MASTER_URI=http://localhost:11311
+
+setting /run_id to 3bf5a6de-307c-11e1-ba58-00216a2f5558
+process[rosout-1]: started with pid [3017]
+started core service [/rosout]
+process[gmapping-2]: started with pid [3020]
+[alpha-0]: launching nodes...
+[alpha-0]: auto-starting new master
+[alpha-0]: process[master]: started with pid [1433]
+[alpha-0]: ROS_MASTER_URI=http://localhost:11311
+[alpha-0]: setting /run_id to 3bf5a6de-307c-11e1-ba58-00216a2f5558
+[alpha-0]: process[hokuyo_node-1]: started with pid [1452]
+[alpha-0]: process[laser_scan_matcher_node-2]: started with pid [1453]
+[alpha-0]: process[laser_link-3]: started with pid [1454]
+[alpha-0]: ... done launching nodes
+
+I think there are two roscore's being spawned which don't know about each other. I'm guessing it, because running rosgraph locally after changing:
+export ROS_MASTER_URI=http://alpha:11311
+export ROS_MASTER_URI=http://beta:11311
+
+returns only nodes run on the particular computer, and because of the suspicious lines above:
+[alpha-0]: launching nodes...
+[alpha-0]: auto-starting new master
+[alpha-0]: process[master]: started with pid [1433]
+[alpha-0]: ROS_MASTER_URI=http://localhost:11311
+
+Testing what processes are really being spawned on both machines with:
+ps aux | grep ros
+
+yields: ps_alpha ps_beta.
+Where do I tell ROS to only spawn one roscore (preferably on the remote machine, i.e. beta)? Or how do I else configure the system correctly?
+
+Originally posted by tom on ROS Answers with karma: 1079 on 2011-12-22
+Post score: 6
+
+A:
+
+@kwc confirmed two bugs which caused the above mentioned behavior, the tickets are:
+
+https://code.ros.org/trac/ros/ticket/3801
+https://code.ros.org/trac/ros/ticket/3802
+
+The problem only occurs when ROS_MASTER_URI is set to localhost on the machine where a distributed ROS system is being launched from. It is desired to set ROS_MASTER_URI depending on hostname instead (the bug is that roslaunch doesn't catch when you fail to set this, and compounds it by starting an extra remote core).
+Example: Say your local system's hostname is beta and you're using roslaunch to start a distributed ROS system on alpha (remote) and beta (local) - as in the launchfile cited in question. Per default, ROS_MASTER_URI on beta would be:
+ROS_MASTER_URI=http://localhost:11311
+
+which doesn't get cought by the system and gets falsely set on  alpha too, and in effect two roscore's are being started which don't know about each other. Instead, setting:
+ROS_MASTER_URI=http://beta:11311
+
+on beta before executing launchfile causes ROS_MASTER_URI on both machines to be set to http://beta:11311 which is correct.
+
+Originally posted by tom with karma: 1079 on 2011-12-30
+This answer was ACCEPTED on the original site
+Post score: 8
+
+Original comments
+Comment by tom on 2011-12-30:
+@kwc: Corrected.
+Comment by kwc on 2011-12-30:
+Correction: setting your ROS_MASTER_URI to http://beta:11311 is not a temporary workaround, it's what you're always supposed to do.  The bug is that roslaunch doesn't catch when you fail to set this, and compounds it by starting an extra core.
+

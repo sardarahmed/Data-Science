@@ -1,0 +1,18 @@
+Q:
+
+How to strip down the install directory of a ROS2 package
+
+I need to deploy and update a ROS2 system to an embedded device with limited connectivity.
+This ROS2 system is made up of many custom packages written both in C++ and Python. At the moment I am just compiling the packages with colcon build --merge-install and sending a compressed archive of the install directory to the device.
+The device supports over-the-air updates but, at the moment, the size of the ROS2 install archive makes the update too slow. However, I noticed that in the install directory are copied many text files, such as headers, scripts, etc.. together with the binary files.
+Is there any option to have colcon only copy the files strictly necessary to run the program? If not, which are the files that can be safely removed?
+PS
+I know that I could sort this out by trial and error, but I would prefer a less time consuming approach.
+
+A:
+
+There's unfortunately no magic answer for doing this. Within a package we don't specifically call out what are executable resources versus build resources to install. Upstream debian packaging does this manually listing each installed file.
+For most ROS packages if this is a level of optimization that you'd like to do our recommendation is to split the package into two different ones, one that installs runtime dependencies and one that installs the build time dependencies. Then the downstream package can depend on the appropriate package with the correct type of dependency(build, exec, etc. Having done that you can't just use a merged install target to take advantage of this. If you do an isolated install, you can look at your dependencies and selectively copy the ones that provide runtime dependencies and skip the ones that only provide build time resources.
+But if you're really interested in doing this the correct way to do it is to use one of the frameworks that are designed and optimized for doing off target builds. You're looking at cross compile toolchains that keep track of build time versus runtime elements and isntall them to different workspaces and manage your path appropriately at runtime.
+Escalating from there you can step up to using something like OpenEmbedded (OE working group), building debian packages, or other mechanisms. In general you need to spend the extra effort to separate your build and install processes.
+

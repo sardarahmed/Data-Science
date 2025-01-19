@@ -1,0 +1,61 @@
+Q:
+
+rtabmap_ros + Kinect = 2D map. How to? (newbie)
+
+Hi all, as the title suggests, I need help regarding RGB-D SLAM map creation (using RTAB-Map) -- apologies in advance if I get some terms wrong:
+TL;DR Version:
+I have a Kinect and ROS Indigo in Ubuntu 14.04 and want to create a 2D map. with no odometry/laser scans (only handheld Kinect) at first. Hardly any experience with ROS as well, so much handholding is needed.
+Longer Version:
+I'm working on creating a map for navigation of an autonomous robot. Because of time constraints, I'm actually not going to use the robot for now, but will start with using a Kinect by itself, so RGB-D SLAM sounds like the way to go. I found RTAB-Map and it seems like the perfect choice, but I'm having some problems with it (mainly due to me not entirely understanding how it works.) I'm looking to achieve the following:
+
+Scan the environment with the Kinect (I do this following this tutorial: Kinect Mapping though I would like to minimize lost odometry problems) (Note: I'm using Freenect since OpenNI doesn't seem to detect my Kinect. I'm not sure why.)
+Get the 2D projection of the 3D cloud map (Don't know how to get this, yet)
+Optionally (but preferred), figure out a way to select a vertical "slice" of data to get the 2D projection (i.e.: set a minimum-maximum height to detect obstacles)
+Save the optimized 2D projection as a map, like the ones seen on RTAB-Map demos.
+
+I have almost no experience with ROS, so I need as much handholding as possible.
+Could anyone help me do this (or point me in the right direction), please?
+Thanks in advance.
+Edit:
+Big thank you to matlabbe for the help (and sorry for not commenting sooner.) After much fighting with the OpenNI drivers, I got the commands above to work, but when adding a Map and then setting the rtabmap/proj_map topic, sometimes I get a "map not found" error.
+When it does work, I find that the loop closure detection doesn't appear to be working: i.e., if I scan the area with the Kinect, pause for a while, and then rescan the area again, I get a cloud map that appears to be the same as the original scan, but skewed. It's probably my fault, as I'm not familiar with the software yet, but am I missing something?
+
+Originally posted by kenshin23 on ROS Answers with karma: 61 on 2015-06-14
+Post score: 4
+
+Original comments
+Comment by luketheduke on 2015-09-13:
+If you look at the bottom of your Kinect, I would bet that it is a model 1473 Kinect. This model number doesn't work with openni for some reason. Here is some more info on it here.
+
+A:
+
+You can look at the Turtlebot demo on RTAB-Map's forum. There is an option to use it without the robot (generating odometry from the Kinect). It simulates a laser scan and visual odometry is constraint to 2D. This demo is compatible with the turtlebot navigation tutorials on ROS:
+$ roslaunch turtlebot_bringup minimal.launch
+$ roslaunch rtabmap_ros demo_turtlebot_mapping.launch rgbd_odometry:=true args="--delete_db_on_start"
+$ rosrun rviz rviz -d turtlebot_navigation.rviz
+
+In this demo, you will get a 2D map from the assembled laser scans. To visualize the projection map (3D cloud to 2D map), select in RVIZ under the map object, the rtabmap/proj_map topic. In the launch the file, you can set
+<node name="rtabmap" pkg="rtabmap_ros" type="rtabmap" output="screen" args="$(arg args)">
+    ...    
+    <param name="proj_max_height" type="double" value="2.0"/>
+</node>
+
+under rtabmap node to set the maximum height of the cloud used for projection (default 2 meters).
+
+Originally posted by matlabbe with karma: 6409 on 2015-06-16
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by kenshin23 on 2015-07-08:
+Hi again, and thank you very much for the help. I've gotten the instructions to work, however, one last key piece of info is missing: how to save the resulting maps, 3D and 2D. I've tried with 'rosrun map_server map_saver -f map (and /map:=/map2d)' but I always get "Waiting for the map". Any ideas?
+Comment by matlabbe on 2015-07-09:
+You don't need a map_server. The 2D and 3D maps are saved in ~/.ros/rtabmap.db file. When re-launching rtabmap without "--delete_db_on_start" argument and with "localization=true", it will load the map in rtabmap.db, then republish the 2D and 3D maps after the robot is able to localize in the map.
+Comment by matlabbe on 2015-07-09:
+But normally, you should still be able to save a map with map_server like:
+$ rosrun map_server map_saver map:=/map
+$ rosrun map_server map_saver map:=/rtabmap/proj_map
+
+3D point cloud:
+$ rosrun pcl_ros pointcloud_to_pcd input:=/rtabmap/map_cloud
+

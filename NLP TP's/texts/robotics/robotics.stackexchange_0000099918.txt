@@ -1,0 +1,79 @@
+Q:
+
+Navigation 2: Sensor origin out of map bounds. The costmap can't raytrace for it
+
+Hi,
+I've been trying to get nav2 to run for quite some time and am now facing a problem.
+I am using foxy and the the navigation packages released via debian packages.
+After launching slam and the base code of my physical robot, I see a map and the robot model
+https://drive.google.com/file/d/1D2A0A8fKLuCmLNXlIb8imoB3F4ECOC6x/edit
+If I now start nav2 (ros2 launch nav2_bringup navigation_launch.py use_sim_time:=False params_file:=/home/config/nav2_params.yaml) nav2 starts to run and I can also see a global costmap.
+However, the local costmap is not filled and the robot does not respond to any nav 2d goals. Also nothing is published from the controll server on the topic /cmd_vel.
+The terminal repeatly prints:
+
+[controller_server-1] [WARN] [1629735747.578710511] [local_costmap.local_costmap]: Sensor origin: (-0.01, -0.04, 0.80), out of map bounds. The costmap can't raytrace for it.
+
+The used configuration is identical to the example from nav2_bringup, only I set "use_sime_time" to "false" everywhere.
+Thank you in advance
+
+Originally posted by Mk-_- on ROS Answers with karma: 23 on 2021-08-23
+Post score: 2
+
+A:
+
+Based on your nav2 settings from your github issue (https://github.com/ros-planning/navigation2/issues/2537), it looks to me like the sensor data is not set up correctly.
+Maps don't make anything by themselves, they use plugins to fill the data, which in turn use sensor data to fill plugins. The total result is the stack of data of all plugins, from any sensor input. It's a very elegant system imo, but requires some setup.
+It looks to me like you have a lidar on your robot which you want to use for mapping. Since the global map seems to work, we can use this as a template and work from there.
+In your local costmap, the plugins are a VoxelLayer and an inflation layer. Voxels are used for 3d mapping, and I would think that you are looking for an ObstacleLayer, same as you use for your global map. You can copy the obstacle layer from your global costmap onto your local costmap, and remove the voxel layer. I suggest the following:
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: False
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      robot_radius: 1.0
+      plugins: ["obstacle_layer", "inflation_layer"]
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+       obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+         topic: /scan
+         max_obstacle_height: 2.0
+         clearing: True
+         marking: True
+         data_type: "LaserScan"
+     static_layer:
+        map_subscribe_transient_local: True
+      always_send_full_costmap: True
+  local_costmap_client:
+    ros__parameters:
+      use_sim_time: False
+  local_costmap_rclcpp_node:
+    ros__parameters:
+      use_sim_time: False
+
+The local costmap is necessary for autonomous driving, so I hope that you can get your robot working with this fix.
+
+Originally posted by Per Edwardsson with karma: 501 on 2021-08-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Mk-_- on 2021-08-26:
+Thank you so much.
+Unfortunately  I misunderstood the documentation
+Comment by Gianstiff on 2022-02-25:
+I'm not fully sure if I got the solution.
+Asking because I'm having the same issue working with a Turtlebot3 robot
+

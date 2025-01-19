@@ -1,0 +1,57 @@
+Q:
+
+rospy.msg.AnyMsg How do we use?
+
+Hi,
+First time poster here, I'm just wondering how does one use an implementation of this.
+I am reading some code and from what I can tell the programmer hasn't collected any information of the data just the size of it to determine the bandwidth.
+Source: https://code.google.com/p/wu-robotics/source/browse/trunk/wu_utils/stat_utils/bandwidth_node.py?r=1254
+if one knows the topic and message type could one reconstruct the message? does anyone have an example of this, or a good reference?
+Thanks
+Michael
+
+Originally posted by new2ros on ROS Answers with karma: 50 on 2015-02-08
+Post score: 2
+
+A:
+
+Why would you want to use AnyMsg if you know the topic name and topic type? In that case, you could use a simple subscriber:
+import rospy
+from sensor_msgs.msg import Imu
+
+def cb(msg):
+    print msg
+    
+rospy.init_node('mynode')
+rospy.Subscriber('/imu', Imu, cb)
+rospy.spin()
+
+But even if you don't know topic name and type beforehand, you can subscribe to any topic and get the deserialized messages. I've written a small script to demonstrate this:
+import rospy
+import rostopic
+import rosgraph
+
+rospy.init_node('mynode')
+
+topics = [t for t, _ in rosgraph.Master('/mynode').getPublishedTopics('') if not t.startswith('/rosout')]
+
+for t in topics:
+    msg_class, _, _ = rostopic.get_topic_class(t)
+    msg = rospy.wait_for_message(t, msg_class)
+    print "\n\n================================================================================"
+    print "received a message on topic %s:" % t
+    print msg
+
+The script simply gets one message from each published topic and prints it. The msg object is a fully deserialized message, so you can do anything with it; for example, if the message has a header field, you can access it via msg.header. If you're interested in all messages from a topic (instead of just a single one), simply use a rospy.Subscriber instead of rospy.wait_for_message().
+
+Originally posted by Martin Günther with karma: 11816 on 2015-02-09
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by new2ros on 2015-02-09:
+Thanks for the response I'm still pretty new at this, I have been able to get this working on my test program, Thanks.
+So does that mean rospy.msg.AnyMsg should only be used to calculate bandwidth? Is there any other purpose for it?
+Comment by Martin Günther on 2015-02-10:
+I've never used it, so I can't think of other use cases right now. It gives you access to the raw serialized data, which might come in handy sometimes (let's say if you write your own rosbag implementation and just want to store the data away without having to look at it).
+

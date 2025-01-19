@@ -1,0 +1,80 @@
+Q:
+
+Get correct tf from robot_state_publisher
+
+Question: How do I get the correct tf from robot_state_publisher?
+Details and background:
+I have a urdf file (snippet shown below) describing a joint:
+<joint name="scan_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="base_scan"/>
+  <origin xyz="-0.032 0 0.172" rpy="0 0 0"/>
+</joint>
+
+<link name="base_scan">
+
+and a launch file that launches a robot_state_publisher node. Here's the snippet.
+<param name="robot_description" command="$(find xacro)/xacro $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+
+<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+  <param name="publish_frequency" type="double" value="50.0" />
+</node>
+
+After launching the file, everything looks good when I validate the tf by rostopic echo /tf_static. Here's the relevant part of the terminal output:
+header: 
+  seq: 0
+  stamp: 
+    secs: 3
+    nsecs: 722000000
+  frame_id: "robot_1/base_link"
+child_frame_id: "robot_1/base_scan"
+transform: 
+  translation: 
+    x: -0.032
+    y: 0.0
+    z: 0.172
+  rotation: 
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    w: 1.0
+
+But when I use rosrun tf_echo robot_1/base_link robot_1/base_scan, the tf changed even though it's static. You see after the 2nd iteration onwards, the tf changed from [-0.032, 0.000, 0.172] to [-0.064, 0.000, 0.122].
+At time 0.000
+- Translation: [-0.032, 0.000, 0.172]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY (radian) [0.000, -0.000, 0.000]
+            in RPY (degree) [0.000, -0.000, 0.000]
+At time 0.000
+- Translation: [-0.032, 0.000, 0.172]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY (radian) [0.000, -0.000, 0.000]
+            in RPY (degree) [0.000, -0.000, 0.000]
+At time 0.000
+- Translation: [-0.064, 0.000, 0.122]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY (radian) [0.000, -0.000, 0.000]
+            in RPY (degree) [0.000, -0.000, 0.000]
+At time 0.000
+- Translation: [-0.064, 0.000, 0.122]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY (radian) [0.000, -0.000, 0.000]
+            in RPY (degree) [0.000, -0.000, 0.000]
+
+I also tried using python TransformListener, and the result was the same. The tf changed after some time. There's no other node broadcasting this tf besides robot_state_publisher.
+
+Originally posted by didi1311 on ROS Answers with karma: 18 on 2022-01-26
+Post score: 0
+
+A:
+
+Ok found the problem.
+Turned out I have this line left uncommented in another launchfile that also broadcasts the same tf.
+<node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" args="-0.064 0 0.122 0 0 0 robot_$(arg robot_id)/base_link robot_$(arg robot_id)/base_scan 100" />
+
+Turned this node off and it works. My bad
+
+Originally posted by didi1311 with karma: 18 on 2022-01-26
+This answer was ACCEPTED on the original site
+Post score: 0
+

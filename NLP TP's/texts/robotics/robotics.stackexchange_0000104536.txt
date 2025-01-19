@@ -1,0 +1,133 @@
+Q:
+
+Inflation Layer doesn't seem to be working in local costmap specifically
+
+I am trying to set up the nav2 parameter yaml file for my robot. The code I wrote for the costmaps can be seen here:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 5.0
+      global_frame: odom #change here
+      robot_base_frame: baseplate
+      use_sim_time: True
+      rolling_window: true # Setting the "rolling_window" parameter to true means that the costmap will remain centered around the robot as the robot moves through the world. 
+      width: 5
+      height: 5
+      resolution: 0.05
+      footprint: "[ [0.8, 0.6], [0.8, -0.6], [-0.8, -0.6], [-0.8, 0.6] ]"
+      plugins: ["inflation_layer", "obstacle_layer"]
+      filters: ["keepout_filter"]
+      inflation_layer:
+        enabled: True # Disable it to see difference 
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 2.58 #A scaling factor to apply to cost values during inflation. increasing the factor will decrease the resulting cost values. 
+        inflation_radius: 0.9 #The radius in meters to which the map inflates obstacle cost values. 
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        #observation_persistence: 15.0 # How long to store messages in a buffer to add to costmap before removing them (s). Effectivelly, obstacles are not so easily forgotten.
+        footprint_clearing_enabled: True # If true, the robot footprint will clear (mark as free) the space in which it travels. 
+        combination_method: 1 # 0 - Overwrite: Overwrite master costmap with every valid observation. 1 - Max: Sets the new value to the maximum of the master_grid’s value and this layer’s value.
+        observation_sources: scan
+        scan:
+          topic: "/lidar_ign"
+          max_obstacle_height: 3.0 # The maximum height in meters of a sensor reading considered valid. This is usually set to be slightly higher than the height of the robot.
+          expected_update_rate: 0.5 #How often to expect a reading from a sensor in seconds. A value of 0.0 will allow infinite time between readings. This parameter is used as a failsafe to keep the navigation stack from commanding the robot when a sensor has failed. It should be set to a value that is slightly more permissive than the actual rate of the sensor
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 4.0 # If a ray encounters an obstacle at a distance of e.g. 100 meters from the robot, it does not clear any cells beyond the 90-meter limit defined by raytrace_max_range. The cells between 90 and 100 meters are still marked as "unknown" in the costmap.
+          raytrace_min_range: 0.0
+          obstacle_max_range: 3.0 # The maximum range in meters at which to insert obstacles into the costmap using sensor data. 
+          obstacle_min_range: 0.0 # The minimum range in meters at which to insert obstacles into the costmap using sensor data. 
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
+        transform_tolerance: 0.1
+      always_send_full_costmap: True
+  
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 5.0
+      global_frame: map
+      robot_base_frame: baseplate
+      use_sim_time: True
+      height: 20
+      width: 20
+      footprint: "[ [0.8, 0.6], [0.8, -0.6], [-0.8, -0.6], [-0.8, 0.6] ]"
+      resolution: 0.05
+      track_unknown_space: false
+      plugins: ["static_layer", "inflation_layer", "obstacle_layer"]
+      filters: ["keepout_filter", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        enabled: True # Disable it to see difference 
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 2.58 #A scaling factor to apply to cost values during inflation. increasing the factor will decrease the resulting cost values. 
+        inflation_radius: 0.9 #The radius in meters to which the map inflates obstacle cost values. 
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: False
+        observation_persistence: 15.0 # How long to store messages in a buffer to add to costmap before removing them (s). Effectivelly, obstacles are not so easily forgotten.
+        footprint_clearing_enabled: True # If true, the robot footprint will clear (mark as free) the space in which it travels. 
+        combination_method: 1 # 0 - Overwrite: Overwrite master costmap with every valid observation. 1 - Max: Sets the new value to the maximum of the master_grid’s value and this layer’s value.
+        observation_sources: scan
+        scan:
+          topic: "/lidar_ign"
+          max_obstacle_height: 3.0 # The maximum height in meters of a sensor reading considered valid. This is usually set to be slightly higher than the height of the robot.
+          expected_update_rate: 0.5
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 90.0 # If a ray encounters an obstacle at a distance of e.g. 100 meters from the robot, it does not clear any cells beyond the 90-meter limit defined by raytrace_max_range. The cells between 90 and 100 meters are still marked as "unknown" in the costmap.
+          raytrace_min_range: 0.0
+          obstacle_max_range: 70.0 # The maximum range in meters at which to insert obstacles into the costmap using sensor data. 
+          obstacle_min_range: 0.0 # The minimum range in meters at which to insert obstacles into the costmap using sensor data. 
+
+        #2 - MaxWithoutUnknownOverwrite: Sets the new value to the maximum of the master_grid’s value and this layer’s value. If the master value is NO_INFORMATION, it is NOT overwritten. It can be used to make sure that the static map is the dominant source of information, and prevent the robot to go through places that are not present in the static map.
+
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info" 
+        transform_tolerance: 0.1
+      always_send_full_costmap: True
+
+map_server:
+  ros__parameters:
+    use_sim_time: True
+    # Overridden in launch by the "map" launch configuration or provided default value.
+    yaml_filename: ""
+    topic_name: "map"
+    frame_id: "map"
+
+costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: true
+    type: 0
+    filter_info_topic: "/costmap_filter_info" # Topic to publish costmap filter information to.
+    mask_topic: "/keepout_filter_mask" # Topic to publish filter mask to. The value of this parameter should be in accordance with topic_name parameter of Map Server tuned to filter mask publishing.
+    base: 0.0
+    multiplier: 1.0
+
+filter_mask_server:
+  ros__parameters:
+    use_sim_time: true
+    frame_id: "map"
+    topic_name: "/keepout_filter_mask"
+    yaml_filename: ""
+
+The global costmap works as expected. However, the local costmap appears empty. More specifically, it seems like the inflation layer of the local costmap does not work. I tried changing almost all parameters of local costmap, but that did not fix the issue.
+
+A:
+
+  plugins: ["inflation_layer", "obstacle_layer"]
+
+These are ordered, so the inflation layer only applies to layers below it. Invert the order and you should be good to go!
+

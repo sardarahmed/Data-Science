@@ -1,0 +1,49 @@
+Q:
+
+image_view disparity_view stereo_view OSX
+
+**This post is not about asking a question but to document a workaround.
+When running image_view/disparity_view/stereo_view tools in MacOSX. The program  opens an standard opencv window but shows a blank (black/white) image.  When you move the mouse cursor over the window, the cursor turns into a spinning wheel indicating the window is not responding.
+Reason:
+These programs use "cv::startWindowThread()" instead of "cv::waitkey()" to handle UI update. However, cv::startWindowThread  is not implemented in opencv highgui Carbon/Cocoa/QT backend which are typically used on OSX.
+Workaround
+Add cv::waitKey() to the main thread.
+Here's the example for image_view.cpp
+--- src/nodes/image_view.cpp    (revision 37880)
++++ src/nodes/image_view.cpp    (working copy) 
+@@ -1,5 +1,6 @@  
+   #include <ros/ros.h>  #include <nodelet/loader.h>
+  +#include <opencv2/highgui/highgui.hpp>    
+   int main(int argc, char **argv)  { 
+@@-15,7 +16,9 @@    my_argv.push_back("--shutdown-on-close"); // Internal
+     manager.load(ros::this_node::getName(), "image_view/image", remappings, my_argv);
+-
+-  ros::spin();
++  while(ros::ok())
++  { 
++     cv::waitKey(5);
++  }    return 0;  }
+
+Originally posted by tingfan on ROS Answers with karma: 91 on 2011-11-14
+Post score: 0
+
+Original comments
+Comment by Mac on 2011-11-15:
+Still, put a bug somewhere, so it gets fixed.
+Comment by tingfan on 2011-11-14:
+@Mac,  the ticket probably should go to opencv's track where the backend of startWindowThread should be implemented. However, I don't have enough knowledge right now how that could be done. So I decided to post a workaround here for now. Thanks for your input.
+Comment by Mac on 2011-11-14:
+You should submit this as a ticket on the appropriate trac.
+Comment by berkaydeniz on 2014-03-25:
+This seems to be still a problem and I can not find any viable workaround. Proposed solution is okay for image_view library, any fix suggestions for camera_calibration?
+Comment by deniz on 2014-03-25:
+actually, you just need to replace rospy.spin with while not ros.is_shutdown(): cv.WaitKey(5) in cameracalibrator.py and cameracheck.py
+
+A:
+
+Thanks for the report. As Mac said, please open a ticket (https://code.ros.org/trac/opencv/newticket) so that the OpenCV devs fix this.
+
+Originally posted by Patrick Mihelich with karma: 4336 on 2011-11-15
+This answer was ACCEPTED on the original site
+Post score: 0
+

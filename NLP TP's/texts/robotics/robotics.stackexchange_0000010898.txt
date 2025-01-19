@@ -1,0 +1,146 @@
+Q:
+
+Multiple robots in ROS Gazebo SITL with separate MAVlink/MAVproxy codes
+
+Background:
+This question is about simulating one ErleCopter and one ErleRover simultaneously for a non-commercial research. I would like to have the quadcopter follow a rover, which in turn is to be tasked with following a line. I am trying to spawn the vehicles in Gazebo and control them using MAVProxy.
+The Problem:
+Any time I try this, I run into one of two problems:
+
+Spawning the second vehicle terminates the first MAVProxy instance, or
+The second vehicle spawned cannot be linked to the second instance of MAVProxy. 
+
+I'm not sure what to do about this because I am not sure if this problem is one problem or if it's composed of two sub-problems. The first problem is in spawning the robots and the second one is in controlling both independently (and obtain the state parameters of both vehicles and use that as feedback).
+I believe a contributing factor to this problem is that I'm trying to do the simulation and both MAVProxy instances on one computer, a Lenovo-y50-70 is being used with Ubuntu 14.04. Two computers are not easy to obtain immediately and there are network stability issues where I am.
+The Question:
+The entire question probably reduces to "How to link second robot spawned by rosrun to second MAVproxy instance?".
+Desired Outcome:
+I would like help either getting the simulation to run as desired (two vehicles co-simulated in one virtual world with two MAVProxy instances, one linked to each vehicle), OR official documentation somewhere that this is not possible.
+What I've Attempted:
+Initial attempts can be seen in earlier edits of this question. For clarity, that information has been removed, but again, if interested, see an earlier version of this question. Fast-forwarding to the relevant:
+The second robot has been spawned successfully as mentioned in this video by using the commands mentioned below.
+cd path_to_urdf_model_files
+rosrun gazebo_ros spawn_model -file rover.urdf -urdf -model rover_object
+
+Note: ROS Indigo is different; gazebo_ros must be used instead of gazebo_worlds
+The weird behaviour of the robot rotating about itself is probably because of MAVproxy; I have experienced this before. Attempt to establish separate network connections to Copter and Rover has been successful so far. The original structure is as shown below: 
+
+rover_circuit.launch -> apm_sitl.launch -> node.launch (node name:
+  "mavros")
+
+The current architecture is as shown below:
+
+copter_circuit.launch -> apm_sitl_copter.launch -> node_copter.launch
+  ("mavros_copter")
+rover_circuit1.launch -> apm_sitl_rover.launch -> node_rover.launch  ("mavros_rover")
+
+rover_ciruit1.launch is as shown below:
+<launch>
+
+  <include file="$(find mavros)/launch/apm_sitl_rover.launch"></include>
+  <arg name="enable_logging" default="true"/>
+  <arg name="enable_ground_truth" default="true"/>
+  <arg name="log_file" default="rover"/>
+  <arg name="tf_prefix" default="$(optenv ROS_NAMESPACE)"/>
+  <arg name="model" default="$(find ardupilot_sitl_gazebo_plugin)/urdf/rover.urdf"/>
+
+  <param name="robot_description" command="
+    $(find xacro)/xacro.py '$(arg model)'
+    enable_logging:=$(arg enable_logging)
+    enable_ground_truth:=$(arg enable_ground_truth)
+    log_file:=$(arg log_file)"
+  />
+  <param name="tf_prefix" type="string" value="$(arg tf_prefix)" />
+
+  <node name="spawn_rover" pkg="gazebo_ros" type="spawn_model"
+    args="-param robot_description -urdf -model 'rover' " respawn="false" output="screen"></node>
+
+</launch>
+
+This is the minimal launch file, and it works. I had thought of rosrun apm_sitl_rover.launch followed by rosrun rover.urdf, but I have been unable to find a suitable package which launches apm_sitl_rover.launch directly. It is easy to roslaunch a launch file that has an  method appended. 
+Naming issues and other network errors have been resolved. 
+Outstanding Problem Remaining:
+I'm still having issues launching and linking the second vehicle, but now it seems like I've narrowed it down such that the only problem is with UDP bind port, which is 14555 by default, and this is crashing Gazebo for the second instance because the second instance is using the same bind port.
+It looks like libmavconn is getting called somehow, particularly interface.cpp which has url_parse_host(bind_pair, bind_host, bind_port, "0.0.0.0", 14555); and the udp.h included in interface.cpp has a function MAVConnUDP() which has bind_port=14555, and this has resulted in "udp1: Bind address: 14555" and "GCS: DeviceError:udp:bind: Address already in use".
+Trying to assess the connection between sim_vehicle.sh, libmavconn, and Gazebo, I was able to figure out that sim_vehicle.sh calls mavproxy.py in one of the ending lines which in turn uses pymavlink. I have been unable to find further relationship currently.
+Leading Questions / An Approach to the Solution
+As I have a strong intuition that this is the final stage, I currently resolve to fix this by using interface_copter.cpp and interface_rover.cpp. I think, if I could get answers to the following questions, I can work out where the failure is in successfully launching and link the second (or subsequent) vehicles:
+
+How does sim_vehicle.sh trigger the libmavconn package and ultimately Gazebo?
+Is there a software architecture diagram which describes the complete structure from sim_vehicle.sh to joints and controllers?
+
+A:
+
+I feel like I'm having to do a lot of work to understand this question. You are trying to simulate two vehicles, and... what's the issue? You are trying to simulate them in Gazebo, right?
+Have you seen this answer on the ROS website that shows launching two robots in one simulation? As I mention, it's very difficult to read your post, which may explain why it's received such little attention. For instance, what is the first code block you show? What is the second code block? 
+In both code blocks, you have the following lines:
+<arg name="model" default="$(find ardupilot_sitl_gazebo_plugin)/urdf/erlecopter_base.xacro"/>
+<arg name="model" default="$(find ardupilot_sitl_gazebo_plugin)/urdf/rover.urdf"/-->
+
+BOTH code blocks have these lines. That is, you have "model" assigned to the Erlecopter, then you have "model" assigned to the Rover. Both instances of "model" occur in the same namespace, so I'm not sure how they would be distinguished. 
+Again I would refer you to the answer on the ROS forums
+I'll reproduce part of the article here for posterity for future visitors:
+
+The answer is based on the turtlebot robot, but of course it can be used with any robot(s).
+For multiple robots the key point is to manage the namespaces and tf_prefixes. Although usually we will set them to the same value for each robot in this example I will you different for purpose.
+In setting up the navigation stack(s) each robot must operate in it's own namespace, but they do have to share the map (and usually robot_description).
+
+(emphasis added)
+
+Simulation
+  First of all we have to launch the simulation, in our case gazebo. To make things more readable I split launch files in few files.
+Launch file for one robot. We name it one_robot.launch:
+
+<launch>
+    <arg name="robot_name"/>
+    <arg name="init_pose"/>
+
+    <node name="spawn_minibot_model" pkg="gazebo" type="spawn_model"
+     args="$(arg init_pose) -urdf -param /robot_description -model $(arg robot_name)"
+     respawn="false" output="screen" />
+
+    <node pkg="robot_state_publisher" type="state_publisher" 
+          name="robot_state_publisher" output="screen"/>
+
+    <!-- The odometry estimator, throttling, fake laser etc. go here -->
+    <!-- All the stuff as from usual robot launch file -->
+</launch>
+
+Two things to mention for above launch file:
+
+Create two arguments to pass for robot initialization: name and position
+Notice that -param /robot_description is with the slash i.e. fully-qualified, as it will be shared.
+
+Having the robot declaration we can now play with the namespaces. Your main launch file for multiple robots should look like (robots.launch):
+
+<launch>
+  <!-- No namespace here as we will share this description. 
+       Access with slash at the beginning -->
+  <param name="robot_description"
+    command="$(find xacro)/xacro.py $(find turtlebot_description)/urdf/turtlebot.urdf.xacro" />
+
+  <!-- BEGIN ROBOT 1-->
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <include file="$(find your_pkg)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x 1 -y 1 -z 0" />
+      <arg name="robot_name"  value="Robot1" />
+    </include>
+  </group>
+
+  <!-- BEGIN ROBOT 2-->
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2_tf" />
+    <include file="$(find your_pkg)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x -1 -y 1 -z 0" />
+      <arg name="robot_name"  value="Robot2" />
+    </include>
+  </group>
+</launch>
+
+So I've reproduced here the steps up to launching both robots. The full answer goes into a lot more depth. 
+Just above the comments for the post is a link that says (more). It expands the rest of the answer.
+Be sure to read the full answer as it goes into more detail about steps to take for setting up navigation and visualization. 
+If you try these steps and get a specific error, please tell us what exactly the error said. Comments like, "This didn't work," or, "This had errors," are not helpful. 
+I do hope this works for you! If I've missed the mark as to the scope/direction of your question then please try to clarify the exact errors you're getting. 
+

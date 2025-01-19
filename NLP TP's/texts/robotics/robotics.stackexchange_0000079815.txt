@@ -1,0 +1,88 @@
+Q:
+
+git strategy for catkin and package folders
+
+I am new to ROS and the catkin tool. I have read the tutorials and try to understand how to work with the ROS file structure and tools. Let's say my application will consist of home grown packages a,b and c.
+workspace_folder/
+  src/
+    CMakeLists.txt/
+    package_a/
+    package_b/
+    package_c/
+
+I could place these packages in separate git repositories, but I feel that would be inconvenient as the number grows and as many of them will be very application specific.
+Should I place the src folder in git instead? What about the CMakeLists.txt file then? I guess that file is system specific.
+Or do you recommend to make the full work space folder as repository and just make git ignore the build and devel folders?
+
+For each solution I am interested in the instructions that a new developer would need to checkout and build the application. For instance I am somewhat in doubt about what catkin (e.g. catkin init work space) does behind the scenes and how much of this should be in git.
+Thanks for any advice
+
+Originally posted by knxa on ROS Answers with karma: 811 on 2017-03-25
+Post score: 10
+
+A:
+
+I could place these packages in separate git repositories, but I feel that would be inconvenient as the number grows and as many of them will be very application specific.
+
+All packages in a single git repository must be released together. So if you find a bug in one package and would like to release a new patch release you will need to release the other packages in the same repo too even though they havent' changed.
+It basically comes down to how closely related the packages are. If they are tightly coupled you should keep them in a single repo. If they are not (e.g. the packages are for completely different and unrelated application) you might better keep them in separate repos.
+
+Should I place the src folder in git instead? What about the CMakeLists.txt file then? I guess that file is system specific.
+
+No, the workspace itself (the src folder and the CMakeLists.txt file in the root of the source space) should not be part of your repository. The rational is that users might want to clone your repository together with other repositories and build them together in a workspace. That wouldn't be possible if your repo already contains this. Also the CMakeLists.txt file only applies to the case when you are using catkin_make. But there are other build tools (e.g. catkin_make_isolated and catkin_tools) which don't use that file.
+
+Or do you recommend to make the full work space folder as repository and just make git ignore the build and devel folders?
+
+Neither nor. You either want:
+
+package_a, package_b, and package_c to be three separate repositories or
+
+if of put all three packages into a single repository clone that repo in your src folder:
+workspace_folder/
+src/
+repo_containing_pkgs/  <-- git repo
+package_a/
+package_b/
+package_c/
+
+The src folder should always be created by the user when he creates a workspace and decides what sources to put into that workspace.
+
+For each solution I am interested in the instructions that a new developer would need to checkout and build the application. For instance I am somewhat in doubt about what catkin (e.g. catkin init work space) does behind the scenes and how much of this should be in git.
+
+The workflow usually looks like this:
+
+The user creates workspace_folder/.
+The user creates workspace_folder/src/.
+The user populates the source space of the workspace with whatever packages he wants to build. There are multiple options how to do that:
+
+The user manually calls git clone / hg clone / svn checkout /  / whatever else you want to imagine.
+The user uses the tool rosinstall_generator to collect a list of repositories and uses a tools like wstool or vcstool to fetch a set of repositories. This can e.g. be used to build a full ROS distribution (see from-source instructions).
+
+Build the workspace with any of the build tools (catkin_make, catkin_make_isolated, catkin_tools).
+
+If you don't want users to build your packages from source all the time you can also release your packages to provide binary packages of it. That way users can just install the Debian packages using apt install ros-kinetic-your-pkgnames.
+
+Originally posted by Dirk Thomas with karma: 16276 on 2017-03-25
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by knxa on 2017-03-26:
+Thank you. Nice answer. Appreciate it. I guess I just don't yet understand what catkin does and relies on. E.g. how use catkin_create_pkg to create package_b in this structure?:
+  workspace_folder/
+    src/
+      my application folder  <-- git repo
+        package_a/
+        package_b/
+
+Comment by Dirk Thomas on 2017-03-26:
+catkin is being used in the CMake file of each of the packages and it help you build the package. It basically make it easier to pass the information from one package to the next package if they depend on each other.
+Comment by Dirk Thomas on 2017-03-26:
+In your example you need to go to the folder "my application folder" and invoke "catkin_create_pkg" which then creates the subfolder "package_b".
+Comment by knxa on 2017-03-26:
+Thanks a lot for your clear explanations.
+Comment by superkuo on 2019-10-12:
+I am guessing I should also not include the build and devel folder on GitHub? Thanks.
+Comment by rational_galt on 2019-12-19:
+I believe that is correct. Can anyone confirm?
+

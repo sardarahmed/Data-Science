@@ -1,0 +1,33 @@
+Q:
+
+ros_control - a proper position initialization approach?
+
+I'm setting up MoveIt! to drive a position-controlled "hobby arm" as a learning exercise.  I can interface with controller_manager successfully in my main() routine that invokes a hardware_interface implementation with read() and write() calls.  Currently I am loading my URDF, launching the controllers & controller_manager, and launching robot_state_publisher from one launch file, and some time later, starting up MoveIt! using a launch file I derived from demo.launch.
+The problem is, with no one commanding ros_control at startup, when I launch the first launch file, it tends to initialize the robot in an undesirable pose (a few days ago by initializing all joints to zero, yesterday by initializing all joints to 1.57...).  What is the proper bring-up procedure is for a robot that is controlled using ros_control?  Where is the right time and place to set the robot's desired initial pose?
+I've looked at the ROScon 2014 presentation, I've written the URDF, a ros_control hardware_interface implementation that works, MoveIt! can drive robot arm trajectories on my measly AL5D robot.  (As a ROS newbie, getting this far has not been as trivial as it sounds...).  So it's not that it doesn't work once everything's up.  It's that I want this thing to be predictable when it is being initialized, and equally predictable when it is being brought offline.  Right now it has the "left hand of God" preventing it from taking chunks out of my table when I start the first launch file.
+I'm not sure how much specific XML/code you need to see, so I thought I'd stop here and see if someone can point me somewhere for the info I have yet to find to guide me.
+
+Originally posted by BigBuddha on ROS Answers with karma: 66 on 2015-06-15
+Post score: 3
+
+Original comments
+Comment by gvdhoorn on 2015-06-16:
+I'm sure @Adolfo Rodriguez T will be able to give you some pointers, but in the mean time, providing access to your hardware interface implementation and surrounding infrastructure would probably help remove some guesswork from potential answers.
+
+A:
+
+If your robot is position controlled, one strategy you can implement is to hold position when your RobotHW specialization initializes. With this I mean, before starting the control loop, read joint positions once and set those values as commands. This way, joints not associated to any controller will remain where they are.
+Alternatively, and if your hardware allows for it, you can designate a special value (quiet NaNs are customary) to represent non-initialized values. With this approach, you don't need to read joint positions,  but just initialize the commands to this special value before starting the control loop. In such cases, what to do when these values are received is HW-dependent, but for position-controlled robots, it typically means hold position.
+
+Originally posted by Adolfo Rodriguez T with karma: 3907 on 2015-06-16
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by BigBuddha on 2015-06-16:
+Adolfo, this was the last approach I tried - specifically, before entering the read/write loop, I set all the j_cmd[] elements to the values I want the controller to drive to at startup. At this point, either I have a bug in my j_cmd initialization (a possibility), but if there is no bug there, then
+Comment by BigBuddha on 2015-06-16:
+(continued)  there must be something happening in cm.update()  after the first read() call in the first iteration of the control loop that is overwriting the values I previously put in j_cmd. I will look closely at my code and run with additional debugging when I get back on Fri. Many, many thanks.
+Comment by BigBuddha on 2015-06-19:
+I have now confirmed that Adolfo's suggestion works, I had a bug in my j_cmd initialization.  I had a defect in my YAML file that forced some initialization angles to load at 1.57rad hard-coded defaults.  Thanks Adolfo!
+

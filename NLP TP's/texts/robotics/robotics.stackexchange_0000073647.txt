@@ -1,0 +1,75 @@
+Q:
+
+/bin/sh: 1: Syntax error: "(" unexpected
+
+There must be something misconfigured with this system because the same code builds on other systems no problem. Here's the full output. Using Ubuntu 14.04 and the latest ros-indigo packages from the ppa. This is a fresh install on this system. Any ideas what it might be?
+[ 17%] Built target bond_generate_messages_lisp
+Scanning dependencies of target bond_generate_messages_py
+[ 17%] Built target bond_generate_messages_py
+Scanning dependencies of target diagnostic_msgs_generate_messages_cpp
+[ 17%] Built target diagnostic_msgs_generate_messages_cpp
+[ 17%] Scanning dependencies of target diagnostic_msgs_generate_messages_py
+Built target mbot_pure_pursuit
+[ 17%] Built target diagnostic_msgs_generate_messages_py
+Scanning dependencies of target velodyne_pointcloud_gencfg
+Scanning dependencies of target velodyne_launch_generate_messages_py
+[ 19%] Generating dynamic reconfigure files from cfg/VelodyneConfig.cfg: /home/marble/mBot/ros/devel/include/velodyne_pointcloud/VelodyneConfigConfig.h /home/marble/mBot/ros/devel/lib/python2.7/dist-packages/velodyne_pointcloud/cfg/VelodyneConfigConfig.py
+[ 19%] /bin/sh: 1: Syntax error: "(" unexpected
+make[2]: *** [/home/marble/mBot/ros/devel/include/velodyne_pointcloud/VelodyneConfigConfig.h] Error 2
+make[1]: *** [velodyne_driver_16/velodyne_pointcloud/CMakeFiles/velodyne_pointcloud_gencfg.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+Built target velodyne_launch_generate_messages_py
+
+Here's the cfg file in question. It starts with a shebang as expected.
+#!/usr/bin/env python
+PACKAGE = "velodyne_pointcloud"
+
+from math import pi
+from dynamic_reconfigure.parameter_generator_catkin import *
+
+gen = ParameterGenerator()
+
+gen.add("min_range", double_t, 0, "min range to publish", 0.9, 0.9, 10.0)
+gen.add("max_range", double_t, 0, "max range to publish", 130, 0.9, 200)
+gen.add("view_direction", double_t, 0, "angle defining the center of view",
+        0.0, -pi, pi)
+gen.add("view_width", double_t, 0, "angle defining the view width",
+        2*pi, 0.0, 2*pi)
+
+exit(gen.generate(PACKAGE, "velodyne_pointcloud", "VelodyneConfig"))
+
+[Originally posted](https://answers.ros.org/question/233201//bin/sh:-1:-syntax-error:-"("-unexpected/) by zacwitte on ROS Answers with karma: 170 on 2016-04-28
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-04-29:\
+
+[..] and the latest ros-indigo packages from the ppa.
+
+Just making sure: there is no PPA for ROS. Do you mean packages.ros.org?
+Comment by gvdhoorn on 2016-04-29:
+Also: how did you download the sources for velodyne? DynReCfg files should be executable, so if you didn't clone the repository correctly, you can run into problems.
+Comment by joq on 2016-04-29:
+You said you installed from "the ppa", but your output looks like you are building it from source. Are you?
+Comment by zacwitte on 2016-05-02:
+Yeah, sorry for the confusion. By "from the PPA" I mean I added packages.ros.org as a repository and most of ROS is installed that way. The velodyne package is out of date on packages.ros.org so I cloned the latest from github into a catkin workspace, which I'm trying to build.
+Comment by glm on 2019-08-23:
+Missing shebang causes this same error message.
+
+A:
+
+It looks like the problem here was a space in my "actual" catkin workspace path. The path shown above is /home/marble/mBot/ros/devel/include/velodyne_pointcloud/VelodyneConfigConfig.h but that's actually a symlink to /home/marble/Dropbox (my company)/mBot/ros/devel/include/velodyne_pointcloud/VelodyneConfigConfig.h. Unfortunately dropbox has a space in the folder name and no way to change it. I thought a symlink would work fine and it usually does, but in this case it does not.
+I'm not sure if this is a bug in Dynamic Reconfigure, but the workaround for now is to not allow any spaces in paths, even if they're obscured by a symlink.
+
+Originally posted by zacwitte with karma: 170 on 2016-05-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by William on 2016-05-02:
+I highly recommend that you avoid whitespace in your paths. It's just going to make your life easier.
+Comment by zacwitte on 2016-05-03:
+I definitely agree, however Dropbox doesn't offer a choice.
+Comment by joq on 2016-05-05:
+It would be nice for gencfg to work even with spaces in the path, but that's hard to do for most Unix tools.
+

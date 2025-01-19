@@ -1,0 +1,53 @@
+Q:
+
+Build debian package on ROS2 without recompiling
+
+Hi,
+I'm trying to build deb files from my private packages on private repos. Right now, I could loop through each package and build my debs, following this simple script:
+mkdir artifacts
+sudo apt-get update
+sudo apt-get install -y python3-pip fakeroot dpkg-dev debhelper dh-python
+pip install bloom
+. /opt/ros/galactic/setup.bash
+# Already compiled with colcon build
+. /root/windrose/install/setup.bash
+
+echo "yaml file:///custom.yaml galactic" >> /etc/ros/rosdep/sources.list.d/20-default.list
+rosdep update
+
+OLDIFS=$IFS
+IFS=$'\n'
+for x in $(colcon list -t --paths); do
+    if [[ $(echo $x | awk '{print $3}') == *"ros.ament"* ]]; then
+        cd $(echo $x | awk '{print $2}')
+        bloom-generate rosdebian
+        fakeroot debian/rules binary
+        cd $OLDPWD
+        deb_location=$(find ~/windrose/src/windrose -name "*.deb")
+        dpkg -i $deb_location
+        mv $deb_location artifacts
+    fi
+done
+
+unset OLDIFS
+unset IFS
+
+My issues:
+
+fakeroot debian/rules binary recompiles the package while I already did it with colcon build. Is there a way to avoid this and use the colcon build workspace?
+fakeroot debian/rules binary also runs tests, I'd like to disable them with -DBUILD_TESTING=OFF for example, is it possible?
+
+Thanks
+
+Originally posted by Dben on ROS Answers with karma: 35 on 2022-04-06
+Post score: 0
+
+A:
+
+I doubt that this is possible because when you are generating Debian files you are doing this in a separate (fakeroot) environment. Otherwise, you can end up with broken links inside binaries.
+On the other hand, this process is simple to automate, so it shouldn't be actually an issue.
+
+Originally posted by destogl with karma: 877 on 2022-04-27
+This answer was ACCEPTED on the original site
+Post score: 1
+

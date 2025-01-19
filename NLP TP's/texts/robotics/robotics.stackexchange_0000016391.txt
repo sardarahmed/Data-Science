@@ -1,0 +1,67 @@
+Q:
+
+How does structural/installation errors have to be modelled in a gyroscope IMU?
+
+I have the model for a gyroscope from an IMU given by
+$$
+\omega_{meas} = (I-S)\omega_{true} + \beta + v
+$$
+$S$ is the scaling and misalignment of the sensor, which I understand is a parameter I get from datasheet. $\omega_{true}$ is the true value of the gyro rates, $\beta$ is the bias defined by the bias instability, and $v$ is the noise
+defined by the ARW parameter and bias instability.
+After installation of the IMU, there will be an error due to structural misalignments between the IMU and whatever my structure will be. So, this structural error, $R_{struct}$, will generate a frame rotation, so I am a bit confused on how this error has to be modelled. I modelled it as affecting the whole measurement:
+$$
+\omega_{meas} = R_{struct}\left((I-S)\omega_{true} + \beta + v\right)
+$$
+But someone told me it has to be applied only to the true measurement:
+$$
+\omega_{meas} = (I-S)R_{struct}\omega_{true} + \beta + v
+$$
+I think is has to be applied on the whole system as otherwise, even do small, I will be applying the bias and noise in another frame.
+
+A:
+
+It's a little difficult to visualize rotations of a rotation sensor, so let's consider an accelerometer instead. You've got the same problem with an accelerometer: if the sensor isn't aligned with the chassis frame, you introduce a relative rotation $R_{struct}$. 
+Now, let's suppose some properties to go along with the accelerometer. We'll say it measures x- and y-axis accelerations, where +x is right/starboard and +y is forward. +z is up. 
+Let's also say that accelerometer has a y-axis bias of $1$ and an x-axis bias of 0. The chassis frame is currently accelerating at a rate of 1 $g$ forward.
+If the accelerometer is well aligned to the chassis such that $R_{struct} = I$, then you get:
+$$
+a_{meas} = \left[\begin{array}{ccc}
+0 \\
+g \\
+\end{array}\right] + \left[\begin{array}{ccc}
+0 \\
+1 \\
+\end{array}\right]
+$$
+That is, for a well-aligned accelerometer, the x-axis output is $0$, from the fact that the chassis isn't accelerating along the x-axis, plus $0$, from the fact that the bias on the x-axis of that sensor is also zero.
+The y-axis output is $g + 1$, from the chassis motion and the bias along the y-axis. 
+NOW, consider what happens if you rotate the sensor by +90 degrees about the z-axis. The sensor (+y) is now oriented along the chassis (-x) and the sensor (+x) is now oriented along the chassis (+y). Repeat the same measurement and now you get a reading of:
+$$
+a_{meas} = \left[\begin{array}{ccc}
+g \\
+0 \\
+\end{array}\right] + \left[\begin{array}{ccc}
+0 \\
+1 \\
+\end{array}\right]
+$$
+The chassis is accelerating at a rate of $g$ along its +y-axis, which the sensor is registering as a +x motion. However, the sensor is going to output a y-axis bias of $+1$ regardless of the orientation of the sensor.
+That is, if there were no bias, your reading would be:
+$$
+a_{unbiased} = R_{struct}a_{chassis} \\
+$$
+The sensor bias is independent of the sensor orientation, so you add that to the unbiased reading:
+$$
+a_{biased} = a_{meas} = a_{unbiased} + bias \\
+\boxed{a_{meas} = R_{struct}a_{chassis} + bias} \\
+$$
+Lastly, I believe if the bias were applied to all parameters, as you wrote:
+$$
+\omega_{meas} = R_{struct}\left(\left(I-S\right)\omega_{true} + \beta + \nu\right) \\
+$$
+That you could distribute the $R_{struct}$:
+$$
+\omega_{meas} = R_{struct}\left(I-S\right)\omega_{true} + R_{struct}\beta + R_{struct}\nu \\
+$$
+And then you could cleverly rotate your sensor to an angle of $\theta_{clever} = \mbox{atan2}\left(\beta_y,\beta_x\right)$ and have the entirety of the bias occur on one axis only and have the other axis be bias-free. That is, if the bias is based on sensor orientation, it would then become possible to affect bias or noise by altering the orientation of the sensor. 
+

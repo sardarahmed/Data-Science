@@ -1,0 +1,87 @@
+Q:
+
+How to use Arduino for ESC control?
+
+I am using an Arduino Uno to control an ESC for my (in progress) quadrocopter.  I am currently using the servo library to control the ESC, which works great.
+Except..
+A count of 100 is max speed, meaning I only have 10 speeds between 90 (stopped) and 100 (motor at full power) to correctly run my quadrocopter, I would like to have many more speed options.  Any ideas?  I'm having a hard time using a PWM signal, I might not be doing it right though.
+My current code is here:
+#include <Servo.h>
+
+Servo myservo; // create servo object to control a servo
+                // a maximum of eight servo objects can be created
+
+int pos = 0; // variable to store the servo position
+
+void setup()
+{
+  myservo.attach(8); // attaches the servo on pin 8 to the servo object
+}
+
+void loop()
+{
+
+ int maxspeed=100;
+ int minspeed=0;
+ int delaytime=5;
+ int count;
+
+ for(count=0; count <1; count+=1) {
+  for(pos = minspeed; pos < maxspeed; pos += 1) // goes from 0 degrees to 180 degrees
+  { // in steps of 1 degree
+    myservo.write(pos); // tell servo to go to position in variable 'pos'
+    delay(delaytime); // waits 15ms for the servo to reach the position
+  }
+  for(pos = maxspeed; pos>=minspeed; pos-=1) // goes from 180 degrees to 0 degrees
+  {
+    myservo.write(pos); // tell servo to go to position in variable 'pos'
+    delay(delaytime); // waits 15ms for the servo to reach the position
+  }
+  if(count>1){
+    break;
+  }
+ }
+
+ myservo.write(92);
+ delay(100000);
+ myservo.write(90);
+ delay(10000000);
+}
+
+A:
+
+The servo.write(angle) function is designed to accept angles from 0 to 180.
+(The value 180 is significantly larger than 100).
+Could you tell me where in the Servo documentation you read "100 (motor at full power)", so we can fix that typo?
+Please change the line
+int maxspeed=100; /* wrong */
+
+to
+int maxspeed=180;
+
+Also, please run servo.refresh() periodically to keep the servos updated -- perhaps something like:
+for(pos = maxspeed; pos>=minspeed; pos-=1) // goes from 180 degrees to 0 degrees
+{
+    myservo.write(pos); // set the servo position
+    myservo.refresh(); // tell servo to go to the set position
+    delay(delaytime); // waits 15ms for the servo to reach the position
+};
+// ...
+myservo.write(92);
+for( long int delaytime = 0; delaytime < 100000; delaytime+=10 ){
+    myservo.refresh(); // tell servo to go to the set position
+    delay(10);
+};
+
+As mpflaga pointed out, you can get more precision by setting the pulse width directly in microseconds with
+myservo.writeMicroseconds(1000); // typical servo minimum; some go down to 600 or less
+myservo.writeMicroseconds(2000); // typical servo maximum; some go up to 2500 or more
+
+p.s.:
+Have you seen "blink without delay" ?
+That technique makes it much easier to read sensors and update servo positions with consistent heartbeat timing.
+
+A:
+
+Your code uses the typical servo.attach(pin) where you can use the overload of servo.attach(pin, min, max) to set the min and max microseconds of the pulse width to match the desired ranges for you ESC. Additionally to make it a bit more clear where myservo.write(90); is used to set the angle, you can use myservo.writeMicroseconds(1500); to set the duration of the pulse directly in microseconds. 
+

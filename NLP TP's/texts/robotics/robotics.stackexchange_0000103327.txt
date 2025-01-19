@@ -1,0 +1,116 @@
+Q:
+
+ROS Subscriber and Publisher node
+
+Hello ROS community,
+I want to implement a ROS node that is both subscriber and publisher. The idea is that each time the subscribed topic changes, the node will publish to another topic. The node takes a detection command and gives a door command controlling a USB latch.
+Here is the code :
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import String
+import serial
+
+#Declaring USB port related to relay
+relayport = serial.Serial(port = "/dev/ttyUSB0",
+baudrate = 9600,
+bytesize = serial.EIGHTBITS, 
+parity = serial.PARITY_NONE,
+stopbits = serial.STOPBITS_ONE, 
+timeout = 1,
+writeTimeout = 2)
+
+#Declaring open and close commands in bytes used to control relay
+open_cmd = b'\xA0\x01\x01\xA2'
+close_cmd = b'\xA0\x01\x00\xA1'
+
+door_state = ''
+
+def Lock_callback(detection): #Callback function to be used when receiving detection topic data
+    global door_state
+    rospy.loginfo("Command is %s", detection.data)
+    if detection.data == 'SH' or detection.data == 'MH' : #Close relay (ON) in Short High and Medium High states to lock door
+        relayport.write(close_cmd)
+        door_state = 'closed'
+        rospy.loginfo("door_state %s", door_state)
+    else : #Open relay (OFF) in other detection states
+        relayport.write(open_cmd)
+        door_state = 'opened'
+        rospy.loginfo("door_state %s", door_state)
+
+def Lock_decision(): #Lock decision function to subscribe to detection state topic and publish Lock topic
+    Lock_pub = rospy.Publisher('/doorcmd', String, queue_size=10)
+    rospy.init_node('Latch_decision', anonymous=True) #Create ROS node for relay
+    Lock_sub = rospy.Subscriber('/detection', String, Lock_callback) #Subscribe node to relay command topic
+    Lock_pub.publish(door_state)
+    rospy.spin()
+
+if __name__ == '__main__':
+        Lock_decision()
+
+The Lock_pub.publish only gives one value at the start and stops which is not what I want. I want to publish the /doorcmd topic everytime it is changed by the /detection topic.
+Any clues on how to do that ? What is the problem in my code ?
+Thanks and regards.
+Lilia.
+
+Originally posted by Lilipop on ROS Answers with karma: 9 on 2023-06-01
+Post score: 0
+
+A:
+
+Hi!
+The problem with your code is that you are actually calling Lock_pub.publish() once. This triggers the callback once. Then, the interpreter reaches rospy.spin() which keeps your program from stopping. When the callback receives a new detection, then door_state changes, but Lock_pub.publish() is not called anymore (you are "stuck" at rospy.spin()).
+To achieve the behavior you want, you could use a class as follows:
+class LatchDecision():
+    def __init__(self):
+        #Declaring USB port related to relay
+        self.relayport = serial.Serial(port = "/dev/ttyUSB0",
+            baudrate = 9600,
+            bytesize = serial.EIGHTBITS, 
+            parity = serial.PARITY_NONE,
+            stopbits = serial.STOPBITS_ONE, 
+            timeout = 1,
+            writeTimeout = 2)
+
+        #Declaring open and close commands in bytes used to control relay
+        self.OPEN_CMD = b'\xA0\x01\x01\xA2'
+        self.CLOSE_CMD = b'\xA0\x01\x00\xA1'
+
+        # Create the publisher and the subscriber
+        self.Lock_pub = rospy.Publisher('/doorcmd', String, queue_size=10)
+        self.Lock_sub = rospy.Subscriber('/detection', String, self.Lock_callback)
+
+    def Lock_callback(self, detection):
+        door_state
+        rospy.loginfo("Command is %s", detection.data)
+        if detection.data == 'SH' or detection.data == 'MH': 
+            self.relayport.write(self.CLOSE_CMD)
+            door_state = 'closed'
+        else :        
+            self.relayport.write(self.OPEN_CMD)
+            door_state = 'opened'
+        
+        rospy.loginfo("door_state %s", door_state)
+        self.Lock_pub.publish(door_state)
+
+if __name__ == "__main__":
+        rospy.init_node('Latch_decision', anonymous=True)
+        ld = LatchDecision()
+        rospy.spin()
+
+In this way, every time you have a new detection, you also publish a message on /doorcmd.
+Note. I have made OPEN/CLOSE_CMD as they are constants. It is a good practice as it improves readability, but it does not affect the execution at all.
+
+Originally posted by bluegiraffe-sc with karma: 221 on 2023-06-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Lilipop on 2023-06-01:
+Hi, I thought that with each function call the publisher would execute too. Your explanation is very clear, I just tested your changes and it works perfectly.
+Thank you so much for the help !
+Lilia.
+Comment by bluegiraffe-sc on 2023-06-01:
+Great!
+If it actually solved your problem, would you mind marking the answer as correct?
+Thanks!
+

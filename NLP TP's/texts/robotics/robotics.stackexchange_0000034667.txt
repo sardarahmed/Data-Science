@@ -1,0 +1,62 @@
+Q:
+
+ROS electric arm navigation programmatically adding collision object
+
+Hi all,
+I'm a little unsure of the proper way to programmatically insert my own custom meshes into the planning scene environment for the ROS electric arm_navigation package. I've been able to insert my own objects in using the planning scene viewer GUI (loading an STL file) but how would I do this programmatically? For instance, I have a model of some object that I want to plan around and I can recognize and align to sensory data, and I want to insert this object into the planning environment when I've recognized it in the scene. What is the correct way to go about doing this? Thanks!
+
+Originally posted by Ibrahim on ROS Answers with karma: 307 on 2011-10-04
+Post score: 4
+
+Original comments
+Comment by Wouter on 2013-02-27:
+I would also like to add Collision objectss to the planning scene using the code below, but with ROS Groovy and MoveIt. So far I did not get it to work because the headers are deprecated in Groovy and MoveIt. Does anyone have an idea how to do a similar thing in Groovy+MoveIt?
+Comment by lagankapoor on 2018-04-16:
+@Ibrahim  i am new in ROS and now i am doing motion planing for my Robotic arm . i Generate all the Moveit configuration files  .Now i want to insert a Environment . HOW i can load that STL file in mine Moveit demo.launch File
+
+A:
+
+Basically what you want to do is load the mesh object, create an arm_navigation_msgs::CollisionObject from that mesh object, and publish it on the '/collision_object' topic.  The environment_server listens to this topic and then will include the mesh object in the planning scene, making MoveArm plan around it.
+In a bit more detail, here's a sketch of some code:
+#include <geometric_shapes/shape_operations.h>
+#include <planning_environment/util/construct_object.h>
+
+btVector3 scale(1.0,1.0,1.0);
+//filename is either an absolute path or a package:// address
+shapes::Mesh* mesh = shapes::createMeshFromFilename(filename, &scale);
+
+arm_navigation_msgs::Shape object;
+if(!planning_environment::constructObjectMsg(mesh, object)) {
+  ROS_WARN_STREAM("Object construction fails");
+}
+delete mesh;
+arm_navigation_msgs::CollisionObject collision_object;
+collision_object.operation.operation = arm_navigation_msgs::CollisionObjectOperation::ADD;
+collision_object.header.stamp = ros::Time::now();
+collision_object.header.frame_id = WORLD_FRAME_ID;
+collision_object.id = "my_object";
+collision_object.shapes.push_back(object);
+//pose comes from elsewhere and must be set
+geometry_msgs::Pose object_recognition_pose;
+collision_object.poses.push_back(pose);
+
+//publish on /collision_object topic
+collision_object_publisher.publish(collision_object)
+
+Originally posted by egiljones with karma: 2031 on 2011-10-04
+This answer was ACCEPTED on the original site
+Post score: 10
+
+Original comments
+Comment by Ibrahim on 2011-10-05:
+Mm yeah, not sure what was wrong the first time but I got your code snippet to work in my application. Thanks!
+Comment by egiljones on 2011-10-05:
+there's a rosdep for it in the geometric_shapes package - just make sure you declare a depend on planning_environment - which depends on geometric_shapes - in your manifest and you shouldn't need to mention assimp at all in linking.
+Comment by Ibrahim on 2011-10-04:
+Ok, thanks! I actually tried this last night and I had trouble getting assimp to link properly but I'll try again looking at the CMakelists.txt for the move_arm_warehouse which uses this function too.
+Comment by yangyangcv on 2012-10-31:
+how to assign the file name?e.g. my file is /opt/myros/chair.dae, i use createMeshFromFilename("/opt/myros/chair.dae", &scale); but got this error: Error retrieving file [/opt/myros/chair.dae]:  malformed
+Comment by St3am on 2014-04-02:
+In hydro this createMeshFromFilename has been replaced with createMeshFromResouce:
+http://docs.ros.org/hydro/api/geometric_shapes/html/namespaceshapes.html#a0747930a810548cc02dc9b8ed0d59ed0
+

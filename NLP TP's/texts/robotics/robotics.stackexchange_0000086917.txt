@@ -1,0 +1,65 @@
+Q:
+
+Latency on camera in ROS
+
+For my project I need to analyse the vision of a robot, I attached a camera to it and I can view the videostream in ROS.
+I measure the latency by pointing the camera at a stopwatch on my screen and then take a screenshot. I can see the current time on the stopwatch and the current time on the stream, the difference between those is the latency.
+Outside ROS, just by using a simple C++ program and openCV I measure a latency of 120ms. In ROS the (almost exact) same code gives me a latency of 230ms.
+        while (ros::ok()) {
+        thetaCapture.read(frame);
+        if (frame.empty()) {
+            ROS_ERROR("Empty frame read from camera stream");
+            break;
+        }
+
+        cv::imshow("Theta Vision", frame);
+        // Stop program on any key press
+        if (cv::waitKey(1) > 1) break; 
+
+        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", frame).toImageMsg();
+        imagePub.publish(msg);
+        //  ros::spinOnce();
+        //  rate.sleep();
+    }
+
+Basically all this node does is send the camera output to another node. Are there any techniques or ways to lower the camera latency in ROS? I experimented with Ros.Rate() etc. but that didn't change much so far.
+
+Originally posted by HaroldVD on ROS Answers with karma: 13 on 2018-05-11
+Post score: 1
+
+Original comments
+Comment by lucasw on 2018-05-11:
+Where do you get 'current time on the stream'?  Is that time now() when the message arrives in a callback in a subscribing node?
+Comment by HaroldVD on 2018-05-14:
+Yes, I take the time in the callback func.
+Comment by lucasw on 2018-05-14:
+It looks like you are using a usb camera with opencv VideoCapture, you could try replacing that with a variant of usb_cam with nodelet support https://github.com/ros-drivers/usb_cam/pulls?q=is%3Apr+nodelet+is%3Aopen .
+Comment by lucasw on 2018-05-14:
+https://github.com/ros-drivers/usb_cam/pull/76 may be of interest also, the v4l timestamp may be close enough to the stopwatch time that you won't need it to characterize latency.
+
+A:
+
+tl;dr: yes, there is one 'trick', which would be using nodelets. That is however a compile/development time decision, so if you're driver doesn't support it, it either will be unavailable to you, or you have to change the nodes you want to use.
+Additionally, nodelets will introduce other restrictions, such as loss of location transparency (need to run on the same machine), introduction of single point of failure (single process hosting multiple nodelets) and introduction of synchronisation coupling.
+Finally: not sending msgs at all is of course also one way to greatly reduce latency, but that has other implications.
+
+longer: this is not specific to ROS, but is something that will always be the case when you start using networked middlewares: overhead in communication (there are other factors, such as process scheduling, but I have a hunch that those factors will not contribute significantly to the latency you've observed. I'll also assume that the driver you're using interfaces in the proper way with the hardware, and is not doing 'strange' things internally, such as introducing artificial delays).
+Unfortunately this is a consequence of the desire to decouple nodes (ie: programs). In order to guarantee that a receiving node has a correct and coherent representation of the in-memory image of a message sent by a transmitting node, the transmission process will need to use an intermediate representation that leaves no room for ambiguity. This in turn will require a decomposition and recomposition step in the communication (ie: serialisation and deserialisation).
+Especially for larger messages the time this step needs dominates the total time it takes to exchange a message (provided both sides are not so far apart (both geographically as well as in terms of networking) that actual transmission of data also takes significant time (ie: from Amsterdam to Tokyo takes around 250 msec fi)).
+
+Are there any techniques or ways to lower the camera latency in ROS?
+
+So the basic (or honest) answer would be: no (provided you'd want to keep total decoupling between participants in tact, both in time as well as in space).
+However, there are some tricks that you can use. These will however lead to a (partial) loss of some of the advantages of using a networked middleware, but that is a trade-off you can make yourself.
+The most commonly used approach is to use a piece of shared memory (or: sharing an address space) between transmitter and receiver: this will allow to skip (de)serialisation entirely, effectively making a message exchange equal to an exchange of pointers. Advantage: in cases where (de)serialisation dominates communication overhead, you can skip that completely. Disadvantage: both receiver and transmitter need to be running on the same system, so loss of location transparency is one disadvantage. Depending on implementation, others could be loss of synchronisation decoupling and introduction of a single point of failure.
+Sharing an address space is supported in ROS, but you'll need to use nodelets, not nodes (processes don't share address spaces). Whether something is a node or a nodelet is a compile / development time decision though, so not something that can be changed easily. Using nodelets introduces some other restrictions, but those are explained on the linked wiki page.
+An alternative would be to not transmit images in the first place, but keep them local to your node. Advantage: no overhead whatsoever. Disadvantage: very tight coupling, essentially using a monolithic program. Probably not something you should consider when working with a networked middleware such as ROS.
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-05-11
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by gvdhoorn on 2018-05-11:
+Note that qualification 'the camera' does most likely not actually matter here, it's a basic consequence of process isolation and network transmission of data.
+

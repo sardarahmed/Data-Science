@@ -1,0 +1,134 @@
+Q:
+
+Ros_control cannot be found (Kinetic)
+
+Hello,
+I am using ROS Kinetic and today I tried to create a package (labrob_control) to implement the necessary controllers for my actuators with the following dependencies: ros_control, ros_controllers.
+I also checked at the /opt/ros/kinetic/share and I can see the 2 packages installed there.
+But when I try to catkin_make my project I get the following warnings and errors:
+Base path: /home/legged/4wheel_robot
+Source space: /home/legged/4wheel_robot/src
+Build space: /home/legged/4wheel_robot/build
+Devel space: /home/legged/4wheel_robot/devel
+Install space: /home/legged/4wheel_robot/install
+####
+#### Running command: "make cmake_check_build_system" in "/home/legged/4wheel_robot/build"
+####
+-- Using CATKIN_DEVEL_PREFIX: /home/legged/4wheel_robot/devel
+-- Using CMAKE_PREFIX_PATH: /opt/ros/kinetic
+-- This workspace overlays: /opt/ros/kinetic
+-- Using PYTHON_EXECUTABLE: /usr/bin/python
+-- Using Debian Python package layout
+-- Using empy: /usr/bin/empy
+-- Using CATKIN_ENABLE_TESTING: ON
+-- Call enable_testing()
+-- Using CATKIN_TEST_RESULTS_DIR: /home/legged/4wheel_robot/build/test_results
+-- Found gtest sources under '/usr/src/gtest': gtests will be built
+-- Using Python nosetests: /usr/bin/nosetests-2.7
+-- catkin 0.7.1
+-- BUILD_SHARED_LIBS is on
+WARNING: package "labrob_control" should not depend on metapackage "ros_control" but on its packages instead
+WARNING: package "labrob_control" should not depend on metapackage "ros_controllers" but on its packages instead
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- ~~  traversing 3 packages in topological order:
+-- ~~  - labrob_control
+-- ~~  - labrob_description
+-- ~~  - labrob_gazebo
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- +++ processing catkin package: 'labrob_control'
+-- ==> add_subdirectory(labrob/labrob_control)
+CMake Warning at /opt/ros/kinetic/share/catkin/cmake/catkinConfig.cmake:76 (find_package):
+  Could not find a package configuration file provided by "ros_control" with
+  any of the following names:
+
+    ros_controlConfig.cmake
+    ros_control-config.cmake
+
+  Add the installation prefix of "ros_control" to CMAKE_PREFIX_PATH or set
+  "ros_control_DIR" to a directory containing one of the above files.  If
+  "ros_control" provides a separate development package or SDK, be sure it
+  has been installed.
+Call Stack (most recent call first):
+  labrob/labrob_control/CMakeLists.txt:7 (find_package)
+
+-- Could not find the required component 'ros_control'. The following CMake error indicates that you either need to install the package with the same name or change your environment so that it can be found.
+CMake Error at /opt/ros/kinetic/share/catkin/cmake/catkinConfig.cmake:83 (find_package):
+  Could not find a package configuration file provided by "ros_control" with
+  any of the following names:
+
+    ros_controlConfig.cmake
+    ros_control-config.cmake
+
+  Add the installation prefix of "ros_control" to CMAKE_PREFIX_PATH or set
+  "ros_control_DIR" to a directory containing one of the above files.  If
+  "ros_control" provides a separate development package or SDK, be sure it
+  has been installed.
+Call Stack (most recent call first):
+  labrob/labrob_control/CMakeLists.txt:7 (find_package)
+
+-- Configuring incomplete, errors occurred!
+See also "/home/legged/4wheel_robot/build/CMakeFiles/CMakeOutput.log".
+See also "/home/legged/4wheel_robot/build/CMakeFiles/CMakeError.log".
+Makefile:1704: recipe for target 'cmake_check_build_system' failed
+make: *** [cmake_check_build_system] Error 1
+Invoking "make cmake_check_build_system" failed
+
+Maybe it's important to notice that the package labrob_control is under a metapackage called labrob, along with two other packages: labrob_description, labrob_gazebo.
+Could you please tell me what is wrong here?
+I also tried in the packages directory the following command in case any dependency was missing:
+rosdep install --from-paths . --ignore-src --rosdistro kinetic
+
+but everything was successful.
+Thank you for your answers and for your time in advance.
+
+Originally posted by patrchri on ROS Answers with karma: 354 on 2016-07-15
+Post score: 0
+
+A:
+
+ros_control is only a metapackage, it doesn't provide any files. It only exists to conveniently install multiple packages by asking apt-get (or any package manager) for just a single one.
+
+WARNING: package "labrob_control" should not depend on metapackage "ros_control" but on its packages instead
+
+As the warning indicates, labrob_control should not expect to find_package(..) the ros_control package, as that is not a package that installs any CMake / catkin related files.
+Depending on what you are using in labrob_control, you'll need to *_depend and find_package(..) (through find_package(catkin COMPONENTS ..)) on one of the other packages of ros_control (ie: controller_interface, controller_manager, controller_manager_msgs, controller_manager_tests, hardware_interface, joint_limits_interface, realtime_tools or transmission_interface).
+
+Edit:
+
+I was looking this tutorial and if you scroll down to Create a ros_controls package you can see that this tutorial advises you to build your package like this:
+
+catkin_create_pkg MYROBOT_control ros_control ros_controllers
+
+hm, yes. That is unfortunate. It would be nice if you could report that at osrf/gazebo_tutorials.
+
+I would also like to ask you why the /opt/ros/kinetic/share/ros_control package has no CMakeLists.txt and only a xml file ? (according to the link you sent me "Every metapackage must have a CMakeLists.txt...").
+
+The source package should, yes. But the installed package doesn't. Also: CMakeLists.txt are never installed, as they are build scripts, not installable artefacts. The only CMake related artefacts that get generated/installed are the *Config.cmake files that you do find in ../shared/$pkg_name.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-07-15
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by patrchri on 2016-07-15:
+So when I am trying to add a metapackage as a dependency, I should add all the packages included in this one? That's inconvenient, what is the reason for the metapackage term to exist when every time I have to add manually all of its packages in the CMake and xml of my package?
+Thanks for answering
+Comment by gvdhoorn on 2016-07-15:
+Metapackages are a convenience for users, not for developers.
+And in general it pays to list as few dependencies as possible when creating your package manifest, as that reduces the amount of disk space and other resources you use of your users (and their robots).
+Comment by gvdhoorn on 2016-07-15:\
+
+what is the reason for the metapackage [..] when every time I have to add manually all of its packages [..]
+
+It's very rarely the case that you add every package from a metapackage to your dependencies. Only when you use something from all of those packages would you do that.
+Comment by gvdhoorn on 2016-07-15:
+See also REP-140 -  for some more info on metapackages.
+Comment by patrchri on 2016-07-15:
+I was looking this tutorial and if you scroll down to Create a ros_controls package you can see that this tutorial advises you to build your package like this:
+catkin_create_pkg MYROBOT_control ros_control ros_controllers
+
+Comment by patrchri on 2016-07-15:
+Which according to the discussion we had is wrong. I would also like to ask you why the /opt/ros/kinetic/share/ros_control package has no CMakeLists.txt and only a xml file ? (according to the link you sent me "Every metapackage must have a CMakeLists.txt...").
+Comment by patrchri on 2016-07-15:
+Thank you again for answering and for your time, I am totally new to this and I am trying to clear the field of understanding this so I don't meet similar problems in the future.
+

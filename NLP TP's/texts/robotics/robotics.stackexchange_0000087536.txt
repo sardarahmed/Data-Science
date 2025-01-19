@@ -1,0 +1,94 @@
+Q:
+
+Tf has two or more unconnected trees
+
+Hey!
+I was trying to use a Kinect fusion package for my project on Robot Workcell Discovery. I am using ROS Kinetic and Ubuntu 16.04.
+While launching the Kinect fusion node, I face the following error.
+ terminate called after throwing an instance of 'tf2::LookupException'. what():  Could not find a connection between 'volume_pose' and 'camera_depth_optical_frame' because they are not part of the same tree. Tf has two or more unconnected trees.
+How as per the Link to the tf frames.pdf file generated created using rosrun tf view_frames these two frames seem to be in the same tree.
+On some occasions, the same launch file gives the following error.
+terminate called after throwing an instance of 'tf2::LookupException' what():  "volume_pose" passed to lookupTransform argument target_frame does not exist.
+This is the related code
+if (!camera->nodeHandle.getParam("use_pose_hints", use_pose_hints_)) 
+{
+    ROS_INFO("Failed to get use_pose_hints flag!");
+  }
+ ROS_INFO_STREAM("Use pose hints set to " << use_pose_hints_);
+ tfListener_.waitForTransform("volume_pose", "camera_depth_optical_frame", ros::Time::now(), ros::Duration(2));
+tfListener_.lookupTransform("volume_pose", "camera_depth_optical_frame", ros::Time(0), previous_volume_to_sensor_transform_);
+ }
+    }
+
+I have added Listener. waitForTransform() as mentioned in this answer. I have also added     <param name="/use_sim_time" value="true"/> on the top of my launch files as as mentioned by some other answers, however the problem still persists.
+There definitely seems to be a problem of the volume_pose not being available in time. What could be the potential reason and solution for this issue?
+Edit: In one case, I received this error message as well which according to this link is again due to a delayed source of frames.
+Warning: TF_OLD_DATA ignoring data from the past for frame table at time 0.165 according to authority unknown_publisher
+Output of tf monitor
+Waiting for transform chain to become available between volume_pose and camera_depth_optical_frame 
+
+RESULTS: for volume_pose to camera_depth_optical_frame
+ Chain is: volume_pose -> base_link -> table -> world -> shoulder_link -> upper_arm_link -> forearm_link -> wrist_1_link -> wrist_2_link -> wrist_3_link -> tool0 -> camera_link -> camera_depth_frame -> camera_depth_optical_frame
+Net delay     avg = 0.00997896: max = 0.099
+        
+Frames:
+Frame: base_link published by unknown_publisher(static) Average Delay: 0 Max Delay: 0
+Frame: camera_depth_frame published by unknown_publisher(static) Average Delay: 0 Max Delay: 0
+Frame: camera_depth_optical_frame published by unknown_publisher(static) Average Delay: 0 Max Delay: 0
+Frame: camera_link published by unknown_publisher(static) Average Delay: 0 Max Delay: 0
+Frame: forearm_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+Frame: shoulder_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+Frame: table published by unknown_publisher Average Delay: -0.0666667 Max Delay: 0
+Frame: tool0 published by unknown_publisher(static) Average Delay: 0 Max Delay: 0
+Frame: upper_arm_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+Frame: volume_pose published by unknown_publisher Average Delay: 0 Max Delay: 0
+Frame: wrist_1_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+Frame: wrist_2_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+Frame: wrist_3_link published by unknown_publisher Average Delay: 0.000272727 Max Delay: 0.003
+        
+All Broadcasters:
+Node: unknown_publisher 85 Hz, Average Delay: -0.0233529 Max Delay: 0.003
+Node: unknown_publisher(static) 1e+08 Hz, Average Delay: 0 Max Delay: 0
+
+Thanks in advance!
+
+Originally posted by aaditya_saraiya on ROS Answers with karma: 105 on 2018-06-26
+Post score: 0
+
+A:
+
+Hi!
+Just for anyone facing a similar issue in the future.
+Instead of
+if (!camera->nodeHandle.getParam("use_pose_hints", use_pose_hints_)) 
+{
+    ROS_INFO("Failed to get use_pose_hints flag!");
+  }
+ ROS_INFO_STREAM("Use pose hints set to " << use_pose_hints_);
+ tfListener_.waitForTransform("volume_pose", "camera_depth_optical_frame", ros::Time::now(), ros::Duration(2));
+tfListener_.lookupTransform("volume_pose", "camera_depth_optical_frame", ros::Time(0), previous_volume_to_sensor_transform_);
+ }
+    }
+
+I added a try-catch block as per the tf tutorials.
+if (use_pose_hints_) {
+    try {
+  tfListener_.waitForTransform("volume_pose", "camera_depth_optical_frame", ros::Time::now(), ros::Duration(0.5));
+  tfListener_.lookupTransform("volume_pose", "camera_depth_optical_frame", ros::Time(0), previous_volume_to_sensor_transform_);
+    }
+    catch (tf::TransformException ex){
+        ROS_ERROR("%s", ex.what());
+    }
+}
+
+}
+This allowed time for the volume_pose frame to become available when the Kinect fusion node was launched.
+And in case the frame is not available the following message will be shown.
+[ERROR] [1530122898.477899539, 10.817000000]: "volume_pose" passed to lookupTransform argument target_frame does not exist. 
+
+Refer to this issue and this pull request if more details are required.
+
+Originally posted by aaditya_saraiya with karma: 105 on 2018-06-27
+This answer was ACCEPTED on the original site
+Post score: 0
+

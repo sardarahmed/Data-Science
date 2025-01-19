@@ -1,0 +1,102 @@
+Q:
+
+Adjust bearing knowing initial and last coordinate in dead reckoning
+
+I am working with IMU data (accelerometer, magnetometer and gyroscope) in order to estimate the path done by the object that contained the IMU. I am using dead reckoning for this. I am trying to estimate the path done only using the initial coordinates in latitude and longitude. However i have been now giving the last coordinate of the real path.
+I was hoping that knowing the last coordinate I could help adjust my estimation so that it ends on the last coordinate but I am not sure how to do that.
+I am using the Madgwick filter in order to obtain a quaternion and from there obtain the yaw. With the yaw I can then get the new position using the formula bellow:
+
+Formula:  φ2 = asin( sin φ1 ⋅ cos δ + cos φ1 ⋅ sin δ ⋅ cos θ ) λ2 = λ1
+
+atan2( sin θ ⋅ sin δ ⋅ cos φ1, cos δ − sin φ1 ⋅ sin φ2 ) where  φ is latitude, λ is longitude, θ is the yaw (clockwise from north), δ
+is the angular distance d/R; d being the distance travelled, R the
+earth’s radius
+
+How can I implement now the last position to better my result and make sure that my estimated positions end up around the last coordinate? Is it possible?
+I though about calculating the bearing between the initial coordinate and the last coordinate and use that bearing to adjust the calculated yaw. Something like:
+
+Formula for bearing:  θ = atan2( sin Δλ ⋅ cos φ2 , cos φ1 ⋅ sin φ2 − sin φ1 ⋅ cos
+φ2 ⋅ cos Δλ ) where   φ1,λ1 is the start point, φ2,λ2 the end point (Δλ
+is the difference in longitude)
+
+and then adjust the yaw obtained from the quaternion by summing the bearing (in radians)
+But it didn't work. I also thought about calculating the bearing between each estimated value and the last coordinate and just go updating it to then adjust the yaw value. However when I implement this the results are not the ones I expect. I am not a mathematician so bearing and yaw angles are kinda messing my head here. Any idea of the best way to do this?
+EDIT:
+Sharing this image in the hopes it becomes clearer.
+[![enter image description here][1]][1]
+Ignore the red dots. But the orange line is the real path done with the IMU and the blue line is the estimated path using dead reckoning and the initial coordinate. What I wish to do is, knowing now the last real point, how can i make sure that my estimated last point does not end there but it adjusts so it ends in the last real point. I put the black line to kinda represent the direction i want my estimation to go.
+What I tried put a straight line for the end coordinate but that is not what I want.
+[![enter image description here][2]][2]
+
+A:
+
+Let's ignore the "robot" part of this (for the time being) and focus instead on the math problem, since that's really the part you care about here.
+There's some list of actual points visited by the IMU:
+$$
+P^A=\{p^A_0, p^A_1, \dots p^A_n\}
+$$
+(I'm assuming here that a 'point' is just an $\langle X, Y \rangle$ tuple.)
+And there's a corresponding list of measured points visited by the IMU:
+$$
+P^M=\{p^M_0, p^M_1, \dots p^M_n\}
+$$
+Because it's dead reckoning, the measured and actual start points are the same, but there is drift over time so the final points are not the same. Your goal is now to adjust all of the measured points in some constant way until $p^M_0 = p^A_0$.
+Your approach to this has been to consider yaw, which is good thinking but I'm not convinced it's totally necessary. With the representation I've described here, we can treat your problem as an example of the 2-dimensional curve fitting problem. That's a good thing: there are plenty different approaches to this, and some of them get pretty fancy.
+But personally, I wouldn't bother with anything too complicated: we can use a Monte-Carlo approach to come to the right answer through a process of randomly guessing the drift and refining the guess until the end point becomes suitably accurate.
+Here's a python example, where ground truth points are generated, an accumulative IMU drift is applied to produce measured values, and then a Monte-Carlo method is used to come up with a pretty good guess:
+import numpy as np
+import matplotlib.pyplot as plt
+
+# selecting a random imu drift, which the monte-carlo approach will not be made
+# aware of
+imu_drift = np.random.normal(0, 0.5, 1)[0]
+
+actual_points = np.random.normal(0, 1, (10, 2))
+cumulative_drift = imu_drift * np.arange(10)
+cumulative_drift = cumulative_drift.repeat(2).reshape((-1, 2))
+drifted_points = actual_points + cumulative_drift
+
+# now that we have ground truth and measured data, let's
+# try a monte-carlo approach to estimate the imu drift
+# we will use the mean squared error as the cost function
+
+best_estimate = None
+best_cost = None
+best_corrected_points = None
+costs = []
+for imu_drift_guess in np.arange(-1, 1, 0.01):
+    cumulative_drift = imu_drift_guess * np.arange(10)
+    cumulative_drift = cumulative_drift.repeat(2).reshape((-1, 2))
+    this_guess = actual_points + cumulative_drift
+    cost = np.mean((this_guess - actual_points) ** 2)
+    costs.append(cost)
+    if best_cost is None or cost < best_cost:
+        best_cost = cost
+        best_estimate = imu_drift_guess
+        best_corrected_points = this_guess.copy()
+assert best_corrected_points is not None
+
+print(f"actual imu drift: {imu_drift}")
+print(f"best estimate: {best_estimate}")
+
+# line plot of the points with numbered labels
+for n in range(len(actual_points)):
+    plt.text(actual_points[n, 0], actual_points[n, 1], str(n))
+    plt.text(drifted_points[n, 0], drifted_points[n, 1], str(n))
+
+plt.plot(actual_points[:, 0], actual_points[:, 1], "o-", label="actual", linewidth=3)
+plt.plot(drifted_points[:, 0], drifted_points[:, 1], "o-", label="drifted")
+plt.plot(
+    best_corrected_points[:, 0], best_corrected_points[:, 1], "o--", label="corrected"
+)
+
+plt.legend()
+
+# and also a plot of the cost function
+plt.figure()
+plt.plot(np.arange(-1, 1, 0.01), costs)
+plt.xlabel("imu drift guess")
+plt.ylabel("cost")
+
+plt.show()
+

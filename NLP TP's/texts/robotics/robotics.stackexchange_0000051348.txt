@@ -1,0 +1,48 @@
+Q:
+
+avoidin circular topic remapping
+
+Hello.
+I've got a problem with topic remapping. I have a node that publishes informations relative to a robot, and listens to the topics of the informations relative to other 3 robot of the same type. Something like:
+publish on : /robot1/info
+listens to: /robot2/info , /robot3/info, /robot4/info.
+Now I want all the 4 robots to share the same code.
+So, I want, for example, robot2 to publish on /robot2/info and to listen to /robot1/info (and to the other 2 robots of course)
+In the launch file a used a classic remap in this way:
+from="/robot1/info" to="/robot2/info" and
+from="/robot2/info" to="/robot1/info"
+but the result is that nothing changes and I think is due to some kind of circular remapping.
+Any idea of how to address the problem?
+Thank you in advance.
+
+Originally posted by jacky_90 on ROS Answers with karma: 101 on 2013-05-23
+Post score: 0
+
+A:
+
+I think you've identified the heart of the problem: you're trying to remap the output of a node to the same name as one of its inputs.  Instead, try to leave each node's output alone, and only remap the inputs:
+my_node:
+  - publishes: infoOut
+  - subscribes: infoIn1, infoIn2, infoIn3
+
+<node name="node1" pkg="my_pkg" type="my_node" ns="robot1">
+  <remap from="infoIn1" to="robot2/infoOut"/>
+  <remap from="infoIn2" to="robot3/infoOut"/>
+  <remap from="infoIn3" to="robot4/infoOut"/>
+</node>
+
+<node name="node2" pkg="my_pkg" type="my_node" ns="robot2">
+  <remap from="infoIn1" to="robot1/infoOut"/>
+  <remap from="infoIn2" to="robot3/infoOut"/>
+  <remap from="infoIn3" to="robot4/infoOut"/>
+</node>
+
+...
+
+Alternatively, if you don't want to put each node in a separate namespace, you can use the same approach as above, but remap each node's output into a node-specific name:
+<remap from="infoOut" to="infoOut1"/>
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-05-23
+This answer was ACCEPTED on the original site
+Post score: 4
+

@@ -1,0 +1,46 @@
+Q:
+
+Given an initial position, a goal position and a duration find a trajectory
+
+I have an initial position $X^R_{init}$ of the robot ($x$, $y$ and yaw) and a goal position $X^R_{goal}$ I need to create a trajectory of duration $T$ with $n$ waypoints to move the robot from its initial position to the goal position (on a straight line). This trajectory is in terms of velocities (linear x, y and angular z).
+Although this looks like a simple problem, I can't find a proper way to do it.
+My algorithm does the following:
+delta_x = goal_x - init_x
+delta_y = goal_y - init_y
+delta_yaw = goal_yaw - init_yaw
+
+magnitude = calculate mag of delta_x, delta_y, delta_yaw
+unit_x = delta_x / magnitude
+unit_y = delta_y / magnitude
+unit_yaw = delta_yaw / magnitude
+
+step_duration = T / n
+
+linear_x = unit_x * step_duration
+linear_y = unit_y * step_duration
+angular_z = unit_yaw * step_duration
+
+traj = empty_trajectory
+for i .. n
+   traj.add_waypoint(linear_x, linear_y, angular_z)
+
+So the above pseudocode should create a traj trajectory of length $T$ of $n$ waypoints that moves the robot from its initial position to the goal position.
+What's wrong with the above?
+
+A:
+
+Your pseudocode seems to do what you expect but it is not up to the task at hand since the approach of doing path planning in velocity is fundamentally wrong. Instead, you should be doing path planning in position and motor control in velocity. 
+When you command a robot in velocity without taking into account the corrections required to compensate for even small deviations from the intended position path (this mode is called open-loop), then the robot inevitably ends up in a location different from $X^R_{goal}$. This happens both in a simulation where the integration of velocity cannot be perfect and, more importantly, with a real robot where impairments, noise, and unmodeled factors contribute to significant deviations from the ideal behavior.
+To get around this, the simplest solution would be to implement a closed-loop velocity control over the planned position path. In particular, the controller can be a PI, that is a proportional-integral unit.
+In essence, suppose we have a vector $traj$ containing position waypoints connecting $X^R_{init}$ and $X^R_{goal}$. For each dimension of $traj$ at each control instant $t=t_i$, you should compute the velocity command as:
+$$
+v[t_i] = K_P \cdot e[t_i] + K_I \cdot \sum_{t=t_0}^{t=t_i} e[t],
+$$
+where $e[t_i]=traj[t_i]-loc[t_i]$ represents the instantaneous error between the desired path and the actual location (i.e. the feedback) at time $t=t_i$. Further, $K_P$ and $K_I$ are the so-called proportional and integral gains of the PI controller that regulate the contributions of the corrections induced by the actual error and the error accumulated over time, respectively.
+There are diverse methodologies to tune the gains, but you could easily come up with working values by setting up initially $K_I=0$ and slightly increase $K_P$ throughout subsequent sessions until you will get a decent tracking. The final displacement error can be compensated by playing with $K_I$.
+Finally, you can even think of mixing open-loop and closed-loop modalities. In this context, the velocity command will resemble something like the following:
+$$
+v[t_i] = v_{OL}[t_i] + K_P \cdot e[t_i] + K_I \cdot \sum_{t=t_0}^{t=t_i} e[t],
+$$
+where $v_{OL}[t_i]$ is the open-loop vector (the so-called feed-forward term) that can be populated using your pseudocode. The gains $K_P$ and $K_I$ will assume different values compared to the case of a pure feedback controller. You will experience anyway that without the feedback term the robot won't attain the goal.
+

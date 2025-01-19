@@ -1,0 +1,49 @@
+Q:
+
+Extended Kalman Filter with Laser Scan + Known Map
+
+I am currently working on a project for school where I need to implement an extended Kalman Filter for a point robot with a laser scanner. The Robot can rotate with 0 degree turn radius and drive forward. All motions are piecewise linear (drive,rotate,drive).
+The simulator we are using does not support acceleration, all motion is instantaneous. 
+We also have a known map (png image) that we need to localize in. We can ray trace in the image in order to simulate laser scans. 
+My partner and I are little confused as to the motion and sensor models we'll need to use. 
+So far we are modelling the state as a vector $(x,y,\theta)$.
+We are using the update equations as follows
+void kalman::predict(const nav_msgs::Odometry msg){
+    this->X[0] += linear * dt * cos( X[2] ); //x
+    this->X[1] += linear * dt * sin( X[2] ); //y
+    this->X[2] += angular * dt; //theta
+
+    this->F(0,2) = -linear * dt * sin( X[2] ); //t+1 ?
+    this->F(1,2) =  linear * dt * cos( X[2] ); //t+1 ?
+
+    P = F * P * F.t() + Q;
+
+    this->linear = msg.twist.twist.linear.x;
+    this->angular = msg.twist.twist.angular.z;
+    return;
+}
+
+We thought we had everything working until we noticed that we forgot to initialize P and that it was zero, meaning that there was no correction happening. Apparently our propagation was very accurate as we haven't yet introduced noise into the system.
+For the motion model we are using the following matrix for F:
+$F = \begin{bmatrix}1 & 0 & -v*\Delta t*sin(\theta)  
+\\ 0 & 1 & v*\Delta t*cos(\theta)   
+\\ 0 & 0 & 1 
+\end{bmatrix}$
+As its the Jacobian of our update formulas. Is this correct?
+For the sensor model we are approximating the Jacobian (H) by taking finite differences of the robots $x$, $y$ and $\theta$ positions and ray tracing in the map. We talked to the TA who said that this would work but I'm still unsure it will. Our prof is away so we can't ask him unfortunately. We are using 3 laser measurements per correction step so H is a 3x3. 
+The other issue where having how to initialize P. We tried 1,10,100 and they all place the robot outside the map at (-90,-70) when the map is only 50x50.
+The code for our project can be found here: https://github.com/en4bz/kalman/blob/master/src/kalman.cpp
+Any advice is greatly appreciated.
+EDIT:
+At this point I've gotten the filter to stabilize with basic movement noise but no actual movement. As soon as the robot starts to move the filter diverges quite quickly and exits the map. 
+
+A:
+
+Using EKF for localisation based on laser scans and a known map is a bad idea and will not work because one of EKF's main assumptions is not valid: The measurement model is not differentiable. 
+
+I would suggest looking into Monte Carlo Localization (Particle Filters). This will not only solve the problem with your measurement model, but also allow global localization (initial pose within the map completely unknown).
+Edit: I am sorry I forgot to mention another important point:
+
+If you want to apply EKF, your measurement model as well as your motion model may only include Gaussian noise. This means you need be able to write down your measurement model as $z_t = h(x_t) + N(0, Q_t)$.
+This is is a severe limitation, since it does not allow a slightly more complex model like the beam_range_finder_model in Probabilistic Robotics, which also considers dynamic objects in front of the robot, invalid (max) measurements and completely random readings. You would be stuck with casting rays for the $h(x_t)$ part and adding Gaussian noise.
+

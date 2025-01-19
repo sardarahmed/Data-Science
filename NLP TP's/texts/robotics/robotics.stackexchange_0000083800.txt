@@ -1,0 +1,96 @@
+Q:
+
+Running a canopen node using only canopen_chain_node and canopen_master
+
+Hi,
+I have recently startet using ros_canopen, but I have a hard time figuring out how it works exactly. Currently I am controlling my robot using socketcan_bridge (socketcan_to_topic and topic_to_socketcan) to just "tap in" on the can bus to read and write using PDO's. I am able to get this to work ok by just setting up the eds files of the motors with appropiate TPDO's and RPDO's.
+But I would much rather that I could just set up a canopen node with ros with an eds file and the required RPDO's and TPDO's and the be able to read from the object dictionaries. As i see it I would have to run canopen_motor_node or canopen_402, but Iam using my own driver and not one from ros_control.
+I have tried launching the chain.launch within canopen_chain_node using a virtual can bus. But using candump from canUTILS I am not able to pick the heartbeat (or anything else) up. I dont know whether that is because I am using a virtual can bus or something else. I have noticed that the launch doesn't complain if i run it without initializing the virtual bus, so du I have to set the bus up somewhere else than the config yaml? my config yaml:
+    bus:
+  device: vcan0 # socketcan network
+  # loopback: false # socket should loop back messages
+  # driver_plugin: can::SocketCANInterface
+  # master_allocator: canopen::SimpleMaster::Allocator
+sync:
+  interval_ms: 10 # set to 0 to disable sync
+  # update_ms: <interval_ms> 
+  overflow: 0 
+heartbeat: 
+  rate: 20 
+  msg: "77f#05" # message to send, cansend format heartbeat of node 127 with status 5=Started
+defaults:
+  eds_pkg: canopen_chain_node
+  eds_file: eds/test2eds.eds
+# struct syntax
+nodes:
+  node1:
+    id: 5
+    publish: ["60FF"]
+
+So my question is: Is it possible to have a canopen node running, somewhat passively (only being set up with the eds file, but still running with heartbeats and so on) with the canopen_chain_node and/or canopen_master. and if yes how.
+please forgive me if this seems a trivial question, canopen is entirely new to me and I am also fairly new at programming all in all. but I could really use some help!
+Edit: maybe passively wasn't quite the right word to use, what I meant was two things:
+
+Is it possible to set up a node that transmits TPDO's as requested, RPDO's , and a heartbeat as set up in the eds file and that also responds to SDO's and NMT's sent from a master or other nodes on the bus.
+
+furthermore is it possible to have access to the object dictionary to change values and through that change what values are being sent with the TPDO's.
+
+Thank you for your help! as this would greatly improve my setup.
+Re-edit: Thanks for the answer, these are just to features I wanted!
+However as I am doing quite a bit of my work away from the robot i have set up some test code that uses a virtual can and I cannot get the node to initialize I just get:
+success: False
+message: could not reset node '1'
+
+and
+vcan0  000   [2]  82 01
+vcan0  000   [2]  02 01
+
+and
+[ INFO] [1510308088.698080279]: Initializing XXX
+[ INFO] [1510308088.698592687]: Current state: 1 device error: system:0 internal_error: 0 (OK)
+[ INFO] [1510308088.701974798]: Current state: 2 device error: system:0 internal_error: 0 (OK)
+[ INFO] [1510308098.703534765]: Current state: 2 device error: system:125 internal_error: 0 (OK)
+[ INFO] [1510308098.703622135]: Current state: 0 device error: system:125 internal_error: 0 (OK)
+[ INFO] [1510308098.703703969]: Current state: 0 device error: system:0 internal_error: 0 (OK)
+[ INFO] [1510308098.703794303]: Current state: 0 device error: system:0 internal_error: 0 (OK)
+
+Is it because I am using a virtual can?
+also as this is a bit from the original question, should I open this up as a new question rather than continuing here?
+
+Originally posted by rhas on ROS Answers with karma: 37 on 2017-11-08
+Post score: 0
+
+Original comments
+Comment by Mathias Lüdtke on 2017-11-08:
+Please elaborate on what you consider "passive" and what not.
+Comment by Dizett on 2018-02-22:
+You can upload your project to https://github.com ? I really appreciate your help with this.
+Comment by k5519995 on 2019-06-25:
+How you solved this could not reset node '1'  ?
+
+A:
+
+If you are using the canopen_chain_node as is, you can:
+
+send a SYNC, disable the SYNC, use  the SYNC from another master
+set/read  objects with a service; if the data   was mapped to a PDO it will be sent via PDO otherwise via SDO
+send
+heatbeats
+
+However, you cannot disable the NMT commands, they are hardcoded in canopen_master.
+If you need a different behavior, you have to subclass Node.
+But there is not yet a mechanism to use a subclassed Node in canopen_chain_node.
+Feel free to open a GitHub issue for anything that is missing.
+Regarding your vcan problem:
+As I outlinef above you cannot disable the NMT handling ("could not reset node '1'").
+So it seems that device 1 is not present (or emulated). The master cannot reach the slave devices and gives up.
+
+Originally posted by Mathias Lüdtke with karma: 1596 on 2017-11-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by rhas on 2017-11-10:
+Thank you once again for your answer!
+Some of my problems was due to me misunderstanding how the canopen_chain_node works. This has been clarified here.
+

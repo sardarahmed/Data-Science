@@ -1,0 +1,559 @@
+Q:
+
+UR5+velocity control: runaway robot after getting closer to goal pose
+
+In my algorithm, the robot seemingly moves towards the right position, as the joint velocities reduce, after that the velocities start increasing as the robot moves away. I cannot understand why this is happening and need some urgent help. My github project link is given below:
+https://github.com/RiddhimanRaut/Ur5_Visual_Servoing
+The object recognition and everything else is working as expected. Also the robot does not stop when I stop the run_ur5.py code, I've checked rostopic echo and joint velocities are still being published. Maybe the two problems are related. Please help.
+The codes are all mine.
+#EDIT 2:
+This is a trial velocity publisher I've written just to test the lag issue
+#!/usr/bin/env python
+import rospy
+from ur5_control_nodes.msg import floatList
+
+import rospy
+from std_msgs.msg import String
+
+def talker():
+    pub = rospy.Publisher('ur5_joint_velocities', floatList, queue_size=10)
+    rospy.init_node('talker', anonymous=True)
+
+    while not rospy.is_shutdown():
+        vels=[0,0,0.05,0,0,0]
+    
+        pub.publish(vels)
+    
+
+if __name__ == '__main__':
+    talker()
+
+#Code for color detection
+#!/usr/bin/env python
+import rospy
+import numpy as np
+import cv2
+from sensor_msgs.msg import Image
+from ur5_control_nodes.msg import floatList
+from cv_bridge import CvBridge, CvBridgeError
+import imutils
+
+bridge=CvBridge()
+rgb_img=np.zeros((480,640,3),np.uint8)
+depth_img=np.zeros((480,640))
+
+#RGB Image Callback
+def rgb_callback(rgb_msg):
+    global rgb_img   
+    rgb_img=bridge.imgmsg_to_cv2(rgb_msg, "bgr8")     
+
+#Depth Image Callback 
+def d_callback(msg):
+    
+    global depth_img
+    depth_img=bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+    
+    
+    
+    
+#Getting XY Points
+def xy_points(frame):
+    fl=531.15
+    
+    xypoints=np.array([0,0,0,0,0,0], dtype=np.int64)
+
+    
+    blurred = cv2.GaussianBlur(frame, (11, 11), 0)
+   
+    hsv=cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+   
+    #defining the Range of Blue color
+    blue_lower=np.array([87,100,150],np.uint8)
+    blue_upper=np.array([110,255,255],np.uint8)
+  
+    
+    
+    blue=cv2.inRange(hsv,blue_lower,blue_upper)
+    blue = cv2.erode(blue, None, iterations=2)
+    blue = cv2.dilate(blue, None, iterations=2)
+    
+    cnts_b = cv2.findContours(blue.copy(), cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE)
+    cnts_b = imutils.grab_contours(cnts_b)
+    center_b = None
+    if len(cnts_b) > 0:
+        c_b = max(cnts_b, key=cv2.contourArea)
+        # epsilon = 0.1*cv2.arcLength(c,True)
+        # approx = cv2.approxPolyDP(c,epsilon,True)
+        M_b= cv2.moments(c_b)
+        center_b= (int(M_b["m10"] / M_b["m00"]), int(M_b["m01"] / M_b["m00"]))
+        cv2.circle(frame, center_b, 5, (255, 255,255), -1)
+        xypoints[2]=center_b[0]
+        xypoints[3]=center_b[1]
+    #Red
+    low_r = np.array([140,150,0],np.uint8)
+    high_r = np.array([180,255,255],np.uint8)
+
+    red=cv2.inRange(hsv,low_r,high_r)
+    red = cv2.erode(red, None, iterations=2)
+    red = cv2.dilate(red, None, iterations=2)
+    
+    cnts_r = cv2.findContours(red.copy(), cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE)
+    cnts_r = imutils.grab_contours(cnts_r)
+    center_r = None
+    if len(cnts_r) > 0:
+        c_r = max(cnts_r, key=cv2.contourArea)
+        # epsilon = 0.1*cv2.arcLength(c,True)
+        # approx = cv2.approxPolyDP(c,epsilon,True)
+        M_r= cv2.moments(c_r)
+        center_r= (int(M_r["m10"] / M_r["m00"]), int(M_r["m01"] / M_r["m00"]))
+        cv2.circle(frame, center_r, 5, (255, 255,255), -1)
+        xypoints[4]=center_r[0]
+        xypoints[5]=center_r[1]
+
+    #Green
+    low_g = np.array([40,50,50])
+    high_g = np.array([80,255,255])
+    #GREEN_DETECTION
+    #compute mask, erode and dilate it to remove noise
+    green = cv2.inRange(hsv, low_g, high_g)
+    green = cv2.erode(green, None, iterations=2)
+    green = cv2.dilate(green, None, iterations=2)
+    cnts_g = cv2.findContours(green.copy(), cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE)
+    cnts_g = imutils.grab_contours(cnts_g)
+    center_g = None
+    if len(cnts_g) > 0:
+        c_g = max(cnts_g, key=cv2.contourArea)
+        # epsilon = 0.1*cv2.arcLength(c,True)
+        # approx = cv2.approxPolyDP(c,epsilon,True)
+        M_g= cv2.moments(c_g)
+        center_g= (int(M_g["m10"] / M_g["m00"]), int(M_g["m01"] / M_g["m00"]))
+        cv2.circle(frame, center_g, 5, (255, 255,255), -1)
+        xypoints[0]=center_g[0]
+        xypoints[1]=center_g[1]
+        cv2.circle(frame, (320,240), 5, (0,0,255), -1)
+    
+   
+
+    
+           
+    
+    cv2.imshow("Color Tracking",frame)
+    cv2.waitKey(1)
+    
+    
+    return xypoints
+
+    
+def f_points(dimg, xy): 
+    fl=531.1   
+    zr=dimg[xy[5]][xy[4]]
+    zb=dimg[xy[3]][xy[2]]    
+    zg=dimg[xy[1]][xy[0]]
+    
+    
+    fpoint=[xy[0], xy[1], zr, xy[2], xy[3], zb, xy[4], xy[5],zg]  
+    for i in range(0,len(fpoint),3):
+        
+        fpoint[i] = (fpoint[i]-320)/(fl/640)
+    for j in range(1,len(fpoint),3):
+        fpoint[j] = -(fpoint[j]-240)/(fl/480)
+    
+    return fpoint
+ 
+def main():
+    global rgb_img
+    global depth_img
+    
+    rospy.init_node('d_points', anonymous=True)
+    rospy.Subscriber('/camera/rgb/image_raw', Image, rgb_callback )
+    rospy.Subscriber('/camera/depth/image_raw', Image, d_callback)
+    pub=rospy.Publisher('3_point_features', floatList, queue_size=1)
+      
+    rate=rospy.Rate(10) # in Hz
+    features=floatList()
+       
+    while not rospy.is_shutdown():
+         
+        xy=xy_points(rgb_img)
+        
+        c=0
+        while c<20:
+            xy=xy+xy_points(rgb_img)
+            c+=1
+        
+        xy=xy/c
+        
+        
+               
+        features.data=f_points(depth_img, xy)
+        print(features.data)
+        pub.publish(features)
+        rate.sleep()
+    
+if __name__=='__main__':
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
+
+CODE FOR VISUAL SERVOING:
+#!/usr/bin/env python
+import rospy
+from ur5_control_nodes.msg import floatList
+from sensor_msgs.msg import JointState
+import numpy as np
+from math import *
+from std_msgs.msg import Header
+from control_msgs.msg import *
+from trajectory_msgs.msg import *
+
+joint_positions=None
+coordinates=None
+c=0
+def position_callback(position):
+    global joint_positions
+    joint_positions=position.position
+    
+
+def coordinate_callback(data):
+    global coordinates
+    coordinates=data.data
+
+def joint_velocities(pose,points):
+    
+    
+    
+    if pose!=None:
+        if points!=None:
+            
+            
+            theta_x = -pi/2
+            theta_y = pi/2
+            check=np.array([True,True])
+            
+            int_matrix = None
+            fl = 531.15
+            desired_points = [209.67802673696102, -22.59461495010356, 878, 53.022029749576355, 80.43682922236867, 891, 237.3940877424214, 87.66710600640181, 884]
+
+            desired_points = np.asarray(desired_points)
+            points=np.asarray(points)
+            pix_vel=[]
+        
+            for index in range(len(points)):
+                if (index+1)%3==0:
+                    index+=1
+                else:
+                    pix_vel.append(points[index]-desired_points[index])
+            # print pix_vel
+            pix_vel=np.asarray(pix_vel) #1v8 array
+            pix_vel=np.matrix(pix_vel)
+            pix_vel=np.ndarray.transpose(pix_vel)
+            
+
+            for i in range(0,len(points),3):
+                u = desired_points[i]
+                v = desired_points[i+1]
+                z = desired_points[i+2]
+                # new_mat=np.array([[ -fl/z, 0, u/z, u*v/fl, -(fl*fl+u*u)/fl, v],[ 0, -fl/z, v/z, (fl*fl+v*v)/fl, -u*v/fl, -u ]])
+                # new_mat=np.array([[ 0, 0, 0,0,0,0],[ 0, -fl/z, 0, 0,0,0 ]])
+                new_mat=np.array([[ -fl/z, 0, u/z, 0,0,0],[ 0, -fl/z, v/z, 0,0,0 ]])
+                if i==0:
+                    int_matrix=new_mat
+                else:
+                    int_matrix=np.concatenate((int_matrix,new_mat))
+            
+            
+            
+            int_matrix=np.matrix(int_matrix) #8v6 matrix
+            inverse=np.linalg.pinv(int_matrix) #6v8 matrix
+            
+            cam_vel_np=-0.00005*inverse*pix_vel #6v1 matrix
+            
+            
+            cam_vel_lin = cam_vel_np[[0,1,2],:]
+            cam_vel_angular = cam_vel_np[[3,4,5],:]
+            
+
+            
+            
+            Rx=np.array([[1,0,0],[0,cos(theta_x),-sin(theta_x)],[0,sin(theta_x),cos(theta_x)]])
+            Ry=np.array([[cos(theta_y) , 0, sin(theta_y)],[0, 1, 0],[-sin(theta_y), 0, cos(theta_y)]])
+            # Lt=np.array([[1,0,0,-210],[0,1,0,0],[0,0,1,-85],[0,0,0,1]])
+            # # print Rx
+            # # print Ry
+            # cam_vel_lin=Ry*cam_vel_lin
+            # cam_vel_lin=Rx*cam_vel_lin
+            
+            # cam_vel_lin=np.vstack((cam_vel_lin,[1]))
+            
+            # cam_vel_lin=Lt*cam_vel_lin
+            # cam_vel_lin=np.delete(cam_vel_lin,(3),axis=0)
+            
+            # cam_vel_angular=Rx*(Ry*cam_vel_angular)
+            # cam_vel_angular=np.vstack((cam_vel_angular,[1]))
+            # cam_vel_angular=Lt*cam_vel_angular
+            # cam_vel_angular=np.delete(cam_vel_angular,(3),axis=0)
+
+            cam_vel_np=np.concatenate((cam_vel_lin,cam_vel_angular))
+            # cam_vel_np[2]=-cam_vel_np[2]
+            # cam_vel_np[5]=-cam_vel_np[5]
+            # cam_vel_np=np.array([[0],[0],[0],[0],[0],[0]])
+            # cam_vel_np=np.ndarray.transpose(cam_vel_np)
+            # cam_vel_list=np.ndarray.tolist(cam_vel_np)
+            # cam_vel_final=cam_vel_list[0]
+            temp1 = cam_vel_np.item((0,0))
+            temp2 = cam_vel_np.item((1,0))
+            temp3 = cam_vel_np.item((2,0))
+            temp4 = cam_vel_np.item((3,0))
+            temp5 = cam_vel_np.item((4,0))
+            temp6 = cam_vel_np.item((5,0))
+            # cam_vel_np[0,0] = temp3
+            # cam_vel_np[1,0] = -temp1
+            # cam_vel_np[2,0] = temp2
+            # cam_vel_np[3,0] = temp6
+            # cam_vel_np[4,0] = -temp4
+            # cam_vel_np[5,0] = temp5
+            cam_vel_np[0,0] = temp3
+            cam_vel_np[1,0] = -temp1
+            cam_vel_np[2,0] = temp2
+            cam_vel_np[3,0] = temp6
+            cam_vel_np[4,0] = -temp4
+            cam_vel_np[5,0] = temp5
+        
+            
+            print cam_vel_np
+            
+            
+            
+            Q1=pose[0]
+            Q2=pose[1]
+            Q3=pose[2]
+            Q4=pose[3]
+            Q5=pose[4]
+            Q6=pose[5]
+            jacobian=np.array([[ (2183*np.cos(Q1))/20000 + (823*np.cos(Q1)*np.cos(Q5))/10000 + (17*np.cos(Q2)*np.sin(Q1))/40 - (1569*np.sin(Q1)*np.sin(Q2)*np.sin(Q3))/4000 + (823*np.cos(Q2 + Q3 + Q4)*np.sin(Q1)*np.sin(Q5))/10000 - (591*np.cos(Q2 + Q3)*np.sin(Q1)*np.sin(Q4))/6250 - (591*np.sin(Q2 + Q3)*np.cos(Q4)*np.sin(Q1))/6250 + (1569*np.cos(Q2)*np.cos(Q3)*np.sin(Q1))/4000, np.cos(Q1)*((1569*np.sin(Q2 + Q3))/4000 + (17*np.sin(Q2))/40 + np.sin(Q5)*((823*np.cos(Q2 + Q3)*np.sin(Q4))/10000 + (823*np.sin(Q2 + Q3)*np.cos(Q4))/10000) + (591*np.cos(Q2 + Q3)*np.cos(Q4))/6250 - (591*np.sin(Q2 + Q3)*np.sin(Q4))/6250),                         np.cos(Q1)*((591*np.cos(Q2 + Q3 + Q4))/6250 + (1569*np.sin(Q2 + Q3))/4000 + (823*np.sin(Q2 + Q3 + Q4)*np.sin(Q5))/10000),                         np.cos(Q1)*((591*np.cos(Q2 + Q3 + Q4))/6250 + (823*np.sin(Q2 + Q3 + Q4)*np.sin(Q5))/10000), (823*np.cos(Q1)*np.cos(Q2)*np.cos(Q5)*np.sin(Q3)*np.sin(Q4))/10000 - (823*np.cos(Q1)*np.cos(Q2)*np.cos(Q3)*np.cos(Q4)*np.cos(Q5))/10000 - (823*np.sin(Q1)*np.sin(Q5))/10000 + (823*np.cos(Q1)*np.cos(Q3)*np.cos(Q5)*np.sin(Q2)*np.sin(Q4))/10000 + (823*np.cos(Q1)*np.cos(Q4)*np.cos(Q5)*np.sin(Q2)*np.sin(Q3))/10000, 0],[ (2183*np.sin(Q1))/20000 - (17*np.cos(Q1)*np.cos(Q2))/40 + (823*np.cos(Q5)*np.sin(Q1))/10000 - (823*np.cos(Q2 + Q3 + Q4)*np.cos(Q1)*np.sin(Q5))/10000 + (591*np.cos(Q2 + Q3)*np.cos(Q1)*np.sin(Q4))/6250 + (591*np.sin(Q2 + Q3)*np.cos(Q1)*np.cos(Q4))/6250 - (1569*np.cos(Q1)*np.cos(Q2)*np.cos(Q3))/4000 + (1569*np.cos(Q1)*np.sin(Q2)*np.sin(Q3))/4000, np.sin(Q1)*((1569*np.sin(Q2 + Q3))/4000 + (17*np.sin(Q2))/40 + np.sin(Q5)*((823*np.cos(Q2 + Q3)*np.sin(Q4))/10000 + (823*np.sin(Q2 + Q3)*np.cos(Q4))/10000) + (591*np.cos(Q2 + Q3)*np.cos(Q4))/6250 - (591*np.sin(Q2 + Q3)*np.sin(Q4))/6250),                         np.sin(Q1)*((591*np.cos(Q2 + Q3 + Q4))/6250 + (1569*np.sin(Q2 + Q3))/4000 + (823*np.sin(Q2 + Q3 + Q4)*np.sin(Q5))/10000),                         np.sin(Q1)*((591*np.cos(Q2 + Q3 + Q4))/6250 + (823*np.sin(Q2 + Q3 + Q4)*np.sin(Q5))/10000), (823*np.cos(Q1)*np.sin(Q5))/10000 - (823*np.cos(Q2)*np.cos(Q3)*np.cos(Q4)*np.cos(Q5)*np.sin(Q1))/10000 + (823*np.cos(Q2)*np.cos(Q5)*np.sin(Q1)*np.sin(Q3)*np.sin(Q4))/10000 + (823*np.cos(Q3)*np.cos(Q5)*np.sin(Q1)*np.sin(Q2)*np.sin(Q4))/10000 + (823*np.cos(Q4)*np.cos(Q5)*np.sin(Q1)*np.sin(Q2)*np.sin(Q3))/10000,                      0],[                                                                                                                                                                                                                                                                                            0,                                                      (591*np.sin(Q2 + Q3 + Q4))/6250 - (823*np.sin(Q2 + Q3 + Q4 + Q5))/20000 - (1569*np.cos(Q2 + Q3))/4000 - (17*np.cos(Q2))/40 + (823*np.sin(Q2 + Q3 + Q4 - Q5))/20000, (591*np.sin(Q2 + Q3 + Q4))/6250 - (823*np.sin(Q2 + Q3 + Q4 + Q5))/20000 - (1569*np.cos(Q2 + Q3))/4000 + (823*np.sin(Q2 + Q3 + Q4 - Q5))/20000, (591*np.sin(Q2 + Q3 + Q4))/6250 - (823*np.sin(Q2 + Q3 + Q4 + Q5))/20000 + (823*np.sin(Q2 + Q3 + Q4 - Q5))/20000,                                                                                                                                                                           - (823*np.sin(Q2 + Q3 + Q4 + Q5))/20000 - (823*np.sin(Q2 + Q3 + Q4 - Q5))/20000,                                                     0],[                                                                                                                                                                                                                                                                                            0,                                                                                                                                                                                                  np.sin(Q1),                                                                                                                           np.sin(Q1),                                                                                                np.sin(Q1),                                                                                                                                                                                                                           np.sin(Q2 + Q3 + Q4)*np.cos(Q1),   np.cos(Q5)*np.sin(Q1) - np.cos(Q2 + Q3 + Q4)*np.cos(Q1)*np.sin(Q5)],[                                                                                                                                                                                                                                                                                            0,                                                                                                                                                                                                 -np.cos(Q1),                                                                                                                          -np.cos(Q1),                                                                                               -np.cos(Q1),                                                                                                                                                                                                                           np.sin(Q2 + Q3 + Q4)*np.sin(Q1), - np.cos(Q1)*np.cos(Q5) - np.cos(Q2 + Q3 + Q4)*np.sin(Q1)*np.sin(Q5)],[                                                                                                                                                                                                                                                                                            1,                                                                                                                                                                                                        0,                                                                                                                                 0,                                                                                                      0,                                                                                                                                                                                                                                  -np.cos(Q2 + Q3 + Q4),                            -np.sin(Q2 + Q3 + Q4)*np.sin(Q5)]])
+            jacobian=np.matrix(jacobian)
+            jacobian=np.linalg.pinv(jacobian)
+            joint_vel=jacobian*cam_vel_np
+            joint_vel=joint_vel
+            joint_vel=np.ndarray.transpose(joint_vel)
+
+            
+            joint_vel=joint_vel.tolist()
+            joint_vel=joint_vel[0]
+            joint_vel=tuple(joint_vel)
+            print "Joint Velocity: "
+            print joint_vel
+            
+            
+            
+
+            
+            
+            #Creating the publisher
+            cam_pub=rospy.Publisher('ur5_joint_velocities',floatList,queue_size=1)
+            new_List=floatList()
+            new_List.data=joint_vel
+            # print new_List
+            rate = rospy.Rate(0.5) #20 Hz
+            cam_pub.publish(new_List) 
+            rate.sleep()
+            # print pix_vel
+
+def vs_ur5():
+    global joint_positions
+    global coordinates
+    rospy.init_node('vs_ur5')
+    rospy.Subscriber('/3_point_features', floatList,coordinate_callback,queue_size=1)
+    rospy.Subscriber("/joint_states", JointState, position_callback,queue_size=1)
+    
+    while not rospy.is_shutdown():
+        
+        joint_velocities(joint_positions,coordinates)
+
+  
+
+    
+
+if __name__ == '__main__':
+    try:
+        vs_ur5()
+    except rospy.ROSInterruptException:
+        pass
+
+CODE FOR RUNNING THE ROBOT
+    #!/usr/bin/env python
+    import rospy
+    from ur5_control_nodes.msg import floatList
+    from sensor_msgs.msg import JointState
+    import numpy as np
+    from math import *
+    from std_msgs.msg import Header
+    from control_msgs.msg import *
+    from trajectory_msgs.msg import *
+
+    joint_vel=None   
+    JOINT_NAMES=['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint','wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
+    def joint_velocity_callback(data):
+        global joint_vel
+        joint_vel = data.data
+        
+        
+        
+    def joint_states(velocity):
+        global JOINT_NAMES
+        
+        
+        
+        pub = rospy.Publisher('/ur_driver/joint_speed', JointTrajectory, queue_size=1)
+        
+        hello_str = JointTrajectory()
+        hello_str.header = Header()
+        hello_str.joint_names=JOINT_NAMES
+        hello_str.points=[JointTrajectoryPoint(velocities=velocity, time_from_start=rospy.Duration(0.0)),JointTrajectoryPoint(time_from_start=rospy.Duration(0.0))]
+        hello_str.header.seq=hello_str.header.seq+1
+        hello_str.header.stamp-rospy.Time.now()
+        pub.publish(hello_str)
+    def run_ur5():
+        global joint_vel
+        rospy.init_node('run_ur5', anonymous=True)
+        
+
+        rospy.Subscriber("ur5_joint_velocities", floatList, joint_velocity_callback,queue_size=1)
+        while not rospy.is_shutdown():
+            joint_states(joint_vel)
+        
+
+    if __name__ == '__main__':
+        
+            try:
+                run_ur5()
+            except rospy.ROSInterruptException:
+                pass
+
+        
+
+ROS CONTROL LAUNCH FILE:
+
+YAML FILE
+Settings for ros_control control loop
+hardware_control_loop:
+loop_hz: 125
+Settings for ros_control hardware interface
+hardware_interface:
+joints:
+- shoulder_pan_joint
+- shoulder_lift_joint
+- elbow_joint
+- wrist_1_joint
+- wrist_2_joint
+- wrist_3_joint
+Publish all joint states ----------------------------------
+joint_state_controller:
+type:         joint_state_controller/JointStateController
+publish_rate: 125
+Publish wrench ----------------------------------
+force_torque_sensor_controller:
+type:         force_torque_sensor_controller/ForceTorqueSensorController
+publish_rate: 125
+Joint Trajectory Controller - position based -------------------------------
+For detailed explanations of parameter see http://wiki.ros.org/joint_trajectory_controller
+pos_based_pos_traj_controller:
+type: position_controllers/JointTrajectoryController
+joints:
+- shoulder_pan_joint
+- shoulder_lift_joint
+- elbow_joint
+- wrist_1_joint
+- wrist_2_joint
+- wrist_3_joint
+constraints:
+goal_time: 0.6
+stopped_velocity_tolerance: 0.05
+shoulder_pan_joint: {trajectory: 0.1, goal: 0.1}
+shoulder_lift_joint: {trajectory: 0.1, goal: 0.1}
+elbow_joint: {trajectory: 0.1, goal: 0.1}
+wrist_1_joint: {trajectory: 0.1, goal: 0.1}
+wrist_2_joint: {trajectory: 0.1, goal: 0.1}
+wrist_3_joint: {trajectory: 0.1, goal: 0.1}
+stop_trajectory_duration: 0.5
+state_publish_rate:  125
+action_monitor_rate: 10
+state_publish_rate:  50 # Defaults to 50
+action_monitor_rate: 20 # Defaults to 20
+#hold_trajectory_duration: 0 # Defaults to 0.5
+Joint Trajectory Controller - velocity based -------------------------------
+For detailed explanations of parameter see http://wiki.ros.org/joint_trajectory_controller
+joint_group_vel_controller:
+type: velocity_controllers/JointGroupVelocityController
+joints:
+- shoulder_pan_joint
+- shoulder_lift_joint
+- elbow_joint
+- wrist_1_joint
+- wrist_2_joint
+- wrist_3_joint
+constraints:
+goal_time: 0.6
+stopped_velocity_tolerance: 0.05
+shoulder_pan_joint: {trajectory: 0.1, goal: 0.1}
+shoulder_lift_joint: {trajectory: 0.1, goal: 0.1}
+elbow_joint: {trajectory: 0.1, goal: 0.1}
+wrist_1_joint: {trajectory: 0.1, goal: 0.1}
+wrist_2_joint: {trajectory: 0.1, goal: 0.1}
+wrist_3_joint: {trajectory: 0.1, goal: 0.1}
+stop_trajectory_duration: 0.5
+state_publish_rate:  125
+action_monitor_rate: 10
+gains:
+#!!These values are useable, but maybe not optimal
+shoulder_pan_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+shoulder_lift_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+elbow_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+wrist_1_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+wrist_2_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+wrist_3_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+state_publish_rate:  50 # Defaults to 50
+action_monitor_rate: 20 # Defaults to 20
+#hold_trajectory_duration: 0 # Defaults to 0.5
+
+Originally posted by Rik1234 on ROS Answers with karma: 3 on 2019-06-10
+Post score: 0
+
+A:
+
+Reducing the situation to just looking at the lag reported by the OP, he implemented a MWE that just publishes a simple velocity to the command topic.
+In the MWE we see:
+
+  while not rospy.is_shutdown():
+
+        vels=[0,0,0.05,0,0,0]
+        pub.publish(vels)
+
+this publishes the same velocity at about the maximum rate your computer is able to achieve -- which for typical PCs these days could be 10000 Hz or faster with these small messages.
+@Rik1234: you may want to add a sleep in there to moderate the rate at which this loop is executed. There is no point in publishing any faster than the maximum of the URs control loop, which, if you have a non-e-series controller, would be 125 Hz.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-06-11
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Rik1234 on 2019-06-11:
+Yes, that was it. Now there is no lag between the robot. However, solving one problem leads to another, and for some reason, my jacobian isn't working anymore. I loaded the previous controller launch file and the jacobian worked differently in both the controllers.I checked the order of the joints in the yaml file, there is no change there. Why is this happening? Even if I can run the code using the old launch, I would like to know the issue behind this. Also, the operations on both the controllers are extremely jerky. Is there a problem with my visual servoing control algorithm?
+Comment by Rik1234 on 2019-06-12:
+Maybe this will be a separate question. I'll ask in a new thread.
+Comment by gvdhoorn on 2019-06-13:
+I'm not sure why you posted a new question.
+Afaik, both the JointGroupVelocityController and the old joint_speed topic use the exact same interface to the robot controller.
+Again, as with your initial problem, reduce everything to the absolute minimum and start debugging from there.
+Comment by Rik1234 on 2019-06-13:
+I did try that. the joint velocities as well as the end effector velocities are different in both the controllers. I asked in a separate question because the original delay problem was solved, and this was a different issue. I was hoping if someone could take a closer look at the code.
+Comment by gvdhoorn on 2019-06-14:
+Just to give this thread some closure, I've restructured the comments into an answer.
+Could you accept the answer if you feel we've sufficiently dealt with the lag issue?
+Comment by Rik1234 on 2019-06-15:
+Sure. I'll do that. Thanks for your help.
+

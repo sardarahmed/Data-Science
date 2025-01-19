@@ -1,0 +1,56 @@
+Q:
+
+transform LaserScan to /world_frame
+
+Hi all,
+I'm trying to transform a LaserScan(already transformed to PCL::PointCloud) from it's frame to the /world frame.
+What I'm doing right now is accumulate the pointcloud in the /world frame, while my robot moves(the information of the egomotion, gives the position of the robot in the world and it's orientation). I get the orientation using an imu and the position through wheel odometry.
+The transformation(or pointcloud accumulation) I get between the /laser frame and the /world frame, is working correctly for the cartesian coordinates, however when the robot suffers any rotation(pitch and roll),due to any inclination of the ground,the representation of the pointcloud, is not beeing represented on the /world frame, it's representation rotates just like the robot(and was expected that the points would be right over the world).
+I have my laser pointing to the ground, and when the robot is moving in plane ground, the reconstruction is exactly as it is in reality, my problem is when the robot start curving(it has suspension).
+image description http://desmond.imageshack.us/Himg842/scaled.php?server=842&filename=capturadeecr20120412s21.png&res=landing
+(The axes you see in the image is from the laser, the red grid is the world)
+my tf tree:
+/world->/base_footprint-> ... -> /laser_frame
+I hope I could make myself clear, it's not easy to explain.
+I dont know what I'm doing wrong, if anyone could help me I would appreciate.
+:D
+p.s. Sorry for so much text.
+
+Originally posted by PedroS. on ROS Answers with karma: 73 on 2012-04-12
+Post score: 3
+
+Original comments
+Comment by DimitriProsser on 2012-04-13:
+Do you convert the cloud to the world frame before or after you accumulate it?
+Comment by PedroS. on 2012-04-13:
+before the accumulation
+Comment by Martin Günther on 2012-04-13:
+So your scanner is producing LaserScan messages in the laser_frame TF frame. Did you try visualizing the LaserScan directly in RViz, before accumulation + transformation to a point cloud? If the raw scan looks right, you can rule out problems with the IMU.
+Comment by PedroS. on 2012-04-16:
+If I visualize the Laserscan directly on rviz, the representation is similar.. i dont know what i'm doing wrong
+Comment by Martin Günther on 2012-04-16:
+That's strange. Are you sure you are only visualizing the last scan? What exactly is wrong? Because when the robot tilts, the laser scan of course also records a tilted line. Could you post another picture or video?
+Comment by PedroS. on 2012-04-16:
+For example, when the car is curving to the right, since it has suspension, it will roll as shown in the picture, however, the road was plane and I was expecting that the pointcloud accumulation would "draw" the road on the red grid (/world).
+Comment by 2ROS0 on 2014-07-24:
+This might be a bit off track but what do you mean by "accumulate" the point cloud?
+
+A:
+
+I would suspect that your IMU data is not modifying the transform tree correctly. You should check that the right effect is created.
+It is very important to understand how your IMU works. Some IMUs calculate angular rotation with respect to the Earth. For example, an IMU that is world-referenced would obtain its z-rotation using a magnetometer. It would then use the gravity vector to calculate all rotations with respect to the Earth. A relative-reference IMU would simply calculate the amount that it has rotated about each axis since the last time you reset its gyros. Thus, if you reset the gyros with the robot upside down, that would be considered 0,0,0 rpy.
+For example, on my robot, we use the IMU data (relative-reference) to calculate the transform from /base_footprint to /base_link. We mark /base_footprint as the point on the ground directly below the robot's center of mass/rotation. Thus, /base_footprint is modified by the position of the robot with respect to the static /odom frame. We obtain our z-axis rotation for /odom by resetting the gyros (so the IMU is not outputting 0 degrees for rotation about the z-axis) and then adding the heading obtained by our digital magnetometers. We then obtain x and y positions from the GPS. This sets our /odom frame with respect to the world (Earth).
+After setting /odom with respect to the /world frame, all future calculations are performed between /odom and /base_footprint. This is because both wheel odometry and our IMU are relative to the starting point of the robot (/odom). Thus, the z-axis rotation from the IMU will set the heading of the robot with respect to /odom.
+/base_link represents the center of mass/rotation for the robot. This frame's z-distance from /base_footprint is static (the robot cannot move up and down). This frame's rotation about the z-axis is fixed to /base_footprint's rotation. Finally, this frame's pitch (rotation about the y-axis) and roll (rotation about the x-axis) are calculated by the IMU.
+I know this is very specific to my robot, but the idea is to give you an idea of the thought process you can use to check your IMU calculations. I'd be happy to clarify any points if necessary. I know this was a lot of information to understand.
+
+Originally posted by DimitriProsser with karma: 11163 on 2012-04-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by PedroS. on 2012-04-13:
+Ok. I have two questions.
+Comment by DimitriProsser on 2012-04-13:
+What are they?
+

@@ -1,0 +1,47 @@
+Q:
+
+Noisy magnetometer data
+
+I’m looking to develop an AHRS for which I’m using a magnetometer to correct for heading errors. I wanted to check that the magnetometer I'm using is functioning to the level of accuracy (+- 1 degree) that I’m aiming for, before doing any other development. However, the heading output from the magnetometer appears noisy when I test it. 
+To test the heading output from the magnetometer I’ve placed the magnetometer on the floor of a what I believe is a magnetically free environment. I’ve then collected magnetometer data for about 5mins - I’m using a pololu development board with a LIS3MDL magnetometer connected to an Arduino UNO. I’ve then used the atan2 function in Matlab to calculate the heading (multiplying by 180/pi to output the answer in degrees). When I look at the heading output the max and min of the data show a range of over 3 degrees. I’ve not calibrated the magnetometer, but my understanding is that calibration would only provide a bias and scaling, therefore any calibrated result would still be subject to the same noise. The magnetometer is not being moved during the test so I assumed that irrespective of the pitch, roll and heading of the device if the magnetometer is physically capable of giving me 1 degree heading it should output a relatively constant heading value over the test.
+My questions are:
+- does this seem a reasonable way of testing the heading accuracy?
+- can I filter the magnetometer data to reduce the noise? If so what filter (I was thinking of a moving average filter) should I use and what constraints/limitations are there on how it’s used?
+- Should a good magnetometer be less noisy than this and therefore not require any filtering?
+
+A:
+
+First, let's look at if your findings seem reasonable given the datasheet specifications for the sensor. 
+For this, I'll assume that Wikipedia is generally correct and that the strength of Earth's magnetic field is on the stronger end of the range given (0.25 to 0.60 gauss), so I'll use 0.6 gauss. Then I'll also assume that +Y is oriented to magnetic North and +X is oriented to magnetic East. Finally, I'll assume that your atan2 function is atan2(yAxis, xAxis), and that you're negating that output (to get positive angles in the clockwise direction) and offsetting by 90 degrees (to get zero at magnetic North). 
+So, what does the datasheet say? For "RMS noise," it's stating you should expect +/- 3.2 mgauss on the x- and y-axes. What does this work out to be? Well, assuming you have your sensor setup as described above, you would expect to have a y-axis reading of 0.6 gauss and an x-axis reading of 0.0 gauss. 
+Your noise could alter those readings, though! Worst case scenario here is reducing your y-axis reading from 0.6 gauss to (0.6 - 0.0032) = 0.5968 gauss, and a then having the x-axis "boosted" to +/- 3.2 mgauss, or 0.0032 gauss. This would then give a reading of:
+minReading = -atan2(0.5968, -0.0032)*(180/pi) + 90; % Negate and offset to get to compass headings
+maxReading = -atan2(0.5968, 0.0032)*(180/pi) + 90;
+
+This gives a min/max reading of -0.3 to 0.3 degrees. This doesn't confirm your findings! What's going on? 
+The issue is that RMS noise is the average noise. If you're considering worst-case, then you should consider the peak noise values you can expect to see. When you begin to talk about expected values you enter the land of statistics. Here is an application note from Analog Devices and here's another application note from Texas Instruments that both say the same thing (pages 5 and 4, respectively): 
+Multiply your RMS noise value by 6 to convert to peak-to-peak noise.
+Be careful here, because now we go from a +/- RMS noise to a peak-to-peak noise. The peak-to-peak values already include the positive and negative range. You don't go +/- a peak-to-peak value because it already spans peak negative to peak positive. Now if you want to estimate the peak negative value you would use half of the peak-to-peak value. 
+So, what does this work out to be? First, convert from RMS to peak-to-peak:
+noiseP2P = 6*noiseRMS;
+
+Then your max noise peak is (the positive) half and your min noise peak is (the negative) half of the peak-to-peak signal:
+minNoise = -noiseP2P/2;
+maxNoise = noiseP2P/2;
+
+And then finally re-calculate the minReading and maxReading values from before:
+noiseRMS = 0.0032;
+noiseP2P = noiseRMS*6.6;
+minNoise = -noiseP2P/2;
+maxNoise = noiseP2P/2;
+
+minReading = -atan2(0.6 + minNoise, minNoise)*(180/pi) + 90;
+maxReading = -atan2(0.6 + minNoise, maxNoise)*(180/pi) + 90;
+
+This gives a range of almost 2 degrees. If the Earth's magnetic field is weaker in your area than the upper limit given by Wikipedia then you'll get a different (larger) range. At the lower limit, 0.25 gauss, you get a range of 5 degrees!
+So, given the numbers above, I would say that your observation of a 3 degree spread is normal and to be expected for the device you have.
+You can use the same method to analyze other potential magnetometers and compare the expected performance of those versus your project's performance needs, etc. 
+Regarding techniques to mitigate, you can do anything from a simple lag filter (choose an alpha value like 0.05 and then do filterValue = alpha*newReading + (1-alpha)*filterValue) to a moving average like you mentioned, to a Kalman filter, to the Madgwick filter.
+What you choose to implement filter-wise is dependent on your project needs, filter time constant/response, filter complexity, etc.
+You may find that it is not possible to produce a filter that will simultaneously respond as quickly as you need while maintaining an acceptable noise floor. If this is the case then you need to evaluate other devices that feature a faster base response and/or a lower noise floor. 
+

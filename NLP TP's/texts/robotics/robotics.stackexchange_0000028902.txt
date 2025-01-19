@@ -1,0 +1,78 @@
+Q:
+
+Multiple instances of same sensor publishing to same topic
+
+I have my simulated depth sensor configured as follows
+model.sdf
+    ...
+    <plugin name="camera_plugin" filename="libgazebo_ros_openni_kinect.so">
+      <baseline>0.2</baseline>
+      <alwaysOn>true</alwaysOn>
+      <!-- Keep this zero, update_rate in the parent <sensor> tag
+        will control the frame rate. -->
+      <updateRate>0.0</updateRate>
+      <cameraName>camera_ir</cameraName>
+      <imageTopicName>/camera/color/image_raw</imageTopicName>
+      <cameraInfoTopicName>/camera/color/camera_info</cameraInfoTopicName>
+      <depthImageTopicName>/camera/depth/image_raw</depthImageTopicName>
+      <depthImageCameraInfoTopicName>/camera/depth/camera_info</depthImageCameraInfoTopicName>
+      <pointCloudTopicName>/camera/depth/points</pointCloudTopicName>
+      <frameName>camera_frame</frameName>
+      <pointCloudCutoff>0.5</pointCloudCutoff>
+      <pointCloudCutoffMax>3.0</pointCloudCutoffMax>
+      <distortionK1>0</distortionK1>
+      <distortionK2>0</distortionK2>
+      <distortionK3>0</distortionK3>
+      <distortionT1>0</distortionT1>
+      <distortionT2>0</distortionT2>
+      <CxPrime>0</CxPrime>
+      <Cx>0</Cx>
+      <Cy>0</Cy>
+      <focalLength>0</focalLength>
+      <hackBaseline>0</hackBaseline>
+    </plugin>
+    </sensor>
+    </link>
+  </model>
+</sdf>
+
+Whenever I have more than 1 sensor in my gazebo world (created through the Insert tab in the gazebo GUI), the topics published by the sensors get mixed together and the following error message appears:
+[ERROR] [1578388163.869961171, 10.928000000]: Tried to advertise a service that is already advertised in this node [/camera_ir/set_parameters]
+[ERROR] [1578388163.877831571, 10.928000000]: Tried to advertise a service that is already advertised in this node [/camera/color/image_raw/compressedDepth/set_parameters]
+[ERROR] [1578388163.888897218, 10.930000000]: Tried to advertise a service that is already advertised in this node [/camera/color/image_raw/compressed/set_parameters]
+[ERROR] [1578388163.930333009, 10.939000000]: Tried to advertise a service that is already advertised in this node [/camera/color/image_raw/theora/set_parameters]
+I've tried adding a robotNamespace for the plugin but that does not solve the problem, the same problem persists, just with the same robotNamespace added in front of all the topics.
+This answer that says using an empty robotnamespace doesn't seem to work.
+
+Originally posted by wongrufus on Gazebo Answers with karma: 78 on 2020-01-07
+Post score: 0
+
+A:
+
+The key is to not use global names for all names
+      <imageTopicName>camera/color/image_raw</imageTopicName>
+      <cameraInfoTopicName>camera/color/camera_info</cameraInfoTopicName>
+      <depthImageTopicName>camera/depth/image_raw</depthImageTopicName>
+      <depthImageCameraInfoTopicName>camera/depth/camera_info</depthImageCameraInfoTopicName>
+      <pointCloudTopicName>camera/depth/points</pointCloudTopicName>
+      <frameName>camera_frame</frameName>
+
+(Notice the starting / removed)
+And follow the instructions here of setting up the group namespace and tf prefix.
+Something along the followings in the launch file will do:
+<param name="robot_description_sdf" textfile="kinect/model.sdf"/>
+
+<group ns="kinect1">
+    <param name="tf_prefix" value="kinect1_tf" />
+    <node pkg="gazebo_ros" type="spawn_model" name="spawn_sdf" args="-sdf -param /robot_description_sdf -model kinect1 -x -3 -y 0 -z 1" />
+</group>
+
+<group ns="kinect2">
+    <param name="tf_prefix" value="kinect2_tf" />
+    <node pkg="gazebo_ros" type="spawn_model" name="spawn_sdf" args="-sdf -param /robot_description_sdf -model kinect2 -x -3 -y 1 -z 1" />
+</group>
+
+Originally posted by wongrufus with karma: 78 on 2020-01-09
+This answer was ACCEPTED on the original site
+Post score: 0
+

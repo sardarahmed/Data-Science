@@ -1,0 +1,66 @@
+Q:
+
+Error compiling rosbag_storage on Mac OS X Yosemite
+
+I've been following the instructions on the ROS wiki for building on Mac OS X.  I'm running 10.10.3 with Xcode 6.3 (with CLI tools 6.3 installed).  Everything works until it tries to build rosbag_storage.
+Building uncompressed_stream.cpp the following errors occur:
+/usr/local/include/boost/format/format_fwd.hpp:24:69: error: no type named 'allocator' in namespace 'std'
+        class Tr = BOOST_IO_STD char_traits<Ch>, class Alloc = std::allocator<Ch> >
+                                                               ~~~~~^
+/usr/local/include/boost/format/format_fwd.hpp:24:78: error: expected ',' or '>' in template-parameter-list
+        class Tr = BOOST_IO_STD char_traits<Ch>, class Alloc = std::allocator<Ch> >
+                                                                             ^
+/usr/local/include/boost/format/format_fwd.hpp:24:83: error: expected unqualified-id
+        class Tr = BOOST_IO_STD char_traits<Ch>, class Alloc = std::allocator<Ch> >
+                                                                                  ^
+/usr/local/include/boost/format/format_fwd.hpp:27:13: error: unknown type name 'basic_format'
+    typedef basic_format<char >     format;
+            ^
+/usr/local/include/boost/format/format_fwd.hpp:27:25: error: expected unqualified-id
+    typedef basic_format<char >     format;
+                        ^
+/usr/local/include/boost/format/format_fwd.hpp:30:13: error: unknown type name 'basic_format'
+    typedef basic_format<wchar_t >  wformat;
+            ^
+/usr/local/include/boost/format/format_fwd.hpp:30:25: error: expected unqualified-id
+    typedef basic_format<wchar_t >  wformat;
+
+Apparently my Google foo is not up to snuff as the only thing related to this has to do with a missing C++ std library file that is missing (<__debug>).  Copying that file from Xcode into CLI tools doesn't fix the issue.
+Any ideas how to get past this error?
+EDIT: Same error with Xcode 6.3.1 (and matching CLI tools) installed
+
+Originally posted by crazyorc on ROS Answers with karma: 141 on 2015-04-20
+Post score: 2
+
+A:
+
+The following patch fixes the issue (edit: use this patch instead to fix both roscpp and rosbag_storage).
+--- src/roscpp_core/roscpp_traits/include/ros/message_forward.h.orig    2015-04-22 15:04:29.000000000 -0700
++++ src/roscpp_core/roscpp_traits/include/ros/message_forward.h 2015-04-22 15:46:31.000000000 -0700
+@@ -28,6 +28,11 @@
+ #ifndef ROSLIB_MESSAGE_FORWARD_H
+ #define ROSLIB_MESSAGE_FORWARD_H
+ 
++// Make sure that either __GLIBCXX__ or _LIBCPP_VERSION is defined.
++#include <cstddef>
++
+ // C++ standard section 17.4.3.1/1 states that forward declarations of STL types
+ // that aren't specializations involving user defined types results in undefined
+ // behavior. Apparently only libc++ has a problem with this and won't compile it.
+
+Originally posted by crazyorc with karma: 141 on 2015-04-22
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by sallyw on 2015-04-22:
+Thanks! So far I've also needed to add that to src/ros_comm/roscpp/include/ros/rosout_appender.h
+Comment by crazyorc on 2015-04-22:
+The problem appears to be that roscpp and rosbag_storage include message_forward.h but haven't included any C++ stdlib include files which would cause GLIBCXX or _LIBCPP_VERSION to be defined.  Edited solution patch to include a better fix.
+Comment by veltrop on 2015-05-07:
+Thanks! This solution worked for me.  I've added it to the troubleshooting section of the OSX install wiki.
+Comment by William on 2015-05-20:
+@crazyorc can you open a pull request against https://github.com/ros/roscpp_core/pulls?
+Comment by William on 2015-05-20:
+Disregard, I just saw that you have already done so. Sorry about that.
+

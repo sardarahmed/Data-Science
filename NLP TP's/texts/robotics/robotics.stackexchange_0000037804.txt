@@ -1,0 +1,37 @@
+Q:
+
+2D map from Octomap
+
+I would like to use an octomap generated from RGBDSLAM to produce a 2d map that I can use with the navigation stack. The advantage of this approach vs a fake (or real) laser scanner is that it would not require separate odometry  information or for the sensor to remain level. It seems that Octomap already produces a 2D map but this includes features at every height "pancaked" onto the map. Is there a way to simply take a slice through the 3d map at a particular z value?
+Many thanks,
+James
+
+Originally posted by jwrobbo on ROS Answers with karma: 258 on 2012-02-11
+Post score: 1
+
+A:
+
+Thanks Felix,
+Found another way around it in the end, though possibly less efficient than your approach. The first thing I found out was that octomap server accepts min and max z values just as parameters so by adding
+param name="occupancy_min_z" value="-0.5"
+param name="occupancy_max_z" value="0.5"
+to the launch file I got a cut down octomap, which then gave a sensible 2d map. Quite nice having the 3D map as well though, for visualisation if nothing else and I'd rather not run 2 octomap_servers, so I had a look through OctomapServer.cpp and edited the 2d map stuff so that it only adds to the occupancy grid if the point is within a certain z range:
+void OctomapServer::handleOccupiedNode(const OcTreeROS::OcTreeType::iterator& it){
+// update 2D map (occupied always overrides):
+if (m_publish2DMap){
+  ...........
+octomap::point3d curpoint;
+  m_octoMap->octree.genCoords(nKey, m_treeDepth, curpoint);
+if (curpoint.z() > -0.5 && curpoint.z() < 0.5){
+    m_gridmap.data[m_gridmap.info.width*j + i] = 100;
+}
+  } else{ ..........///same thing here
+
+Originally posted by jwrobbo with karma: 258 on 2012-03-26
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by kotoko on 2016-11-29:
+From the code, I think that if you want to cut down on the amount of world octomap models you can use pointcloud_min_z.
+

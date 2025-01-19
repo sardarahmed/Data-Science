@@ -1,0 +1,178 @@
+Q:
+
+Controlling an industrial servo motor through moveit
+
+I want to control an additional motor along with my UR5 using moveit. I have added new controller to the moveit config controllers.yaml called rail_controller and made necessary changes to the URDF like adding extra joint and transmissions.
+ controller_list:
+  - name: "arm_controller"
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    joints: [shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint]
+
+  - name: "rail_controller"
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - rail_joint
+
+As the next step I wrote an action server that can take FollowJointTrajectory type of command. Here's is the file
+#include <ros/ros.h>
+#include <actionlib/server/simple_action_server.h>
+#include <control_msgs/FollowJointTrajectoryAction.h>
+#include <trajectory_msgs/JointTrajectory.h>
+
+class RobotTrajectoryFollower
+{
+protected:
+
+  ros::NodeHandle nh_;
+  actionlib::SimpleActionServer<control_msgs::FollowJointTrajectoryAction> as_; 
+  std::string action_name_;
+
+public:
+
+  RobotTrajectoryFollower(std::string name) :
+    as_(nh_, name, false),
+    action_name_(name)
+  {
+    //Register callback functions:
+    as_.registerGoalCallback(boost::bind(&RobotTrajectoryFollower::goalCB, this));
+    as_.registerPreemptCallback(boost::bind(&RobotTrajectoryFollower::preemptCB, this));
+
+    as_.start();
+  }
+
+  ~RobotTrajectoryFollower(void)//Destructor
+  {
+  }
+
+  void goalCB()
+  {
+     ROS_INFO("RAIL CONTROLLER ACTION-GOAL RECEIVED");
+    // accept the new goal
+    //goal_ = as_.acceptNewGoal()->samples;
+  }
+
+  void preemptCB()
+  {
+    ROS_INFO("%s: Preempted", action_name_.c_str());
+    // set the action state to preempted
+    as_.setPreempted();
+  }
+};
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "action_server");
+
+  RobotTrajectoryFollower RobotTrajectoryFollower("/rail_controller/follow_joint_trajectory");
+  ros::spin();
+
+  return 0;
+}
+
+What should be the next step,so that I can forward the commands received on this server callback from moveit followjointtrajectory client to the actual physical servo motor that I have. Any help would be greatly appreciated, I seem to have stuck here with so many types of controller documentation,I am unable to find the right resource to follow.
+
+Edit: Thanks for the prompt reply.
+So, I read about ros_control and modified the ros_control_boilerplate to have my railcontroller configured instead of the rrbot.
+The code for my setup is here https://drive.google.com/drive/folders/0B3-QK1vsHSXhd3pKcS1VX3lqTUk?usp=sharing
+Here's the railrobot_controllers.yaml as defined in ros_control package:
+# ros_control_boilerplate Settings -----------------------
+# Settings for ros_control control loop
+generic_hw_control_loop:
+  loop_hz: 300
+  cycle_time_error_threshold: 0.01
+
+# Settings for ros_control hardware interface
+hardware_interface:
+   joints:
+      - rail_joint
+
+# Publish all joint states ----------------------------------
+# Creates the /joint_states topic necessary in ROS
+joint_state_controller:
+   type:         joint_state_controller/JointStateController
+   publish_rate: 50
+
+# Joint Trajectory Controller -------------------------------
+# For detailed explanations of parameter see http://wiki.ros.org/joint_trajectory_controller
+position_trajectory_controller:
+   type: position_controllers/JointTrajectoryController
+   # These joints can likely just be copied from the hardware_interface list above
+   joints:
+      - rail_joint
+
+# Individual Position Controllers ---------------------------------------
+# Allows to send individual ROS msg of Float64 to each joint separately
+rail_joint_position_controller:
+   type: position_controllers/JointPositionController
+   joint: joint1
+   pid: {p: 100.0, i: 0.01, d: 10.0}
+
+What I cant seem to figure out how the controller above defined here in ros_control_boilerplate/railrobot_control/config/railrobot_controllers.yaml  ,will communicate with the follow joint trajectory action server that will in turn connect to moveit.
+My understanding of ros_control and it's integration with moveit is quite amateur at the moment.I would appreciate if you can help me fill these missing pieces of knowledge.
+
+Originally posted by Anirudh_s on ROS Answers with karma: 47 on 2017-08-02
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-08-03:
+Please don't post answers unless you are actually answering your own question. For everything else, use comments or update your original question. This is not a regular forum (with multiple posts following each other).
+I've merged your answer into your OP.
+
+A:
+
+I would suggest to use ros_control. It's a bit of a learning curve, but the "only" thing you'd need to do is write a hardware_interface that knows how to pass on (fi) position setpoints to your industrial servo motor using whatever mechanism (a fieldbus, serial, TCP/IP, UDP, whatever).
+After you have that, all the rest (action server, position control, etc) is already done for you.
+You then just have to configure a joint_trajectory_action controller on top of your hardware_interface and that's it.
+Now treat that as you do the Action server that your robot driver provides you with, configure MoveIt to use it (just as in your OP) and things should start working.
+
+Note that doing things like this -- with separate drivers -- will make true synchronous motion execution impossible, as there are too many asynchronous things going on. If you need synchronous execution, you could look into combined_robot_hw.
+
+Edit:
+
+What I cant seem to figure out how the controller above defined here in ros_control_boilerplate/railrobot_control/config/railrobot_controllers.yaml, will communicate with the follow joint trajectory action server that will in turn connect to moveit.
+
+You have this in your railrobot_controllers.yaml:
+# Joint Trajectory Controller -------------------------------
+# For detailed explanations of parameter see http://wiki.ros.org/joint_trajectory_controller
+position_trajectory_controller:
+   type: position_controllers/JointTrajectoryController
+   # These joints can likely just be copied from the hardware_interface list above
+   joints:
+      - rail_joint
+
+This is the joint trajectory action server.
+From wiki/joint_trajectory_controller - Sending trajectories - Available interfaces:
+
+There are two mechanisms for sending trajectories to the controller: by means of the action interface or the topic interface.
+
+See also Section 3.1.1 - Action interface.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-08-02
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Anirudh_s on 2017-08-03:
+Section 3.1.1 - Action interface ,so asper this,position_trajectory_controller in railrobot_controllers.yaml will start an action server listening on /ns/follow_joint_trajectory ,on which moveit can send commands?
+Comment by gvdhoorn on 2017-08-03:
+I don't really understand what you're asking, but afaict, you just need to configure MoveIt to use the position_trajectory_controller action server (which is provided by the JointTrajectoryController), and then things should work.
+MoveIt is the client, JointTrajectoryController is the server.
+Comment by gvdhoorn on 2017-08-03:
+So in total:
+
+robot driver provides action server for the robot
+rail hardware_interface + JointTrajectoryController provides action server for the rail
+MoveIt is client of both (configured through controllers.yaml)
+
+Comment by Jalashwa on 2017-08-15:
+Thanks gvdhoorn ! I am new to ROS and want to write a Hardware Interface. For the link to the Github page you've mentioned, apart from the TCP/IP stuff which all areas of the code need to be worked upon for making the Robot work. For eg. maybe the Main part needs more functions not mentioned there
+Comment by gvdhoorn on 2017-08-16:
+If you have a question that is not answered in this question already I would suggest you post a new one, not hijack this one.
+Comment by Jalashwa on 2017-08-30:
+Hello, I had no intentions of doing that. I was able to understand where I was going wrong. Could I please ask you to have a look at my new,
+question
+for some inputs.
+

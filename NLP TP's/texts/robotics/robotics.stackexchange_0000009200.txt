@@ -1,0 +1,81 @@
+Q:
+
+A Vector Field Histogram implementation in Python 2.7
+
+I am trying to implement the Vector Field Histogram as described by Borenstein, Koren, 1991 in Python 2.7 using the SciPy stack.
+I have already been able to calculate the polar histogram, as described in the paper, as well as the smoothing function to eliminate noise. This variable is stored in a numpy array, named self.Hist.
+However, the function computeTheta, pasted below, which computes the steering direction, is only able to compute the proper direction if the valleys (i.e. consecutive sectors in the polar histogram whose obstacle density is below a certain threshold) do not contain the section where a full circle is completed, i.e. the sector corresponding to 360º.
+To make things clearer, consider these two examples: 
+
+If the histogram contains a peak in the angles between, say, 330º and 30º, with the rest of the histogram being a valley, then the steering direction will be computed correctly.
+If, however, the peak is contained between, say, 30º and 60º, then the valley will start at 60º, go all the way past 360º and end in 30º, and the steering direction will be computed incorrectly, since this single valley will be considered two valleys, one between 0º and 30º, and another between 60º and 360º.
+def computeTheta(self, goal):
+thrs = 2.
+s_max = 18
+
+#We start by calculating the sector corresponding to the direction of the target.
+target_sector = int((180./np.pi)*np.arctan2(goal[1] - self.VCP[1], goal[0] - self.VCP[0]))
+if target_sector < 0:
+    target_sector += 360
+target_sector /= 5
+
+#Next, we assume there is no best sector.
+best_sector = -1
+dist_best_and_target = abs(target_sector - best_sector)
+
+#Then,  we find the sector within a valley that is closest to the target sector.
+for k in range(self.Hist.shape[0]):
+    if self.Hist[k] < thrs and abs(target_sector - k) < dist_best_and_target:
+        best_sector = k
+        dist_best_and_target = abs(target_sector - k)
+
+#If the sector is still -1, we return it as an error.
+print (target_sector, best_sector)
+if best_sector == -1:
+    return -1
+
+#If not, we can proceed...
+elif best_sector > -1:
+    #... by deciding whether the valley to which the best sector belongs is a "wide" or a "narrow" one.
+    #Assume it's wide.
+    type_of_valley = "Wide"
+
+    #If we find a sector that contradicts our assumption, we change our minds.
+    for sector in range(best_sector, best_sector + s_max + 1):
+        if sector < self.Hist.shape[0]:
+            if self.Hist[sector] > thrs:
+                type_of_valley = "Narrow" 
+
+    #If it is indeed a wide valley, we return the angle corresponding to the sector (k_n + s_max)/2.
+    if type_of_valley == "Wide":
+
+        theta = 5*(best_sector + s_max)/2
+        return theta
+
+    #Otherwise, we find the far border of the valley and return the angle corresponding to the mean value between the best sector and the far border.
+    elif type_of_valley == "Narrow":
+        for sector in range(best_sector, best_sector + s_max):
+            if self.Hist[sector] < thrs:
+                far_border = sector
+
+        theta = 5*(best_sector + far_border)/2
+        return theta
+
+How can I address this issue? Is there a way to treat the histogram as circular? Is there maybe a better way to write this function?
+Thank you for your time.
+
+A:
+
+I'm having a hard time following your code, partly because I don't know Python but I think mostly because I'm not sure I understand your variables. That said, I think I do understand your problem. 
+An approach I would take to solve this would be to "warp" the data before evaluation, then make your decisions, then "de-warp" the output. For example, consider the following pseudo-code:
+headingOffset = 0;
+while(histogram[0] != peak)
+    headingOffset = headingOffset + 1;
+    histogram = CircularShift(histogram, -1);
+end
+
+<find heading>
+heading = CircularShift(heading,+headingOffset);
+
+Hopefully I've made this clear; basically, re-orient your data such that you always start at a peak. This will ensure a valley always ends <= 360 degrees. Then, once you find your heading, shift it according to how far you shifted your data to start with.
+

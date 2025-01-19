@@ -1,0 +1,98 @@
+Q:
+
+Extract odometry and map from .db file on Tango
+
+Hi,
+@matlabbe, I have saved a map on Tango with .db format. Now, I would like to get the odometry data from it. Is it possible?
+Also, when I try to get the map in .pgm format like the one you described here, I get the following error:
+[FATAL] (2016-07-04 10:00:06.287) util3d.cpp:252::cloudFromDepth() Condition (imageDepth.rows % decimation == 0) not met! [rows=90 decimation=4]
+
+ERROR: service [/publish_map] responded with an error: [FATAL] (2016-07-04 10:00:06.287) util3d.cpp:252::cloudFromDepth() Condition (imageDepth.rows % decimation == 0) not met! [rows=90 decimation=4]
+
+Do I have to change something?
+Now, by changing  cloud_decimation for the following map:
+
+I can save the map, but the result looks like this:
+
+It seems I am missing some data. Is it possible to improve it?
+Update:
+Now by using rosservice call /publish_map 1 1 0 I get the following map, I still miss some data.
+
+Thank you.
+
+Originally posted by MahsaP on ROS Answers with karma: 79 on 2016-07-04
+Post score: 0
+
+Original comments
+Comment by matlabbe on 2016-07-05:
+If you are using publish_map service, make sure you set global param to true: $ rosservice call /publish_map 1 1 0 (second param is for optimized and last one for graph only) to get the global map. I think what is shown in your grid map is the local map.
+Comment by matlabbe on 2016-07-06:
+Can you share the database? I just tried with a database created on Tango and I can get the full occupancy grid map.
+Comment by MahsaP on 2016-07-07:
+Here is the database: https://www.dropbox.com/s/2jesjrrsgxi8fe5/bigmap.db?dl=0
+
+A:
+
+Hi,
+By default rtabmap decimates by 4 RGB-D images to avoid creating very large point clouds. As depth images are already small for Tango, you can set cloud_decimation to 1:
+ <node pkg="rtabmap_ros" type="rtabmap" name="rtabmap">
+    <param name="cloud_decimation" value="1"/>
+    ...
+ </node>
+
+If you are only interested on odometry poses, open the database with standalone app $ rtabmap, "File" -> "Open Database..." and click "Edit" -> "Download graph-only" (choose not optimized to get odometry poses without graph corrections), then "File" -> "Export poses...".
+You may also like the rtabmap-databaseViewer tool to inspect the odometry (neighbor) links in the database (View->Show Constraints).
+UPDATE
+Thank you for the database. I couldn't reproduce the exact error you have (showing only a part of the map) but it helped me to fix a bug when generating the projection maps with data from Tango (depth and rgb images are not the same size and the calibration wasn't updated).
+Workaround for current binaries 0.11.7 (Hack: we subscribe at the same time to cloud_map to create XYZRGB clouds instead of XYZ clouds for the projection):
+$ roscore
+$ rosrun rtabmap_ros rtabmap _database_path:=~/Downloads/bigmap.db
+$ rostopic hz /cloud_map
+$ rosrun map_server map_saver map:=proj_map
+$ rosservice call /publish_map 1 1 0
+
+With the fix on 0.11.8:
+$ roscore
+$ rosrun rtabmap_ros rtabmap _database_path:=~/Downloads/bigmap.db
+$ rosrun map_server map_saver map:=proj_map
+$ rosservice call /publish_map 1 1 0
+
+Note that cloud_decimation can stay at 4 since we apply decimation on the RGB image size instead of the depth image size.
+
+image: map.pgm
+resolution: 0.050000
+origin: [-37.192123, -27.229282, 0.000000]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+
+cheers
+
+Originally posted by matlabbe with karma: 6409 on 2016-07-04
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by MahsaP on 2016-07-05:
+@matlabbe, When I do "Export poses", in the text file I have 12 columns in each row, what does each stand for? The first three are the pose in the x, y, z and ...?
+Comment by MahsaP on 2016-07-05:
+Also, can I get time as well?
+Comment by matlabbe on 2016-07-05:
+You can try the RGB-D SLAM export format, which is "stamp x y z qx qy qz qw". The RAW format is the transformation matrix 3x4: "r00 r01 r02 tx r10 r11 r12 ty r20 r21 r22 tz"
+Comment by MahsaP on 2016-07-06:
+@matlabbe Is there anyway to get the roll pitch yaw from the data directly? When I look at the data through rtabmap-databaseViewer tool, the data for the yaw angle is what I want. But, when I transform the data from qx qy qz qw to rpy I don't get the same thing.
+Comment by matlabbe on 2016-07-06:
+Ah yeah, to comply to RGB-D SLAM benchmark tool, the poses are transformed in rgbd-slam's world frame. I would recommend the RAW format then, and transform the rotation matrix:
+r00 r01 r02
+r10 r11 r12
+r20 r21 r22
+to euler angles.
+Comment by MahsaP on 2016-07-06:
+@matlabbe thanks for the quick answer. Now, I am getting rpy correctly.
+Comment by MahsaP on 2016-07-07:
+Is there a way to get the rpy angles from quaternion data instead of rotation matrix? I would like to compare something from the data I get on Kinect in Rviz with Tango.
+Comment by matlabbe on 2016-07-08:
+You may want to kook at this: http://answers.ros.org/question/50113/transform-quaternion/
+Comment by MahsaP on 2016-07-11:
+@matlabbe Thanks for your explanation. I have the map correctly now.
+

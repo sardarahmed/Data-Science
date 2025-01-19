@@ -1,0 +1,66 @@
+Q:
+
+Repo problem in build farm after moving package out of metapackage
+
+tl;dr: Due to bad planning, I bloom-released a metapkg and now I want to get one of the pkgs out to become an independent pkg. Already updated rosdistro/indigo/distribution.yaml and forced farm rebuilds a couple times. Build farms still tries to clone OLD_REPO-release instead of NEW_REPO-release. What else should I try?
+Details:
+
+Metapackage is mrpt_navigation. See rosdistro entry
+
+Yesterday it contained a package named pose_cov_ops, I had to manually remove it because otherwise bloom complained (correctly) when trying to release the new package because it was already in the metapkg. See commit.
+
+After that, I manually finished the PR that bloom failed to do. See commit
+
+bloom succeeds in subsequent releases. See commit.
+
+This is the current entry of the new pkg In rosdistro:
+pose_cov_ops:
+doc:
+type: git
+url: https://github.com/mrpt-ros-pkg/pose_cov_ops.git
+version: master
+release:
+tags:
+release: release/indigo/{package}/{version}
+url: https://github.com/mrpt-ros-pkg-release/pose_cov_ops-release.git       ## <<<< NEW, CORRECT REPO URI (this comment is not on rosdistro!!)
+version: 0.1.5-0
+source:
+type: git
+url: https://github.com/mrpt-ros-pkg/pose_cov_ops.git
+version: master
+status: maintained
+
+But the build farm still believes the release repository is the OLD one (see complete log):
+
+cd /home/rosbuild/hudson/workspace/ros-indigo-pose-cov-ops_sourcedeb/workspace && gbp-clone https://github.com/mrpt-ros-pkg-release/mrpt_navigation-release.git
+Fetching targets
+cd /home/rosbuild/hudson/workspace/ros-indigo-pose-cov-ops_sourcedeb/workspace/mrpt_navigation-release && git tag -l debian/*
+No matching tag found. Are you sure you pointed to the right repository or the version is right?, expected debian/ros-indigo-pose-cov-ops_0.1.5-0_saucy:
+
+Notice it uses the OLD repo URI: https://github.com/mrpt-ros-pkg-release/mrpt_navigation-release.git instead of the one provided in rosdistro... Why?
+I tried to trace where the incorrect repository URI comes from and found it to come from:
+
+the input argument "repo_uri" of ros-infrastructure/buildfarm/scripts/generate_sourcedeb
+
+which comes from RELEASE_URI in source_build.sh
+
+from "doit(release_uri,..." in  release_jobs.py
+
+But: WHO calls release_jobs.py? I couldn't find it.
+Any ideas?
+
+Originally posted by Jose Luis Blanco on ROS Answers with karma: 288 on 2014-12-23
+Post score: 0
+
+A:
+
+The Jenkins jobs are only regenerated once every 24h. Please wait at least until tomorrow - the job should be updated by then. If the problem persists please comment here again.
+
+Originally posted by Dirk Thomas with karma: 16276 on 2014-12-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Jose Luis Blanco on 2014-12-24:
+As usual, you're right... Without further changes it now builds. Thanks!
+

@@ -1,0 +1,34 @@
+Q:
+
+Polling or Timer interrupt?
+
+We hope to build a simple line follower robot and we got a problem when we were discussing about PIC programming.
+We planed to write a endless loop, check the sensor panel reading and do the relevant stuff for that reading.
+But one of our friends told us to use a timer interrupt to generate interrupts in definite time periods and in each interrupt check the sensor panel reading and do the relevant stuff for that reading.
+But we can't figure out which is best: the endless loop in main method OR timer interrupt method.
+What is the best way, and why?
+
+A:
+
+The processor has to execute something.  You will always have an "endless" loop even if you're doing some work in an interrupt handler.
+The best solution depends on exactly what you're trying to do.
+The main advantage of using interrupts is they allow you to service events in real-time while your main program is doing something else.  Timer interrupts specifically allow you to perform some periodic activity on a fairly accurate time-base while doing some other processing.
+For most control algorithms it is useful to have some sort of a time-base (or fixed frequency).  If that's all your CPU is doing you can easily do that without interrupts by either controlling the number of cycles/instructions in your control loop or polling the timer.  Both methods would be simpler and more efficient than using interrupts.  Interrupts are more useful in more complex systems doing many things concurrently (I/O, time keeping, scheduling etc.).  
+If you go with the endless loop without polling the timer or calibrating the time it takes to run one iteration of the loop you will have to be careful of situations where adding more code in your loop changes the timing and the behavior of your control system.
+If you implement your control algorithm in a timer interrupt you will have to be careful you're not trying to perform more work than the CPU can handle in one time "slot" or that will again impact the behavior of your control system.
+
+A:
+
+Further to Guy's answer, using a timer interrupt to generate accurate intervals adds determinacy.
+For example, at any given time, you know exactly what the processor is doing, and all activities are performed at specified rates.
+You also should schedule at determined rates as otherwise you have no basis for time constants and such like, which will be essential in your filtering.
+And finally, this means that if you add additional tasks, then the existing tasks are not slowed down.
+
+Simple polling is OK if that is all your system has to do - but while time slot scheduling is a minor overhead in a trivial system, adding it from the start allows growth and expansion without having to restructure everything later.
+
+A:
+
+I would just like to add few points to other posts. My personal opinion is that endless while loop has no sense in systems which read from snsors or write to actuators as both has some physical constrains, eg. There is no point in reading from sensors at 1Mhz if the sensor has stability cycle before meassurent is accurate at 100Hz. Same goes to motor drivers. You can send 1mil instructiins to move motor but it can only witstand its physical limitations in respect of inertia.
+What i do in my designs is following. I create timer interrupt which triggers every 1ms or so, and then i decrement some global variables in that interrupt routine. In main while loop i check if variable is 0 and execute command that is defined by that variable. In that case i can drive motor at 125Hz, read sensor at 20Hz, and output leds at 0.5Hz. 
+I hope you got the point.
+

@@ -1,0 +1,45 @@
+Q:
+
+ROS2: Preferred method of making worker threads
+
+Hi, what is a preferred method of making worker threads in ROS2? If I would want real-time, should I use independently made rea- time threads, or is there an API for that?
+
+Originally posted by uthinu on ROS Answers with karma: 118 on 2018-11-12
+Post score: 1
+
+A:
+
+There's no API for creating threads in ROS 2. The Executor class calls callbacks (if that's what you mean), and if you want a different threading model from SingleThreadedExecutor and MultiThreadedExecutor then you should make you're own executor, using one of those two as an example. They are fairly simple:
+https://github.com/ros2/rclcpp/blob/33a755c535d654c97401eb6d199580368c19eb40/rclcpp/include/rclcpp/executors/single_threaded_executor.hpp#L38-L63
+https://github.com/ros2/rclcpp/blob/33a755c535d654c97401eb6d199580368c19eb40/rclcpp/src/rclcpp/executors/single_threaded_executor.cpp#L21-L39
+Then you can create an instance of your custom executor, add nodes to it, and then call spin on it.
+
+Originally posted by William with karma: 17335 on 2018-11-12
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by uthinu on 2018-11-14:
+Any help on the code? It is somewhat cryptic for me, I can not see where the thread is created...  I would like a fixed node:thread mapping which does not seem unusual to me, think nodes real-time and nodes non real-time. Any plans of adding such an executor?
+Comment by gvdhoorn on 2018-11-14:\
+
+think nodes real-time and nodes not real-time.
+
+Mixed Real-Time Criticality with ROS2 - the Callback-group-level Executor (slides).
+Comment by William on 2018-11-14:
+Just add each node to it's own SingleThreadedExecutor, and call spin on each of those executors in their own thread, and you can setup each thread to be a real-time priority thread or not.
+Comment by William on 2018-11-14:
+The only built-in executor that creates a thread is the MultiThreadedExecutor, see: https://github.com/ros2/rclcpp/blob/33a755c535d654c97401eb6d199580368c19eb40/rclcpp/src/rclcpp/executors/multi_threaded_executor.cpp#L48-L56
+Comment by uthinu on 2018-11-14:
+And if I would want this thread:node mapping and also reentrant callbacks? Could I spin each MultiThreaderExecutor in its own thread, and the threads created by that executor in its pool would inherit the parent thread's properties?
+Comment by William on 2018-11-14:
+I don't know, it depends on what priority your operating system gives to new threads. If they are not inherited, then you'd need to make a new MultiThreadedExecutor which modifies the priorities of the threads it creates before using them. But as I said the MultiThreadedExecutor is trivial.
+Comment by uthinu on 2018-11-14:
+I do not know C++ well... Could you point me to an exact line in MultiThreaderExecutor.cpp where the threads are created?
+Comment by William on 2018-11-14:\
+
+I do not know C++ well...
+
+That won't mix well with writing real-time safe code...
+I already linked to it, the emplace_back: https://github.com/ros2/rclcpp/blob/33a755c535d654c97401eb6d199580368c19eb40/rclcpp/src/rclcpp/executors/multi_threaded_executor.cpp#L48-L56
+

@@ -1,0 +1,87 @@
+Q:
+
+Running my 3 DOF Inverse Kinematics Code: Works in MATLAB, not in Python
+
+I asked a question similar to this earlier, but I believe I have a new problem. I've been working on figuring out the inverse kinematics given an x,y,z coordinate. I've adopted the Jacobian method, taking the derivative of the forward kinematics equations with respect to their angles and input it into the Jacobian. I then take the inverse of it and multiply it by a step towards the goal distance. For more details, look at http://www.seas.upenn.edu/~meam520/notes02/IntroRobotKinematics5.pdf page 21 onwards. 
+For a better picture, below is something:
+
+Below is the code for my MATLAB script, which runs flawlessly and gives a solution in under 2 seconds:
+ycurrent = 0; %Not using this  
+xcurrent = 0; %Starting position (x)   
+zcurrent = 0; %Starting position (y)    
+xGoal = .5; %Goal x/z values of (1, 1)   
+zGoal = .5;    
+theta1 = 0.1; %Angle of first DOF    
+theta2 = 0.1; %Angle of second DOF  
+theta3 = 0.1; %Angle of third DOF
+xchange = xcurrent - xGoal %Current distance from goal
+zchange = zcurrent - zGoal
+%Length of segment 1: 0.37, segment 2:0.374, segment 3:0.2295 
+while ((xchange > .02 || xchange < -.02) || (zchange < -.02 || zchange > .02))    
+        in1 = 0.370*cos(theta1); %These equations are stated in the link provided
+        in2 = 0.374*cos(theta1+theta2);
+        in3 = 0.2295*cos(theta1+theta2+theta3);
+        in4 = -0.370*sin(theta1);
+        in5 = -0.374*sin(theta1+theta2); 
+        in6 = -0.2295*sin(theta1+theta2+theta3); 
+        jacob = [in1+in2+in3, in2+in3, in3; in4+in5+in6, in5+in6, in6; 1,1,1];
+        invJacob = inv(jacob); 
+        xcurrent = .3708 * sin(theta1) + .374 * sin(theta1+theta2) + .229 * sin(theta1+theta2+theta3) 
+        zcurrent = .3708 * cos(theta1) + .374 * cos(theta1+theta2) + .229 * cos(theta1+theta2+theta3)        
+        xIncrement = (xGoal - xcurrent)/100; 
+        zIncrement = (zGoal - zcurrent)/100; 
+        increMatrix = [xcurrent; zcurrent; 1]; %dx/dz/phi 
+        change = invJacob * increMatrix; %dtheta1/dtheta2/dtheta3  
+        theta1 = theta1 + change(1)  
+        theta2 = theta2 + change(2)  
+        theta3 = theta3 + change(3)
+        xcurrent = .3708 * sin(theta1) + .374 * sin(theta1+theta2) + .229 * sin(theta1+theta2+theta3)  
+        zcurrent = .3708 * cos(theta1) + .374 * cos(theta1+theta2) + .229 * cos(theta1+theta2+theta3)          
+        xchange = xcurrent - xGoal
+        zchange = zcurrent - zGoal
+end        
+
+Below is my Python code, which goes into an infinite loop and gives no results. I've looked over the differences between it and the MATLAB code, and they look the exact same to me. I have no clue what is wrong. I would be forever grateful if somebody could take a look and point it out.
+def sendArm(xGoal, yGoal, zGoal, right, lj):
+    ycurrent = xcurrent = zcurrent = 0
+    theta1 = 0.1
+    theta2 = 0.1
+    theta3 = 0.1
+    xcurrent, zcurrent = forwardKinematics(theta1, theta2, theta3)
+    xchange = xcurrent - xGoal
+    zchange = zcurrent - zGoal
+    while ((xchange > 0.05 or xchange < -0.05) or (zchange < -0.05 or zchange > 0.05)):
+        in1 = 0.370*math.cos(theta1) #Equations in1-6 are in the pdf I linked to you (inv kinematics section)
+        in2 = 0.374*math.cos(theta1+theta2)
+        in3 = 0.2295*math.cos(theta1+theta2+theta3)
+        in4 = -0.370*math.sin(theta1)
+        in5 = -0.374*math.sin(theta1+theta2)
+        in6 = -0.2295*math.sin(theta1+theta2+theta3)
+        jacob = matrix([[in1+in2+in3,in2+in3,in3],[in4+in5+in6,in5+in6,in6], [1,1,1]]) #Jacobian
+        invJacob = inv(jacob) #inverse of jacobian
+        xcurrent, zcurrent = forwardKinematics(theta1, theta2, theta3)
+        xIncrement = (xGoal - xcurrent)/100 #dx increment
+        zIncrement = (zGoal - zcurrent)/100 #dz increment
+        increMatrix = matrix([[xIncrement], [zIncrement], [1]])
+        change = invJacob*increMatrix #multiplying both matrixes
+        theta1 = theta1 + change.item(0)
+        theta2 = theta2 + change.item(1)
+        theta3 = theta3 + change.item(2)
+        xcurrent, zcurrent = forwardKinematics(theta1, theta2, theta3)
+        xchange = xcurrent - xGoal
+        zchange = zcurrent - zGoal
+        print "Xchange: %f ZChange: %f" % (xchange, zchange)
+    print "Goals %f %f %f" % (theta1, theta2, theta3)
+    right.set_joint_positions(theta1) #First pitch joint
+    right.set_joint_positions(theta2) #Second pitch
+    right.set_joint_positions(theta3) #Third Pitch joint
+
+def forwardKinematics(theta1, theta2, theta3):
+    xcurrent = .3708 * math.sin(theta1) + .374 * math.sin(theta1+theta2) + .229 * math.sin(theta1+theta2+theta3)
+    zcurrent = .3708 * math.cos(theta1) + .374 * math.cos(theta1+theta2) + .229 * math.cos(theta1+theta2+theta3)            
+    return xcurrent, zcurrent
+
+A:
+
+I found out what was wrong. The pdf I linked (as well as many others) state that you need to multiply your inverse jacobian matrix by a step x/y/z distance, but that results in an infinite loop. Multiplying the inverse jacobian matrix by the overall change in distance from x/zcurrent to the goals made the python code work smoothly. I'll keep this question up in case anybody wants to see the code.
+

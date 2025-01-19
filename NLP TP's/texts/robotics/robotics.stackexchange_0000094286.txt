@@ -1,0 +1,209 @@
+Q:
+
+How to get a robot position (x,y) in a map instead of Odometry in python?
+
+I'd like to record robot position (x,y) in a map instead of  Odometry in python  because my Odometry is not accurate, I asked yesterday about this issue here. So, I need to record them from the map.
+when I am using this command in a terminal, I see a good accuracy
+rosrun tf tf_echo /map /base_link
+
+how to get information of this command in python
+my code when I use the Odometry:
+#!/usr/bin/env python
+import rospy
+from nav_msgs.msg import Odometry
+
+class OdometryModifier:
+
+  def __init__(self):
+    self.sub = rospy.Subscriber("odom", Odometry, self.callback)
+  def callback(self, data):
+    x = data.pose.pose.position.x
+    y = data.pose.pose.position.y
+    with open("target.csv", "a") as text_file:
+        text_file.write("\n%.3f" % (x))
+        text_file.write("\t%.3f" % (y))
+
+if __name__ == '__main__':
+    rospy.init_node('move_turtlebot', anonymous=True)
+    try:
+        odom = OdometryModifier()
+        rospy.spin()
+    except KeyboardInterrupt:
+        rospy.loginfo('Shutting down')
+
+how to get only information print position, quaternion
+Update1
+I updated my question after @billy's answer
+the issue not in using google, tf isn't familiar with me.
+import rospy
+from tf import TransformListener
+from geometry_msgs.msg import PointStamped
+# from nav_msgs.msg import OccupancyGrid
+
+class myNode:
+
+    def __init__(self):
+        self.tf = TransformListener()
+        self.sub = rospy.Subscriber("/tf", PointStamped, self.some_method)
+        # rospy.Subscriber("/map", TransformStamped, )
+        # ...
+
+    def some_method(self, point_stamped):
+        print point_stamped
+
+        if self.tf.frameExists("/base_link") and self.tf.frameExists("/map"):
+            t = self.tf.getLatestCommonTime("/base_link", "/map")
+            position, quaternion = self.tf.lookupTransform("/base_link", "/map", t)
+            print position, quaternion
+if __name__ == '__main__':
+    rospy.init_node('move_turtlebot', anonymous=True)
+    try:
+        odom = myNode()
+        rospy.spin()
+    except KeyboardInterrupt:
+        rospy.loginfo('Shutting down')
+
+the output print point_stamped
+.....
+....
+....
+
+transforms: 
+  - 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 1578296497
+        nsecs: 454806328
+      frame_id: "odom"
+    child_frame_id: "base_link"
+    transform: 
+      translation: 
+        x: -0.000629110541654
+        y: 7.50070441544e-06
+        z: 0.0
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0161632095368
+        w: 0.999869366796
+transforms: 
+  - 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 1578296498
+        nsecs: 123375996
+      frame_id: "map"
+    child_frame_id: "odom"
+    transform: 
+      translation: 
+        x: -0.0020397693567
+        y: 0.00738271227423
+        z: 0.0
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: -0.0116367688543
+        w: 0.999932290513transforms: 
+  - 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 1578296497
+        nsecs: 971281007
+      frame_id: "/camera_link"
+    child_frame_id: "/camera_depth_frame"
+    transform: 
+      translation: 
+        x: 0.0
+        y: -0.02
+        z: 0.0
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+      ......
+       ....
+
+Update2
+The output print self.tf.allFramesAsString()
+I see    Frame odom exists with parent map.
+Frame RIA_TOP_FRAME exists with parent RIA_BASE.
+Frame RIA_BASE exists with parent base_link.
+Frame base_link exists with parent odom.
+Frame camera_link exists with parent base_link.
+Frame imu_link exists with parent base_link.
+Frame laser_link exists with parent base_link.
+Frame camera_depth_frame exists with parent camera_link.
+Frame camera_depth_optical_frame exists with parent camera_depth_frame.
+Frame camera_rgb_frame exists with parent camera_link.
+Frame camera_rgb_optical_frame exists with parent camera_rgb_frame.
+Frame rear_left_wheel exists with parent base_link.
+Frame rear_right_wheel exists with parent base_link.
+Frame map_ned exists with parent map.
+Frame odom_ned exists with parent odom.
+Frame odom exists with parent map.
+Frame base_link_frd exists with parent base_link.
+Frame front_left_wheel exists with parent base_link.
+Frame front_right_wheel exists with parent base_link.
+
+The output print position
+
+The output print point_stamped
+
+The output in TERMINAL  rosrun tf tf_echo /odom /base_link
+
+You can see the difference between the output of print position and the output of print point_stamped
+There are not different between the output of print point_stamped and  The output in TERMINAL  rosrun tf tf_echo /odom /base_link SORRY  I see some difference between them today.
+I think that some wrong in the code or purpose this code for another thing
+ALSO ANOTHER ISSUE  the output the same when the robot moves but when stop running the code and run it again, it updates the output. I think that it needs to use rospy.Time.now()
+I think something loses in this line t = self.tf.getLatestCommonTime("base_link", "odom")
+I have /odom_ekf in my system, its output is the same print point_stamped. it combined between a map and odometry.
+please help me.
+
+Originally posted by Redhwan on ROS Answers with karma: 73 on 2020-01-05
+Post score: 0
+
+A:
+
+this code fix it,  I got it here
+the same output: rosrun tf tf_echo /map /base_link
+#!/usr/bin/env python
+import rospy
+import tf
+
+if __name__ == '__main__':
+    # initialize node
+    rospy.init_node('tf_listener')
+    # print in console that the node is running
+    rospy.loginfo('started listener node !')
+    # create tf listener
+    listener = tf.TransformListener()
+    # set the node to run 1 time per second (1 hz)
+    rate = rospy.Rate(1.0)
+    # loop forever until roscore or this node is down
+    while not rospy.is_shutdown():
+        try:
+            # listen to transform
+            (trans,rot) = listener.lookupTransform('/map', '/base_link', rospy.Time(0))
+            # print the transform
+            rospy.loginfo('---------')
+            rospy.loginfo('Translation: ' + str(trans))
+            rospy.loginfo('Rotation: ' + str(rot))
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            continue
+        # sleep to control the node frequency
+        rate.sleep()
+
+Originally posted by Redhwan with karma: 73 on 2020-01-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by billy on 2020-01-08:
+simple, thanks for updating
+Comment by Redhwan on 2020-01-08:
+Thank you for your help.
+

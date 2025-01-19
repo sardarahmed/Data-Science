@@ -1,0 +1,59 @@
+Q:
+
+Unable to display Interactive Marker in custom QWidget
+
+Hi, I am using basic_controls tutorial to display Interactive Markers. It works fine for rViz whereas in my custom QWidget, I can able to visualize the Marker::MESH_RESOURCE but I can't interact with the mesh resource since the InteractiveMarkerControl is not visible. If i change the position in rViz then the same is updated in my QWidget but I can't change directly in QWidget.
+Following snippet I have used to display the Interactive Marker:
+obj_ = manager_->createDisplay( "rviz/InteractiveMarkers", "Obj Loader", true );
+obj_->subProp("Reference Frame")->setValue("base_link");
+obj_->subProp("Update Topic")->setValue("/basic_controls/update");
+EDIT 1:
+I got some more info as follows:
+~/rviz-kinetic-devel$ rostopic info /basic_controls/feedback
+Type: visualization_msgs/InteractiveMarkerFeedback
+Publishers:
+
+/rviz (http://xxxx:39181/)
+
+Subscribers:
+
+/point_cloud_publisher (http://xxxx:40431/)
+
+Basically here rviz is publishing the feedback. I have to figure out how can I publish the feedback from QWidget.
+Any ideas on this topic?
+
+Originally posted by ghkraju on ROS Answers with karma: 80 on 2016-11-08
+Post score: 0
+
+A:
+
+I have always wondered if this is doable myself, so I just spent some time to figure it out. Turned out that InteractiveMarker requires not only the display, but also the 'tool' to enable interaction.  The following code is developed based on your snippet.
+  rviz::Display *obj_ = visualization_manager_->createDisplay( "rviz/InteractiveMarkers", "Obj Loader", true );
+  obj_->subProp("Reference Frame")->setValue("base_link"); // This probably works by itself, I added the next line just in case
+  visualization_manager_->setFixedFrame("base_link");
+  obj_->subProp("Update Topic")->setValue("/basic_controls/update");
+  obj_->initialize(visualization_manager_);
+  obj_->setEnabled(true);
+
+  rviz::ToolManager *tool_manager = visualization_manager_->getToolManager();
+  tool_manager->initialize();
+  rviz::Tool *interact_tool = tool_manager->addTool( "rviz/Interact" );
+  tool_manager->setCurrentTool(interact_tool);
+  ROS_ASSERT(obj_);
+
+You will need to include rviz/tool_manager.h somewhere.
+
+Originally posted by huanxiner with karma: 271 on 2016-11-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by ghkraju on 2016-11-08:
+Cooooool..... You made my day. Thank you soooo much. It works like a charm.
+Comment by ghkraju on 2016-11-08:
+May I know, How could you actually figure out that connection(InteractiveMarker needs both Display and ToolManager)? I am little bit curious abt it bcz I was going through the source code for almost a day.
+Comment by huanxiner on 2016-11-08:
+Glad it helps :) I did quite a bit digging in the source code as well. Since interactive marker requires mouse event handling and stuff, I suspected display by itself is not enough. Then I looked into how rviz is implemented, and found this interactionTool in the default plugin.
+Comment by ghkraju on 2016-11-08:
+Okay, Thank you for your time.
+

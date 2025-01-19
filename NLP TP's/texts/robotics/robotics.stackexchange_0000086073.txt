@@ -1,0 +1,132 @@
+Q:
+
+Gazebo not updating urdf
+
+I suspect that my Gazebo simulation is not updating from my urdf file. To test this is made the the length of my rectangular robot 10x the normal size, and Gazebo still shows it without any change. See the photo:
+
+Obviously this is not right (...or is it?)! I am worried that the changes I am making in my urdf file are not being updated in Gazebo.
+Below are the launch files I am using:
+bender_simulation.launch:
+<launch>
+
+    <arg name="model" default="$(find bender_model)/model.urdf.xacro"/>
+    <arg name="gui" default="false" />
+    <arg name="rvizconfig" default="$(find bender_model)/urdf.rviz"/>
+
+    <include file="$(find bender_model)/gazebo.launch">
+      <arg name="model" value="$(arg model)" />
+    </include>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" />
+
+    <rosparam command="load"
+              file="$(find bender_model)/joints.yaml"
+              ns="bender_joint_state_controller" />
+
+    <rosparam command="load"
+              file="$(find bender_model)/diffdrive.yaml"
+              ns="bender_diff_drive_controller" />
+
+    <node name="bender_controller_spawner" pkg="controller_manager" type="spawner"
+        output="screen" args="bender_joint_state_controller
+                              bender_diff_drive_controller"/>
+
+    <!--node name="rqt_robot_steering" pkg="rqt_robot_steering" type="rqt_robot_steering">
+      <param name="default_topic" value="/bender_diff_drive_controller/cmd_vel"/>
+    </node-->
+
+<!--    <node name="teleop" pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" output="screen">
+        <remap from="cmd_vel" to="/bender_diff_drive_controller/cmd_vel"/>
+    </node> -->
+
+</launch>
+
+Gazebo.launch:
+<launch>
+
+  <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="model" default="$(find bender_model)/model.urdf.xacro"/>
+
+  <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find bender_model)/bender_worlds/navigation_testing.world"/>
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find bender_model)/model.urdf.xacro'" />
+
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <!--node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"
+        args="-z 1.0 -unpause -urdf -model robot -param robot_description" respawn="false" output="screen" /-->
+
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -model robot" />
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher"  name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="50.0" />
+  </node>
+
+</launch>
+
+Originally posted by cmfuhrman on ROS Answers with karma: 200 on 2018-03-21
+Post score: 1
+
+A:
+
+I am able to answer my own question. I was loading a robot I had accidentally saved in my .world file instead of spawning a new robot from my xacro file.
+my launch file now looks like this:
+<launch>
+
+    <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+    <arg name="paused" default="false"/>
+    <arg name="use_sim_time" default="true"/>
+    <arg name="gui" default="true"/>
+    <arg name="headless" default="false"/>
+    <arg name="debug" default="false"/>
+    <!--arg name="model" default="$(find bender_model)/model.urdf.xacro"/-->
+    <!-- Robot pose -->
+    <arg name="x" default="0.1"/>
+    <arg name="y" default="0.5"/>
+    <arg name="z" default="0"/>
+    <arg name="roll" default="0"/>
+    <arg name="pitch" default="0"/>
+    <arg name="yaw" default="0"/>
+
+  <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find bender_model)/bender_worlds/navigation_testing.world"/>
+        <arg name="debug" value="$(arg debug)" />
+        <arg name="gui" value="$(arg gui)" />
+        <arg name="paused" value="$(arg paused)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+        <arg name="headless" value="$(arg headless)"/>
+    </include>
+
+    <param name="robot_description" command="$(find xacro)/xacro.py '$(find bender_model)/model.urdf.xacro'" />
+
+    <!-- push robot_description to factory and spawn robot in gazebo -->
+    <!--node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"
+        args="-z 1.0 -unpause -urdf -model robot -param robot_description" respawn="false" output="screen" /-->
+
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -model bender
+                -x $(arg x) -y $(arg y) -z $(arg z)
+                -R $(arg roll) -P $(arg pitch) -Y $(arg yaw)" />
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher"  name="robot_state_publisher">
+        <param name="publish_frequency" type="double" value="10.0" />
+    </node>
+
+</launch>
+
+Originally posted by cmfuhrman with karma: 200 on 2018-04-02
+This answer was ACCEPTED on the original site
+Post score: 2
+

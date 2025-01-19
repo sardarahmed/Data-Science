@@ -1,0 +1,126 @@
+Q:
+
+melodic "CMake Error at /usr/src/googletest/googletest/cmake/internal_utils.cmake:149" - Invoking "make cmake_check_build_system" failed
+
+Good evening.
+I am getting mad :  I developed a ROS package which compiles perfectly under a first laptop, and which has configuring errors on a second one with nearly the same system.  Both laptop run Ubuntu 18.04.6 LTS (in fact XUbuntu) with ros-melodic (from packages.ROS.org) .
+The first one has desktop-full version 1.4.1-0bionic.20210415.004555, while the second has version 1.4.1-0bionic.20210415.025752.  But Synaptic claims that this is the last version for both!
+The complete error on the second is :
+
+...
+-- Found gmock sources under '/usr/src/gmock': gmock will be built
+CMake Error at /usr/src/googletest/googletest/cmake/internal_utils.cmake:149 (add_library):
+  add_library cannot create target "gmock" because another target with the
+  same name already exists.  The existing target is a shared library created
+  in source directory "/usr/src/googletest/googlemock".  See documentation
+  for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  /usr/src/googletest/googletest/cmake/internal_utils.cmake:172 (cxx_library_with_type)
+  /usr/src/gmock/CMakeLists.txt:84 (cxx_library)
+
+(repeated twice)
+...
+-- Using these message generators: gencpp;geneus;genlisp;gennodejs;genpy
+-- Configuring incomplete, errors occurred!
+See also ".../ROS/build/CMakeFiles/CMakeOutput.log".
+See also ".../ROS/build/CMakeFiles/CMakeError.log".
+Makefile:808: recipe for target 'cmake_check_build_system' failed
+make[1]: *** [cmake_check_build_system] Error 1
+make[1] : ...
+Invoking "make cmake_check_build_system" failed
+
+Neither .../ROS/build/CMakeFiles/CMakeOutput.log nor See also .../ROS/build/CMakeFiles/CMakeError.log seem to contain any interesting line.
+Here are the CMakeList.txt and the package.xml :
+
+### CMake #################################################################
+cmake_minimum_required(VERSION 2.8.0)
+project(qt_ctrl)
+
+### Catkin ################################################################
+
+add_compile_options(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS qt_build roscpp nav_msgs)
+
+include_directories(${catkin_INCLUDE_DIRS} include ISeeML/include)<br>
+<br>
+catkin_package() <br>
+<br>
+### Qt Environment ########################################################<br>
+<br>
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)<br>
+<br>
+### ISeeML Library ########################################################<br>
+<br>
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/ISeeML/build/linux)
+
+### Sections ##############################################################
+
+file(GLOB QT_RESOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} resources.qrc)<br>
+file(GLOB_RECURSE QT_MOC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} 
+  FOLLOW_SYMLINKS include/*/*.hpp)
+
+set(QT_LIBRARIES Qt5::Widgets)
+qt5_add_resources(QT_RESOURCES_CPP ${QT_RESOURCES})<br>
+qt5_wrap_cpp(QT_MOC_HPP ${QT_MOC})
+
+### Sources ###############################################################
+
+file(GLOB_RECURSE QT_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} 
+  FOLLOW_SYMLINKS src/*/*.cpp)<br>
+<br>
+### Binaries ##############################################################<br>
+<br>
+add_executable(gui ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_FORMS_HPP}
+  ${QT_MOC_HPP})<br>
+<br>
+target_link_libraries(gui ${QT_LIBRARIES} ${catkin_LIBRARIES} CompISeeML)
+
+<?xml version="1.0"?>
+<package>
+  <name>qt_ctrl</name>
+  <version>0.2.1</version>
+  <description>
+    The ROS package qt_ctrl aims at proposing several controllers 
+    for ROS with Qt GUI, in order to compare them.
+  </description>
+  <maintainer email="Alexis.Scheuer@loria.fr">Alexis Scheuer</maintainer>
+  <author>Alexis Scheuer
+  <license>GPLv3
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>qt_build</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>nav_msgs</build_depend>
+
+  <run_depend>qt_build</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>nav_msgs</run_depend>
+
+</package>
+
+Originally posted by AlexisScheuer on ROS Answers with karma: 26 on 2021-11-29
+Post score: 1
+
+Original comments
+Comment by osilva on 2021-11-29:
+Try the following work around, in source directory /usr/src/gtest, open CMakelists.txt comment out the following using #:
+# cxx_library(gtest "${cxx+strict}" src/gtest-all.cc)
+# cxx_library(gtest_main "${cxx_strict}" src/gtest_main.cc)
+# target_link_libraries(gtest_main gtest)
+
+It's not a solution to the error but it won't affect the performance of your package either. Most likely another package is already calling gtest and it's creating the conflict. Check this: https://stackoverflow.com/questions/42085151/cmake-conflict-with-multiple-gtest
+
+A:
+
+I discovered that my second laptop (not compiling) had a /usr/src/gtest directory (I don't know why) while the other one had a symbolic link from /usr/src/gtest to /usr/src/googletest/googletest.  I did the same (saving the old gtest in an archive), and this solved everything!..
+
+Originally posted by AlexisScheuer with karma: 26 on 2021-12-02
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by osilva on 2021-12-02:
+Glad you found the solution :)
+

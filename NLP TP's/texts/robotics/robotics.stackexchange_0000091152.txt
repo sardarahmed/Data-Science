@@ -1,0 +1,88 @@
+Q:
+
+Function execution is slow in callbacks. Why?
+
+Hi
+My (Heavy) Image processing functionis slow in the subscriber callback.
+But if I run the same function outside ROS in release mode it is fast. (10X fast)
+Why I want to put the image processing function in callback?
+Because I want to process received image as soon it arrives.
+Any comments!
+My code looks like:
+class storedData {
+  public:    
+    cv::Mat inIm = cv::Mat::zeros(376, 672, CV_8UC3);
+    cv::Mat outIm = cv::Mat::zeros(376, 672, CV_8UC3);
+    
+    void depthCallback(const sensor_msgs::CompressedImageConstPtr& msgDepth)
+    {
+      try
+      {
+        tic2 = ros::Time::now();
+
+        imProcess(inIm, outIm);         // Heavy Image Processing
+
+        imPTime = ros::Time::now().toSec() - tic2.toSec();
+
+        std::cout<<"Im process time= "<<imPTime<<std::endl;
+
+        cv::imshow("view", outIm);
+        cv::waitKey(1);
+        }
+      catch (cv_bridge::Exception& e)
+      {
+            ROS_ERROR("Could not convert the depth!");
+      }
+    }
+};
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "PredictiveDisplay");
+  ros::NodeHandle nh;
+  storedData obj;
+  cv::namedWindow("view", 0);
+  cv::startWindowThread();
+
+  ros::Subscriber subDepth = nh.subscribe("/depth/depth_registered/compressed", 2, &storedData::depthCallback, &obj);
+  ros::spin();
+
+  cv::destroyWindow("view");
+}
+
+Originally posted by JeyP4 on ROS Answers with karma: 62 on 2019-03-27
+Post score: 1
+
+Original comments
+Comment by tfoote on 2019-03-27:
+If you could add your instrumentation to the example it would be helpful with an example of it running fast inside the callback but slow outside the callback we'd be able to help you. Without being able to reproduce it all we can do is guess at things.
+Comment by Reamees on 2019-03-28:
+First thing I would try would be setting ROS_BUILD_TYPE to Release in your CMakeLists.txt. Also clean build the package. See the linked question for options.
+You can read more about it here: http://wiki.ros.org/rosbuild
+answers.ros.org question regarding a similar problem: catkin-compiled-code-runs-3x-slower
+Comment by JeyP4 on 2019-03-29:
+@gvdhoorn
+Thanks for your comment.
+What does simple catkin_make do? It builds in debug or release mode?
+Comment by gvdhoorn on 2019-03-29:
+It's not Catkin that decides this, it's CMake.
+If you don't configure any CMAKE_BUILD_TYPE, CMake will use None, which sets no flags at all.
+Comment by JeyP4 on 2019-03-29:
+Thanks @gvdhoorn.
+catkin_make  -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+magically worked for me. I can accept this as an answer, if you can convert it to answer.
+Comment by tfoote on 2019-03-29:
+converted to an answer. Yes, it's a little surprising, the default build has no optimizations, but actually also does not have debug info either. It's really the default that you never really want.
+
+A:
+
+First thing I would try would be setting ROS_BUILD_TYPE to Release in your CMakeLists.txt. [..] You can read more about it here: http://wiki.ros.org/rosbuild
+
+Please don't refer to rosbuild pages. They're only kept for archival purposes.
+ROS_BUILD_TYPE is not used in Catkin packages. Use CMAKE_BUILD_TYPE instead.
+And don't set it in your CMakeLists.txt, but pass it as an argument to your catkin_make invocation (as: -DCMAKE_BUILD_TYPE=Release (or probably better: -DCMAKE_BUILD_TYPE=RelWithDebInfo)).
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-03-28
+This answer was ACCEPTED on the original site
+Post score: 3
+

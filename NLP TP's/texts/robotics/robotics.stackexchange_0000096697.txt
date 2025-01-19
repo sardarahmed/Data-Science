@@ -1,0 +1,58 @@
+Q:
+
+Nividia Isaac <-> ROS2 Bridge
+
+Hey guys,
+I've been working on building a bridge between these two eco systems  [ISAAC <-> ROS2] .
+My current approach involves building ROS2 and all its packages the usual way colcon build --symlink-install and then try to link the built libraries in Nvidia Isaac's bazel WORKSPACE / BUILD files and simply use the compiled rclcpp library inside the bazel workspace.
+In theory I should be able to then compile the Isaac package with dynamic links to the ROS2 libraries with bazel and have now created a nvidia isaac package that is capable of sending/receiving ROS2 msgs, right?
+I would like to know if this is a valid approach and if this has been solved already and i'm just reinventing the wheel here?
+I did come accross this github project: https://github.com/colcon/colcon-ros-bazel , but there I didn't manage to find documentation therefore I dont know how to use it and if it's fit for purpose. Nor does it directly imply ISAAC <-> ROS2 compatibility
+Thank you for your time!
+Deniz
+
+Originally posted by Deniz on ROS Answers with karma: 36 on 2020-07-31
+Post score: 1
+
+Original comments
+Comment by Dirk Thomas on 2020-07-31:
+@Theosakamg FYI
+
+A:
+
+I found a "reasonable" way of doing this. This method assumes that you built ros2 using colcon build --merge-install but you can extrapolate this logic in case you used colcon build --symlink-install, you only need to modify the BUILD file for this.
+1) Register the ROS2 install folder as a new_local_repository in the bazel WORKSPACE file by adding the following lines (located in the main nvidia isaac folder):
+new_local_repository(
+name = "ros2",
+path = "(full path to the build folder) /ros2_foxy/install",
+build_file = "(full path to the build folder) /ros2_foxy/install/BUILD",
+
+)
+2) Add a BUILD file inside the ros2/install folder with the following content: https://gist.github.com/dHofmeister/698c787cab9622c89b1a97ea878afac9
+3) Add the depency of your isaac module to ros2:
+isaac_cc_module( ... deps = ["@ros2//:ros2"],)
+
+4) include the rclcpp library header in your isaac_cc_module:
+#include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+
+4) Make sure you disable rclcpp's bind on the system SIGINT signal as it conflicts with isaac's sigint handler:
+int argc = 1;
+char const *const argv[] ={ "Bridge" };
+rclcpp::InitOptions options{};
+options.shutdown_on_sigint = false;
+rclcpp::init(argc, argv, options);
+ros_node = std::make_shared<MinimalPublisher>();
+
+This code is implemented in the ::start() function of your isaac_cc_module. make sure you initialise the ros_node variable in the node header std::shared_ptr<MinimalPublisher> ros_node;.
+You now have the ros_node class nested in the isaac_node class and can use them.
+void Bridge::tick() {
+    geometry_msgs::msg::PoseStamped msg{};
+    ros_node->callback();
+    LOG_INFO("ping");
+}
+
+Originally posted by Deniz with karma: 36 on 2020-08-05
+This answer was ACCEPTED on the original site
+Post score: 1
+

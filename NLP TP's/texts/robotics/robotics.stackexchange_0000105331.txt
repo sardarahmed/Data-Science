@@ -1,0 +1,45 @@
+Q:
+
+Problems on converting tf2::Transform to geometry_msgs::msg::Transform
+
+I'm trying to convert tf2::Transform to geometry_msgs::msg::Transform with help of tf2/convert.h but I get compiler errors. I'm using ROS2 Humble with Ubuntu 22.04.
+What I'm doing wrong?
+    tf2::Transform transform;
+    // make something with transform ...
+    // Build a TransformStamped message
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = node->get_clock()->now();
+    t.header.frame_id = frame_id;
+    t.child_frame_id = child_frame_id;
+    
+    // Now try to assign the tf2::Transform to the transform in the message
+    t.transform = tf2::toMsg<tf2::Transform, geometry_msgs::msg::Transform>(transform);
+
+Error undefined reference to
+geometry_msgs::msg::Transform_std::allocator<void > tf2::toMsg<tf2::Transform, geometry_msgs::msg::Transform_std::allocator<void > >(tf2::Transform const&)'
+    // Another try with another function, this fails too
+    tf2::convert(transform, t.transform)
+
+Error /opt/ros/humble/include/tf2/tf2/impl/convert.h:67:12: error: no matching function for call to ‘toMsg(const tf2::Transform&)’
+67 |   b = toMsg(a);
+
+A:
+
+Couldn't figure out to use something from tf2/convert.h
+I solved it now this way:
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = g_node->get_clock()->now();
+    t.header.frame_id = frame_id;
+    t.child_frame_id = child_frame_no;
+
+    t.transform.translation.x = transform.getOrigin().getX();
+    t.transform.translation.y = transform.getOrigin().getY();
+    t.transform.translation.z = transform.getOrigin().getZ();
+
+    t.transform.rotation.w = transform.getRotation().getW();
+    t.transform.rotation.x = transform.getRotation().getAxis().getX();
+    t.transform.rotation.y = transform.getRotation().getAxis().getY();
+    t.transform.rotation.z = transform.getRotation().getAxis().getZ();
+
+    br->sendTransform(t);
+

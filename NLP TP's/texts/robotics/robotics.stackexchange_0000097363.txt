@@ -1,0 +1,63 @@
+Q:
+
+[ROS2] How best to conditionally include a prefix in a launch.py file
+
+I have a simple .launch.py file in ROS2 Foxy:
+def generate_launch_description():
+    n = launch_ros.actions.Node(
+        package='my_pkg',
+        executable='my_node',
+        prefix='some_prefix'
+    )
+
+    return launch.LaunchDescription([n])
+
+However, I'd like to only add the launch prefix if some condition is True.
+I have several nodes where I'd be conditionally adding the prefix, so putting an if around the all of the launch_ros.actions.Node() calls would be rather ugly.
+Any advice on the cleanest way to do this? Can I use substitutions for this somehow?
+
+Originally posted by paul.frivold on ROS Answers with karma: 46 on 2020-10-19
+Post score: 1
+
+A:
+
+Edit:
+Just stumbled across a simpler solution in Gazebo's launch files: https://github.com/shiveshkhaitan/gazebo_ros_pkgs/blob/a6e395195bc878a76200fb948cc8cfce414b98fe/gazebo_ros/launch/gzclient.launch.py#L82
+def generate_launch_description():
+    use_prefix = (EnvironmentVariable('SOME_VAR', default_value='0').perform(LaunchContext()) == '1')
+    n = launch_ros.actions.Node(
+        package='my_pkg',
+        executable='my_node',
+        prefix=PythonExpression(['"some_prefix" if "1" == "', EnvironmentVariable('SOME_VAR', default_value='0'), '" else ""']),
+    )
+
+return launch.LaunchDescription([n])
+
+Anyway, here's my original solution:
+I ended up using a custom Substitution. Not sure if that's the cleanest solution, but it worked for me.
+class ConditionalText(Substitution):
+    def __init__(self, text, condition):
+        self.text = text
+        self.condition = condition
+
+    def perform(self, context: 'LaunchContext') -> Text:
+        if self.condition:
+            return self.text
+        else:
+            return ''
+
+Putting everything together:
+def generate_launch_description():
+    use_prefix = (EnvironmentVariable('SOME_VAR', default_value='0').perform(LaunchContext()) == '1')
+    n = launch_ros.actions.Node(
+        package='my_pkg',
+        executable='my_node',
+        prefix=ConditionalText('some_prefix', use_prefix),
+    )
+
+return launch.LaunchDescription([n])
+
+Originally posted by paul.frivold with karma: 46 on 2020-10-27
+This answer was ACCEPTED on the original site
+Post score: 2
+

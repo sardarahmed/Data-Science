@@ -1,0 +1,198 @@
+Q:
+
+TF_REPEATED_DATA warnings
+
+Hello,
+I am trying to run two turtlebot3s in Gazebo. When I try doing anything related to tf, for example run rqt, I get the warning message:
+Warning: TF_REPEATED_DATA ignoring data with redundant timestamp for frame base_footprint at time 91,695000 according to authority /gazebo
+     at line 278 in /tmp/binarydeb/ros-noetic-tf2-0.7.5/src/buffer_core.cpp
+
+This happens both when I use my own launch file:
+<launch>
+  <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+  <arg name="first_tb3"  default="tb3_0"/>
+  <arg name="second_tb3" default="tb3_1"/>
+
+  <arg name="first_tb3_x_pos" default="0.0"/>
+  <arg name="first_tb3_y_pos" default="-1.0"/>
+  <arg name="first_tb3_z_pos" default=" 0.0"/>
+  <arg name="first_tb3_yaw"   default=" 1.57"/>
+
+  <arg name="second_tb3_x_pos" default=" 0.0"/>
+  <arg name="second_tb3_y_pos" default="-2.0"/>
+  <arg name="second_tb3_z_pos" default=" 0.0"/>
+  <arg name="second_tb3_yaw"   default=" 1.57"/>
+
+    <!-- Start marker detector--> 
+  <node name="aruco_detect" pkg="aruco_detect" type="aruco_detect">
+    <param name="image_transport" value="compressed" />
+    <param name="publish_images" value="true" />
+    <param name="fiducial_len" value="0.15" />
+    <param name="dictionary" value="0" />
+    <param name="do_pose_estimation" value="true" />
+    <param name="ignore_fiducials" value="" />
+    <param name="fiducial_len_override" value="" />
+    <remap from="/camera/compressed" to="/tb3_1/camera/rgb/image_raw/compressed"/>
+    <remap from="/camera_info" to="/tb3_1/camera/rgb/camera_info"/>
+  </node> 
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find turtlebot3_gazebo)/worlds/empty_world.world"/>
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>  
+
+  <group ns = "$(arg first_tb3)">
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+      <param name="publish_frequency" type="double" value="50.0" />
+      <param name="tf_prefix" value="$(arg first_tb3)" />
+    </node>
+    
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model $(arg first_tb3) -x $(arg first_tb3_x_pos) -y $(arg first_tb3_y_pos) -z $(arg first_tb3_z_pos) -Y $(arg first_tb3_yaw) -param robot_description" />
+  </group>
+
+  <group ns = "$(arg second_tb3)">
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+      <param name="publish_frequency" type="double" value="50.0" />
+      <param name="tf_prefix" value="$(arg second_tb3)" />
+    </node>
+
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model $(arg second_tb3) -x $(arg second_tb3_x_pos) -y $(arg second_tb3_y_pos) -z $(arg second_tb3_z_pos) -Y $(arg second_tb3_yaw) -param robot_description" />
+  </group>
+
+</launch>
+
+and when I use the launch file from turtlebot3_gazebo: https://github.com/ROBOTIS-GIT/turtlebot3_simulations/blob/master/turtlebot3_gazebo/launch/multi_turtlebot3.launch
+So this issue occurs when there are multiple turtlebots.
+Previously I had similar issues in: https://answers.ros.org/question/388044/tf-tree-for-multiple-turtlebots/, but those were partially resolved. In that case I got error messages like:
+Warning: TF_REPEATED_DATA ignoring data with redundant timestamp for frame wheel_right_link at time 705,364000 according to authority /tb3_1/robot_state_publisher
+         at line 278 in /tmp/binarydeb/ros-noetic-tf2-0.7.5/src/buffer_core.cpp
+
+in addition to the ones from with authority gazebo. Those were resolved by adding an updated version of robot_state_publisher to my workspace manually. The problem was that ROS Noetic did not previously support tf_prefix, so the robot_state_publisher nodes were publishing data to the same frame names. Recently ROS Noetic has started supporting tf_prefix, but the update has not been synched yet, which is why I had to add the updated robot_state_publisher manually.
+So now I'm wondering why I'm still getting these warnings.
+When I run the launch file I get this, adding it since I'm hoping it could be useful:
+roslaunch project multibot.launch 
+... logging to /home/roshan/.ros/log/64b78606-27b5-11ec-9406-6f7aa8a39c03/roslaunch-roshan-Komplett-PC-4435.log
+Checking log directory for disk usage. This may take a while.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+xacro: in-order processing became default in ROS Melodic. You can drop the option.
+xacro: in-order processing became default in ROS Melodic. You can drop the option.
+started roslaunch server http://roshan-Komplett-PC:36567/
+
+SUMMARY
+========
+
+PARAMETERS
+ * /aruco_detect/dictionary: 0
+ * /aruco_detect/do_pose_estimation: True
+ * /aruco_detect/fiducial_len: 0.15
+ * /aruco_detect/fiducial_len_override: 
+ * /aruco_detect/ignore_fiducials: 
+ * /aruco_detect/image_transport: compressed
+ * /aruco_detect/publish_images: True
+ * /gazebo/enable_ros_network: True
+ * /rosdistro: noetic
+ * /rosversion: 1.15.13
+ * /tb3_0/robot_description: <?xml version="1....
+ * /tb3_0/robot_state_publisher/publish_frequency: 50.0
+ * /tb3_0/robot_state_publisher/tf_prefix: tb3_0
+ * /tb3_1/robot_description: <?xml version="1....
+ * /tb3_1/robot_state_publisher/publish_frequency: 50.0
+ * /tb3_1/robot_state_publisher/tf_prefix: tb3_1
+ * /use_sim_time: True
+
+NODES
+  /
+    aruco_detect (aruco_detect/aruco_detect)
+    gazebo (gazebo_ros/gzserver)
+    gazebo_gui (gazebo_ros/gzclient)
+  /tb3_0/
+    robot_state_publisher (robot_state_publisher/robot_state_publisher)
+    spawn_urdf (gazebo_ros/spawn_model)
+  /tb3_1/
+    robot_state_publisher (robot_state_publisher/robot_state_publisher)
+    spawn_urdf (gazebo_ros/spawn_model)
+
+auto-starting new master
+process[master]: started with pid [4449]
+ROS_MASTER_URI=http://localhost:11311
+
+setting /run_id to 64b78606-27b5-11ec-9406-6f7aa8a39c03
+process[rosout-1]: started with pid [4459]
+started core service [/rosout]
+process[aruco_detect-2]: started with pid [4462]
+process[gazebo-3]: started with pid [4463]
+process[gazebo_gui-4]: started with pid [4467]
+process[tb3_0/robot_state_publisher-5]: started with pid [4473]
+process[tb3_0/spawn_urdf-6]: started with pid [4474]
+process[tb3_1/robot_state_publisher-7]: started with pid [4475]
+process[tb3_1/spawn_urdf-8]: started with pid [4480]
+INFO: cannot create a symlink to latest log directory: [Errno 17] File exists: '/home/roshan/.ros/log/64b78606-27b5-11ec-9406-6f7aa8a39c03' -> '/home/roshan/.ros/log/latest'
+[ INFO] [1633642071.435497516]: Finished loading Gazebo ROS API Plugin.
+[ INFO] [1633642071.446430068]: waitForService: Service [/gazebo/set_physics_properties] has not been advertised, waiting...
+[ INFO] [1633642071.529122793]: Finished loading Gazebo ROS API Plugin.
+[ INFO] [1633642071.530293482]: waitForService: Service [/gazebo_gui/set_physics_properties] has not been advertised, waiting...
+[ INFO] [1633642072.493450682]: waitForService: Service [/gazebo/set_physics_properties] is now available.
+[ INFO] [1633642072.518996026]: Physics dynamic reconfigure ready.
+[ INFO] [1633642073.346197498, 0.267000000]: Camera Plugin: Using the 'robotNamespace' param: '/tb3_1/'
+[ INFO] [1633642073.349018169, 0.267000000]: Camera Plugin (ns = /tb3_1/)  <tf_prefix_>, set to ""
+[ INFO] [1633642073.757569043, 0.267000000]: Laser Plugin: Using the 'robotNamespace' param: '/tb3_1/'
+[ INFO] [1633642073.757685440, 0.267000000]: Starting Laser Plugin (ns = /tb3_1/)
+[ INFO] [1633642073.758468818, 0.267000000]: Laser Plugin (ns = /tb3_1/)  <tf_prefix_>, set to ""
+[ INFO] [1633642073.941327861, 0.267000000]: Starting plugin DiffDrive(ns = /tb3_1//)
+[ INFO] [1633642073.941434480, 0.267000000]: DiffDrive(ns = /tb3_1//): <rosDebugLevel> = na
+[ INFO] [1633642073.942215834, 0.267000000]: DiffDrive(ns = /tb3_1//): <tf_prefix> = 
+[ INFO] [1633642073.943556971, 0.267000000]: DiffDrive(ns = /tb3_1//): Advertise joint_states
+[ INFO] [1633642073.944099271, 0.267000000]: DiffDrive(ns = /tb3_1//): Try to subscribe to cmd_vel
+[ INFO] [1633642073.945743832, 0.267000000]: DiffDrive(ns = /tb3_1//): Subscribe to cmd_vel
+[ INFO] [1633642073.946119852, 0.267000000]: DiffDrive(ns = /tb3_1//): Advertise odom on odom 
+[tb3_1/spawn_urdf-8] process has finished cleanly
+log file: /home/roshan/.ros/log/64b78606-27b5-11ec-9406-6f7aa8a39c03/tb3_1-spawn_urdf-8*.log
+[ INFO] [1633642074.250101968, 0.462000000]: Camera Plugin: Using the 'robotNamespace' param: '/tb3_0/'
+[ INFO] [1633642074.253221394, 0.462000000]: Camera Plugin (ns = /tb3_0/)  <tf_prefix_>, set to ""
+[ INFO] [1633642074.434833380, 0.462000000]: Laser Plugin: Using the 'robotNamespace' param: '/tb3_0/'
+[ INFO] [1633642074.434893481, 0.462000000]: Starting Laser Plugin (ns = /tb3_0/)
+[ INFO] [1633642074.435758953, 0.462000000]: Laser Plugin (ns = /tb3_0/)  <tf_prefix_>, set to ""
+[ INFO] [1633642074.446967919, 0.462000000]: Starting plugin DiffDrive(ns = /tb3_0//)
+[ INFO] [1633642074.447019946, 0.462000000]: DiffDrive(ns = /tb3_0//): <rosDebugLevel> = na
+[ INFO] [1633642074.447661019, 0.462000000]: DiffDrive(ns = /tb3_0//): <tf_prefix> = 
+[ INFO] [1633642074.448546067, 0.462000000]: DiffDrive(ns = /tb3_0//): Advertise joint_states
+[ INFO] [1633642074.448708319, 0.462000000]: DiffDrive(ns = /tb3_0//): Try to subscribe to cmd_vel
+[ INFO] [1633642074.450946605, 0.462000000]: DiffDrive(ns = /tb3_0//): Subscribe to cmd_vel
+[ INFO] [1633642074.451452126, 0.462000000]: DiffDrive(ns = /tb3_0//): Advertise odom on odom 
+[tb3_0/spawn_urdf-6] process has finished cleanly
+log file: /home/roshan/.ros/log/64b78606-27b5-11ec-9406-6f7aa8a39c03/tb3_0-spawn_urdf-6*.log
+  
+
+The world file I'm using at the moment is an empty_world.world file. And here is the tf tree:
+
+Thank you in advance.
+
+Originally posted by Roshan on ROS Answers with karma: 51 on 2021-10-07
+Post score: 0
+
+A:
+
+Gazebo is broadcasting the odom and base_footprint frames without the prefix. That is causing the warning you see.
+See this question/answer for how to add the TF prefix to Gazebo.
+
+Originally posted by Geoff with karma: 4203 on 2021-10-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Roshan on 2021-10-08:
+Hello, thank you for your answer. I don't think I completely understand how this is done. But I think the file I should be editing is the turtlebot3_waffle_pi.gazebo.plugin, inside opt/ros/noetic/share/turtlebot3_description/urdf, if I'm using a turtlebot3 waffle_pi.
+And then add for example <frameId>tb3_0/base_link</frameId> for the first turtlebot. I'm not sure in which part of the code would I add that. in here? https://github.com/ROBOTIS-GIT/turtlebot3/blob/master/turtlebot3_description/urdf/turtlebot3_waffle_pi.gazebo.xacro#L61-L82
+I'm also wondering how I would do this for the second turtlebot, would I copy paste that chunk of code with <frameId>tb3_1/base_link</frameId> instead, or would I have to make a new file?
+Also wondering if these issues will be fixed in the next sync when they add tf_prefix support
+

@@ -1,0 +1,136 @@
+Q:
+
+Problem while running C++ and Python node together in ROS
+
+Hi everyone,
+I had designed a controller in simulink. I had generated ros c++ code using robotics system toolbox from mathworks. I'm planning to integrate with the existing crazyflie ros library. All my files in crazyflie ros library are in python and the node i had generated from simulink is in c++. I'm getting an error "If it is a script, you may be missing #! declaration at the top" , when i'm trying to execute roslaunch. I see this command at the top of every python file in my library "#!/usr/bin/env python". I do understand that it is just telling that it is a python script. Could anyone please let me know how to fix this error?
+Crazyflie ros library: https://github.com/whoenig/crazyflie_ros
+Image: https://1drv.ms/u/s!Ao3IFhJal3-hl2qA8mKVEolUw7WV
+Error:
+auto-starting new master
+process[master]: started with pid [3827]
+ROS_MASTER_URI=http://localhost:11311
+
+setting /run_id to 984e8218-4ea5-11e8-ab32-334fbf79bdff
+
+process[rosout-1]: started with pid [3840]
+
+started core service [/rosout]
+
+process[rviz-2]: started with pid [3857]
+
+process[crazyflie/crazyflie_add-3]: started with pid [3858]
+
+process[crazyflie/joy-4]: started with pid [3859]
+
+process[crazyflie/joystick_controller-5]: started with pid [3868]
+
+Unable to launch [crazyflie/mycontroller2016b_node-6]. 
+
+If it is a script, you may be missing a '#!' declaration at the top.
+
+The traceback for the exception was written to the log file
+
+[crazyflie/joystick_controller-5] killing on exit
+
+[crazyflie/mycontroller2016b_node-6] killing on exit
+
+[crazyflie/crazyflie_add-3] killing on exit
+
+[crazyflie/joy-4] killing on exit
+
+[rviz-2] killing on exit
+
+launch file:
+<?xml version="1.0"?>
+<launch>
+  <arg name="uri" default="radio://0/100/2M/E7E7E7E7E7" />
+  <arg name="frame" default="base_link" />
+  <arg name="joy_dev" default="/dev/input/js0" />
+  <arg name="x" default="2.8" />
+  <arg name="y" default="2.3" />
+  <arg name="z" default="1" />
+
+  <param name="robot_description" command="$(find xacro)/xacro.py $(find crazyflie_description)/urdf/crazyflie2.urdf.xacro" />
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find bitcraze_lps_estimator)/data/rvizconfig_with_goal.rviz"/>
+
+  <group ns="crazyflie">
+    <rosparam command="load" file="$(find bitcraze_lps_estimator)/data/anchor_pos.yaml" />
+
+    <node pkg="crazyflie_driver" type="crazyflie_add" name="crazyflie_add" output="screen">
+      <param name="uri" value="$(arg uri)" />
+      <param name="tf_prefix" value="crazyflie" />
+      <rosparam>
+        genericLogTopics: ["log_kfpos", "log_kfqt", "log_ranges"]
+        genericLogTopicFrequencies: [30, 30, 30]
+        genericLogTopic_log_kfpos_Variables: ["kalman.stateX", "kalman.stateY", "kalman.stateZ"]
+        genericLogTopic_log_kfqt_Variables: ["kalman.q0", "kalman.q1", "kalman.q2", "kalman.q3"]
+        genericLogTopic_log_ranges_Variables: ["ranging.distance0", "ranging.distance1", "ranging.distance2", "ranging.distance3", "ranging.distance4", "ranging.distance5", "ranging.state"]
+      </rosparam>
+    </node>
+
+    <node name="joy" pkg="joy" type="joy_node" output="screen">
+      <param name="dev" value="$(arg joy_dev)" />
+    </node>
+
+    <node name="joystick_controller" pkg="crazyflie_demo" type="controller.py" output="screen">
+      <param name="use_crazyflie_controller" value="True" />
+    </node>
+
+    <node name="mycontroller2016b_node" pkg="mycontroller2016b" type="ert_main.cpp" output="screen"/>
+
+    <node name="pose" pkg="crazyflie_demo" type="publish_pose_teleop.py" output="screen">
+      <param name="name" value="goal" />
+      <param name="rate" value="30" />
+      <param name="x" value="$(arg x)" />
+      <param name="y" value="$(arg y)" />
+      <param name="z" value="$(arg z)" />
+    </node>
+
+    <node name="lps_efk_bridge" pkg="bitcraze_lps_estimator" type="lps_ekf_bridge.py" output="screen"/>
+
+    <node name="lps_viz" pkg="bitcraze_lps_estimator" type="lps_viz.py" />
+
+    <node name="log_range" pkg="bitcraze_lps_estimator" type="log_range.py" />
+
+  </group>
+
+  <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster"
+        args="1 0 0 0 0 0 1 world lps 100" />
+
+  <include file="$(find crazyflie_driver)/launch/crazyflie_server.launch" />
+</launch>
+
+Originally posted by rajavardhanr6 on ROS Answers with karma: 13 on 2018-05-02
+Post score: 1
+
+Original comments
+Comment by jayess on 2018-05-02:
+Can you please update your question with a copy and paste of the error directly in your question instead of linking to a screenshot? Images are not searchable and people cannot copy and paste the text from the image. Please see our support guidelines
+Comment by gvdhoorn on 2018-05-03:
+@rajavardhanr6: did you actually compile the sources Simulink generated for you? You cannot run a .cpp file like you would a .py file.
+Comment by rajavardhanr6 on 2018-05-03:
+Yes i do compiled using catkin_make when i exported the files from Simulink.Is there any other way to compile cpp files?
+Comment by gvdhoorn on 2018-05-03:
+Then please copy the contents of your launch file into your question text. Use the edit button/link.
+
+A:
+
+<node name="mycontroller2016b_node" pkg="mycontroller2016b" type="ert_main.cpp" output="screen"/>
+
+As I hinted at in my earlier comment, you cannot start a .cpp file like this. It's not a script.
+You can only start the compiled node.
+
+Yes i do compiled using catkin_make
+
+then you must have written a CMakeLists.txt, so what name did you give the binary? Use that name for the value for type.
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-05-03
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rajavardhanr6 on 2018-05-04:
+yeah i got it thanks
+

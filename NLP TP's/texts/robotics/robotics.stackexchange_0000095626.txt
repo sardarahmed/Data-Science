@@ -1,0 +1,71 @@
+Q:
+
+Motoman IO control service not advertised?
+
+**Motoman FS100: Integrating IO Control Services Help** 
+Hello! I'm trying to control the IO pins of an Motoman FS100 controller. Single-arm, single-robot group.
+**Issue:** ROS services "readSingleIO" and "writeSingleIO" not appearing once launched and connected to robot controller.
+Note: Other services like "robot_enable" are still available.
+I don't know how to further troubleshoot this issue. Does anyone have any suggestions?
+I am following user gvdhoorn's forked branch, "io_support_rebased" to edit my own fork of the motoman driver.
+*Versions*
+ROS Melodic
+MotoROS v1.9.1
+*Code* 
+Integrated IO over two commits:
+1.  [adding ROS services](https://github.com/acbuynak/motoman/commit/8a2cabe67191cca1e976a092bd6e28bbab6d3471)
+2.   [adding convenience class](https://github.com/acbuynak/motoman/commit/3ac0c1d9ac1ac93dffdf22c51b914751b270b497)
+*Relevant Code from CMakeLists*
+from motoman_driver package/CMakeLists
+add_executable(motoman_motion_streaming_interface_bswap
+  src/joint_streaming_node.cpp
+  src/joint_trajectory_streamer.cpp
+  src/motion_ctrl.cpp
+  src/motion_ctrl.cpp
+  src/io_ctrl.cpp)
+from motoman_msgs/CMakeLists
+add_service_files(
+  DIRECTORY
+    srv
+  FILES
+    CmdJointTrajectoryEx.srv
+    ReadSingleIO.srv
+    WriteSingleIO.srv
+)
+
+*Related Content:*
+[ROS Answer: Control I/O of Generic Industrial robot](https://answers.ros.org/question/272675/can-i-control-ports-input-output-of-an-industrial-robot/)
+ [ROS Answer: Motoman Digital IO Control](https://answers.ros.org/question/309980/how-can-i-control-digital-ios-for-motoman/)
+[Github: Commit for Multi-Robot I/O Read-Write](https://github.com/gavanderhoorn/motoman/commit/f764a07308e35175fe68a851c050611c45b7a5ca)
+[Google Forum: I/O Control of Motoman DX100](https://groups.google.com/forum/#!msg/swri-ros-pkg-dev/GCC7gP6HJiE/Nhgm31oVBwAJ)
+
+Originally posted by acbuynak on ROS Answers with karma: 3 on 2020-04-28
+Post score: 0
+
+A:
+
+you have to move these lines,
+    // hacking this in here at this place
+  io_ctrl_.init(connection);
+  this->srv_read_single_io = this->node_.advertiseService("read_single_io",
+      &MotomanJointTrajectoryStreamer::readSingleIoCB, this);
+  this->srv_write_single_io = this->node_.advertiseService("write_single_io",
+      &MotomanJointTrajectoryStreamer::writeSingleIoCB, this);
+
+inside this method,
+bool MotomanJointTrajectoryStreamer::init(SmplMsgConnection* connection, const std::vector<std::string> &joint_names,
+    const std::map<std::string, double> &velocity_limits)
+{
+...
+}
+
+Originally posted by nd with karma: 80 on 2020-04-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by acbuynak on 2020-04-29:
+This worked! Thanks!
+To clarify for future reviewers, I mistakenly placed the io_ctrl initialization (first code quoted in above answer) into a similar looking bool group that performed a different function.
+After moving the placement of the code, everything worked as desired.
+

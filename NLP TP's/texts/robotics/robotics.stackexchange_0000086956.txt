@@ -1,0 +1,100 @@
+Q:
+
+TF - Transform world frame update rate should be fastest
+
+Hey there,
+I am basically doing a transformation from camera_link to world frame
+Here is the message before the transformation in [camera_link] frame:
+header: 
+  seq: 0
+  stamp: 4.723000000
+  frame_id: camera_link
+uid: 0
+position: 
+  x: 1.10738
+  y: -0.16057
+  z: 0.241941
+velocity: 
+  x: -0.00120042
+  y: 0.0169336
+  z: 0.240961
+diameter: 0.064
+diameter_px: 26.401
+covariance[]
+  covariance[0]: 0.000693303
+  covariance[1]: 0.000586575
+  covariance[2]: 0.00238198
+  covariance[3]: 0
+  covariance[4]: 0
+  covariance[5]: -0
+confidence: 1
+
+And this is the message after it was transformed: [in world]
+header: 
+  seq: 0
+  stamp: 4.723000000
+  frame_id: world
+uid: 0
+position: 
+  x: 0.322941
+  y: -0.21167
+  z: 1.0397
+velocity: 
+  x: 0.321961
+  y: -0.0341664
+  z: 2.14828
+diameter: 0.064
+diameter_px: 26.401
+covariance[]
+  covariance[0]: 0.000693303
+  covariance[1]: 0.000586575
+  covariance[2]: 0.00238198
+  covariance[3]: -4.13646e-13
+  covariance[4]: 1.5708
+  covariance[5]: 0
+confidence: 1
+
+Now actually the high velocities in the world frame could not be correct ....
+I have only doubts on how this errors occur:
+
+It is because of the different update rate:
+rosrun tf view_frames
+
+-> the world frame update rate should always be the fastest????
+
+I did not set a seq in the header???
+
+rosrun tf tf_monitor camera_link world
+
+RESULTS: for camera_link to world
+Chain is: camera_link -> camera_mount_link -> camera_footprint -> world
+Net delay     avg = -0.0952712: max = 0
+
+Originally posted by Markus on ROS Answers with karma: 311 on 2018-05-15
+Post score: 0
+
+Original comments
+Comment by PeteBlackerThe3rd on 2018-05-15:
+Can you give us some more details, what is the type of the message you are transforming and what code are you using to transform it. The magnitude of the velocity should be constant so there is definitely something wrong.
+Comment by PeteBlackerThe3rd on 2018-05-15:
+Another comment about the rates shown by rosrun tf view_frames. The rates are not attached to the frames but to the relationships between them. There is not particular reason why any of them have to be faster or slower than any others.
+
+A:
+
+So I just figured it out:
+I was trying to transform a Velocity in the same way as a point from one coordinate frame to another one, but when transforming velocities the vector does not have to be shifted but simply be rotated:
+void name::transformVelocity(const tf::StampedTransform& transform, const geometry_msgs::Point& vel_in, geometry_msgs::Point& vel_out) const
+{
+  tf::Point p;
+  tf::pointMsgToTF(vel_in, p);
+
+  tf::StampedTransform transform_tmp = transform;
+  transform_tmp.setOrigin(tf::Vector3(0.0, 0.0, 0.0));
+  p = transform_tmp * p;
+  tf::pointTFToMsg(p, vel_out);
+}
+
+Originally posted by Markus with karma: 311 on 2018-05-16
+This answer was ACCEPTED on the original site
+Post score: 1
+

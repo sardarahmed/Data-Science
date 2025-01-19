@@ -1,0 +1,148 @@
+Q:
+
+How do I link tf_conversions to a RViz panel?
+
+I am designing a Qt panel that is integrated into RViz.
+At some point this Qt panel needs to convert an Eigen::Affine3d to a geometry_msg::Pose.
+I fail to understand why tf_conversions is not linked to my package:
+CMakeLists.txt
+cmake_minimum_required(VERSION 2.8.3)
+project(custom_rviz_plugin)
+
+find_package(catkin REQUIRED COMPONENTS
+             geometry_msgs
+             rviz
+             tf
+             tf_conversions)
+
+catkin_package()
+
+include_directories(${catkin_INCLUDE_DIRS})
+
+find_package(Qt4 COMPONENTS QtCore QtGui REQUIRED)
+include(${QT_USE_FILE})
+
+add_definitions(-DQT_NO_KEYWORDS)
+
+qt4_wrap_cpp(MOC_FILES
+  src/my_panel.h
+)
+
+set(SOURCE_FILES
+  src/my_panel.cpp 
+  ${MOC_FILES}
+)
+
+add_library(${PROJECT_NAME} ${SOURCE_FILES})
+target_link_libraries(${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES})
+
+install(TARGETS
+  ${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(FILES 
+  plugin_description.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+package.xml
+<?xml version="1.0"?>
+<package format="2">
+  <name>custom_rviz_plugin</name>
+  <version>0.1.0</version>
+  <description>RViz plugin.</description>
+  <author>Victor Lamoine - Institut Maupertuis</author>
+  <maintainer email="victor.lamoine@gmail.com">Victor Lamoine</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>rviz</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>tf</build_depend>
+  <build_depend>tf_conversions</build_depend>
+
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf</exec_depend>
+  <exec_depend>tf_conversions</exec_depend>
+  
+  <export>
+      <rviz plugin="${prefix}/plugin_description.xml"/>
+  </export>
+</package>
+
+The whole package is available here.
+When adding the panel in RViz (using test.launch in the package) the constructor crashes because of a missing symbol:
+/opt/ros/indigo/lib/rviz/rviz: symbol lookup error: /home/victor/MEGAsync/catkin_workspace/devel/lib//libcustom_rviz_plugin.so: undefined symbol: _ZN2tf14poseEigenToMsgERKN5Eigen9TransformIdLi3ELi2ELi0EEERN13geometry_msgs5Pose_ISaIvEEE
+
+Which is confirmed because tf_conversions is not linked to the Qt panel library:
+$ ldd /home/victor/MEGAsync/catkin_workspace/devel/lib//libcustom_rviz_plugin.so | grep tf
+    libtf.so => /opt/ros/indigo/lib/libtf.so (0x00007fd1b1af1000)
+    libtf2_ros.so => /opt/ros/indigo/lib/libtf2_ros.so (0x00007fd1adfe2000)
+    libtf2.so => /opt/ros/indigo/lib/libtf2.so (0x00007fd1addb2000)
+
+How do I link tf_conversions to a Qt / RViz panel?
+EDIT 1:
+Even linking manually does not work:
+set (CMAKE_CXX_FLAGS "-fPIC -L/opt/ros/indigo/lib/ -ltf_conversions")
+
+The library is still not linked to tf_conversions.
+EDIT 2:
+My work-around at the moment is to re-declare the function:
+namespace tf {
+
+template<typename T>
+void poseEigenToMsgImpl(const T &e, geometry_msgs::Pose &m)
+{
+  m.position.x = e.translation()[0];
+  m.position.y = e.translation()[1];
+  m.position.z = e.translation()[2];
+  Eigen::Quaterniond q = (Eigen::Quaterniond)e.linear();
+  m.orientation.x = q.x();
+  m.orientation.y = q.y();
+  m.orientation.z = q.z();
+  m.orientation.w = q.w();
+  if (m.orientation.w < 0) {
+    m.orientation.x *= -1;
+    m.orientation.y *= -1;
+    m.orientation.z *= -1;
+    m.orientation.w *= -1;
+  }
+}
+
+void poseEigenToMsg(const Eigen::Affine3d &e, geometry_msgs::Pose &m)
+{
+  poseEigenToMsgImpl(e, m);
+}
+
+void poseEigenToMsg(const Eigen::Isometry3d &e, geometry_msgs::Pose &m)
+{
+  poseEigenToMsgImpl(e, m);
+}
+
+} // tf
+
+Originally posted by VictorLamoine on ROS Answers with karma: 1505 on 2016-03-08
+Post score: 0
+
+Original comments
+Comment by Airuno2L on 2016-03-10:
+The source and header files look good as far as I can see. I'm not sure what qt4_wrap_cpp() is in your cmakelists.txt file though. Will it work if you put the header file explicitly in SOURCE_FILES?
+Comment by VictorLamoine on 2016-03-10:
+qt4_wrap_cpp() is called to use the Qt MOC (http://doc.qt.io/qt-5/moc.html). No it doesn't work either. Manually linking does not work too (see my edit).
+
+A:
+
+The symbol you're missing is in the eigen_conversions library (libeigen_conversions.so). You should probably add a catkin dependency on eigen_conversions to link against it.
+
+Originally posted by ahendrix with karma: 47576 on 2016-03-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by VictorLamoine on 2016-03-12:
+Meh.. that's right! When using eigen_conversions, I should link against eigen_conversions... :)
+

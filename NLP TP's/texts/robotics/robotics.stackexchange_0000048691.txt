@@ -1,0 +1,90 @@
+Q:
+
+ccny_rgbd_tools launch files for PR2 in Gazebo
+
+Hi,
+I would like to use the ccny_rgbd_tools package on the PR2 in Gazebo using the head_mount_kinect.
+What would the launch files I would need in order for this to work?
+What would I need to modify in the current launch files?
+Sorry, I'm still inexperience using the PR2 and its topics so I don't quite understand which topics will be required.  However, I am still checking.
+Thanks.
+EDIT:
+I updated the vo+mapping.launch file to remap the expected topics:
+
+<remap from="/rgbd/rgb" to="/head_mount_kinect/rgb/image_raw"/>
+<remap from="/rgbd/depth" to="/head_mount_kinect/depth/image_raw"/>
+<remap from="/rgbd/info" to="/head_mount_kinect/rgb/camera_info"/>
+
+... rest of the node ...
+
+However, I get this error: (partial)
+Frame /r_gripper_motor_slider_link exists with parent /r_gripper_palm_link.
+Frame /r_gripper_r_finger_link exists with parent /r_gripper_palm_link.
+Frame /r_shoulder_lift_link exists with parent /r_shoulder_pan_link.
+Frame /r_shoulder_pan_link exists with parent /torso_lift_link.
+Frame /r_wrist_flex_link exists with parent /r_forearm_link.
+Frame /torso_lift_motor_screw_link exists with parent /base_link.
+Frame /odom_combined exists with parent NO_PARENT.
+Most of the links now say that there is NO_PARENT.
+Now I know the ccny_rgbd_tools expects:
+RGB Image (8UC3) topic
+Depth Image (16UC1, in millimeters) topic
+Camera Info topic
+However, I don't know if I am using the right topics.  Any suggestions?
+EDIT_2:
+Topics and Frames I am using:
+remap from="/rgbd/rgb" to="/head_mount_kinect/rgb/image_raw/compressed"
+remap from="/rgbd/depth" to="/head_mount_kinect/depth/image_raw"
+remap from="/rgbd/info" to="/head_mount_kinect/rgb/camera_info"
+param name="publish_tf"  value="false"
+param name="fixed_frame" value="/odom"
+param name="base_frame"  value="/base_link"
+
+Originally posted by astaranowicz on ROS Answers with karma: 238 on 2013-02-25
+Post score: 1
+
+Original comments
+Comment by Ivan Dryanovski on 2013-02-26:
+Are you sure /head_mount_kinect/rgb/image_raw is a debayered RGB image in 8UC3?
+Comment by astaranowicz on 2013-02-26:
+I'm not sure, however, to move from a simulated Gazebo image to a real Image, the use of cv_bridge is needed to turn a ROS msg in to an OpenCV Mat.  I think this will take more time.
+Comment by Ivan Dryanovski on 2013-02-26:
+the ccny_rgbd already uses cv::bridge to convert ROS messages, so no need to account for that. Is there any documentation on the Gazebo image generation you can point me to? Or launch files, or anything?
+Comment by astaranowicz on 2013-02-26:
+Basically, I'm just calling $roslaunch pr2_gazebo pr2_empty_world.launch found here :http://ros.org/wiki/pr2_gazebo.    The Gazebo Image Generation is done by ray-tracing from the camera reference frame as far as I know.
+Comment by Ivan Dryanovski on 2013-02-26:
+I see. Well the pr2_bringup.launch is calling robot_pose_ekf, but disabling the vo, so that needs to be changed. Before you worry about robot_pose_ekf, I would make sure that the topics and frames are correct
+
+A:
+
+You should be able to use the ccny_rgb tools with simulated Kinect data, as long as that data comes in the same format as the OpenNI image topics. The visual_odometry and keyframe_mapper tools require 3 incoming topics:
+
+/rgbd/rgb: a rectified, debayered RGB image, 8UC3 encoding
+/rgbd/depth: a rectified depth image, registered with the RGB image, 16UC1 encoding (in millimeters)
+/rgbd/info: CameraInfo topic (applies to both image, since they are registered).
+
+If the topics are coming from the OpenNI driver, you would need to add the following remappings to the visual_odometry_node and the keyframe_mapper_node launch files
+<remap from="/rgbd/rgb"   to="/camera/rgb/image_rect_color"/>
+<remap from="/rgbd/depth" to="/camera/depth_registered/image_rect_raw"/>
+<remap from="/rgbd/info"  to="/camera/rgb/camera_info"/>
+
+Finally, you should choose the fixed_frame and base_frame parameters. The defaults are odom and camera_link. In your case, since this is a real robot, the base frame might be different - base_link for example. You need to ensure that there exists a tf between the base_frame and the optical frame of the camera. This transform is assumed to be static by ccny_rgbd, and will be cached.
+EDIT: The visual odometry will publish a tf, but this might not be what you need for your application, especially if you are using robot_pose_ekf to fuse odometry sources.
+If this is the case, disable the tf publishing (using the publish_tf flag), and make robot_pose_ekf subscribe to the "odom" topic published by "visual_odometry_node", of type nav_msgs/Odometry
+EDIT 2: Still can't find what the simulated Kinect data is exactly, but it appears the only available depth topic is 32FC1. A ticket has been opened to enable support in ccny_rgbd.
+EDIT 3: Added support for 32FC1 images (see ticket for details). Also added clearer instructions in launch files which summarize this answer here.
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2013-02-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by astaranowicz on 2013-02-26:
+Just to clarify. In robot_pose_ekf, what do you mean ekf?
+Comment by sai on 2013-04-07:
+ekf means extended kalman filter. robot_pose_ekf is a ros package that gives an optimal odometry estimate by combining two sources of odometry with different accuracy
+Comment by Tanmay on 2015-06-02:
+Hello,
+I'd like to clarify whether the ccny_rgbd package uses odometry data obtained from the robot (encoders / etc). From what I understand, to configure SLAM for just a camera, I should set publish_tf to false?
+Also, could you elaborate on what frame ID's I should be setting for that case?
+

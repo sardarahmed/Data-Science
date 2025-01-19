@@ -1,0 +1,33 @@
+Q:
+
+How to know the desired orientation of a quadcopter?
+
+I am trying to simulate a quadcopter model on Simulink. I want to implement a PID controller for each of X,Y,Z and phi,theta, psi angles. PID gets the error, as input, which is to be minimized.
+For the X,Y and Z, the desired values are entered by the user and the actual values are calculated from the accelerometer data, hence, the error is the desired set value - actual value.
+For phi,theta and psi, the actual values may be obtained from the gyroscope and accelerometer (sensor fusion) but I don't actually know how to calculate the desired values for each one of them since the user is usually interested in giving the position values X,Y and Z as desired not the angle values! The absence of the desired values prevents me form calculating the angular error which is needed for the PID controller.
+
+A:
+
+You're trying to implement more PIDs than you have degrees of freedom.  In a quadcopter, you have only 4: $(Z, \phi, \theta, \psi)$ i.e. (Altitude, Roll, Pitch, and Yaw). 
+
+via (http://www.draganfly.com/uav-helicopter/draganflyer-x4/features/stability.php)
+Interestingly, from a PID perspective you definitely do have desired values for $\phi$ and $\theta$: you want them both to default to zero, so that your quadcopter hovers stably.  (You could also constrain $\psi$ to a fixed value like zero, but since the quadcopter is symmetric about the Z axis, all you really need to do is prevent excessive rotation by bumping up the 'D' term in the $\psi$ PID.)  The Z PID can then be tuned to ensure that you can set and hold a desired altitude.
+So in the simplest case, the X and Y PIDs will end up sitting "on top" of the other PIDs.
+
+In other words, the output of the X and Y PIDs will be (respectively) become the desired $\phi$ and $\theta$ angles that will nudge the quadcopter toward the desired position.  (Note that you'll have to convert the world-relative desired X and Y to quadcopter-relative X and Y to compensate for $\psi$.  This answer has more.)
+There are more sophisticated ways to control aerial vehicles, but this is one of the easiest to learn.
+
+A:
+
+Defining the state of the quadcopter as $\bf{x} = \left[ \begin{matrix} \mathbf{p} & \mathbf{v} & \mathbf{r} & \mathbf{w} \end{matrix} \right]^T$ where $\mathbf{p}$, $\mathbf{v}$, $\mathbf{r}$, and $\mathbf{w}$ are the position, velocity, angular position, and angular velocity of the quadcopter respectively. A simplified transition model for a quadcopter using PD control is:
+\begin{align}
+\dot{\mathbf{p}} & = \mathbf{v} \\
+\dot{\mathbf{v}} & = -g\mathbf{e}_3 + \text{exp}([\mathbf{r}])\mathbf{e}_3u_1/m \\
+\dot{\mathbf{r}} & = \mathbf{w} + \frac{1}{2}[\mathbf{r}]\mathbf{w} + (1 - \frac{||\mathbf{r}||}{2\text{tan}(||\mathbf{r}||/2)})\frac{[\mathbf{r}]^2}{||\mathbf{r}||^2}\mathbf{w} \\
+\dot{\mathbf{w}} & = \begin{bmatrix} k_1(u_2 - r_x) + k_2w_x \\ k_1(u_3 - r_y) + k_2w_y \\ 0 \end{bmatrix}
+\end{align}
+where $\mathbf{e}_3 = \left[ \begin{matrix} 0 & 0 & 1 \end{matrix} \right]^T$, $[\mathbf{r}]$ represents the skew-symmetric matrix of $\mathbf{r}$, $||\mathbf{r}||$ represents the magnitude of $\mathbf{r}$, $k_1$ and $k_2$ represent the proportional and derivative gains respectively, and the control $\mathbf{u} = \left[ \begin{matrix} u_1 & u_2 & u_3 \end{matrix} \right]^T$ is comprised of the desired total thrust $u_1$, the desired roll angle $u_2$, the desired pitch angle $u_3$, and assumes yaw remains the same. Note that this uses a PD controller because the integration term I is generally not useful for trajectory following.
+Using this model you can, given the current state $\mathbf{x}$, calcualte how the state will change. This of course does not give you the desired angular positions about which you asked. Assuming the user expects the quadcopter to hover once it has reached the specified desired position $\mathbf{p} = [X, Y, Z]^T$ then we need $\mathbf{v} = \mathbf{r} = \mathbf{w} = \left[ \begin{matrix} 0 & 0 & 0 \end{matrix} \right]^T$ for the final state.
+However that still does not give you the desired angles to transition between the initial state $\mathbf{x}_i$ and the final state $\mathbf{x}_f = \left[ \begin{matrix} \mathbf{p} & \mathbf{v} & \mathbf{r} & \mathbf{w} \end{matrix} \right]^T$. To get that you need a higher level controller to calculate a trajectory $\pi = (\mathbf{x}[], \mathbf{u}[], \tau)$ with $\mathbf{x} : [0, \tau] \rightarrow \mathcal{X}$, $\mathbf{u} : [0, \tau] \rightarrow \mathcal{U}$ for the state-space $\mathcal{X}$ and control space $\mathcal{U}$ and some travel time $\tau$. This trajectory will give you the desired angles at any given moment.
+Unfortunately there are a lot of ways to calculate this trajectory. One possibility is to look at my own work in this area. Specifically my paper titled Kinodynamic RRT*: Asymptotically Optimal Motion Planning for Robots with Linear Dynamics.
+

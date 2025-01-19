@@ -1,0 +1,45 @@
+Q:
+
+Why do we fuse Odom, IMU, GPS and other pose messages?
+
+I'm working with navigation stack lately, and I have a indoor location system to get the absolute pose of the robot.
+As we all know, the odometry is only right for a short time, so I want to correct the pose with my indoor location system.
+I know there is a package robot_pose_ekf can fuse /odom, /imu_data and /vo. But my question is Why do we have to fuse these pose messages? Why don't we just make the /odom correct with indoor location system or GPS or something else?
+
+EDIT
+Hi mig,
+Actually, I tried to adapt the tf map->odom before. But I found it hard to deal with the orientaion. You know, to adapt the position (x,y,z), you just need to do some additions and subtractions, however, when it comes to the orientation, if you change it (Quaternion: x, y, z, w), the position of base_link relative to map will change as well. And I also tried to do some 'cos' and 'sin' calculation, but I didn't get the right tf result.
+So, is there any packages I can use or refer for this tf map->odom? I know amcl did such thing, but its source code is hard to understand.
+Thank you.
+
+Originally posted by Shay on ROS Answers with karma: 763 on 2016-08-17
+Post score: 0
+
+A:
+
+The difference between those is how/what they measure.
+Odometry, IMU and Visual Odometry (I guess this what you mean with vo) just measure the internal state of the robot, and thus just deliver relative measurements towards a starting pose and cannot correct for long-term drifts. However, you can fuse those using the robot_pose_ekf to achieve a more stable "fused" odometry guess.
+Then, you need a localization that is providing measurements with respect to "world". This can be GPS, IPS, cameras with stored, localized features or laserscanners with a given map. With those, you can correct the drift of the "fused" odometry.
+There are several packages providing this or parts of this functionality, e.g. robot_localization or amcl, to name just two.
+
+EDIT
+You are right, I did not think of adding a GPS sensor like this. Seems like I misunderstood how they define visual odometry here. However, a world fixed frame does not mean that this is fixed over multiple runs. Typically, any odometry starts of from the pose of the robot where it is turned on. In contrast there are fixed frames  (like map coordinates) that are the same whether you turn this on or not.
+Thus, vo provides measurements to the vo frame which can different any time you launch the robot, depending on what you use for input.
+
+EDIT 2
+Typically, when you add a sensor providing "global corrections", you don't correct the odom frame. The tf odom->base_link is what is typically provided by internal sensors, i.e. wheel encoders, IMU and visual odometry.
+If you have another sensor (GPS, laserscanner, ...) I would prefer to adapt the tf map->odom such that the tree  map->odom->base_link is correct. This is how it is typically done for mobile robots in ROS, thus I'd prefer this solution.
+
+EDIT 3
+This is where the magic happens in amcl.
+You can use the TransformPose function of TF to get map->odom (called odom_to_map therein)  from the map->base_link that you estimate, and broadcast this (after you bring it into the correct format...)
+
+Originally posted by mgruhler with karma: 12390 on 2016-08-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Shay on 2016-08-18:
+Thanks for your answer. But I'm still confused.
+I thought the robot_pose_ekf not just fuses relative measurements, because it now supports GPS too. And I thought /vo is also the global pose relative to "world"
+

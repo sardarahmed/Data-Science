@@ -1,0 +1,53 @@
+Q:
+
+State prediction of vehicle with Ackermann steering geometry using Kalman-Filter
+
+I am trying to have a Kalman-Filter (or Extended-KF) give me positions for a small remotely controlled vehicle with an Ackermann steering geometry (moving on a plane surface). The control commands I can send to the vehicle are wheel speed and steering angle. To measure the position I have available an Inertial Measurement Unit, gyroscope (electronic), odometry and in the future a indoor positioning system. Trying to set up the filter, I am already stuck with the prediction phase. I assume my state vector is something like
+$
+x=\begin{bmatrix}
+x\\
+v_x\\
+a_x\\
+y\\
+v_y\\
+a_y
+\end{bmatrix}
+$
+and having read an introduction for Kalman filters I think that I should get the new state by doing
+$x_k = A x_{k-1} + B u_{k-1}$
+where A is the predictor matrix, and $u_{k-1}$ the control input which I assume to be
+$
+u=\begin{bmatrix}
+\omega\\
+\alpha
+\end{bmatrix}$
+, where $\omega$ would be the wheel speed and $\alpha$ the steering angle. I guess A is something like
+$
+A=\begin{bmatrix}
+1 & \Delta t &\Delta \frac{1}{2}t^2 & 0 & 0 & 0\\
+0&1&\Delta t &0 &0 &0\\
+0&0&1 &0 &0 &0\\
+0&0&0 &1 & \Delta t &\Delta \frac{1}{2}t^2\\
+0&0&0 &0 &1  &\Delta t\\
+0&0&0 &0 &0  &1\\
+\end{bmatrix}
+$
+However, I don't really know how I should deal with the control input. For once, the velocity change due to a stearing angle $\alpha$ is not linear, is this a problem? Also, my control input for the wheel speed is basically the velocity already present in A. Should I then only use the wheel speed change as control input?
+Furthermore: I get updates form my sensors every 10 ms. I wonder how fast the motor will react to my steering commands. Could it be that it makes sense to neglect the control inputs altogether?
+Thank you for your help!
+
+A:
+
+Using the commanded speed in the prediction update of a Kalman filter which estimates speed and higher order states can be entirely reasonable. In situations where the time constant of the controller is slow, you will gain a considerable amount state estimate accuracy by estimating state derivatives using the control loop dynamics. In situations where the control loop time constant is much faster than the kalman filter update rate, far less accuracy will be gained. 
+First, in situations that have a fast control loop time constant, estimating the higher order states (in your case this is acceleration) will not benefit you a whole lot. By the time the kalman filter routine has been called, we know that the dynamics within the control loop have settled and the higher order states will be nil. Estimating something that will basically be zero at every timestep will not get you a whole lot of information.
+In the second case, where the control loop time constant is slow compared to the kalman filter update rate, estimating the higher order states can profit your estimates greatly. Use a model of the controller with your time step to solve for the expected state. to do this you will need some model for your controller but this can be something as simple as a first or second order system. 
+In both cases it is best to use your commands in the prediction step of the KF as they give you a better idea of your current state.
+
+Now, a bit about the states you've chosen. I think it is going to be difficult to use your set of states.  I think it would be more natural to estimate position, speed, vehicle direction ( which way the body of the vehicle is pointed), and steering angle. I am completely unfamiliar with the standard approach to localizing ground vehicles, these are just my first thoughts. 
+
+About the nonlinear aspects of your system. At the very least you will want to use an EKF. The A matrix in an EKF is a Jacobian that is evaluated at the given state estimate at every time step. To get this, you will need to derive the nonlinear relation between your state and the state time derivative. Take the Jacobian of that relation with respect to the state. This is then evaluated at every time step to get an A matrix.
+
+Also, using only odometry and IMU data will result in a system that is not observable. This means that the error in your estimate will get worse over time because you have no way to correct for the error in your odometry readings. This isn't necessarily a problem, just know that without a measurement of position, your position estimate error will be unbounded. You'll still be able to drive around for a bit, but your estimate will get worse over time. 
+
+I strongly recommend reading Optimal State Estimation by Simon. It's the first estimation book I turn to when I brush up. 
+

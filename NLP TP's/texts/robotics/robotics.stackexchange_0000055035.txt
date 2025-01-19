@@ -1,0 +1,129 @@
+Q:
+
+PR2 unable to use wired connection
+
+After an upgrade to Groovy, our PR2 doesn't seem to be using the wired network. Looking at the
+/var/log/roam/console-output.log file, I see (with timestamps removed)
+ validate_common returned False
+ Discarding packet based on xid: 2742288446 != 11612
+ validate_common returned False
+ Discarding packet based on xid: 2742288446 != 11612
+ validate_common returned False
+
+ Fri Oct 25 11:59:11 2013 1382727551.35
+ # 0      ddwrt     0.0  99.999  99.999             Wired  99.998 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+ [  INFO ] : State machine transitioning 'SELECT':'fail'-->'ERROR'
+
+ Fri Oct 25 11:59:12 2013 1382727552.35
+ # 0      ddwrt     0.0  99.998  99.998             Wired  99.997 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+- Base station address is 192.168.1.142:1194
+
+ Fri Oct 25 11:59:13 2013 1382727553.35
+ # 0      ddwrt     0.0  99.998  99.998             Wired  99.997 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+
+ Fri Oct 25 11:59:14 2013 1382727554.35
+ # 0      ddwrt     0.0  99.999  99.999             Wired  99.997 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+- Base station address is 192.168.1.142:1194
+
+ Fri Oct 25 11:59:15 2013 1382727555.35
+ # 0      ddwrt     0.0  94.999  94.999             Wired  89.998 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+
+ Fri Oct 25 11:59:16 2013 1382727556.35
+ # 0      ddwrt     0.0  99.999  99.999             Wired  99.998 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+ [  INFO ] : State machine transitioning 'ERROR':'done'-->'INIT'
+ [  INFO ] : State machine transitioning 'INIT':'done'-->'SELECT'
+
+ Fri Oct 25 11:59:17 2013 1382727557.35
+ # 0      ddwrt     0.0  99.998  99.998             Wired  99.997 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+
+ Fri Oct 25 11:59:18 2013 1382727558.35
+ # 0      ddwrt     0.0  99.999  99.999             Wired  99.998 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+ Discarding packet based on xid: 17313 != 52692
+ validate_common returned False
+ Discarding packet based on xid: 17313 != 52692
+ validate_common returned False
+ [  INFO ] : State machine transitioning 'SELECT':'fail'-->'ERROR'
+
+ Fri Oct 25 11:59:19 2013 1382727559.35
+ # 0      ddwrt     0.0  99.999  99.999             Wired  99.998 100 rule   active
+ # 1    bs@lan1     0.0    -inf    -inf             Wired   0.000 100 norule active
+ # 2       wan0     0.0    -inf    -inf             Wired  -1.000  -1 norule active
+
+wan0 never seems to have an active connection. Any ideas?
+
+Originally posted by vhwanger on ROS Answers with karma: 52 on 2013-10-25
+Post score: 0
+
+Original comments
+Comment by Dan Lazewatsky on 2013-10-25:
+Since this isn't actually ROS related, you might do better with the pr2-admins mailing list.
+
+A:
+
+I'm not used to seeing this error in the logs:
+ Discarding packet based on xid: 17313 != 52692
+ validate_common returned False
+ Discarding packet based on xid: 17313 != 52692
+ validate_common returned False
+
+It looks like your DHCP server isn't sending DHCP responses with the proper XID.
+The relevant error message is coming from line 260 of multi_interface_roam/src/multi_interface_roam/dhcp.py
+You'll probably want to get in touch with your network administrator so see if they have any insight into this.
+EDIT1:
+I would do a packet dump on wan0 and try to trace the DHCP negotiation that's going on, to see if it's getting corrupt or out of sync somehow; paying particular attention to the XID field in the DHCP packets. Something like the following tcpdump command should be a start:
+sudo tcpdump -i wan0 -s 1500 -vvv port bootps or port bootpc
+
+If multi_interface_roam is taking the interface up and down, that may disrupt tcpdump. In that case, you'll have to play with the interface parameter. Maybe try -i any or look into the packet tap interface options.
+It may also be worth doing the same packet dump on your DHCP server, and possibly the DHCP relay if you have one in your network, to see if they're processing DHCP requests properly. It's probably also worth looking at the DHCP logs if you can get to them.
+EDIT2:
+This turned out to be a non-confirming DHCP server that wasn't replying with the transaction ID (XID) that the client sent. I guess most clients don't care about this, but the PR2's DHCP implementation seems to.
+We fixed it by giving the wan port on the PR2 a static IP address by doing the following:
+In /etc/network/interfaces
+auto wan0
+iface wan0 inet static
+  address 10.0.0.42
+  netmask 255.255.255.0
+  gateway 10.0.0.1
+
+And in /etc/sysros/wifi/pr2.yaml
+redirect_console: True
+wireless_namespace: 'ddwrt'
+wpa_config: "/etc/sysros/wifi/networks.conf" 
+base_station: "basestation-novpn"
+ping_port: 1194
+tunnel_interface: 'tun9'
+local_networks: [ '10.68.0.0/24', '10.69.0.0/24' ]
+reliability_threshold: 50
+
+interfaces:
+  "basestation-novpn@wan0": { type: static, name: bs@wan0,  priority: 20 }
+  "basestation-local2@lan1": { type: static, name: bs@lan1, priority: 30 }
+  "wifi-router@lan0": { type: static, name: ddwrt }
+# Uncomment these to make enable dual ralinks:
+#  wlan0: { type: wireless }
+#  wlan1: { type: wireless }
+
+Originally posted by ahendrix with karma: 47576 on 2013-12-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by vhwanger on 2013-12-10:
+Unfortunately, I also double as the network admin. Might this have to do with us not using the network boot for the base station? We filed a ticket, but it has gone unattended to.
+

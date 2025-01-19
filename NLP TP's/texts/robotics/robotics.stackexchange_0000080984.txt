@@ -1,0 +1,90 @@
+Q:
+
+AMCL not localizing in pre-built map
+
+I'm using AMCL with a Velodyne VLP-16. I'm using hector_slam to build the map, saving the map with map_server.
+I'm using an IMU and wheel encoder velocities (twist messages) to fuse with robot_localization for odometry and the odom->base_link (base_footprint in my case) transform.
+I want to use AMCL for global localization, but I'm having problems. AMCL is not aligning the laser scan with the prebuilt map, leading to incorrect global localization. I've attached a screenshot (if you rotate the laserscan by ~90 degrees clockwise, you get the about the correct alignment.
+
+The only potential problem might be that the laserscan is flat in the velodyne's frame, which is ~0.35m above the ground. Could that be an issue for AMCL?
+I'm not very sure where to start debugging this, so any tips/hints/suggestions/requests for more info would be appreciated. I didn't want to dump my entire config in the first post, but I'm more than willing to.
+And my AMCL config is pretty standard:
+<launch>
+<node pkg="amcl" type="amcl" name="amcl">
+  <!-- Publish scans from best pose at a max of 10 Hz -->
+  <param name="odom_model_type" value="omni"/>
+  <param name="odom_frame_id" value="odom" />
+  <param name="base_frame_id" value="base_footprint" />
+  <param name="global_frame_id" value="map" />
+  <param name="use_map_topic" value="true" />
+  <param name="odom_alpha5" value="0.1"/>
+  <param name="transform_tolerance" value="0.2" />
+  <param name="gui_publish_rate" value="10.0"/>
+  <param name="laser_max_beams" value="30"/>
+  <param name="min_particles" value="500"/>
+  <param name="max_particles" value="5000"/>
+  <param name="kld_err" value="0.05"/>
+  <param name="kld_z" value="0.99"/>
+  <param name="odom_alpha1" value="0.2"/>
+  <param name="odom_alpha2" value="0.2"/>
+  <!-- translation std dev, m -->
+  <param name="odom_alpha3" value="0.8"/>
+  <param name="odom_alpha4" value="0.2"/>
+  <param name="laser_z_hit" value="0.5"/>
+  <param name="laser_z_short" value="0.05"/>
+  <param name="laser_z_max" value="0.05"/>
+  <param name="laser_z_rand" value="0.5"/>
+  <param name="laser_sigma_hit" value="0.2"/>
+  <param name="laser_lambda_short" value="0.1"/>
+  <param name="laser_lambda_short" value="0.1"/>
+  <param name="laser_model_type" value="likelihood_field"/>
+  <!-- <param name="laser_model_type" value="beam"/> -->
+  <param name="laser_likelihood_max_dist" value="2.0"/>
+  <param name="update_min_d" value="0.2"/>
+  <param name="update_min_a" value="0.5"/>
+  <param name="resample_interval" value="1"/>
+  <param name="transform_tolerance" value="0.5"/>
+  <param name="recovery_alpha_slow" value="0.0"/>
+  <param name="recovery_alpha_fast" value="0.0"/>
+</node>
+</launch>
+
+Originally posted by mjedmonds on ROS Answers with karma: 58 on 2017-05-23
+Post score: 2
+
+Original comments
+Comment by Humpelstilzchen on 2017-05-24:
+How far did you travel without localization?
+Comment by mjedmonds on 2017-05-24:
+Less than 2 meters. Should I travel farther to get a global alignment?
+Comment by Humpelstilzchen on 2017-05-24:
+I only observed small updates with amcl, try to drive a few times in circle
+Comment by Humpelstilzchen on 2017-05-24:
+Also was your 2d pose estimate as accurate as you could?
+Comment by mjedmonds on 2017-05-26:
+If I properly set the initial pose, it works, but this seems counterintuitive to me. The point of global localization is to align the sensor measurement to a prebuilt map. It seems amcl is really just keep the map roughly in place, but is incapable of a large adjust. Why is this the case? Thanks!
+Comment by Humpelstilzchen on 2017-05-27:
+Does this answer help you?
+Comment by mjedmonds on 2017-05-29:
+Yes, thank you. Makes sense.
+
+A:
+
+are you setting your initialpose with amcl?
+EDIT:
+about your comment
+
+The point of global localization is to align the sensor measurement to a prebuilt map. It seems amcl is really just keep the map roughly in place, but is incapable of a large adjust.
+
+AMCL generates hypothesis of where the robot could be and how well the measurements of that hypothesis match the current measurement. When you call rosservice call move_base/global_localization it spreads the hypothesis all over the map and, as the robot moves, it reevaluate its hypothesis and prunes the unlikely ones, eventually converging to a reduced set of particles concentrated on the actual position.
+But it is not magical, depending on the map you have and the measurements you are using, it may converge to a local minima and then it is hard to escape from there.
+Localizing in a featureless map is really hard for AMCL, imagine your map is a square, and the robot is facing a corner. In which corner of the square are you? The /initialpose gives a hint to your filter and it will more often than not, converge to the true position.
+
+Originally posted by Procópio with karma: 4402 on 2017-05-25
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mjedmonds on 2017-05-29:
+/global_localization is what I was looking for. Thanks! Also this answer from Humpelstilzchen explains why
+

@@ -1,0 +1,99 @@
+Q:
+
+android_core - Emulator registers topic but not sending events
+
+I've got android_core and rosjava_core as projects under Android Studio.
+I'm currently running a Ginerbread (API:10) emulator and debugging it.
+The android_tutorial_pubsub registers it's self as a topic publisher
+and I can see that the topic has been registered with roscore.
+'rostopic list' sees the topic but doesn't see any events with
+'rostopic echo /mychatter
+'$ rostopic list
+    /mychatter
+     /rosout
+    /rosout_agg 
+
+$ rostopic echo /mychatter
+
+wireshark show the http message being sent to register the /mychatter
+topic but nothing thereafter. Browser on emulator shows the web page
+fine on the rosecore host. The debugger shows the app is waiting to accept something.
+My guess is that the 'rostopic echo /mychatter' should be connecting to the
+android_tutorial_pubsub app on the emulator.
+Thought while debugging id see if anyone had any suggestions.
+I'll double check the wireshark trace and compare it to android_tutorial_pubsub
+running in the rosjava_core running locally on my workstation.
+I thought I'd try to increase the logging level on the ROS Java Related Nodes:
+ $ rosnode list
+        /android_gingerbread/ros_text_view
+        /rosjava_tutorial_pubsub/talker
+        /rosout
+
+So here I tried to list the loggers on the ROS Nodes. The ROS-JAVA related nodes seem to be Broken:
+$ rosconsole list /rosout
+        ros
+        ros.roscpp
+        ros.roscpp.roscpp_internal
+        ros.roscpp.superdebug
+
+$ rosconsole list /rosjava_tutorial_pubsub/talker
+        rosconsole: error: node '/rosjava_tutorial_pubsub/talker' doesn't exist ...
+        or doesn't support query: ...
+        Service [/rosjava_tutorial_pubsub/talker/get_loggers] is not available.
+
+$ rosconsole list  /android_gingerbread/ros_text_view
+        rosconsole: error: node '/android_gingerbread/ros_text_view' doesn't exist or ...
+        doesn't support query: ...
+        Service    [/android_gingerbread/ros_text_view/get_loggers] is not available.
+
+-pete
+
+Originally posted by piet.delaney@gmail.com on ROS Answers with karma: 56 on 2016-01-06
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2016-01-07:
+Many issues like this with the Android emulator come down to incorrect networking configuration. Things to check: working DNS on both host and emulator (if you're using hostnames), correct setting of ROS_IP (if not using hostnames), firewall/NAT settings (prefer bridging), etc.
+Comment by gvdhoorn on 2016-01-07:
+Can you update your question and include the values of ROS_MASTER_URI, ROS_HOSTNAME, ROS_IP and the network configuration of both your host PC and the emulated Android device?
+
+A:
+
+**FIXED IT:**strong text
+I analysed the problem with WireShark this afternoon. The problem was that the Android Emulator (QEMU)
+has a built in firewall, thus using masquerading. The pubsub publisher sends the local ip address running on the
+emulated cell phone and the emulated firewall changes the address at host side, likely with a bridge. So the
+ROS Core running on a Ubuntu system was taking fine with HTTP thru the firewall but when I did a:
+                                   'rostopic echo \mychatter'
+
+it was trying to send a direct TCP/IP connection directly to the host address inside the emulator. So the SYN
+packets were just being lost.
+I installed pubsub on an Nexus Tablet, not an emulation, and it worked fine. Seems worthy of
+a NOTE in the Android_Core Tutorial that ***This demo  doesn't work on a Emulated android device the currently described setup with Android Studio ***. I mentioned
+it in my Question/Description that this was an Android Emulation. I don't know of anything I could have done on
+Android Studio to get around this. If there is it surely is worth mentioning in the Wiki pages in BOLD.
+Anyone know if there is anything set up in ROS to avoid this problem in the Studio setup? Seems pretty silly for ROS
+to be limited to only machines behind the same firewall. Did I miss something in the tutorial? I was wondering if ROS_IP is provided with ROS_MASTER_URI for non Android Studion emulations to allow ROS to operate thru firewalls. I've picked up a few books on ROS and so far haven't read anyting about special proceedures to take for firewalls.
+I just looked on the web and find this:
+  http://wiki.ros.org/ROS/NetworkSetup
+
+          What about firewalls?
+                 If there is a firewall, or other obstruction, between a pair of machines 
+                 that you want to use with ROS, you need to create a virtual network
+                 to connect them. 
+
+                 We recommend openvpn.
+
+This seems like a rather awkward limitation. Like hooking up some language recognition software in a clowd like Amazon AWS to control robots runing ROS.
+-piet
+
+Originally posted by piet.delaney@gmail.com with karma: 56 on 2016-01-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2016-01-09:
+NAT-traversal (or punching) is indeed not something that is dealt with by the middleware (natively), but is considered a system configuration issue. Hence the recommendation to solve this using non-ROS tools. There are more middlewares requiring extra configuration to work across NAT or through fws.
+Comment by breandan on 2019-03-19:
+I also encountered this issue, and have been unable to resolve it. Yes - it works on a physical device, but is there any way to run the emulator headlessly for UI testing in the Android emulator with ROS on Docker? I would like to bypass or disable the QEMU firewall, but was unable to find any documentation about this.
+

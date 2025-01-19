@@ -1,0 +1,113 @@
+Q:
+
+How do I get cartesian pose from Fanuc robot rather than joint states?
+
+I'm currently using the fanuc_driver package with a real fanuc robot. The robot controller streams the current joint positions, which I can use to compute the current end-effector pose (forward kinematics). However, since this is a real robot with less than 100% calibration accuracy, the values don't perfectly match what I see on the teach pendant. I was wondering if there's a way to get the current cartesian pose of the robot from the controller. Is this already provided by the fanuc_driver package or can I make slight modifications to the package to achieve this? Thanks.
+
+Originally posted by demorise on ROS Answers with karma: 13 on 2020-06-15
+Post score: 0
+
+A:
+
+However, since this is a real robot [..], the values don't perfectly match what I see on the teach pendant.
+
+How are you calculating FK? Do you use TF?
+And could you quantify how much of a difference you see between rosrun tf2_tools echo.py base tool0 and what the TP tells you?
+
+I was wondering if there's a way to get the current cartesian pose of the robot from the controller. Is this already provided by the fanuc_driver
+
+No, there is currently no support for retrieving the Cartesian pose from the controller in fanuc_driver.
+This has been done before though, albeit not in the publicly available version.
+
+can I make slight modifications to the package to achieve this?
+
+"Slight modifications" would depend on your perspective :)
+At a high-level, you'd have to:
+
+add a new message type and data structure to simple_message (something like a Cartesian pose)
+update industrial_robot_client to make use of that new message and convert it to a TF broadcast of the base->tool0_controller transform (TF would most likely make the most sense)
+update the Karel code to:
+
+support that message type
+create and send that message periodically
+
+Definitely possible, but a bit of work.
+If you want to do this, I would recommend doing it for fanuc_driver_exp instead of regular fanuc_driver. The code is structured better which would probably make it easier to add additional messages.
+PS: I'm working on a ROS wrapper which will publish the state output broadcast by the R891 option. This would allow for very high update rates (up to several hundred Hz compared to the 125 Hz max of Karel) and would decouple this from fanuc_driver and fanuc_driver_exp. No ETA for that though.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-06-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by demorise on 2020-06-16:
+Thanks @gvdhoorn. It turns out echoing the transforms like you suggested was what I needed to realize there was an error with my URDF, which was what caused the errors. rosrun tf tf_echo base_link link_4 (tf2_tools failed to build on my machine) revealed the error. I corrected the URDF and now the errors are in the order of 0.001mm to 0.003mm. Thanks a lot.
+Comment by gvdhoorn on 2020-06-16:\
+
+there was an error with my URDF
+
+Which URDF are you using?
+
+tf2_tools failed to build on my machine
+
+could you not install the binaries?
+
+I corrected the URDF and now the errors are in the order of 0.001mm to 0.003mm
+
+so your question was actually an xy-problem? :p
+Comment by demorise on 2020-06-16:
+It's a custom URDF for R2000-210F robot (edited one of the URDFs in the fanuc package and replaced the CAD files).
+I tried installing with sudo apt install ros-kinetic-tf2-tools but the 'scripts' folder (which has echo.py) is missing after installation.
+It was an XY-problem. I'm really sorry about that. I'll be on the lookout for the ROS wrapper though since I'm looking into the possibility of querying the robot I/O states for another application.
+Comment by gvdhoorn on 2020-06-16:\
+
+It's a custom URDF for R2000-210F robot (edited one of the URDFs in the fanuc package and replaced the CAD files).
+
+would you be interested/willing to contribute that to ros-industrial/fanuc_experimental?
+
+I tried installing with sudo apt install ros-kinetic-tf2-tools but the 'scripts' folder (which has echo.py) is missing after installation.
+
+Ah, I missed you are on Kinetic still. In that case you could indeed use tf_echo from the tf package.
+
+It was an XY-problem. I'm really sorry about that.
+
+No problem.
+
+I'll be on the lookout for the ROS wrapper though since I'm looking into the possibility of querying the robot I/O states for another application.
+
+In the meantime perhaps gavanderhoorn/dominh could be interesting. Or if you have any fieldbus options on your controller, you could use those.
+Note that you will need R891 on your controller for the wrapper to work though. That's not a free option.
+Comment by demorise on 2020-06-16:
+Yes, I'm definitely willing to contribute the URDF. It makes use of CAD files from fanuc CRC though. I recall reading a post where you mentioned you were unable to get approval from fanuc to use those. Will that be an issue?
+I will definitely check out the RPC interface. Thanks. You've been super helpful.
+Comment by gvdhoorn on 2020-06-16:\
+
+Yes, I'm definitely willing to contribute the URDF. It makes use of CAD files from fanuc CRC though. I recall reading a post where you mentioned you were unable to get approval from fanuc to use those. Will that be an issue?
+
+You would submit the PR with the visual meshes replaced by the collision ones. So both directories would contain the collision meshes.
+Comment by demorise on 2020-06-16:
+Alright. I'm currently using the visual meshes as collision meshes, so I'll simplify them to collision standard and submit the support package.
+Comment by gvdhoorn on 2020-06-17:\
+
+I'm currently using the visual meshes as collision meshes,
+
+that would be something to fix, regardless of whether you contribute the package.
+
+so I'll simplify them to collision standard and submit the support package.
+
+that would be great.
+Comment by gvdhoorn on 2020-07-14:
+Ping @demorise?
+Comment by demorise on 2020-07-14:
+Hey @gvdhoorn
+Comment by gvdhoorn on 2020-07-14:
+The "ping" was about the support package/urdf you mentioned and your intention to contribute it.
+Comment by demorise on 2020-07-14:
+Simplifying the models turned out to be more work than I thought. I'm working on it in my spare time. I'm done with three of the links. I'll submit a PR once I'm done with the remaining links.
+Comment by gvdhoorn on 2020-07-14:
+We typically use Meshlab and create Convex Hulls. That should be sufficient.
+This should not take longer than 10 minutes.
+Comment by demorise on 2020-07-14:
+@gvdhoorn Thanks. I'm done with the simplification. I sent you a mail to clarify something I'm unsure about.
+(Thanks for pointing me to the 'Convex Hulls' feature. It made my life easy and will come in handy in the future)
+

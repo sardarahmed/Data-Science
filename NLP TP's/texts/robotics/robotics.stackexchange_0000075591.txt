@@ -1,0 +1,67 @@
+Q:
+
+can't make a map with gmapping
+
+hi guys,
+I am currently working on a Pioneer 3 with ROS. I would like to create a map with gmapping but I keep getting errors, maybe someone already did it and can help me ?
+I tried with and without .bag file but the result is the same, when I tape "rosrun map_server map_saver" I get an "[ INFO] [1470077431.447071488]: Waiting for the map ".
+here is what i do:
+$ roscore
+$ rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link laser 100
+$ rosrun rviz rviz
+$ rosrun gmapping slam_gmapping scan:=scan _xmin:=0 _ymin:=0 _xmax:=10 _ymax:=10 _delta:=0.04
+$ roslaunch joyCommand robot_joy.launch
+$ sudo chmod a+rw /dev/ttyS0
+$ rosrun rosaria RosAria _port:=/dev/ttyS0
+$ sudo chmod a+rw /dev/ttyS2
+$ sudo setserial /dev/ttyS2 irq 10
+$ rosrun sicktoolbox_wrapper sicklms _port:=/dev/ttyS2 _baud:=38400 _resolution:=0.5 _connect_delay:=40
+Then I walk the robot aound. I can see the laser on RVIZ but the status of the map is error and I get "No transform from [] to [laser]" which I don't understand.
+In gmapping I get the warning : "[ WARN] [1470065513.054899811]: MessageFilter [target=odom ]: Dropped 100.00% of messages so far. Please turn the [ros.gmapping.message_notifier] rosconsole logger to DEBUG for more information.
+If I launch the debug (rqt_logger_level) I get : [DEBUG] [1470154442.550934882]: MessageFilter [target=odom ]: Removed oldest message because buffer is full, count now 5 (frame_id=laser, stamp=1470154551.427095)
+[DEBUG] [1470154442.550989564]: MessageFilter [target=odom ]: Added message in frame laser at time 1470154551.963, count now 5
+Also "rostopic echo map" or rostopic echo map_metadata" never give anything.
+Finally my frames ( rosrun tf view_frames ) give me map -> odom -> base_link -> laser
+here is some screenshot
+
+If anyone can help me that would be great !
+Thank you for your time,
+Adèle
+
+Originally posted by Adèle on ROS Answers with karma: 40 on 2016-08-02
+Post score: 0
+
+A:
+
+It seems like you have a frame or a transform problem, and gmapping isn't able to interpret your laser data.
+I would check that the header frame_id on your laser scan messages is set to laser (it probably is), and then I would look more closely at the output from tf view_frames to see if there are any significant delays between the different transforms that would be preventing them from synchronizing.
+Another good test would be to set the Fixed Frame in rviz to odom, and try to visualize your laser data. You should be able to drive the robot around and see it moving in rivz, while the the detections in the laser data should stay reasonably still (if your odometry is working)
+I'm not sure where your rviz error is coming from; without seeing a screenshot of rviz or knowing which plugins you have enabled there are too many possibilities.
+It would be helpful for you to attach a screenshot of rviz and the output from tf view_frames. I'll bump your karma so that you can post images.
+UPDATE
+Yep, you have a time offset between your frames that is preventing them from synchronizing. TF keeps a history of past transform data so that it can transform data based on where the robot was at the time when the data was collected; this helps the robot perform better if sensor data is delayed.
+Unfortunately, your transform between base_link and odom frames is claims it is coming from about 109 seconds in the future, and that time offset is preventing TF from properly buffering that transform (the time buffer is only 5 seconds by default).
+If your RosAria node is running on different computer, you should make sure that the clock on that computer and the clock on your computer are synchronized. Most users do this with chrony. ( http://answers.ros.org/question/11570/ros-time-across-machines/ )
+Simply installing chrony or another NTP client) on both computers may be enough to get your system working, but for best results you should configure one computer as a server (I think chrony sets this by default), and configure the other machine to synchronize from that machine instead of synchronizing from the internet.
+
+Originally posted by ahendrix with karma: 47576 on 2016-08-02
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Adèle on 2016-08-02:
+Hi, thank you for answering,
+I put some screenshot and I think you are right because if I change the fixed frame to odom, I can't see anything on RVIZ.
+How can I fix this ?
+thanks,
+Adèle
+Comment by Adèle on 2016-08-02:
+If I put the fixed frame on odom, LaserScan get a status error and i get :
+Transform [sender=unknown_publisher]
+For frame [laser]: No transform to fixed frame [odom]. TF error: [Lookup would require extrapolation into the future. Requested time 1470157838.730087730 but the latest data is at time 147
+Comment by Adèle on 2016-08-02:
+0158075.948213777, when looking up transform from frame [laser] to frame [odom]]
+Is that mean that my tf doesnt work ?
+Comment by Adèle on 2016-08-02:
+THANK YOU ! I will try that :)
+

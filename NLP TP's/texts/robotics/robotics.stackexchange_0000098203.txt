@@ -1,0 +1,89 @@
+Q:
+
+Unable to subscribe to topics published by Husky
+
+I'm fairly confident this is a networking issue, but not sure exactly how to fix it. If I publish to a topic myself on the Husky, I can subscribe to it from a client. However, I can't subscribe to topics that the Husky creates during startup. For instance, when ssh'd into the Husky, I can use rostopic hz /imu/data and I see that the data is being published. However, if I do the same on the client, I don't get any information.
+On the client (~/.zshrc), I have set the following information:
+. /opt/ros/melodic/setup.zsh
+export ROS_IP=10.10.10.115
+export ROS_MASTER_URI=http://10.10.10.111:11311
+
+On the Husky (~/.bashrc) I have set the following:
+. /opt/ros/melodic/setup.bash
+export ROS_IP=10.10.10.111
+
+In the Husky's /etc/ros/setup.bash, I have the following:
+# Mark location of self so that robot_upstart knows where to find the setup file.
+export ROBOT_SETUP=/etc/ros/setup.bash
+
+# Setup robot upstart jobs to use the IP from the network bridge.
+# export ROBOT_NETWORK=br0
+
+# Insert extra platform-level environment variables here. The six hashes below are a marker
+# for scripts to insert to this file.
+######
+
+export LCM_DEFAULT_URL=udpm://239.255.76.67:7667?ttl=5
+export HUSKY_IMU_XYZ='0 -0.15 0.065'
+export HUSKY_IMU_RPY='3.1415 0 0'
+export HUSKY_LASER_ENABLE=1
+
+# Pass through to the main ROS workspace of the system.
+source /opt/ros/melodic/setup.bash
+
+# I added this in an attempt to make things work
+export ROS_IP=10.10.10.111
+
+source /home/administrator/startup_ws/devel/setup.bash
+export HUSKY_LOGITECH=1
+export HUSKY_JOY_DEVICE=/dev/input/js0
+export HUSKY_GAZEBO_DESCRIPTION=$(rospack find husky_gazebo)/urdf/description.gazebo.xacro
+
+Here are the values of various environment variables:
+eric@cpr-mic09:~$ echo $ROBOT_NETWORK
+
+eric@cpr-mic09:~$ echo $ROS_IP
+10.10.10.111
+eric@cpr-mic09:~$ echo $ROS_HOSTNAME
+
+I would really appreciate any advice. Thank you!
+
+Originally posted by EricW on ROS Answers with karma: 15 on 2021-02-03
+Post score: 0
+
+A:
+
+Like many people I struggle with this myself several times, so I eventually created a gist for setting things up correctly:
+https://gist.github.com/chfritz/8c2adab45a94e091be77c55b0432ad2e
+The key is to know under what name the ROS clients announce themselves to the ROS master, and making sure that all clients that want to talk to each other can resolve those names respectively.
+
+Originally posted by chfritz with karma: 553 on 2021-02-03
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by EricW on 2021-02-03:
+Thanks so much! I'll try this out and hopefully, it fixes the issue
+Comment by EricW on 2021-02-03:
+Thanks for the script! It definitely is a lot cleaner than what I was using, but it's still not working for me. I'm in the same situation I was in before. I can see the ROS topics that are being published, but I can't actually get any of the messages on the client (rostopic hz /imu/data says no messages are coming), while when ssh'd into the client, I do get messages. I think this is an issue with the Husky's setup.
+Comment by chfritz on 2021-02-03:
+Have you already tried the steps described in the Troubleshooting comment below the gist?
+Comment by EricW on 2021-02-03:
+Sorry, should have tried those and not assumed it was Husky specific. I think I'm falling into the second troubleshooting scenario you described (not able to see results of rostopic echo /rosout on the client). I ran rosnode list -a and I get http://cpr-mic09:37661/  for /rosout both while ssh'd into the Husky and while on the client. I'm not really sure how to find out what hostname the topics are actually being published on if those are matching up
+Comment by chfritz on 2021-02-03:
+can you resolve cpr-mic09 from the client, i.e., what happens when you ping that from the client?
+Comment by EricW on 2021-02-03:
+If I run ping cpr-mic09, I get cpr-mic09: Name or service not known, but if I do ping cpr-mic09.local, it works.
+Comment by EricW on 2021-02-03:
+We use a SSH configuration to connect to the robot (we call it val). Not sure if this could be affecting things:
+Host val
+  ForwardAgent yes
+  ForwardX11 yes
+  User eric
+  Hostname cpr-mic09.local
+
+Comment by chfritz on 2021-02-03:
+Well there is your problem. Like the Troubleshooting says, you have to be able to resolve all names listed by rosnode list -a. So either change the ROS_HOSTNAME used by the robot, or add cpr-mic09.local to /etc/hosts on the client.
+Comment by EricW on 2021-02-04:
+Thank you so much! I added 10.10.10.111 cpr-mic09 to /etc/hosts and now it works perfectly! Sorry I didn't get it from your troubleshooting instructions. I needed to lookup what /etc/hosts was actually doing before I realized what was happening
+

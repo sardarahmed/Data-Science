@@ -1,0 +1,129 @@
+Q:
+
+Delay problem with /cmd_vel Turtlebot3
+
+I am running ROS Kinetic, on a Turtlebot3 Burger with a Raspberry Pi3.
+The goal here is to remotely control the Turtlebot from another Raspberry Pi. The remote controller Pi sends movement information over a socket connection.
+I have delay problems when publishing into /cmd_vel (60 seconds delay) and again delay of 60 seconds from when the Twist message is echoed in the topic /cmd_vel to when the Turtlebot starts moving. I cannot locate why this 2 x 60 seconds delay occurs. I think that I might be pushing the raspberry pi too much.
+If I do the following steps:
+The Turtlebot3 is the ROS MASTER.
+
+From remote SSH into the Raspberry Pi --> roslaunch turtlebot3_bringup turtlebot3_robot.launch
+From remote SSH into the Raspberry Pi -- >roslaunch turtlebot3_teleop turtlebot3_teleop_key.launch
+
+Everything works fine no delays.
+When I do:
+The Turtlebot3 is the ROS MASTER.
+
+From remote SSH into the Raspberry Pi --> roslaunch turtlebot3_bringup turtlebot3_robot.launch
+From remote SSH into the Raspberry Pi -- >python post_office.py //python script posted below.
+From remote SSH into the Raspberry Pi -- >rostopic echo /cmd_vel
+
+The messages get into /cmd_vel with a 60 seconds delay.
+The Turtlebot3 starts moving after 120 seconds delay.
+When I do:
+The REMOTE PC is the ROS MASTER.
+
+roscore on remote pc
+From remote SSH into the Raspberry Pi --> roslaunch turtlebot3_bringup turtlebot3_robot.launch
+From remote SSH into the Raspberry Pi -- >python post_office.py //python script posted below.
+Remote pc -- >rostopic echo /cmd_vel
+
+The messages get into /cmd_vel with a 0 seconds delay.
+The Turtlebot3 starts moving after 35 seconds delay.
+env | grep ROS gives the following when Turtlebot3 is ROS MASTER:
+ROS_ETC_DIR=/opt/ros/kinetic/etc/ros
+ROS_ROOT=/opt/ros/kinetic/share/ros
+ROS_MASTER_URI=http://192.168.1.39:11311
+ROS_PACKAGE_PATH=/home/pi/catkin_ws/src:/opt/ros/kinetic/share
+ROSLISP_PACKAGE_DIRECTORIES=/home/pi/catkin_ws/devel/share/common-lisp
+ROS_HOSTNAME=192.168.1.39
+ROS_DISTRO=kinetic
+Here is the post_office.py running on the Turtlebot3.
+import socket
+import json
+import rospy
+from geometry_msgs.msg import Twist
+import thread
+import time
+
+HOST = ''
+PORT = 50007
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.bind((HOST, PORT))
+s.listen(1)
+conn, addr = s.accept()
+print ('Connected by', addr)
+
+twist = Twist()
+lin = 0.0
+ang = 0.0
+pub = rospy.Publisher('/cmd_vel', Twist, queue_size=5) #queqe size can be adjusted maybe
+
+def publish_cmd_vel():
+    while not rospy.is_shutdown(): #checking the rospy.is_shutdown() flag and then doing work. You have to check is_shutdown() to check if your program should exit (e.g. if there is a Ctrl-C or otherwise).
+        twist.linear.x = lin; twist.linear.y = 0; twist.linear.z = 0 #liniar has to be .x value to change
+        twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = ang #angular has to be .z value to change
+        try:
+            pub.publish(twist)
+        except:
+            print('unable to publish')
+
+def recv_from_controller():
+    while True:
+        global lin, ang
+        move_bytes = conn.recv(1024) #receive information as bytes
+        #print("Type received", type(move_bytes))
+        #move_info_string = move_bytes.decode()
+        #print("After decoding", type(move_info_string))
+        move_info = json.loads(move_bytes) #decode into a dictionary
+        lin = move_info['lin']
+        ang = move_info['ang']
+        print(type(lin), lin, type(ang), ang)
+        
+
+thread.start_new_thread( recv_from_controller, ())    
+
+rospy.init_node('post_office', anonymous = False)
+
+while True:     
+    publish_cmd_vel()
+
+Any ideas to why I get these delays?
+
+Originally posted by DanielRobotics on ROS Answers with karma: 42 on 2018-04-20
+Post score: 0
+
+A:
+
+Perhaps add a rospy.sleep(..) in your main while loop? At the moment it's probably publishing Twist msgs at about 10KHz (or some other high frequency).
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-04-20
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by DanielRobotics on 2018-04-20:
+I tried adding rospy.sleep(1) into the main while True. so sleeping for 1 seconds, but it has no effect on the delays.
+Comment by gvdhoorn on 2018-04-20:
+Which loop specifically did you add the sleep to? The one with pub.publish(twist) in it?
+Comment by DanielRobotics on 2018-04-20:
+I placed it in the last one after publish_cmd_vel) I will try to place it in the one with pub.publish(twist) in it.
+Comment by DanielRobotics on 2018-04-21:
+adding a rospy.sleep(0.1) to the one with pub.publish(twist) in it fixed the delay issue. Thanks!
+Comment by alexaminar on 2021-08-10:
+Python sleep() will pause for an hour, day or whatever if given the proper value. It does not allow other processes take place (in same script) however. A better way is to use an event which will create an event on timeout.
+Have a look at threading.Timer. It runs your function in a new thread without using sleep().
+from threading import Timer
+def hello():
+    print "hello, world"
+
+t = Timer(30.0, hello)
+t.start() # after 30 seconds, "hello, world" will be printed
+
+The second method to delay would be using the implicit wait method:
+driver.implicitly_wait(5)
+
+The third method is more useful when you have to wait until a particular action is completed or until an element is found:
+self.wait.until(EC.presence_of_element_located((By.ID, 'UserName'))
+

@@ -1,0 +1,187 @@
+Q:
+
+Creating a bag file out of a image sequence
+
+Let's say I have a series of images and want to create a bag file out of them to use as input for the camera calibration.
+Is it even necessary to create the bag for the calibration or is there another way to use the images?
+If not, can a bag file be created from an image sequence? I guess using some python-fu it should be possible. Would that be a good idea?
+UPDATE: Using the bag file for calibration seems not feasible as the standard calibration app insists on talking back to the camera. So to use that one will need to hack the script. The other possibility that might be working (testing atm) is a not documented script "tarfile_calibration.py" which can read a tar file containing the image sequence. Simply create a tar file with numbered images in format "left%d.png" and "right%d.png" and you're good to go:
+rosrun camera_calibration tarfile_calibration.py MyImages.tar --square 0.108 --size 8x6
+
+Originally posted by LiMuBei on ROS Answers with karma: 261 on 2011-10-13
+Post score: 3
+
+Original comments
+Comment by ujur on 2018-09-24:
+None of the above code worked
+Comment by gvdhoorn on 2018-09-24:
+@ujur: your post is not an answer, so I converted it to a comment.
+This is your second post that does not include any details whatsoever, so we cannot help you with it.
+Please refrain from posting content like this, as it doesn't help others, and we cannot help you.
+
+A:
+
+Ok, found this out myself. I haven't had the chance to test my bag files with the calibration yet, but they do play fine, so I'm assuming it should work. For anyone interested here's the script you can use to create a bag file from an image sequence (supports mono and stereo):
+import time, sys, os
+from ros import rosbag
+import roslib
+roslib.load_manifest('sensor_msgs')
+from sensor_msgs.msg import Image
+
+import ImageFile
+
+def GetFilesFromDir(dir):
+    '''Generates a list of files from the directory'''
+    print( "Searching directory %s" % dir )
+    all = []
+    left_files = []
+    right_files = []
+    if os.path.exists(dir):
+        for path, names, files in os.walk(dir):
+            for f in files:
+                if os.path.splitext(f)[1] in ['.bmp', '.png', '.jpg']:
+                    if 'left' in f or 'left' in path:
+                        left_files.append( os.path.join( path, f ) )
+                    elif 'right' in f or 'right' in path:
+                        right_files.append( os.path.join( path, f ) )
+                    all.append( os.path.join( path, f ) )
+    return all, left_files, right_files
+
+def CreateStereoBag(left_imgs, right_imgs, bagname):
+    '''Creates a bag file containing stereo image pairs'''
+    bag =rosbag.Bag(bagname, 'w')
+
+    try:
+        for i in range(len(left_imgs)):
+            print("Adding %s" % left_imgs[i])
+            fp_left = open( left_imgs[i], "r" )
+            p_left = ImageFile.Parser()
+        
+            while 1:
+                s = fp_left.read(1024)
+                if not s:
+                    break
+                p_left.feed(s)
+            
+            im_left = p_left.close()
+        
+            fp_right = open( right_imgs[i], "r" )
+            print("Adding %s" % right_imgs[i])
+            p_right = ImageFile.Parser()
+        
+            while 1:
+                s = fp_right.read(1024)
+                if not s:
+                    break
+                p_right.feed(s)
+            
+            im_right = p_right.close()
+        
+            Stamp = roslib.rostime.Time.from_sec(time.time())
+         
+            Img_left = Image()
+            Img_left.header.stamp = Stamp
+            Img_left.width = im_left.size[0]
+            Img_left.height = im_left.size[1]
+            Img_left.encoding = "rgb8"
+            Img_left.header.frame_id = "camera/left"
+            Img_left_data = [pix for pixdata in im_left.getdata() for pix in pixdata]
+            Img_left.data = Img_left_data
+            Img_right = Image()
+            Img_right.header.stamp = Stamp
+            Img_right.width = im_right.size[0]
+            Img_right.height = im_right.size[1]
+            Img_right.encoding = "rgb8"
+            Img_right.header.frame_id = "camera/right"
+            Img_right_data = [pix for pixdata in im_right.getdata() for pix in pixdata]
+            Img_right.data = Img_right_data
+        
+            bag.write('camera/left/image_raw', Img_left, Stamp)
+            bag.write('camera/right/image_raw', Img_right, Stamp)
+    finally:
+        bag.close()
+
+def CreateMonoBag(imgs):
+    '''Creates a bag file with camera images'''
+    bag =rosbag.Bag(bagname, 'w')
+
+    try:
+        for i in range(len(imgs)):
+            print("Adding %s" % imgs[i])
+            fp = open( imgs[i], "r" )
+            p = ImageFile.Parser()
+        
+            while 1:
+                s = fp.read(1024)
+                if not s:
+                    break
+                p.feed(s)
+            
+            im = p.close()
+        
+            Stamp = roslib.rostime.Time.from_sec(time.time())
+         
+            Img = Image()
+            Img.header.stamp = Stamp
+            Img.width = im_left.size[0]
+            Img.height = im_left.size[1]
+            Img.encoding = "rgb8"
+            Img.header.frame_id = "camera"
+            Img_data = [pix for pixdata in im.getdata() for pix in pixdata]
+            Img_.data = Img_data
+        
+            bag.write('camera/image_raw', Img, Stamp)
+    finally:
+        bag.close()       
+
+def CreateBag(args):
+    '''Creates the actual bag file by successively adding images'''
+    all_imgs, left_imgs, right_imgs = GetFilesFromDir(args[0])
+    if len(all_imgs) <= 0:
+        print("No images found in %s" % args[0])
+        exit()
+    
+    if len(left_imgs) > 0 and len(right_imgs) > 0:
+        # create bagfile with stereo camera image pairs
+        CreateStereoBag(left_imgs, right_imgs, args[1])
+    else:
+        # create bagfile with mono camera image stream
+        CreateMonoBag(all_imgs, args[1])        
+
+if __name__ == "__main__":
+    if len( sys.argv ) == 3:
+        CreateBag( sys.argv[1:])
+    else:
+        print( "Usage: img2bag imagedir bagfilename")
+
+ 
+
+Originally posted by LiMuBei with karma: 261 on 2011-10-16
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by fins on 2013-04-03:
+Hi, I have an error running this script:
+Img_data = [pix for pixdata in im.getdata() for pix in pixdata]
+TypeError: 'int' object is not iterable
+Any idea? Thx.
+Comment by Simon Leonard on 2014-03-09:
+Make sure your image is RGB and not mono.
+Comment by Thalaiva on 2015-07-15:
+So just to clarify, I know this code was written for the purpose of calibration, but can I take a series of images taken from a prior video stream, and patch them together again so the final .bag file is a video?
+Comment by jossy on 2016-01-09:
+I use this code with gray images via "python test.py imagesFolder test.bag" on ubuntu terminal.
+ line 106, in CreateMonoBag
+    Img_data = [pix for pixdata in im.getdata() for pix in pixdata]
+TypeError: 'int' object is not iterable
+
+Comment by jossy on 2016-01-09:
+Sorry, I am wrong. This code runs with rgb images. It works now!
+Comment by flaver on 2020-11-16:
+so how can i make a StereoBag using this script? Seems it automatically run the monoBag part
+Comment by quantum guy 123 on 2021-09-20:
+how do i add imu data to a rosbag?
+Comment by quantum guy 123 on 2021-09-20:
+what format does it need to be in?
+

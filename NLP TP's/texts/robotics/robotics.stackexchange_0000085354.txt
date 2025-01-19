@@ -1,0 +1,109 @@
+Q:
+
+How to create a map using raw point cloud data?
+
+Hi,
+I have a raw point cloud data stored in a rosbag file. How can I generate a map from this rosbag file?
+Also, that raw point cloud data has redundant information. How can I extract only the required information and create a map?
+Thanks in advance.
+
+Originally posted by pallyra1 on ROS Answers with karma: 51 on 2018-02-16
+Post score: 2
+
+A:
+
+I recommend using the octomap_server http://wiki.ros.org/octomap_server.   This will filter redundant points by binning them into a 3d occupancy grid.  You can watch the results in rViz as the map generates too which is handy for debugging.  I have been using it process sonar point clouds from an ROV with decent results.
+Octomap has a nice c++ api if you prefer to do things manually. https://github.com/OctoMap/octomap
+octmap_server
+
+Start the octomap_sever ros node
+play your rosbag file back http://wiki.ros.org/rosbag/Tutorials/Recording%20and%20playing%20back%20data
+open rViz to see whats going on.  Subscribe to the occupied_cells_vis_array topic.
+
+I included an example launch file to help you out,  you will probably need to remap your point cloud topic to cloud_in:
+<launch>
+    <node name="octomap" pkg="octomap_server" type="octomap_server_node">
+        <param name="frame_id" value="/odom"/>
+        <param name="resolution" value=".4"/>
+    </node>
+</launch>
+
+C++
+if you want to go the c++ route with rosbag or want to read in a .pcd file you probably want to do something like this.  You can then use octovis http://wiki.ros.org/octovis to open the octomap and view it.
+#include <octomap/octomap.h>
+#include <octomap/OcTree.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
+
+int main(int argc, char *argv[])
+{
+
+    ros::init(argc, argv, "pcl2octo");
+
+    octomap::OcTree tree (0.1);   // declare your octomap at 0.1 resolution
+
+    //\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\//\
+    // read in your data here either rosbag or pcl
+    // http://wiki.ros.org/rosbag/Code%20API#cpp_api
+    // http://pointclouds.org/documentation/tutorials/pcd_file_format.php
+    //\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
+
+    for(/* enter conditoins here */){  // crate a loop for each sensor measurement taken
+
+        pcl::PointCloud<pcl::PointXYZ> pt; // populate this with the point cloud from one sensor ping
+        octomap::point3d sensorOrigin(x,y,z); // where x,y,z are the location of the sensor for that measurement
+
+        for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = pt.begin(); it != pt.end(); ++it){
+          cloud.push_back(it->x, it->y, it->z);
+        }
+
+        tree.insertPointCloud(cloud,sensorOrigin);
+    }
+    tree.writeBinary("simple_tree.bt");
+
+    return 0;
+
+}
+
+I hope that helps.
+
+Originally posted by kkrasnosky with karma: 78 on 2018-02-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pallyra1 on 2018-02-19:
+Hey,
+Thank you for the recommendation.
+I tried to use octomap. Can you explain this line a bit, binning them into a 3d occupancy grid?
+Furthermore, I have data in .pcd format. How to change the format?
+And also, how to visualise octree using rviz?
+Comment by kkrasnosky on 2018-02-19:
+When I say "binning" I mean octomap divides the world into a 3D grid of voxels.   It then determines the likelihood that a voxel based on your point cloud.  I thought you had your data in a rosbag file?   Could you describe your sensor and data setup in a little more detail?
+Comment by pallyra1 on 2018-02-20:
+I am very new to ros.
+we are trying to make autonomous vehicle. We have collected data (point cloud) using a camera. My main aim is to make a map out of it.
+When i use the command rosrun octomap_server octomap_server_node..
+I get this error..
+Comment by pallyra1 on 2018-02-20:
+Publishing latched (single publish will take longer, all topics are prepared)
+Nothing to publish, octree is empty
+And how to remap the data using that launch file?
+I am very new to the concepts.. I have to ask these questions
+Comment by pallyra1 on 2018-02-20:
+The rosbag file has /points_raw topic.. How to use the launch file to remap to cloud_in?
+Comment by kkrasnosky on 2018-02-26:
+You are getting that error because the octomap didn't receive any points yet.  You can remap using:
+<remap from="points_raw" to="cloud_in" />
+
+if you are still having trouble you can see where messages are going by running:
+rosrun rqt_graph rqt_graph
+
+Comment by Mennaa on 2020-12-19:
+Hey,
+Hope you have managed to solve your problem now. If you don't mind can you share the solution of your problem with me? cause I have the same problem and my team and I wanna extract an occupancy grid map from a camera having pointcloud2 message being published.
+@kkrasnosky @pallyra1
+Thank you.
+

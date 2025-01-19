@@ -1,0 +1,36 @@
+Q:
+
+How can I automatically adjust PID parameters on the fly?
+
+I have a simple servo system that uses a PID controller implemented in an MCU to perform the feedback. However, the properties of the system change dynamically, and so the PID parameters can never be tuned for all circumstances.
+My robot is a light weight arm with back-drivable electric motors, similar to this one:
+
+The arm performs several tasks, including picking up heavy weights, pushing and pulling objects across the desk. Each of these tasks requires different PID tuning parameters which I cannot easily predict.
+What I would really like is for some higher level function which can carefully adjust the parameters in response to the arm's behaviour. For example, if it notices that the arm is oscillating, it might reduce P and increase D. Or if it noticed that the arm wasn't reaching its target, it might increase I.
+Do such algorithms exist? I would be happy even if the algorithm didn't perfect the parameters immediately. E.G. the arm could oscillate a few times before the parameters were adjusted to their new values. 
+
+A:
+
+A co-worker and I once implemented a simplex algorithm for on-the-fly tuning of the PID parameters of a current control loop for a motor. Essentially the algorithm would modify one parameter at a time and then collect data on some feedback parameter that was our measure of goodness. Ours was percent deviation from a current target setpoint. Based on whether the feedback parameter got better or worse, the next parameter was modified accordingly.
+Or, in Wikipedia speak:
+
+Let a linear program be given by a canonical tableau. The simplex
+  algorithm proceeds by performing successive pivot operations which
+  each give an improved basic feasible solution; the choice of pivot
+  element at each step is largely determined by the requirement that
+  this pivot does improve the solution.
+
+Technically we used the Nelder-Mead method which is a type of simplex. It could also be described as a hill climbing algorithm as well if you watch how it modifies it's input parameters as it searches for an optimum output parameter.
+
+Nedler-Mead worked best in our case because it can chase a setpoint. This was important because our current target setpoint changed as torque demand increased.
+
+the Nelder–Mead technique is a heuristic search method that can
+  converge to non-stationary points
+
+A:
+
+A good approach for such a problem is called adaptive control. In short it is a control methodology that presumes the model is known but the parameters of the model (mass, inertia, etc.) are not. It's job is to estimate the unknown parameters. A brief introduction can be found on wikipedia. The text Robotics: Modelling, Planning and Control by Siciliano et al. cover the topic more thoroughly.
+Edit in response to @Rocketmagnets query:
+In short you must have a mathematical model of your system, i.e. the equations that describe how your system evolves over time when forced or otherwise, but you do not need to know dynamical parameters such as the mass of the various components, their inertia, etc.. It is the job of the adaptive controller to estimate these parameters. You do have to give it an initial guess for each of the unknown parameters however. Then as the system runs it uses the control signals, the output signals, and a method like linear regression or gradient descent to update the unknown parameter values. Over time the parameters will converge to values that will result in a steady-state though they may not match the real parameters, i.e. it may get the mass wrong, but the value will still work.
+From here I would advise referring to a text that discusses the method. I just noticed for example that Dr. Marc Bodson is offering a copy of his text Adaptive Control: Stability, Robustness, and Convergence in PDF form on his website.
+

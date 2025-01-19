@@ -1,0 +1,100 @@
+Q:
+
+problems running nav2d tutorials - ROS Hydro
+
+Hi,
+I have recently installed the nav2d package for ROS - Hydro on ubuntu 12.04 64 bit.
+I installed the packages using the sudo apt-get install ros-hydro-nav2d.
+when running the launch file :
+$ roslaunch nav2d_tutorial tutorial1.launch
+
+I am getting the following errors:
+core service [/rosout] found
+process[Stage-1]: started with pid [15084]
+ERROR: cannot launch node of type [nav2d_operator/operator]: can't locate node [operator] in package [nav2d_operator]
+process[Joystick-3]: started with pid [15108]
+ERROR: cannot launch node of type [nav2d_remote/remote_joy]: can't locate node [remote_joy] in package [nav2d_remote]
+
+The stage simulator comes up nicely but on the rviz I can only see the robot and laser scans and no cost maps. When using joystick the robot does not move. Can someone help me with this issue?
+Thanks a lot.
+Alex
+Edit 2:
+From @Sebastian's suggestion, I checked the rqt_graph and rosnode info, it seems that my hokuyo was giving scan topic while the topic needed in base_scan. So I removed the lines <remap from="scan" to="base_scan"/> from the launch file. But no success. check the screenshot
+But when i change the topic of map from map to costmap topic I was able to get the costmapScreenshot.
+I checked my tf frames. And the laser is connected to the base_laser link so I made few changes to the ros.yaml file.
+   ###########################################################
+# Defines topics services and frames for all modules
+
+### TF frames #############################################
+laser_frame: base_laser
+robot_frame: base_link
+odometry_frame: odom
+offset_frame: offset
+map_frame: map
+
+### ROS topics ############################################
+map_topic: map
+laser_topic: scan
+
+### ROS services ##########################################
+map_service: static_map
+
+updated rqt graph
+I changed the laser_frame to base_laser from base_laser_link and for the time things worked. I was able to see the map. But could not control the robot using my usb joystick. I used the normal joytick. launch to move the robot and the map gets updated for few seconds and the robot does not move. Little_success.
+So things seem to get working but I am doing something wrong with the joy node or with the tf frame. Since my cmd_vel topic is mapped to /RosAria/cmd_vel. Should I be changing that and where exactly.
+Can you please check the tf frames and the rqt graphs I attached and find the problem.
+
+Originally posted by AlexR on ROS Answers with karma: 654 on 2015-01-26
+Post score: 1
+
+Original comments
+Comment by BennyRe on 2015-01-26:
+Does roscd nav2d_operator work?
+Comment by Sebastian Kasperski on 2015-01-26:
+And if it works, where does it point to?
+Comment by AlexR on 2015-01-27:
+ok, I solved the problem.. Some dependencies were not installed by apt-get install, don't know why but I sourced the package into the catkin folder and everything works fine now.
+One question @Sebastian, how do i take control of the robot's motion by joystick and not let it explore autonomously?
+Comment by AlexR on 2015-01-27:
+The robot seems to not explore narrow doors and I want to first move the robot using joystick teleop and then use the built map to explore using amcl. Can you tell me how to do that ?
+Thanks
+
+A:
+
+If you run tutorial1, you should already be able to control your robot via joystick. You can always have autonomous navigation and joystick control running in parallel. Just make sure you stop any navigation action (MoveTo, Explore), before you try to send commands with the joystick. If you don't, the autonomous commands and joystick commands will interfere with each other.
+If you want to build a map, you have to add a mapper to your setup. You can then load the map with the map_server module and use amcl for localization.
+
+Originally posted by Sebastian Kasperski with karma: 1658 on 2015-01-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by AlexR on 2015-01-27:
+Hi thanks for your answer. When I do try to control the robot using joystick the exploration would overtake the control. What if I remove the joy_node and make another node using the keyboard teleop. Will it affect the working.
+Comment by Sebastian Kasperski on 2015-01-27:
+Yes, that is why you have to stop exploration before you can control the robot. (Button 2 on the joystick will stop all actions) Currently there is no working keyboard control for the nav2d-nodes.
+Comment by AlexR on 2015-01-27:
+ok great! will this stack work on a p3dx. It would be great if I can run the graph slam on the p3dx using a horizontal hokuyo attached to it. What changes do I need to make to run on p3dx. Presently, we use the RosAria package to control the p3dx with hector_slam and gmapping using hokuyo laser.
+Comment by Sebastian Kasperski on 2015-01-27:
+We used it on a P3AT, but it should definitely work with a P3DX the same way. If you follow tutoral3, you should have everything you need for mapping and navigation running on your robot. (Of course replace Stage-Simulator with your RosAria and Hokuyo node)
+Comment by AlexR on 2015-01-28:
+Thanks for your reply. I tried to setup the p3dx, but the map is not being generated. I can see the laser scans. Also, the joy_node is not responding to joystick buttons. I have uploaded the my launch file and rviz screenshot for some hint. Can you please check and suggest me what I am doing wrong.
+Comment by AlexR on 2015-01-28:
+dropbox link
+Comment by Sebastian Kasperski on 2015-01-28:
+Please check if your laser-scanner is connected to the Operator and the Mapper. If yes, check the height of the scanner above ground. You may have to adapt the last line in costmap.yaml.
+Comment by AlexR on 2015-01-28:
+Can you explain how to check connection for sensor to Operator and Mapper. The laser is mounted 40 cm above the ground. Is the max_obstacle_height = 0.4 correspond to the laser height?
+Comment by Sebastian Kasperski on 2015-01-29:
+You can use "rqt_graph" or "rosnode info" to check connections.The laser should be between min_obstacle_height and max_obstacle_height. You can use RVIZ to check where the laser points are visualized.
+Comment by AlexR on 2015-01-29:
+Hi @Sebastian I updated my original question with more details. I am very close to get it working but I am doing something wrong. Please check the details with attachments. Can you check my tf frame and changes I made so far. Thanks
+Comment by Sebastian Kasperski on 2015-01-29:
+Looking at your rqt_graph, you see that there is no connection between Operator and RosAria. That's why your robot won't move. So check the name of RosAria's input topic and remap the Operator's output (cmd_vel) accordingly.
+Comment by AlexR on 2015-01-31:
+@Sebastian Kasperski How do I do that ? Can you explain?? I cant figure out.
+Comment by Sebastian Kasperski on 2015-02-02:
+You can either use "rosnode info /NodeName" or display all topics in rqt_graph to check which topics are available for each node. You should have also read the basic ROS tutorials at: http://wiki.ros.org/ROS/Tutorials
+Comment by AlexR on 2015-02-06:
+@Sebastian Kasperski I tried a lot but could not get it to work.
+

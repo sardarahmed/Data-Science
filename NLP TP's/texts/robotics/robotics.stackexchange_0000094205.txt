@@ -1,0 +1,96 @@
+Q:
+
+stl model disappears if scale parameter is set in urdf file
+
+os: ubuntu 18.04.3
+kernel: 4.15-72
+rosdistro: ros melodic
+Hi, this is a part of my urdf file that works correctly (except the component uses mm as scale so it is zoomed):
+<link name="base_link">
+  <visual>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+      <mesh filename="package://nightmare_description/meshes/base_link.stl"/>
+    </geometry>
+    <material name="silver">
+      <color rgba="1 0 0 1"/>
+    </material>
+  </visual>
+  <collision>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+      <mesh filename="package://nightmare_description/meshes/base_link.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+now if I add the scale parameter to this link it completely disappears from rviz although I can see all the axes move correctly:
+<link name="base_link">
+  <visual>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+      <mesh scale="0.001 0.001 0.001" filename="package://nightmare_description/meshes/base_link.stl"/>
+    </geometry>
+    <material name="silver">
+      <color rgba="1 0 0 1"/>
+    </material>
+  </visual>
+  <collision>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+      <mesh scale="0.001 0.001 0.001" filename="package://nightmare_description/meshes/base_link.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+what am I doing wrong? has it something to do with the stl files used?
+
+Originally posted by nikisalli on ROS Answers with karma: 15 on 2019-12-22
+Post score: 0
+
+A:
+
+Can you tell us what the value is of LC_NUMERIC? You can print it using echo $LC_NUMERIC in a terminal.
+There is a good chance you're running into an issue with urdf and locales which use , for decimals instead of . (ie: comma vs dot).
+
+See #q272692 for a related Q&A.
+
+the output gives LC_NUMERIC=it_IT.UTF-8. Should I set the english standard?
+
+As a test, you could see whether the following "solves" your problem:
+
+open a new terminal
+export LC_NUMERIC="en_US.UTF-8"
+now source your workspace and try starting RViz again
+
+If your robot -- with the scaling in place -- now does appear, it's most likely ros/urdfdom_headers#41.
+If it is 41, then it should have been fixed recently. According to this comment on the bug report, enabling the bionic-updates repository and updating urdfdom and urdfdom-headers should really fix things (ie: you should not need to use the LC_NUMERIC="en_US.UTF-8" work-around).
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-12-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by nikisalli on 2019-12-22:
+the output gives LC_NUMERIC=it_IT.UTF-8
+should I set the english standard?
+Comment by nikisalli on 2019-12-22:
+i changed the locale but still the model isn't showing up
+Comment by gvdhoorn on 2019-12-22:
+What did you do exactly? Another test could be to use , for the scale, instead of ..
+Comment by nikisalli on 2019-12-22:
+sudo update-locale LC_ALL=en_US.UTF-8
+Comment by nikisalli on 2019-12-22:
+anyways the whole urdf uses the dot notation and it works as long as I don't set the scaling parameter so the issue should be somewhere else
+Comment by nikisalli on 2019-12-23:
+ok problem solved, you were right! the numeric locale was correctly set to english on the robot but it was set to italian on the host where i was trying to run rviz! after changing my pc's numeric locale to en_US it works flawlessly. thank you!
+Comment by gvdhoorn on 2019-12-23:
+Ok, so as I wrote in my answer, this should have been fixed in Ubuntu itself. Can you check which repositories you have active on the host where you were running RViz? Is the updates repository enabled?
+You shouldn't need to set all locales to en_US.UTF-8 any more.
+Comment by nikisalli on 2019-12-23:
+I'm running arch linux on the host
+Comment by gvdhoorn on 2019-12-23:
+Then you'll have to make sure you're either building a sufficiently new version of those two dependencies, or make sure whatever package repository you are using has the updated versions available.
+Comment by nikisalli on 2019-12-23:
+I updated ros yesterday so probably they haven't fixed the package yet. btw my pc isn't the final pc I'm going to use, I'll use another pc running ubuntu as a controller and map visualizer for the robot so I'll fix this directly on the other pc. thank you for pointing this out!
+

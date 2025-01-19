@@ -1,0 +1,94 @@
+Q:
+
+(Citadel ign gazebo+Foxy) How to control a single joint using diff driver?
+
+I was learning how to use Foxy with Citadel. I noticed that this generates 4 topics in the launch
+ # Bridge
+bridge = Node(
+    package='ros_ign_bridge',
+    executable='parameter_bridge',
+    arguments=['/model/vehicle_blue/cmd_vel@geometry_msgs/msg/Twist@ignition.msgs.Twist',
+               '/model/vehicle_blue/odometry@nav_msgs/msg/Odometry@ignition.msgs.Odometry',
+               '/model/vehicle_green/cmd_vel@geometry_msgs/msg/Twist@ignition.msgs.Twist',
+               '/model/vehicle_green/odometry@nav_msgs/msg/Odometry@ignition.msgs.Odometry'],
+    output='screen'
+)
+
+But then I decided to add double diff drivers like this in the robot model:
+  <plugin
+    filename="ignition-gazebo-diff-drive-system"
+    name="ignition::gazebo::systems::DiffDrive">
+    <left_joint>rear_left_wheel_joint</left_joint>
+    <right_joint>rear_right_wheel_joint</right_joint>
+    <wheel_separation>1.25</wheel_separation>
+    <wheel_radius>0.3</wheel_radius>
+  </plugin>
+
+   <plugin
+    filename="ignition-gazebo-diff-drive-system"
+    name="ignition::gazebo::systems::DiffDrive">
+    <left_joint>front_left_wheel_joint</left_joint>
+    <right_joint>front_right_wheel_joint</right_joint>
+    <wheel_separation>1.25</wheel_separation>
+    <wheel_radius>0.3</wheel_radius>
+  </plugin>
+
+I don't see any specific joint. Let's say, I want to control the front right wheel only. How do I do that?
+I wrote the simple code and it kinda focus on forward, left, right and backward. I can't find a way to control one joint only. Here is the code I wrote:
+#!/usr/bin/env python3
+
+import sys
+import time
+
+import geometry_msgs.msg
+import rclpy
+
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import termios
+    import tty
+
+rclpy.init()
+node = rclpy.create_node('teleop_twist_keyboard')
+pub = node.create_publisher(geometry_msgs.msg.Twist, '/model/vehicle_green/cmd_vel', 10)
+
+def backward():
+    twist = geometry_msgs.msg.Twist()
+    twist.linear.x = 2.0  # positive goes backward, negative goes forward
+    twist.angular.z = 0.0
+    print("Backward.")
+    pub.publish(twist)
+    time.sleep(0.5)
+    twist.linear.x = 0.0
+    twist.angular.z = 0.0
+    pub.publish(twist)
+
+if __name__ == '__main__':
+    backward()
+
+I tried to change from geometry_msgs.msg.Twist, '/model/vehicle_green/cmd_vel' to `geometry_msgs.msg.Twist, '/model/vehicle_green/front_left_wheel_joint/cmd_vel' and it didn't work. Do you have any suggestion?
+
+Originally posted by kak13 on ROS Answers with karma: 113 on 2021-09-01
+Post score: 0
+
+A:
+
+A differential drive vehicle by definition is controlled by sending different velocities to each of their 2 driving wheels. So I don't think you want a diff drive controller to be driving a single joint.
+Try the JointController plugin instead.
+
+Originally posted by chapulina with karma: 366 on 2021-09-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by kak13 on 2021-09-27:
+Thank you very much for your time! I truly appreciate you answered my post second time now!
+Comment by kak13 on 2021-09-27:
+Question, what is the bridge for this jointcontroller?
+Like,
+'/head@sensor_msgs/msg/JointState@ignition.msgs.JointCmd',
+For example in the launch file
+Comment by kak13 on 2021-09-27:
+Disregard this, I found the answer
+

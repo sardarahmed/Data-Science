@@ -1,0 +1,201 @@
+Q:
+
+Teb Local Planner : Increasing x linear velocity
+
+Hi,
+I'm currently using the teb local planner for a tricycle robot and it gives good results but I would like to i Increasing the max_vel_x parameter doesn't seem to change the speed and I am having a hard time with it with all the optimization parameters. Increasing the maximum x linear velocity doesn't change anything and cmd_vel remains around 0.25/0.3 m/s maximum.
+I looked a bit at the the teb questions and it seems for example, that putting weight_acc_lim* to 0.0 or changing the footprint model would reduce computation time . When setting weight_acc_lim* to 0.0, the robot is not able to move anymore and the error " trajectory not feasible" appears on every goal I am trying to send.
+Here is my current configuration for teb local planner :
+TebLocalPlannerROS:
+odom_topic: odom
+map_frame: /odom
+# Trajectory
+teb_autosize: True
+dt_ref: 0.3
+dt_hysteresis: 0.1
+global_plan_overwrite_orientation: True
+allow_init_with_backwards_motion: False
+max_global_plan_lookahead_dist: 1.5
+feasibility_check_no_poses: 5
+# Robot
+max_vel_x: 0.8
+max_vel_x_backwards: 0.2
+max_vel_y: 0.0
+max_vel_theta: 0.4
+acc_lim_x: 0.15
+acc_lim_y: 0.0
+acc_lim_theta: 0.05
+# Carlike robot parameters
+min_turning_radius: 0.15      # Min turning radius of the carlike robot (compute value using a model or adjust with rqt_reconfigure manually)
+wheelbase: 0.864                 # Wheelbase of our robot
+cmd_angle_instead_rotvel: True # stage simulator takes the angle instead of the rotvel as input (twist message)
+footprint_model: # types: "point", "circular", "two_circles", "line", "polygon"
+type: "polygon"
+
+radius: 0.2 # for type "circular"
+
+line_start: [0.0, 0.0] # for type "line"
+
+line_end: [0.4, 0.0] # for type "line"
+
+front_offset: 0.2 # for type "two_circles"
+
+front_radius: 0.2 # for type "two_circles"
+
+rear_offset: 0.2 # for type "two_circles"
+
+rear_radius: 0.2 # for type "two_circles"
+
+vertices: [[1.1,0.4],[-0.3,0.4],[-0.3,-0.4],[1.1,-0.4]]
+
+# GoalTolerance
+xy_goal_tolerance: 0.2
+yaw_goal_tolerance: 0.2
+free_goal_vel: False
+# Obstacles
+min_obstacle_dist: 0.5
+include_costmap_obstacles: True
+costmap_obstacles_behind_robot_dist: 1
+obstacle_poses_affected: 30
+costmap_converter_plugin: ""
+costmap_converter_spin_thread: True
+costmap_converter_rate: 5
+# Optimization
+no_inner_iterations: 5
+no_outer_iterations: 4
+optimization_activate: True
+optimization_verbose: False
+penalty_epsilon: 0.05
+weight_max_vel_x: 590
+weight_max_vel_theta: 120
+weight_acc_lim_x: 370
+weight_acc_lim_theta: 200
+weight_kinematics_nh: 10000
+weight_kinematics_forward_drive: 1000
+weight_kinematics_turning_radius: 300
+weight_optimaltime: 860
+weight_obstacle: 50
+weight_dynamic_obstacle: 10 # not in use yet
+# Homotopy Class Planner
+enable_homotopy_class_planning: True
+enable_multithreading: True
+simple_exploration: False
+max_number_classes: 4
+selection_cost_hysteresis: 1.0
+selection_obst_cost_scale: 1.0
+selection_alternative_time_cost: False
+roadmap_graph_no_samples: 15
+roadmap_graph_area_width: 5
+h_signature_prescaler: 0.5
+h_signature_threshold: 0.1
+obstacle_keypoint_offset: 0.1
+obstacle_heading_threshold: 0.45
+visualize_hc_graph: False
+I tried lots of combinations with rqt_recofnigure and this one gives good results except that i seems to block the linear velocity to small values. I would like to rpevent the robot from going backwards and avoid obstacles coming on its way. Is there any parameters changes that could help keep this characteristics while increasing the velocity of the robot.
+Thanks !
+
+Originally posted by TeddyBear on ROS Answers with karma: 21 on 2017-10-20
+Post score: 2
+
+A:
+
+acc_lim_x: 0.15
+acc_lim_theta: 0.05
+
+I think your acceleration limits, especially the theta acceleration, are too low. I have found that if i set the theta acceleration limit very low, TEB will try to reverse more often than just rotate in place. This makes sense intuitively because the system will have to spend more time rotating then reversing. Also try upping your max_vel_theta limit.
+By allowing the robot to rotate more freely you should find that it will stop trying to back up as much. You should also be able to relax the weight_kinematics_forward_drive to allow for reverse movements that are sometimes necessary.
+Also, you have a whole bunch of footprint types listed. You should only have two lines, the footprint_model type and its corresponding option. For example if you want to use a polygon, have:
+footprint:
+    type: "polygon"
+    vertices: [[1.1,0.4],[-0.3,0.4],[-0.3,-0.4],[1.1,-0.4]]
+
+Here is my base_local_planner_params.yaml file for TEB configuration for a 3 wheeled differential robot that works ok:
+TebLocalPlannerROS:
+odom_topic: odom
+map_frame: /odom
+   
+# Trajectory
+ 
+teb_autosize: True
+dt_ref: 0.4
+dt_hysteresis: 0.1
+global_plan_overwrite_orientation: True
+# This is so we stick to the global plan and don't make s's 
+max_global_plan_lookahead_dist: 2.0
+feasibility_check_no_poses: 5
+# not sure what this does
+global_plan_viapoint_sep: .5
+   
+# Robot
+        
+max_vel_x: 0.35
+max_vel_x_backwards: 0.2
+max_vel_theta: 0.7
+acc_lim_x: 0.5
+# If this is low, we overshoot on a rotate
+acc_lim_theta: 0.5
+min_turning_radius: 0.0
+footprint_model: 
+   type: "polygon"
+   vertices: [
+       [ 0.45, 0.375],
+       [ -0.45, 0.375],
+       [ -0.45, -0.375],
+       [ 0.45, -0.375],
+   ]
+
+# GoalTolerance
+   
+xy_goal_tolerance: 0.3
+yaw_goal_tolerance: 0.2
+free_goal_vel: False
+   
+# Obstacles
+   
+min_obstacle_dist: 0.01
+inflation_dist: 0.2
+include_costmap_obstacles: True
+costmap_obstacles_behind_robot_dist: 1.0
+obstacle_poses_affected: 30
+costmap_converter_plugin: ""
+costmap_converter_spin_thread: True
+costmap_converter_rate: 5
+
+# Optimization
+   
+no_inner_iterations: 5
+no_outer_iterations: 4
+optimization_activate: True
+optimization_verbose: False
+penalty_epsilon: 0.04
+weight_max_vel_x: 2
+weight_max_vel_theta: 1
+weight_acc_lim_x: 1
+weight_acc_lim_theta: 1
+weight_kinematics_nh: 1000
+weight_kinematics_forward_drive: 150
+weight_kinematics_turning_radius: 1
+weight_optimaltime: 1
+weight_obstacle: 50
+weight_dynamic_obstacle: 10 
+selection_alternative_time_cost: False
+weight_viapoint: 100
+
+# Homotopy Class Planner
+
+enable_homotopy_class_planning: True
+enable_multithreading: True
+simple_exploration: False
+max_number_classes: 4
+roadmap_graph_no_samples: 15
+roadmap_graph_area_width: 5
+h_signature_prescaler: 0.5
+h_signature_threshold: 0.1
+obstacle_keypoint_offset: 0.1
+obstacle_heading_threshold: 0.45
+visualize_hc_graph: False
+
+Originally posted by psammut with karma: 258 on 2017-10-20
+This answer was ACCEPTED on the original site
+Post score: 4
+

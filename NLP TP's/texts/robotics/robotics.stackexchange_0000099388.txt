@@ -1,0 +1,147 @@
+Q:
+
+create a service with multiple responses
+
+Hi I would like to write a service in python as described in the .srv file.
+I read the tutorial but I don't understand how to get multiple response in one service.
+# Input image which is used if shape based matching is selected as matching method
+sensor_msgs/Image image
+# Input point cloud which is used if surface base matching is selected
+sensor_msgs/PointCloud2 pointCloud
+---
+# Header for the poses containing time stamp of input image, transform frame, etc.
+std_msgs/Header header
+# Number of found poses
+int64 numPoses
+# Found poses
+geometry_msgs/Pose[] poses
+# Scores of the found poses
+float32[] scores
+
+I would be very happy about help
+
+Originally posted by Verismoto on ROS Answers with karma: 15 on 2021-06-27
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2021-06-28:\
+
+I read the tutorial but I don't understand how to get multiple response in one service.
+
+it would help if you could clarify what specifically you don't understand.
+Comment by Verismoto on 2021-06-28:
+I think I can explain my problem better using the tutorial example. I would like to adapt the .srv there.
+int64 a
+int64 b
+---
+int64 sum
+int64 multi
+
+multi should just be the product a * b
+but I do not get the value transferred. How would you have to adapt the code from the example to send two values?
+
+A:
+
+I read the tutorial [..]
+
+You don't mention which tutorial you read. I guess it's Writing a Simple Service and Client (Python).
+
+I think I can explain my problem better using the tutorial example. I would like to adapt the .srv there.
+int64 a
+
+int64 b
+---
+int64 sum
+int64 multi
+
+multi should just be the product a * b
+but I do not get the value transferred. How would you have to adapt the code from the example to send two values?
+
+In ROS 1, .srvs are the input to a code-generation process which results in (in this case) a Python package with several modules. The modules contain classes which represent the various parts of either messages, services or actions.
+For a service definition, the top part (above the ---) gets used to generate the request, while the bottom part (below the ---) generates the response. See Service definitions, request messages, and response messages for a more detailed description.
+Service server handlers (ie: the callback you register when instantiating a rospy.Service) get passed the incoming request as the first argument to the function you registered. That function is expected to return an instance of the response, and that return value will then be passed back to the client.
+The tutorial you mention shows how this is done:
+
+def handle_add_two_ints(req):
+
+    ...
+    return AddTwoIntsResponse(...)
+
+req is an instance of AddTwoIntsRequest and the response is an instance of AddTwoIntsResponse.
+
+I don't understand how to get multiple response in one service.
+
+Where I believe the confusion comes from is the particular style used in the tutorial:
+
+return AddTwoIntsResponse(req.a + req.b)
+
+this shows Python's positional arguments used to pass the result of the addition (of the service request fields a and b) to the constructor of the AddTwoIntsResponse instance. This makes it look like only a single return value is possible, but that's not the case: the AddTwoIntsResponse constructor just takes a single argument, as the service definition (as defined in the .srv file), only has a single field in the response part (ie: sum). But that's just how that service is defined.
+A different style (ie: keyword arguments) would perhaps have already provided a hint on how to deal with multiple fields in the response part. The following is equivalent to what the tutorial shows:
+return AddTwoIntsResponse(sum=(req.a + req.b))
+
+this explicitly refers to the service field sum.
+In the same way you can provide values for any of the other fields which may be part of a service response. Just specify their name and provide a value.
+Another alternative would have been:
+resp = AddTwoIntsResponse()
+resp.sum = req.a + req.b
+return resp
+
+This results in the exact same AddTwoIntsResponse instance being returned to the client.
+How to populate other fields in a service response should be clear now. To use your example (with multi a second field in the response object):
+return AddTwoIntsResponse(sum=(req.a + req.b), multi=(req.a * req.b))
+
+or:
+resp = AddTwoIntsResponse()
+resp.sum = req.a + req.b
+resp.multi = req.a * req.b
+return resp
+
+Note: you cannot use AddTwoIntsResponse(req.a + req.b, req.a * req.b) as that's explicitly not supported (only services with single-argument responses can use that shortcut).
+Refer to wiki/rospy: Providing services for more information on the supported ways of returning service responses from service server callbacks.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-06-28
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Verismoto on 2021-06-28:
+I adjusted the server.py file like you said and it works now. Unfortunately I can't print both parameters. Can you please tell me what I'm missing to make it complete.
+    #!/usr/bin/env python
+
+from __future__ import print_function
+
+import sys
+import rospy
+from service_node.srv import *
+
+def add_two_ints_client(x, y):
+    rospy.wait_for_service('add_two_ints')
+    try:
+        add_two_ints = rospy.ServiceProxy('add_two_ints', AddTwoInts)
+        resp1 = add_two_ints(x, y)
+        return resp1
+    except rospy.ServiceException as e:
+        print("Service call failed: %s"%e)
+
+def usage():
+    return "%s [x y]"%sys.argv[0]
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3:
+        x = int(sys.argv[1])
+        y = int(sys.argv[2])
+    else:
+        print(usage())
+        sys.exit(1)
+    print("Requesting %s+%s"%(x, y))
+    resp = add_two_ints_client(x, y)
+    print(resp)
+
+Comment by gvdhoorn on 2021-06-28:\
+
+Unfortunately I can't print both parameters
+
+unfortunately I can't help, as you don't describe what happens instead.
+Printing response objects is fully possible, so without an error or warning message, or some other description of what doesn't work, I can't help you.
+Note also that it's not necessarily a good idea to ask follow-up questions in comments under already answered questions. Such follow-ups have very little visibility. It might be better to post a new question.
+

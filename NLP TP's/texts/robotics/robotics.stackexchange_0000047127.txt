@@ -1,0 +1,80 @@
+Q:
+
+how can I register a Callback when using ros::spinOnce?
+
+Hi all I would like to control if I subscribe or unsubscribe to a topic via a key press. I Can see that the subscribtion works but the registered callback is never called when I use ros::spinOnce().
+When I change to ros::spin() the callbacks works but not the key control because ros::spin leaves the main loop and doesn't come back unless the node isn't shutdown. Is there a way to control the subscriber status?
+Here is my code:
+using namespace sensor_msgs;
+using namespace message_filters;
+typedef sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
+
+image_transport::SubscriberFilter *webcam_sub = NULL;
+image_transport::SubscriberFilter *rgb_sub = NULL;
+bool subscribtion; 
+
+void subscribe(ros::NodeHandle nh, image_transport::ImageTransport it){
+        
+      webcam_sub = new image_transport::SubscriberFilter (it, "/panda_cam/image_raw", 200);
+      rgb_sub = new image_transport::SubscriberFilter (it, "/camera/rgb/image_color", 200);
+      Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000), *webcam_sub, *rgb_sub);
+      sync.registerCallback(boost::bind(&sync_callback, _1, _2));
+        
+}
+        
+void unsubscribe(){
+        
+      webcam_sub->unsubscribe();
+      rgb_sub->unsubscribe();
+
+}
+        
+
+void sync_callback(const ImageConstPtr&  rgb_image,const ImageConstPtr&  webcam_image){
+
+      ROS_INFO("CALLBACK");
+
+}    
+        
+int main(int argc, char **argv){
+                    
+      ros::init(argc, argv, "subscriber");
+      ros::NodeHandle nh;
+      image_transport::ImageTransport it (nh);
+      ros::Rate rate(100);
+                    
+                    
+      while(ros::ok()){
+         rate.sleep();
+         int key = kbhit();
+           if (key == 122 && subscribtion == false){
+             subscribtion = true;
+             subscribe(nh,it);
+             ROS_INFO("Ready to recieve messages");                                                    
+          }
+          else if (key == 122 && subscribtion == true){
+             subscribtion = false;
+             unsubscribe();
+             ROS_INFO("unsibscribed to topics");                
+          }
+   
+         ros::spinOnce();
+      }
+    return 0;
+}
+
+Originally posted by dinamex on ROS Answers with karma: 447 on 2013-01-10
+Post score: 0
+
+Original comments
+Comment by TFinleyosu on 2013-12-05:
+Were you able to get something stable working? I'm also looking for a good way to switch a boolean message with a keystroke.
+
+A:
+
+If you want an interactive keyboard interface you need to make sure it's in it's own thread not waiting for other activities.  The spinOnce is doing all the ROS message passing and processing callbacks so you may miss the keystroke.
+
+Originally posted by tfoote with karma: 58457 on 2013-03-05
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,83 @@
+Q:
+
+How do I publish exactly one message?
+
+Hi everyone,
+I have been working with ROS for sometime now, and quite happily. However, there is one sticky issue that I would like to resolve. I learnt the basics of publishing from the tutorial "Writing a simple publisher and subscriber". This is the gist of what is demonstrated:
+ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+
+ros::Rate loop_rate(10);
+
+int count = 0;
+
+while (ros::ok())
+{
+
+  std_msgs::String msg;
+
+  std::stringstream ss;
+  ss << "hello world " << count;
+  msg.data = ss.str();
+  chatter_pub.publish(msg);
+  ros::spinOnce();
+  loop_rate.sleep();
+  ++count;
+}
+
+I have been using the same format for publishing ever since. Obviously, this will keep publishing as long as the program terminates or roscore terminates. I would like to publish a single message, irrespective of message size. In this case, I would like publish one std_msgs::String message. How do I do that?
+ (Nov 14, 2012)
+Upon reading comments from Benoit Larochelle and Lorenz, I would like to make my question more specific. In my case, latched topics does not apply to the current application logic. I would like all current subscribers to get the message but not future subscribers. Also, the subscribers are external packages that listen to standard non-stamped messages. In addition, I cannot use actionlib since the subscribers do not use it as well. One example is to send a twist command (that does not have a timestamp) to a swarm of robots simultaneously. We ofcourse dont want future subscribers to react to an old command (latched) and we do not want to send the command at a specific rate, but only send it once.
+
+I have tried simple removing the while loop and executing "publish" and "spinOnce()" just one time. This doesn't work, no messages are published.
+Can anyone tell me how I can publish a single message?
+Thanks
+Shanker Keshavdas
+DFKI, Saarbruecken, Germany
+
+Originally posted by Shanker on ROS Answers with karma: 259 on 2011-09-12
+Post score: 8
+
+Original comments
+Comment by Lorenz on 2012-11-13:
+I don't think topics were supposed to be used that way. I think there might be hacks possible, e.g. by using subscription callbacks and publish only to a selected set of subscribers. But I doubt that a really robust implementation is possible.
+
+A:
+
+In your case, I guess the problem is that ROS needs some time to register at the core and to establish all subscriber connections. When you just publish one single message, chances are good that it gets lost because the subscriber is not connected yet. A quick fix would be to add a sleep right after creation of the publisher.
+If you really want to make sure that clients are connected, you can use the version of advertise which takes one parameter of type AdvertiseOptions see here.
+In AdvertiseOptions, you can set a connect callback that gets called whenever a subscriber connects.
+Another possiblility is to use the method getNumSubscribers of the Publisher class returned by the advertise call. Just wait for at least one subscriber. You can do something like:
+ros::Rate poll_rate(100);
+while(chatter_pub.getNumSubscribers() == 0)
+    poll_rate.sleep();
+
+Originally posted by Lorenz with karma: 22731 on 2011-09-12
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by tfoote on 2011-09-17:
+Latching the topic will also help if the subscriber is coming up and down, see the answer from @Martin Günther
+Comment by Benoit Larochelle on 2012-11-12:
+Has this been fixed in Fuerte? I.e., am I guaranteed that my subscribers will get my message when I publish it (assuming no loss due to the network)?
+Comment by Lorenz on 2012-11-12:
+There never was anything to fix. As soon as the connection is established, messages are guaranteed to arrive given there are no buffer overruns. And how should a publisher know that a subscriber will connect in the future. To resent the last message, you can latch though.
+Comment by Benoit Larochelle on 2012-11-12:
+Ok, maybe I did not understand your answer correctly. You say "chances are good that it gets lost". Why is ROS relying on chance? Could it happen that a message gets published before the connection gets established? For example, if a publisher is created and starts publishing immediately?
+Comment by Lorenz on 2012-11-12:
+ROS is not relying on chances. But how should a publisher know for which subscribers to wait before publishing? When a subscriber connects, it first needs to query the core for all publishers and then connect to each of them. This takes time and messages are only received after the connection is up.
+Comment by Benoit Larochelle on 2012-11-12:
+Ok, this is clear, but I don't understand why we're discussing future subscribers. The problem described by Shanker is that the node shutdown right after publishing a single message, and any node that was already listening on that topic did not receive the message. Do we still have to sleep after?
+Comment by Lorenz on 2012-11-12:
+It's still the same problem, the publisher doesn't know about the subscribers yet. When a publisher comes up, the subscribers get a notification to connect to it. This takes time. The publisher might have sent its message and terminated before any subscriber had a chance to connect.
+Comment by Benoit Larochelle on 2012-11-12:
+Ok, so how can I ensure that my message will get to all current subscribers? Do I have to get the # of subscribers and count the calls to connect_cb? And then only when they are all connected do I call publish? Or maybe this is already done internally by ROS? Or is there an easier way?
+Comment by Lorenz on 2012-11-12:
+My answer suggested to wait for more than zero subscribers. If you know how many subscribers you assume, you can wait. That's not the nicest, cleanest or most robust way though. If you have a node that keeps running, I suggest to use a latched topic.
+Comment by Benoit Larochelle on 2012-11-12:
+Ok, that's what I meant by "guaranteed". Assuming a situation where I have 0-N subscribers and I don't want to latch due to the system logic (old messages are useless), then it's not so nice like you say. As a suggestion, the publisher could handle this before actually firing the message
+Comment by Lorenz on 2012-11-12:
+How could a publisher handle this? It cannot send messages to subscribers it doesn't know about neither can it wait for them (since it doesn't know about the subscribers).
+Comment by Benoit Larochelle on 2012-11-13:
+I'll explain it in a new solution because I do not have enough characters here.
+

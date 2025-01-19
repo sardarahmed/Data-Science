@@ -1,0 +1,31 @@
+Q:
+
+Why do most ROS image nodes lack support for CompressedImage?
+
+I'm trying to setup a simple mjpeg stream from a webcam, and I'm finding most of the common image processing packages provide no support for CompressedImage. Why is this?
+For example, neither the deprecated mjpeg_server nor recommended web_video_server nodes supported compression as input, causing them to consume massive amounts of CPU. Even basic transformation nodes like image_rotate only supports the uncompressed Image type.
+I'm finding I have to write a lot of ROS nodes from scratch...just to process Jpegs. Am I missing something? Why does the ROS community eschew efficient compression? I get there's some minor loss in quality with compression, but I'm seeing a 10-fold difference in CPU consumption between the compressed and uncompressed image streams. On mobile platforms with limited resources, that's a huge problem.
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2016-03-18
+Post score: 0
+
+Original comments
+Comment by ahendrix on 2016-03-18:
+Do those packages use the image_transport library? If they do, they should support compression through compressed_image_transport
+Comment by ahendrix on 2016-03-18:
+Have you tried requesting compressed transport by setting the ~image_transport parameter to compressed for each node in question?
+
+A:
+
+For mjpeg_server and web_video_server you are right, here using a compressed input can help reducing CPU usage as the nodes would no longer have to compress the stream internally before streaming to the browser.
+However, in general this is not the case for nodes doing image processing. For example the transformation node internally needs the raw image data in order for performing the image transformation (E. g. see https://github.com/ros-perception/image_pipeline/blob/indigo/image_rotate/src/nodelet/image_rotate_nodelet.cpp#L190). I e. if you would require it to use compressed streams and input and output it would have to decompress at the input and compress again at the output --> likely much higher CPU usage for a slightly reduced data traffic. And it comes worth: Think of an image processing pipeline --> each processing step element would have to decompress at beginning and compress when the image leaves. Dramatic CPU usage and moveover the image quality does not decrease ones but step by step decreases while passing through the chain.
+Hence, most of the times it is better to use the uncompressed stream for processing chains and only compress the image ones, directly before passing it through the network.
+
+Originally posted by Wolf with karma: 7555 on 2016-03-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by doisyg on 2017-08-31:
+I was thinking about CPU optimization and came to the same conlusion as you. However, i don't understand why a simple usage of image_rotate is so ineficient in terms of CPU.
+

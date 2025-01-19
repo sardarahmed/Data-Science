@@ -1,0 +1,42 @@
+Q:
+
+ros2 docker multiple hosts
+
+How can I get ROS2 to run in docker across multiple hosts reliably?  I have two hosts, on an ethernet network:
+
+Bridge networks do not support multicast
+Overlay networks do not support multicast
+macvlan networks cannot be accessed from the host machine (Workaround below)
+Host networks partially work, but I only see a random subset of the nodes on the network. (Workaround below)
+Weave network performance is very poor. (A simple topic that typically runs natively at 270Hz only manages to get up to 20Hz)
+
+Originally posted by dawonn_haval on ROS Answers with karma: 103 on 2020-07-31
+Post score: 3
+
+A:
+
+There appear to be two potential workarounds:
+HOST:
+If you want to use host networking, you also much share the pid space so that each DDS node can generate a unique GUID. ( All thanks go to @ruffsl, more detail here )
+docker run --rm -d --net=host --pid=host <IMAGE>
+
+MACVLAN:
+This workaround seems to work more often than not but sometimes the container needs to be restarted before it will see all nodes on the network.
+docker network create -d macvlan \
+    --subnet=192.168.1.0/24 \
+    --gateway=192.168.1.1 \
+    --ip-range=192.168.1.64/27 \
+    --attachable \
+    -o parent=enp8s0 \
+    macnet
+
+sudo ip link add macnet-shim link eth0 type macvlan  mode bridge
+sudo ip addr add 192.168.1.64/27 dev macnet-shim
+sudo ip link set macnet-shim up
+
+docker run --rm -d --net=macnet <IMAGE>
+
+Originally posted by dawonn_haval with karma: 103 on 2020-08-12
+This answer was ACCEPTED on the original site
+Post score: 3
+

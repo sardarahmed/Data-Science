@@ -1,0 +1,70 @@
+Q:
+
+Length of the tracks array in radar_msgs/RadarTrackArray
+
+Hi,
+I'm having this programming problem in ROS.
+I'm looping through the tracks array in radar_msgs/RadarTrackArray message and accessing its values. I'm using for-loop:
+for (int i = 0; i < sizeof(msg->tracks)/sizeof(msg->tracks[0]); i++)
+
+But this expression for getting the array length returns the value of 0 all the time, although the tracks contains different number of tracks. sizeof(msg->tracks) returns the value of 24 and sizeof(msg->tracks[0]) returns the value of 80 all the time.
+How do I fix this to get correct array length?
+
+Originally posted by roskinetic on ROS Answers with karma: 39 on 2019-04-17
+Post score: 0
+
+A:
+
+I'm using for-loop:
+
+for (int i = 0; i < sizeof(msg->tracks)/sizeof(msg->tracks[0]); i++)
+
+Don't do this. This is (almost) how you could calculate the number of elements in an array in C.
+roscpp is all C++, so there is no need for this (and it also won't (always) work).
+This is the structure of a radar_msgs/RadarTrackArray:
+std_msgs/Header header
+radar_msgs/RadarTrack[] tracks
+
+tracks is a unbounded array (or list). In roscpp, those will be mapped onto std::vector (see wiki/msg).
+C++ provides a few convenient ways to iterate over std::vector:
+
+a range-based for loop (if you can use C++11)
+regular iteration using iterators
+element-wise access using the [] operator (and bounded by std::vector::size())
+
+You tagged this question with kinetic, so I'm going to assume you are on Ubuntu Xenial (16.04). That version of Ubuntu ships with GCC 5.4, so you should be able to enable C++11. Range-based for loops are pretty convenient, so I would recommend to use those.
+If you require a counter, use something like:
+for (int i = 0; i < msg->tracks.size(); i++)
+{
+  [...]
+}
+
+Edit: I was curious to see whether range-based for loops and counting could be combined (just as in Python with enumerate(..)). If you can use C++17, it turns out you can do that: Python-Like enumerate() In C++17. That should allow you to do something like:
+for (auto [i, track] : enumerate(msg->tracks))
+{
+  // do something with 'i' and/or 'track'
+}
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-04-18
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by gvdhoorn on 2019-04-18:
+Note also that this is a pure C++ question. Not something specific to ROS.
+Comment by roskinetic on 2019-04-18:
+Thank you for your answer and sorry for the question related to c++.
+As this tracks is an unbounded array, it is not actually favorable. Although we are interested in a small number of objects, we may have to loop through a large size of tracks array.
+Comment by gvdhoorn on 2019-04-19:\
+
+Thank you for your answer and sorry for the question related to c++.
+
+No need to apologise. I just wanted to make you aware of the fact that this is not something ROS specific, but a generic C++ question (ie: you don't need to limit yourself to ROS specific support fora).
+
+As this tracks is an unbounded array, it is not actually favorable.
+
+I'm not sure I understand this comment.
+Your initial for-loop approach would have iterated over the exact same array (well, std::vector), there is no functional difference.
+Comment by roskinetic on 2019-04-19:
+Your help is much appreciated. I didn't know the tracks array is unbounded and this is where I was confused although I was using the msg->tracks.size(). Regarding the question that I made you confused, I just posted another question here. https://answers.ros.org/question/321461/loop-through-unbounded-tracks-array-in-radar_msgsradartrackarray/
+

@@ -1,0 +1,130 @@
+Q:
+
+EKF localization node in robot_localization package doesn't stop
+
+I'm working on building a good Odometry estimation system for a quadruped Unitree robot (A1 and Go1). I've been trying to use ekf_localization node from the robot_localization package in ROS Melodic. Almost everything seems to work fine when I feed in sensor data through a rosbag, in the sense that, I'm able to get the fused odometry messages from the filter that correspond well with the ground truth.
+Issue:
+But when my rosbag stops and none of the odometry and imu sources publish messages anymore, the node still keeps running and gives me erroneous results (basically a drift of the odometry in -ve z-direction). This happens at the end if I set imu0_remove_gravitational_acceleration: true and happens in the +ve z-direction if I set it to false.
+Odometry sources and sensors:
+A VIO pipeline and a leg Odometry that returns linear velocity estimate from a RL controller. I use a single IMU source (publishes at 200Hz) and VIO runs on this IMU and a stereo Realsense d435i camera (realsense's imu not used). I re-publish all these messages at the same rate in the odom frame with child_frame_id as base_link for all the odometry sources.
+I'm adding my config files for the ekf_localization node.
+frequency: 50
+sensor_timeout: 1
+
+two_d_mode: false # The robodog can also climb over steps
+publish_tf: true
+transform_time_offset: 0.0 # For packages that require transforms to be future-dated by a small time offset
+# transform_timeout: 0.0 # Zero to get the latest transform available and not block the filter
+reset_on_time_jump: false # Reset the filter if a sudden time jump is detected
+print_diagnostics: true # Print diagnostics information to the /diagnostics topic
+predict_to_current_time: false # Extrapolate (predict) the state to the current time when no measurements received
+disabled_at_startup: false # Start the filter as disabled
+
+publish_null_when_lost: false
+
+odom_frame: odom
+base_link_frame: base_link
+world_frame: odom 
+
+publish_acceleration: false
+
+lo_topic: &lo_topic /ekf_vilo/leg_odom 
+odom0: *lo_topic
+odom0_config: [false, false, false,    # Position
+               false, false, false,     # Orientation
+               true, true, true,      # Linear velocity
+               false, false, false,    # Angular velocity
+               false, false, false]    # Linear acceleration
+
+odom0_differential: false
+odom0_relative: false
+odom0_queue_size: 100
+odom0_nodelay: true
+
+vio_topic: &vio_topic /ekf_vilo/vins_odom
+odom1: *vio_topic
+odom1_config: [true, true, true,   # Position
+               true, true, true,    # Orientation
+               false, false, false,
+               false, false, false,
+               false, false, false]
+
+odom1_differential: false
+odom1_relative: false
+odom1_queue_size: 100
+odom1_nodelay: true
+
+imu0_remove_gravitational_acceleration: true
+gravitational_acceleration: 9.81
+imu_topic: &imu_topic /imu
+imu0: *imu_topic
+imu0_config:  [false, false, false,
+               true,  true,  true,     # Orientation 
+               false, false, false,
+               true,  true,  true,     # Angular velocity
+               true,  true,  true]     # Linear acceleration
+
+imu0_differential: false
+imu0_relative: false
+imu0_queue_size: 100
+imu0_nodelay: true
+
+process_noise_covariance: [0.025, 0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0.025, 0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0.025, 0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0.05, 0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0.05, 0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0.05, 0,     0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0.025, 0,     0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0.025, 0,    0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0.04, 0,    0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0.01, 0,    0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0.01, 0,    0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0.02, 0,    0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0.01, 0,    0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
+                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015]
+
+initial_estimate_covariance: [1e-2, 0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    1e-2, 0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    1e-2, 0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    1e-2, 0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    1e-2, 0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    1e-2, 0,    0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    1e-6, 0,    0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    1e-6, 0,    0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    1e-6, 0,     0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-6,  0,     0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     1e-6,  0,     0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     1e-6,  0,    0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     1e-6, 0,    0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    1e-6, 0,
+                              0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    1e-6]
+
+Each odometry and sensor messages are as follows:
+
+Fused odometry from the ekf (Message from /ekf_vilo/odom)
+
+Imu messages (Message from /imu)
+
+VIO odometry (Message from /ekf_vilo/vins_odom)
+
+Odometry from the leg (Message from /ekf_vilo/leg_odom)
+
+This is what happens when the IMU and the odometry sources (/ekf_vilo/vins_odom and /ekf_vilo/leg_odom) publish messages : The covariances are small and the fusion is good
+
+This is what happens when the rosbag ends (and the covariances start to explode)
+
+The odometry from ekf after the rosbag has ended (the odometry keeps drifting in the -ve z-direction)
+
+I apologize for the extremely long message. Just wanted to be thorough!
+
+A:
+
+Without new input data the ekf_localization node will simply continue to run its estimate that is based on the previous sensor data. The issue with the plus or minus Z drift is most likely a result of small acceleration errors from the IMU that accumulate into larger velocities. Some of this may be fixable using the ~dynamic_process_noise_covariance parameter but otherwise it's the intended behavior of the ekf_localization node.
+There are a few options you can try to deal with this issue:
+
+Remove the integration of the accelerometer's Z acceleration component. The RL gravitational acceleration removal (~imuN_remove_gravitational_acceleration) depends on the orientation of the IMU and results in a noisy acceleration value.
+Decrease the process noise of the linear acceleration values in your process_noise_covariance matrix. Alternatively you can re-write the covariance field of the Imu message and increase the corresponding fields for linear acceleration. Higher variances in the sensor readings result in slower integration of the readings, for noisy sensor measurements this is preferred. It's generally not preferred to have 0 variances on the diagonal of the sensor readings, this results in the ekf_localization node populating the measurement variances with 1e-9 to keep the filter stable.
+Use the use_sim_time parameter. When playing data from a ROS bag file, you can use the time information from the bag to drive your system instead of your system clock (read more here). When the bag ends, the clock will stop, and your localization node will stop producing new estimates. This doesn't solve the issue, it will only mask it, but in my experience it's the best way to test localization on bag data.
+

@@ -1,0 +1,101 @@
+Q:
+
+How to load a ComposableNode based on a condition?
+
+I am on ROS2 Humble. My launch file looks the following
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch_ros.descriptions import ComposableNode
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import ComposableNodeContainer
+from launch.conditions import IfCondition, UnlessCondition
+
+def generate_launch_description():
+
+    ld = LaunchDescription()
+
+    arg_frame_id = LaunchConfiguration("frame_id")
+    arg_use_rgbd_odom = LaunchConfiguration("use_rgbd_odom")
+    arg_use_stereo_odom = LaunchConfiguration("use_stereo_odom")
+
+    ld.add_action(DeclareLaunchArgument('frame_id', default_value='camera_link'))
+    ld.add_action(DeclareLaunchArgument('use_rgbd_odom', default_value='true'))
+    ld.add_action(DeclareLaunchArgument('use_stereo_odom', default_value='false'))
+
+    include_rtabmap_icp_odom = ComposableNodeContainer(
+        name='odom_node_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                condition=IfCondition(arg_use_rgbd_odom),             ##### Unexpected argument error
+                package='rtabmap_odom',
+                plugin='rtabmap_odom::RGBDOdometry',
+                name='rgbd_odom',
+            ),
+            ComposableNode(
+                condition=IfCondition(arg_use_stereo_odom),            ##### Unexpected argument error
+                package='rtabmap_odom',
+                plugin='rtabmap_odom::StereoOdometry',
+                name='stereo_odom',                
+            ),
+        ],
+        output='screen',
+    )
+    ld.add_action(include_rtabmap_icp_odom)
+
+    return ld
+
+I would like to switch between these conditions(whether to use stereo or rgbd odometry) but I dont seem to find a way around with ComposableNodes.
+Thanks in advance
+
+A:
+
+Based on @Steve's suggestion, the following is what worked for me
+def generate_launch_description():
+
+    ld = LaunchDescription()
+
+    arg_use_rgbd_odom = LaunchConfiguration("use_rgbd_odom")
+    arg_use_stereo_odom = LaunchConfiguration("use_stereo_odom")
+
+    ld.add_action(DeclareLaunchArgument('use_rgbd_odom', default_value='false'))
+    ld.add_action(DeclareLaunchArgument('use_stereo_odom', default_value='false'))
+
+    include_container = Node(
+        name='odom_container',
+        package='rclcpp_components',
+        executable='component_container',
+        output='both',
+    )
+    ld.add_action(include_container)
+
+    load_rgbd_odom = LoadComposableNodes(
+        target_container='odom_container',
+        condition=IfCondition(arg_use_rgbd_odom),
+        composable_node_descriptions=[
+            ComposableNode(
+                package='rtabmap_odom',
+                plugin='rtabmap_odom::RGBDOdometry',
+                name='rgbd_odom',
+            )
+        ]
+    )
+    ld.add_action(load_rgbd_odom)
+
+    load_stereo_odom = LoadComposableNodes(
+        target_container='odom_container',
+        condition=IfCondition(arg_use_stereo_odom),
+        composable_node_descriptions=[
+            ComposableNode(
+                package='rtabmap_odom',
+                plugin='rtabmap_odom::StereoOdometry',
+                name='stereo_odom',
+            ),
+        ]
+    )
+    ld.add_action(load_stereo_odom)
+
+    return ld
+

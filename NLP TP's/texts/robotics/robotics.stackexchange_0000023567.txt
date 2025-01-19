@@ -1,0 +1,24 @@
+Q:
+
+Impact of using PID Output as a Change (Delta) vs Absolute
+
+I am trying to control speed of a motor using PID. It seems like I have two approaches.
+
+Using PID to calculate the absolute duty cycle value of the PWM
+Using PID to calculate the change needed in the current duty cycle.
+
+It seems like all the traditional PID controllers are used for calculating absolute value at the output. I need some help to understand which is the better approach to do this.
+
+A:
+
+All PID controllers are relative in the sense that they act on a reference error, which is the difference between the reference signal and the sensed signal. Assuming the integral error starts at the same value, you should get the same result when the reference is zero and sensed is 10% as when the reference is 50% and the sensed is 60%. In both cases, (reference - sensed) is (-10%).
+This is where things like the "step test" are useful in evaluating PID performance - the absolute start and end values aren't really as important as the relative change in input values.
+The big difference comes in when you look at how the output is used, as you state in your post. The PID controller acts on the reference error, but it doesn't have any model of how the system is going to respond, so it just continues to adjust the output until the sensed signal matches* the reference signal.
+(* it will actually adjust until steady state conditions are met, convergence depends on your integral gain settings).
+One of the big issues with PID controllers is that there IS no system model. When you adjust the control gains to get your desired performance you're only optimizing for that particular input type (ramp or step, etc.) and for that input change.
+A PID controller that's adjusted for a really fast response to a small ramp input may be unstable for a large step input, etc., because it responds faster than the system can respond. You can adjust the controller to have a slower response, but then it's not as performant with smaller input changes.
+This generally happens in the "absolute" use case you describe above, where the PID controller is providing the entire control signal to the system. The PID controller only acts on reference error so there must necessarily always be some delay between the reference input changing and the system response.
+The alternative is kind of the "relative" use case you describe. But, if the PID controller is making adjustments to the control signal, then there must be some other source providing a control signal.
+This is called a "feed-forward" controller. The feed-forward controller (typically) ignores the sensed value and acts only on the reference signal. This means the feed-forward controller becomes essentially a "coarse" adjustment, providing the bulk of the control signal, and the PID controller becomes the "fine" adjustment, making changes as necessary to achieve the reference signal.
+When your control scheme is setup this way, you wind up never "asking" the PID controller to provide large bulk adjustments to the control signal. The feed-forward controller reduces the magnitude of reference error that needs to be addressed and this allows you to adjust the PID controller to have a faster response without worrying as much about instabilities in larger reference changes.
+

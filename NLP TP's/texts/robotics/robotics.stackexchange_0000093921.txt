@@ -1,0 +1,93 @@
+Q:
+
+[ROS2]Are there any examples of tf2 broadcast or listener
+
+Hello comrades, I`m just trying to get odometry from t265 from realsense2_lib examples. After compiling and running this code below, I get that target frame does not exist.
+Thanks in advance.
+#include <math.h>
+#include <iostream>
+#include <chrono>
+#include "std_msgs/msg/string.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include <rclcpp/time_source.hpp>
+#include "geometry_msgs/msg/pose_stamped.h"
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <tf2_ros/buffer_interface.h>
+#include <tf2_ros/visibility_control.h>
+#include <tf2/buffer_core.h>
+#include <tf2/time.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/transform_stamped.h>
+/* We do not recommend this style anymore, because composition of multiple
+ * nodes in the same executable is not possible. Please see one of the subclass
+ * examples for the "new" recommended styles. This example is only included
+ * for completeness because it is similar to "classic" standalone ROS nodes. */
+
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  auto node = rclcpp::Node::make_shared("tf_pub");
+  auto publisher = node->create_publisher<geometry_msgs::msg::PoseStamped>("tf_pub", 10);
+
+  //printf("TimePoint %d",tp);
+//  std::shared_ptr<rclcpp::Clock> clock_ptr;
+  rclcpp::Clock::SharedPtr clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  rclcpp::TimeSource timesource;
+  timesource.attachClock(clock);
+
+//  tf2_ros::Buffer tfBuffer(clock_ptr);
+  std::unique_ptr<tf2_ros::Buffer> buffer = nullptr;
+
+  tf2::Transform transform_;
+  transform_.setIdentity();
+  buffer = std::make_unique<tf2_ros::Buffer>(clock);
+
+  geometry_msgs::msg::PoseStamped message;
+  rclcpp::WallRate loop_rate(500ms);
+
+  while (rclcpp::ok()) {
+
+    try {
+
+        geometry_msgs::msg::TransformStamped transformStamped = buffer->lookupTransform("odom_frame", "camera_link", tf2::TimePointZero);
+        message.pose.position.x = transformStamped.transform.translation.x;
+        message.pose.position.y = transformStamped.transform.translation.y;
+        RCLCPP_INFO(node->get_logger(), "Publishing: '%s'", message.pose);
+        publisher->publish(message);
+    }
+    catch (tf2::TransformException & ex) {
+          RCLCPP_ERROR(node->get_logger(), "StaticLayer: %s", ex.what());
+    }
+
+    rclcpp::spin_some(node);
+    loop_rate.sleep();
+  }
+  rclcpp::shutdown();
+  return 0;
+}
+
+Originally posted by Sol on ROS Answers with karma: 3 on 2019-11-25
+Post score: 0
+
+Original comments
+Comment by kscottz on 2019-11-25:
+This probably doesn't help, but we did push a big set of changes to the documentation and how to's for Eloquent. Check them out here.
+Comment by jacobperron on 2019-11-27:
+The code looks okay to me. Are you sure that the target frame ("odom_frame") does indeed exist?
+You can confirm by running ros2 run tf2_ros tf2_monitor odom_frame camera_link.
+
+A:
+
+Hi! I had same trouble with lookup_transform. I'm found solution in tf_echo  source code.
+You need add tf2_ros::TransformListener and init it with tf2_ros::Buffer:
+std::unique_ptr<tf2_ros::Buffer> buffer = std::make_unique<tf2_ros::Buffer>(node->get_clock());
+std::shared_ptr<tf2_ros::TransformListener> transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+Now when I call lookupTransform() it works as expected. I hope this helps you.
+
+Originally posted by georgiy with karma: 76 on 2020-06-20
+This answer was ACCEPTED on the original site
+Post score: 6
+

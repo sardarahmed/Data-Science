@@ -1,0 +1,80 @@
+Q:
+
+Python Multiprocessing to publish to multiple topics
+
+I currently have a setup where I have about 10 shell scripts that listen to 10 different KNX addresses (using the shell command grouplisten) and publish their state to a ROS topic. These scripts can run in the background, so it's quite convenient to 'listen' to the state of these devices.
+I tried to replace these 10 scripts with a single python program that basically does this:
+
+Declare a subprocess.Popen for each device, to listen to its knx device.
+
+self.listen_stat = subprocess.Popen(self.cmds,stdout=subprocess.PIPE,preexec_fn=os.setsid)
+
+Declare the node (in __main__) , and topic for each device ( in device.__init__()).
+
+class DeviceProp:
+
+    def __init__(self):
+      ...
+      self.pub = rospy.Publisher(self.name,Int32,latch=True)
+
+Call a talker function like so:
+
+try:
+  for device in device_props:
+       p = multiprocessing.Process(target=device.device_talker)
+       procs.append(p)
+       p.start()
+except (KeyboardInterrupt,rospy.ROSInterruptException,IOError) as e:
+    for p in procs:
+       p.join()
+
+(The device_talker basically just publishes new data to device.pub)
+What happens is that the logs suggest data is being published, but I don't see anything on when I subscribe to those topics or if I do rostopic echo. If I run rostopic pub from a new shell, I get the data on the topic as expected. I've also added a rospy.sleep(1) at multiple places (in loops too) so that even if I lose the first few messages, I should get the later ones. But I don't.
+Any suggestions on what I should do?
+(In case you are wondering why - I want to replace 10 scripts with 1 for easier code management. Also, Since I can store all address and device props in a yaml file, it will be trivial to add, or edit the configuration file).
+
+Originally posted by Mandar on ROS Answers with karma: 73 on 2014-01-20
+Post score: 2
+
+Original comments
+Comment by Mandar on 2014-01-20:
+I realize that I may be using the multiprocessing module wrong to share variables (the publisher for instance). It would be helpful if someone could suggest a way to fix that.
+
+A:
+
+I managed to solve this problem (Note to self: Read the python docs). Turns out that a new process thread creates a copy of all the data from the parent, and I had not taken care of this properly.
+The way I solved it was thus: I called the Popen (listen_stat in this case) from the device method get_status:
+ def get_status(self):
+    varnum = 0  # for testing only
+    while not rospy.is_shutdown():
+       self.response_line = self.listen_stat.stdout.readline().split()
+       self.new_detect.value = int(self.response_line[varnum])
+
+The important detail was declaring the variable new_detect as a multiprocessing.Value() and then calling this function instead for the multiprocess.
+stat_procs = []
+for device in device_props:
+    sp = multiprocessing.Process(target=device.get_status)
+    stat_procs.append(sp)
+    sp.start()
+
+The actual publisher then was just called in a normal loop:
+try:
+    while not rospy.is_shutdown():
+        for device in device_props:
+            device.device_talker()
+except (KeyboardInterrupt,rospy.ROSInterruptException,IOError) as e:
+    for p in stat_procs:
+       p.join()
+
+Hope this helps the others.
+
+Originally posted by Mandar with karma: 73 on 2014-01-21
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by amarbanerjee23 on 2017-06-22:
+Hi,
+I am trying to do the same thing. However, I want to create multiple publishers in a single ros node. But when I call the publish method inside a while loop, only the first called publisher is invoked.
+Could you please suggest suitable multi threading for this purpose ?
+

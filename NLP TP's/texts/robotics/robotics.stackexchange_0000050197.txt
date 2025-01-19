@@ -1,0 +1,77 @@
+Q:
+
+How to remap a topic to sub namespaces
+
+Let's say I have a node, io_node, that provides a service, service, and publishes on a topic, topic. I also have nodes of type client_node and client_node2 (both named client_node) that use service and subscribe to topic. The client_nodes are in two different namespaces, a and b for various reasons.
+So rosnode list would show:
+/io_node
+/a/client_node
+/b/client_node
+
+The problem is that I can't get remapping to work with my launch files no matter where I put the remap tags.  I want the two client nodes to subscribe to /topic and use /service, but they subscribe to their namespace instead (for example, /a/client_node subscribes /a/topic and tries to use /a/service).
+rostopic list shows
+/topic
+/a/topic
+/b/topic
+
+Here's one version of the top level launch file:
+<launch>
+   <include file=$(find io_node)/launch/io.launch"/>
+
+   <group>
+     <remap from="topic" to="a/topic"/>
+     <include file=$(find client_node)/launch/client.launch" ns="a"/>
+   </group>
+
+   <group>
+     <remap from="topic" to="b/topic"/>
+     <include file=$(find client_node2)/launch/client.launch" ns="b"/>
+   </group>
+</launch>
+
+And here's a client.launch (client_node2 is similar):
+<launch>
+        <node pkg="client_node" name="client_node" type="client_node" output="screen" respawn="true"/>
+</launch>
+
+The whole top level launch file is going to be used in yet another launch file, with multiple instances of the three nodes being used in one system only with different namespaces, so I don't think I can use global namespaces.  I've tried
+
+putting the ns tag in a group tag in the client launch files
+putting the ns tag in the launch tag in the client launch files and putting ns in the node tag
+putting the ns tag in the group tag in the top level launch file
+putting the remap tag in the node tag in the client launch file
+putting the remap tag in the group tag in the client launch file
+changing the remap to be from="a/topic" to="topic"
+
+What am I missing here?
+EDIT
+Guess I should say that I filed an enhancement request.  In the meantime, my quick fix was to ditch the namespaces and use the names client_node_a and client_node_b to make them both in the same namespace, and thus both able to use /topic. This isn't really the solution I wanted, though, and isn't really all that flexible...
+I tried Boris's suggestion, too, and it works, but I have a bunch of launch files that makes argument passing tedious.
+
+Originally posted by thebyohazard on ROS Answers with karma: 3562 on 2013-04-09
+Post score: 4
+
+Original comments
+Comment by tfurf on 2013-07-24:
+I recently came across this same problem, I don't know the best fix, but just want to say I think the lack of functionality here (I would venture to say "bug") makes it really hard to scale larger projects without some kind of name collision.
+Comment by Max Pfingsthorn on 2013-07-24:
+Related question: http://answers.ros.org/question/12105/can-i-access-the-absolute-or-parent-namespace-of-a-node-from-within-a-launch-file/
+Comment by tfurf on 2013-07-24:
+With a temporary workaround: http://answers.ros.org/question/12105/can-i-access-the-absolute-or-parent-namespace-of-a-node-from-within-a-launch-file/?answer=68866#post-id-68866
+
+A:
+
+Looks like if you specify a path to a topic without leading / the whole string is treated as a topic name and obviously cannot be found. So remapping from foo to bar will work, but baz/foo to bar will not.
+Specifying the absolute path to the topic to be remapped solves it, i.e. remapping from /baz/foo to bar will result in /baz/bar and from /baz/foo to /bar gives /bar.
+P.S. Honestly remapping is a very confusing technique and I personally prefer to specify topic names as node parameters.
+
+Originally posted by Boris with karma: 3060 on 2013-04-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by thebyohazard on 2013-04-10:
+I would do that, but the launch file I called top-level won't really be top-level in the future.  It will be used multiple times, each instance launched in another namespace. So /alpha/topic, /beta/topic and so on, and I don't know how many there will be or what their names will be.  Thanks though.
+Comment by Boris on 2013-04-10:
+Maybe using arguments is the only way then, I mean <arg> tags with corresponding $(arg) calls.
+

@@ -1,0 +1,29 @@
+Q:
+
+Spin not taking blackboard value instead it always taking 0
+
+In ros2 behavior server Spin Action is not accepting spin_dist as a blackboard variable, the variable will be an Output port of another behavior tree node. Check the code below,
+<MyNode input="something" output="${angle_to_rotate}"/>
+<Spin spin_dist="${angle_to_rotate}" server_name="spin" />
+
+Here Spin Node is getting initialized with 0 as spin_dist at once, not taking input from blackboard variable while ticking the Node at Run Time.
+
+A:
+
+The Answer is, Spin is getting input from blackboard at the time of initialization only, to make Spin to get input on Running we need to update the on_tick function of Spin Action.
+  void SpinAction::on_tick()
+  {
+    double dist;
+    getInput("spin_dist", dist);
+    RCLCPP_WARN(node_->get_logger(), "Angle from spin action %.2f", dist);
+    double time_allowance;
+    getInput("time_allowance", time_allowance);
+    goal_.target_yaw = dist;
+    goal_.time_allowance = rclcpp::Duration::from_seconds(time_allowance);
+    getInput("is_recovery", is_recovery_);
+    if (is_recovery_)
+    {
+      increment_recovery_count();
+    }
+  }
+

@@ -1,0 +1,41 @@
+Q:
+
+What is the right approach to write the spin controller for a soccer robot?
+
+Imagine programming a 3 wheel soccer robot. What type of controller would you use for spinning it? P? PID?
+The goal for this controller is that it should make the robot stand in a defined angle ( 0 degree ) and turn back if rotated by hand or other robot. 
+I use stepper motors for my robot and not servos so I need to implement this in my software!
+I have written a sample P type controller already and the movement is fairly good. But I would like to make it better if possible. The code is as follows:
+void spinSpeed(int devidedValue, int addedValue, int correction) {
+
+    if(degree<correction && degree>-correction) {
+        motorSpeed = 0;
+    } else {
+        if(degree > 0) {
+            motorSpeed = ((degree)/(devidedValue) + (addedValue));
+        } else {
+            motorSpeed = ((degree)/(devidedValue) - (addedValue));  
+        }
+    }
+}
+
+correction is a range , in which robot has no movement. 
+degree is a number between -127 and 128 which is returned from the compass.
+motorSpeed is a number between 0 and 255 which is applied to the PWM.
+
+A:
+
+A PID controller would be the best, Using a compass then it is a relatively straight forward task of getting the bearing of your robot and comparing it to the bearing you want to achieve, and using some PID tuning techniques to achieve a smooth turning motion to your desired heading. This approach can also be applied to rotating by a given amount accurately.
+I have already done some robotics in this field, this is what we used in our robot, doing a not too dissimilar task to yours...
+
+A:
+
+The important thing to remember about a PID control loop is that each term is intended to dominate control at different times during a move.
+The proportional term is intended to dominate and provide a larger torque (or in your case speed) the further you are away from your target position.
+The derivative term is intended to dominate during the 'cruise' phase of your typical trapezoidal move. It helps to reign back a very high proportional term and limit runaway acceleration when you are far from your destination, but it can also help increase the speed at which you converge on your destination when you get close to it and the proportional term contributes much less.
+If you are using a velocity controller rather than a torque controller then the derivative term may actually be hidden inside your speed controller and not directly accessible to your PID loop. This can make control simpler (typically it will just accelerate as quickly as it can up to the desired speed or maximum speed, whichever is lower) but it can also make it less predictable. Often an overly aggressive D (or P) term can result in getting into a limit cycle (often incorrectly called resonance or oscillation due to the sound of the motors humming or even screaming in this state, though limit-cycle is a much more accurate description).
+The integral term is there to correct for residual steady-state error, that is where there is a persistent, long term difference between where you are being asked to go and where you actually are. Your current correction (really just tolerance) value works like the opposite of an integral term, it cuts the motor entirely when you are within a deadband around the desired position.
+Due to these factors, you will gain little from implementing a full PID loop unless you also plan in a velocity profile with a distinct accelerate, cruise & decelerate phases.
+Also bear in mind that the deadband and lack of I term will mean that the final position will always be somewhat random and will most likely differ depending on which direction you approach the desired position. As such, your bi-directional repeatability could be much worse than your standard repeatability.
+For more information on the difference between accuracy, repeatability and resolution, see this excellent description. In your case, your resolution is your compass sensor, while both accuracy, repeatability are most likely limited by your correction value, since if the correction value is larger than your compass resolution, you are throwing away some of your positional accuracy in return for being able to turn off your motor when you are close.
+

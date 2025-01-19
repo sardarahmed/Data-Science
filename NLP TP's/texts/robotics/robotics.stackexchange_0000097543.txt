@@ -1,0 +1,92 @@
+Q:
+
+Installing third-party ROS package dependencies
+
+According to this helpful answer from 2011, rosdep installs "system" package dependencies, but not third-party ROS packages that my project may rely on. Is this still the case?
+If so, is there a different tool to automate installing third-party ROS dependencies from information in my package.xml file based on which ROS release the end-user is using? Or a recommended process?
+If I use wstool to check out the third-party sources, then I have to deal with transitive dependencies recursively, which doesn't seem like a solution.
+My current solution is to keep an apt-requirements.txt file:
+# System dependencies should be declared in the package.xml file, but
+# dependencies on third-party ROS packages must be listed here.
+#
+# Install with:
+#     sed 's/#.*//' apt-requirements.txt | envsubst | xargs sudo apt-get install -y
+
+ros-${ROS_DISTRO}-rosbridge-server
+
+Originally posted by rgov on ROS Answers with karma: 130 on 2020-11-09
+Post score: 0
+
+A:
+
+What are "third party ROS packages" exactly?
+Are you referring to unreleased packages?
+At a high-level:
+
+released ROS packages and system dependencies: rosdep will install them for you, as long as the manifest correctly declares the dependency
+unreleased ROS packages: you'll have to build them from source. Tools like dirk-thomas/vcstool (successor to wstool) can help you with by easily populating a workspace. Dependencies of those pkgs-to-be-built-from-sources should then again be resolved and installed using rosdep. If they in turn have dependencies which have not been released, there is no tool which can solve this right now: where would it retrieve the necessary information? There is no authoritative way to map package names to source hosting locations.
+
+rosinstall_generator can generate .rosinstall files which include source entries for both selected packages and their (transitive) dependencies, but it will need information from ros/rosdistro. Packages which have a source entry there, typically also have been released (so using rosinstall_generator then doesn't really make sense any more, as you could just apt install).
+
+Edit:
+
+I mean binary packages in the ROS package repository and listed on https://index.ros.org.
+
+Those would be what I refer to above as released ROS packages
+
+The tutorial for rosdep emphasizes it is for "system" dependencies.
+
+It is, but it will also install dependencies which are ROS packages.
+The description could be tweaked a little to mention this also.
+
+For example, rosdep install rosbridge-server does not find the package, though I can apt-install ros-melodic-rosbridge-server.
+
+From what I understand, this all makes sense:
+
+the ROS package name would be rosbridge_server, not rosbridge-server (note the underscore (_)). The latter is the Debian-ised package name, only used by apt
+
+rosdep install rosbridge_server would not install rosbridge_server itself, but its dependencies. From the command line help:
+
+rosdep install <stacks-and-packages>...
+
+   download and install the dependencies of a given package or packages.
+
+And one important thing to note: this will only work if you have the sources (or at least the package manifest) of that package on your ROS_PACKAGE_PATH. This is a hold-over from back when rosbuild was still used I believe and also makes sense (once you know about it): rosdep installs dependencies and the primary use-case is installing them when building things from sources. Requiring access to the source of whatever you're trying to install dependencies for seems like an OK requirement to me.
+But in any case: use direct invocations of apt install <pkg_name> only when you install individual packages. For dealing with dependencies of packages you build from source, try to avoid directly calling apt. Under the right circumstances, it should not be needed.
+
+If so, is there a different tool to automate installing third-party ROS dependencies from information in my package.xml file based on which ROS release the end-user is using?
+
+If you haven't released your own package and users must build it from source in their/a Catkin workspace, rosdep would be the tool to install all dependencies. System dependencies and dependencies which happen to be ROS packages.
+(Note: I would not use the name third-party here, it's really confusing, at least to me. The whole of ROS is community contributed, so what exactly would make a package third-party?)
+
+Or a recommended process?
+
+I've written about workflows when building packages from source before. See #q252478 fi.
+Of course, if you have multiple repositories to clone, use vcstool or wstool to automate that step for you.
+But as I wrote earlier, those tools do not do any dependency resolution or fetching. They will only fetch whatever you specify in a .rosinstall or .repos file.
+
+My current solution is to keep an apt-requirements.txt file:
+
+If you depend on released packages and system dependencies, there should be no need for this. I would also recommend you don't do it like that.
+Declare your dependencies in the manifests of your packages and instruct your users to run:
+rosdep update
+rosdep install --from-paths /path/to/your/catkin_ws/src --ignore-src
+
+If your dependencies have rosdep keys, this should be all that is needed -- and will provide the best UX.
+(and seeing your other Q&As on this site and the name of your file: this would be similar to using pip to install dependencies of Python projects)
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-11-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rgov on 2020-11-09:
+I mean binary packages in the ROS package repository and listed on https://index.ros.org. The tutorial for rosdep emphasizes it is for "system" dependencies. For example, rosdep install rosbridge-server does not find the package, though I can apt-install ros-melodic-rosbridge-server.
+Comment by rgov on 2020-11-10:
+Thanks for the detailed answer. The term "third-party package" was intended to convey that it is not (a) my own package or (b) one of the packages included with a standard ROS install. Similar to "third-party dependency" vs "standard library dependency" when talking about other languages, I suppose. Maybe it doesn't apply in ROS.
+Comment by gvdhoorn on 2020-11-10:\
+
+Similar to "third-party dependency" vs "standard library dependency" when talking about other languages
+
+ROS is not a language, and all dependency are essentially equal, so I personally would not use that name. I've also never heard it used in discussions about ROS packaging.
+

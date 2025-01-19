@@ -1,0 +1,52 @@
+Q:
+
+Maximum Limit of String in ROS2
+
+I am currently interfacing ROS2 with native RTI DDS Connext through RTI Connector for python.
+In my ROS2 node, I have a custom message type which uses header messages from std_msgs. Now the header has a member string frame_id_. When the idl is generated for this msg, the size of the string is allocated as 2147483647 bytes. I can see this in the RTI Admin console. Now to match the Types in native DDS and ROS2, I need to give the same string size in RTI Connext through a QoS.xml file. But the problem is, this is too big a size for RTI to handle and the program crashes.
+As a workaround, I modified the header_.idl in ROS2 lying in ROS2_base_ws/install/std_msgs/dds_connext/Header_.idl as string<255> frame_id_ i.e. I limited the max size of this string.
+I recompiled it and ran the same node, but it always has the previous size i.e. 2147483647 bytes
+Any other workaround ?
+
+Originally posted by aks on ROS Answers with karma: 667 on 2018-08-01
+Post score: 0
+
+A:
+
+Follow up of answer given at https://answers.ros.org/question/299305/how-is-the-size-of-a-string-allocated-in-ros2-idl/?answer=299311#post-id-299311
+The way unbounded string are generated for connext is by using the -unboundedSupport flag of the connext generator: https://github.com/ros2/rosidl_typesupport_connext/blob/d3fd38825c4e460e156718c360886b43b20cc0c8/rosidl_typesupport_connext_cpp/rosidl_typesupport_connext_cpp/__init__.py#L79.
+By not passing this flag when generating the connext code it should default to 255 as per their help message
+-unboundedSupport Generates code that supports unbounded sequences and 
+        strings.
+        This option is not supported in ADA.
+        When the option is used the command-line options sequenceSize and
+        stringSize are ignored.
+        This option also affects the way unbounded sequences are deserialized. 
+        When a sequence is being received into a sample from the DataReader's
+        cache, the old memory for the sequence will be deallocated and memory
+        of sufficient size to hold the deserialized data will be allocated.
+        When initially constructed, sequences will not preallocate any 
+        elements having a maximum of zero elements.
+-stringSize <Unbounded strings size>: Size assigned to unbounded strings
+        The default value is 255
+
+Note that based on the help message the size of the string allocated should be 0 and reallocated when needed so you should never reach the point where you allocate 2147483647 bytes.
+A maybe easier way to fix your issue is to use the same  -unboundedSupport flag when generating code for your native DDS application, this way you don't need to modify either the msg files or the Connext code generation within ROS 2.
+
+Originally posted by marguedas with karma: 3606 on 2018-08-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by aks on 2018-08-01:
+@marguedas : Is this file placed in src/ros2/rosidl_typesupport/rosidl_typesupport_cpp/rosidl_typesupport_cpp/__init__.py ? If yes, then I dont have the same file as the link you posted.
+Comment by marguedas on 2018-08-01:
+Based on the URL it is located at ros2/rosidl_typesupport_connext/rosidl_typesupport_connext_cpp/rosidl_typesupport_connext_cpp/__init__.py
+The exact location can be different based on what version of ROS 2 you are using, my answers assume you are using ROS Bouncy
+Comment by aks on 2018-08-01:
+I am using ROS2 Ardent and I dont have any folder as rosidl_typesupport_connext located in ROS2.
+Comment by aks on 2018-08-01:
+@marguedas : I also posted a continuation to this here. This describes the strange behaviour also in the default examples.
+Comment by marguedas on 2018-08-01:
+Yes in ardent this package was located in the rmw_connext repository: ros2/rmw_connext/rosidl_typesupport_connext_cpp/rosidl_typesupport_connext_cpp/__init__.py
+

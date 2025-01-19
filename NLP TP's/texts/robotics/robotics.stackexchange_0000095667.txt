@@ -1,0 +1,58 @@
+Q:
+
+Joint Order in MoveIt Trajectory
+
+I'm currently using ROS Kinetic on Ubuntu 16.04, and trying to understand how to change the order that MoveIt publishes joints to a custom robot driver ROS node (that I created).
+My controllers.yaml file in MoveIt looks like
+controller_list:
+  - name: "arm_controller"
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    joints: [waist, shoulder, elbow, wrist_angle, wrist_rotate]
+
+After executing a trajectory, MoveIt publishes the Action message on /arm_controller/follow_joint_trajectory/goal as expected. However, it organizes the joint data in the JointTrajectory message differently - like...
+[elbow, shoulder, waist, wrist_angle, wrist_rotate]
+
+...which seems to be alphabetical. However, my driver node expects the joints to be ordered as defined in my controllers.yaml file.
+So my question is - how should I go about getting MoveIt to reorganize the joint order? Is it even possible? I saw while doing some research online that a parameter called controller_joint_names can be loaded that lists the joints in the order you want them. However, it didn't seem to have any effect.
+Thanks in advance!
+
+Originally posted by swiz23 on ROS Answers with karma: 86 on 2020-04-30
+Post score: 0
+
+A:
+
+So my question is - how should I go about getting MoveIt to reorganize the joint order? Is it even possible?
+
+The short answers would be: "you can't" and "no".
+
+However, it organizes the joint data in the JointTrajectory message differently [..] which seems to be alphabetical
+
+Exactly.
+
+I saw while doing some research online that a parameter called controller_joint_names can be loaded that lists the joints in the order you want them. However, it didn't seem to have any effect.
+
+That parameter isn't used by MoveIt. It's a parameter particular to the nodes in the industrial_robot_client package.
+As to your problem: the expectation is for every driver to take in the JointTrajectory message, look at the joint order and if you need a different one for whatever reason, your driver should calculate a mapping between the values in each JointTrajectoryPoint and your desired order.
+You could of course also in-place re-order everything. That would be up to you.
+
+Edit: you could of course wonder why this is not supported. I can't give you an authoritative answer, as I wasn't around when this was designed/implemented, but I can come up with a good rationale a posteriori (which goes further than just MoveIt).
+Depending on a certain order of data in a message has two big disadvantages:
+
+it complicates interpreting message data: in this particular case, the names of the fields are present in the message, but this is not always the case. If a specific order is expected or required, this order would then have to come from "outside". As this "outside" may not always be available, relying on it would mean that messages cannot be interpreted stand-alone (ie: without requiring anything else besides the message).
+it complicates replacing components with others: different components could require different orders of data. Replacing one component with another would then require reconfiguration of (several) other components. At the very least this introduces a step which could be forgotten easily, potentially leading to some surprises the first time the new configuration is started, or worse, dangerous behaviour.
+
+Requiring this order essentially increases coupling, which is undesirable in component based systems (for any software architecture really).
+Delegating the responsibility of re-ordering incoming data to whatever desired order to the consumers of messages avoids all of this, as consumers (ie: nodes) are free to do whatever they want internally, as long as those details do not leak to other parts of the architecture.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-05-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by swiz23 on 2020-05-01:
+Thanks. You would think though that instead of ordering the joints alphabetically by default, it would make more sense to just order them serially (from the most 'root' joint to the most 'child' joint in a specified group). After all, MoveIt does have access to the URDF and can easily figure that out...
+Comment by gvdhoorn on 2020-05-01:
+I can see why you would say that, but "the URDF" is again a piece of external information. Alphabetical order is a universal concept which is essentially a constant. You can assume it's always the same, and implementations of it should always result in the same behaviour.
+But in the end it doesn't matter for consumers: if they can't assume any order, it doesn't matter which order it in the end actually ends up in. At that point alphabetical makes just as much sense as any other order. It's just that it's very straightforward to use it.
+

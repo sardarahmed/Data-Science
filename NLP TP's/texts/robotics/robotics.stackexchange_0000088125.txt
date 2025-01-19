@@ -1,0 +1,51 @@
+Q:
+
+Interfacing a native DDS system with ROS2?
+
+I want to interface RTI connext with ROS2.
+Use Case : I run a talker_py in ROS2 which has a default qos and subscribe to these messages in RTI Connext. How do I modify the QoS/XmL in RTI to be ROS2 compatible ?
+Using qos_profile = rmw_qos_profile_system_default will use the default xml configuration from the installation directory of the DDS vendor, RTI CONNEXT in this case. Is it correct ?
+Looking at this documentation from RTI, it means that the file NDDS_QOS_PROFILES.xml is loaded. But this file doesnt have any QoS settings.
+Also, the way ROS2 generated idl's is a bit ROS2 specific e.g. package::message::dds_::message_name and I guess the XML/ IDL in the DDS needs to be adapted to the one used by ROS2 ? Am I correct ?
+A bit confused about this workflow. kindly help.
+
+Originally posted by aks on ROS Answers with karma: 667 on 2018-07-25
+Post score: 2
+
+A:
+
+Hello,
+I did a similar setup for RTI Connext Micro. It should follow the same steps:
+You need to configure the same partition name (https://community.rti.com/static/documentation/connext-dds/5.2.3/doc/manuals/connext_dds/html_files/RTI_ConnextDDS_CoreLibraries_UsersManual/Content/UsersManual/PARTITION_QosPolicy.htm). Which should be set in the QoS.
+You need to update the .idl to have the same fields as in your messages in ROS2. The types are almost identical (uint32 versus uint32_t... for CPP).
+Once you have generated the code:
+GENERATOR=$(BASE)/rtiddsgen/scripts/rtiddsgen -language C++ $(IDL_PREFIX).idl
+
+You can update the QoS by creating your own profile https://community.rti.com/examples/using-qos-profiles
+You will have to register the correct topic name using the function create_topic (the parameter you gave once you created the node:
+publisher_ = this->create_publisher<std_msgs::msg::String>("topic");
+
+In this case "topic")
+And update the type_name. In my case I was using the typename "std_msgs::msg::dds_::String_" as I was using https://github.com/ros2/common_interfaces/tree/master/std_msgs/msg/String.msg (register_type function)
+You can have a look at the mangled name in the RWM package of Connext.
+If you want to get the typename, topic, QoS, you can use the tools provided by RTI Launcher.
+As I was working on RTI Connext Micro, those steps are probably different (hopefully similar) but maybe it can help you.
+
+Originally posted by pokitoz with karma: 527 on 2018-07-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by aks on 2018-07-26:
+Thankyou for the explanataion :
+Few things :
+
+since ros2 bouncy bolson, no partitions are being used (everything is in the same partition), so no need to configue it.
+Already modified the XML according to ROS2 idl definition.
+How can I define the exact QoS as in ROS2 default QoS ? Stuck!
+
+Comment by pokitoz on 2018-07-26:
+Ah! Sorry my setup has been done for ardent. I should have mentioned that.
+Comment by aks on 2018-07-26:
+Were you successful in parsing the module keyword. As the ROS2 generated IDL files have module and   when I add it to the XML file used by RTI, it is unable to parse it.
+

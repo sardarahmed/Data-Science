@@ -1,0 +1,58 @@
+Q:
+
+Does camera1394 support UDP transport layer?
+
+I am trying to stream video from my gumstix Overo to my laptop with camera1394 package. With default TCP layer, I found there are 5 to 10 seconds delay and the frame rate is just about 1 frame/sec (which is not what I set 15 frames/sec). I know I need to compress image and I will do some research on that later.
+Right now, I really want to change the data transport layer from TCP to UDP because UDP is batter for tele-operation. I know that I can change the transport layer by transport hint in subscriber node. So I did that in my image_view source code "image_nodelet.cpp".
+At line 118, I changed:
+image_transport::TransportHints hints(transport, ros::TransportHints(), getPrivateNodeHandle());
+
+to
+image_transport::TransportHints hints(transport, ros::TransportHints().udp(), getPrivateNodeHandle()); 
+
+And rosmake it again. Then I run the image_view to receive video. However I found it still utilize TCP transport layer instead of UDP. Does camera1394 support UDP transport layer?
+My laptop have Ubuntu 12.04 running as a virtual machine and bridged the host network. I inspect the transport layer by wireshark in windows(host). I also doubt that if I make the right image_view package I edited because I know there is another one in /opt/ros/groovy/stacks. But I my ROS_PAKCKAGE_PATH is
+/home/adrian/catkin_ws/src:/opt/ros/groovy/share:/opt/ros/groovy/stacks
+
+So I think rosmake should make the source image_view in my workspace.
+Thanks and have a good day!
+
+Originally posted by AdrianPeng on ROS Answers with karma: 441 on 2013-02-28
+Post score: 0
+
+Original comments
+Comment by Thomas on 2013-02-28:
+I remember trying a couple of months ago to send images over UDP (with Electric probably) and communication was kind of unstable (sometimes the node just crashed). (I think I have been too lazy at that time to open a ticket regarding this issue, sorry!)
+Comment by AdrianPeng on 2013-03-01:
+I heard that UDP transport might be unstable, but I still want to try since I really concern about latency. Do you mind telling me how you send images over UDP? Did you just edit the transport hint in subscriber node? Thanks!
+Comment by Thomas on 2013-03-03:
+Yes this is how I did it. You should also consider trying tcpNoDelay, it may help you.
+
+A:
+
+There is definitely no explicit code in camera1394 for UDP transport. Publishing the sensor_msgs/Image and sensor_msgs/CameraInfo messages is actually done in image_transport, not in the driver, itself.
+Since you seem uncertain which image_view you are using, run this command:
+$ rospack find image_view
+
+I have never attempted to use UDP with camera1394, and have no idea whether it will work reliably or not. It is certainly worth trying, if that's what you need.
+
+Originally posted by joq with karma: 25443 on 2013-02-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by AdrianPeng on 2013-02-28:
+Did you use UDP with other nodes before? As far as I know, I just need to edit ros::TransportHints() in subscriber source file. Is it right?
+Comment by AdrianPeng on 2013-02-28:
+I found the description of image_transport package description is "image_transport should always be used to subscribe to and publish images". Does image_view also use image_transport to subscribe to images? If yes, I might need to edit the source code in image_transport package.
+Comment by joq on 2013-03-01:
+Yes, image_view subscribes using image_transport. My impression is that UDP transport with ROS is not fully functional, but I have no personal experience using it.
+Comment by AdrianPeng on 2013-03-01:
+Is image_transport just a library? I am not supposed to change anything in image_transport, right?
+Comment by joq on 2013-03-01:
+image_transport is a ROS package, which provides a library and a republish node. You can check out the source and modify it, to experiment with UDP. Making a patch that could actually be merged back into the master source tree would probably be tricky.
+Comment by AdrianPeng on 2013-03-01:
+I have two image_transport packages, one on my gumstix Overo side and one on my laptop. Which one do I need to modify? I heard I just need to set image_transport::TransportHints to udp() in subscriber node. I am really confused, does it mean I need to modify image_transport package on my laptop?
+Comment by joq on 2013-03-02:
+I am not sure, maybe someone else knows the answer. You can just experiement and see what happens. You can use something like wireshark to see what packets are transmitted.
+

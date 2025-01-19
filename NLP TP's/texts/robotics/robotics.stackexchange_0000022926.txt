@@ -1,0 +1,241 @@
+Q:
+
+Inverse kinematics for redundant robot
+
+I'm currently doing some in-depth analysis based on this article.
+Starting from a general inverse kinematics solution, the article gives an appropriate formula to compute a solution that takes into account more than one priority-base tasks.
+Now, I'm currently stuck on the very first step to follow the thread: computing the inverse kinematics solution. Simulating a Kuka LWR4+, I'm doing this in MATLAB, but it seems I'm neglecting something: the solution I get for just a single task does not follow the simple trajectory I've considered.
+Since I'm also using the Robotics Toolbox, I've tried to use the IK solver that comes with it, and it does give me an acceptable solution, so I know there is (at least) one. But for studying and learning purposes I do have to come up with my code.
+Below is a reduced (for simplicity) snippet of my code.
+clc; clear all; close all;
+
+syms t
+syms q [7 1]
+
+%% Numerical Data [cm]
+l0 = 11; l1 = 20; l2 = 20; l3 = 20; l4 = 20; l5 = 19; offset = 7.8; rho = 10;
+
+%% Denavit-Hartemberg and Jacobian
+%                a   alpha   d       theta    joint_type
+denavit = @(q)([[0,  pi/2,   0,      q(1),       "R"] 
+                [0,  -pi/2,  0,      q(2),       "R"] 
+                [0,  -pi/2,  l2+l3,  q(3),       "R"] 
+                [0,  pi/2,   0,      q(4),       "R"] 
+                [0,  pi/2,   l4+l5,  q(5),       "R"] 
+                [0,  -pi/2,  0,      q(6),       "R"] 
+                [0,  0,      offset, q(7),       "R"]]);
+
+Jac = @(q, ind)(JacobFromDH(denavit(q), ind));
+
+J = @(q)Jac(q,0); % J4 = @(q)Jac(q, 4);
+
+Tos = HomX(0, [0,0,l0+l1]);
+ForKine = @(q) Tos*DHFKine(denavit(q));
+
+%% Task
+t_task = 0:pi/10:3*pi;
+
+% Desired EE motion
+despos = @(t) [20 - 10*sqrt(3)*sin(t), 20*cos(t), 65 + 10*sin(t),0.5*t,0,sqrt(3)/2*t];
+destwist = diff(despos,t);
+
+traj_fig = figure2('Name', 'task trajectory');
+grid
+hold on
+for k = t_task
+    app = despos(k);
+    plot3(app(1),app(2),app(3),'x--','Color','blue')
+end
+view(45,45)
+
+%% Inverse kinematics algorithm
+qSotNorm = sot(J(q), ...
+               destwist',..., 
+               ForKine(q), ...
+               despos(t));
+
+%% Plot solution
+f_dot = figure2('Name', 'qSotNorm');
+for j=[1:size(qSotNorm,1)]
+    subplot(size(qSotNorm,1), 1, j)
+    plot(squeeze(qSotNorm(j,end,:)))
+end
+
+%% Robot design
+kuka = rigidBodyTree('Dataformat', 'column');
+
+dhparams = [0  pi/2   0         qSotNorm(1,end,1); 
+            0  -pi/2  0         qSotNorm(2,end,1);
+            0  -pi/2  l2+l3     qSotNorm(3,end,1);
+            0  pi/2   0         qSotNorm(4,end,1);
+            0  pi/2   l4+l5     qSotNorm(5,end,1);
+            0  -pi/2  0         qSotNorm(6,end,1);
+            0  0      offset    qSotNorm(7,end,1)];
+
+bodyNames = {'b1','b2','b3','b4','b5', 'b6','b7'};
+parentNames = {'base','b1','b2','b3','b4', 'b5','b6'};
+jointNames = {'j1','j2','j3','j4','j5', 'j6','j7'};
+jointTypes = {'revolute','revolute','revolute','revolute','revolute', 'revolute','revolute'};
+
+for k = 1:7
+    % Create a rigidBody object with a unique name
+    kukaBodies(k) = rigidBody(bodyNames{k});
+    % Create a rigidBodyJoint object and give it a unique name
+    kukaBodies(k).Joint = rigidBodyJoint(jointNames{k}, jointTypes{k});
+    % Use setFixedTransform to specify the body-to-body transformation using DH parameters
+    setFixedTransform(kukaBodies(k).Joint, dhparams(k,:), 'dh');
+    % Attach the body joint to the robot
+    addBody(kuka, kukaBodies(k), parentNames{k});
+end
+
+showdetails(kuka)
+
+%% Integration
+ris = cumtrapz(0.1, qSotNorm, 3);
+
+fris = figure2('Name', 'with integration');
+for j=1:size(ris,3)
+    show(kuka, ris(:,end,j))
+    view(45,45)
+    drawnow
+    pause(0.1)
+end
+
+hold on
+for k = t_task
+    app = despos(k);
+    plot3(app(1),app(2),app(3),'o-')
+end
+
+eu_fig = figure2('Name', 'trying euler');
+[ts, qs_eu] = ForwardEuler_sot(qSotNorm, 0, zeros(7,1), 0.1);
+for j=[1:size(qs_eu,2)]
+    show(kuka, qs_eu(:,j))
+    view(45,45)
+    drawnow
+    pause(0.1)
+end
+
+hold on
+for k = t_task
+    app = despos(k);
+    plot3(app(1),app(2),app(3),'o-')
+end
+
+%% Plot solution
+f_norm = figure2('Name', 'integrated values with cumtrapz');
+for j=[1:size(ris,1)]
+    subplot(size(ris,1), 1, j)
+    plot(squeeze(ris(j,end,:)))
+end
+
+function qsol = sot(J, xdot, FK, pos_t, kind, lambda)
+
+    syms t
+    total_time = 2*pi;
+    step = 0.1;
+    n_steps = ceil(total_time/step);
+    n_joints = size(J, 2);
+    n_tasks = size(xdot,2);
+    syms q [n_joints 1]
+
+    % +1 because the 1-index column of all pages will be qdot0(t)=0
+    qdot = zeros(n_joints, n_tasks+1, n_steps);
+    % Resulting in a (n_joints*1 x n_joints*1 x 1*n_tasks) matrix
+    PA = repmat( eye(n_joints), 1, 1, n_tasks+1); % checked: OK to be an Identity
+    % Extends twist vector to use the same index as the other matrices
+    twists = cat(2,zeros(size(xdot,1),1), xdot);
+
+    js = cat(3, zeros(size(J,1),size(J,2)),J);
+
+    for i=[1:n_tasks] % i=2 <-> task 1
+        current_task = i+1;
+        prev_task = i;
+        
+        proj_prev = double(PA(:, :, prev_task)); % Projector of J_i-1
+
+        for curr_time_step = [1:n_steps]
+            timestep = curr_time_step * step;
+            if curr_time_step <= 1
+                prev_step = curr_time_step;
+            else
+                prev_step = curr_time_step-1;
+            end
+
+            % Jacobian: current task, previous timestep approximation
+            jac = double(subs(js(:,:,current_task), q, qdot(:, current_task, prev_step)));
+
+            % Desired twist: current task, current timestep
+            twist_des = double(subs(twists(:, current_task), t, timestep));
+
+            % Previous task final solution
+            q_prev = qdot(:, prev_task, end);
+
+            num_FK = double(subs(FK, q, qdot(:, current_task, prev_step)));
+
+            posdes = double(subs(pos_t, t, timestep));
+            err_pos = posdes(1:3)' - num_FK(1:3, 4);
+
+            quat_att = MatToQuat(num_FK(1:3,1:3));
+            quat_des = MatToQuat(eye(3)); % move out of this function
+            n_des = quat_des(1);
+            eps_des = quat_des(2:4);
+            n_att = quat_att(1);
+            eps_att = quat_des(2:4);
+            % Can be computed via quaternions directly, too
+            err_or = (n_att*eps_des' - n_des*eps_att' - Skew(eps_des)*eps_att');
+
+            errors = [err_pos; err_or];
+
+            k_pos = 50*eye(3);
+            k_or = 50*eye(3);
+            gains = [[k_pos, zeros(3,3)];
+                     [zeros(3,3), k_or]];
+
+            q_clik = pinv(jac) * (twist_des + gains * errors);
+            q_app = q_clik; % so this is the starting point
+    
+            % Compute next timestep solution, for each task i
+            q_next = q_app;% + pinv(jac * proj_prev) * (twist_des - jac * q_prev);
+
+            % i-th task
+            qdot(:, current_task, curr_time_step) = q_next;
+        end
+
+        proj_next = proj_prev - pinv(jac * proj_prev) * jac * proj_prev;
+        PA(:, :, current_task) = proj_next;
+    end
+
+    qsol = qdot(:,2:end,:);
+end
+
+As you can see I'm using some code to perform DH-base Forward Kinematics and Jacobian computations; I've checked and those are good.
+Does someone have any suggestions, even not code-related? I'm kinda confused, like I'm missing some core stuff...
+Thanks!
+
+A:
+
+Just to help out someone in the future, here's what I've done.
+The problem as treated above is ill-approached. I was trying to numerically compute the derivative terms hoping that I could integrate them later.
+Turns out, the right way to approach this problem is to build your own function that computes a derivative function and then use the ODE family to integrate.
+So, back to this case, for the inverse kinematics I've coded like the following
+    function qdot = clik(tt, q, J_sym, twist_sym)
+        % initialization
+        n = size(J_sym,2);
+        qdot = zeros(n,1);
+    
+        jac = J_sym(q);                 % 6xn
+        proj_jac = pinv(jac);              % nx6
+        twist_des = twist_sym(tt)';     % 6x1
+    
+        % actual function: qdot = J^(-1) * xdot_des
+        for i=[1:n]
+            qdot(i,1) = proj_jac(i,:) * twist_des;
+        end
+    end
+
+and then used
+[t_clik, y_clik] = ode15s(@(t,y) clik(t,y,J,destwist), [t0 tf], qinit);
+
+where destwist and J are the function handles to compute the desired twist at the end effector and the manipulator jacobian, while qinit is the initial condition.
+

@@ -1,0 +1,137 @@
+Q:
+
+Visualize contour of camera field-of-view on plane
+
+Is there a ros node that will take in a CameraInfo and target frame parameter to project the field-of-view of the camera onto a flat plane (defined by the target frame)?  Ideally it would output a line list of points in an rviz Marker, or something similar that is easy to visualize.
+What the node would do is walk through at least the four corners (or sample multiple times along the edges, especially if the distortion is high) of the image and use opencv to project them into 3D lines using the intrinsics and distortion coefficients, transform those lines into the target frame, then figure out if they intersect Z == 0.0 (or make the plane selectable from X,Y or Z with a configurable offset), throw out a warning if nothing intersects, add intersecting points to the point list.
+
+A:
+
+I've made a ros node for this here: https://github.com/lucasw/vimjay/blob/eliminate_build_warnings/scripts/camera_info_to_plane.py (I'll get it into the main branch later)
+
+https://youtu.be/VOY64AK3-N0
+roslaunch vimjay camera_info_to_plane.launch
+
+This is the code, using opencv undistort on an array of points that trace the borders of the image, transforms them into the frame of interest to project onto, then finds the intersection of each point with z == 0.0 on that plane.
+It's a little slow, the for-loop for intersection finding is an obvious candidate for vectorization, and there may be a faster way than creating a PointCloud2 to transform a bunch of 3D points from one frame to another (if anyone knows please leave a comment- or submit a PR).  It could also cache results from previous updates if it detects nothing in the relative transform or camera info has changed, or at the least cache the border point strip if the number of points per edge hasn't changed.
+def camera_info_callback(self, msg: CameraInfo):
+    try:
+        tfs = self.tf_buffer.lookup_transform(self.target_frame, msg.header.frame_id,
+                                              msg.header.stamp, rospy.Duration(0.3))
+    except (tf2_ros.LookupException, tf2_ros.ExtrapolationException) as ex:
+        rospy.logwarn_throttle(4.0, ex)
+        return
+
+    camera_matrix, dist_coeff, rvec, tvec = camera_info_to_cv2(msg)
+
+    num_per_edge = 8
+    num_points = num_per_edge * 4 + 1
+
+    points2d = np.zeros((num_points, 2))
+    ind = 0
+    # create points in a loop around the edge of the image
+    for i in range(num_per_edge):
+        fr = i / num_per_edge
+        points2d[ind, 0] = fr * msg.width
+        ind += 1
+
+    for i in range(num_per_edge):
+        fr = i / num_per_edge
+        points2d[ind, 0] = msg.width
+        points2d[ind, 1] = fr * msg.height
+        ind += 1
+
+    for i in range(num_per_edge):
+        fr = 1.0 - i / num_per_edge
+        points2d[ind, 0] = fr * msg.width
+        points2d[ind, 1] = msg.height
+        ind += 1
+
+    # complete the loop with the + 1
+    for i in range(num_per_edge + 1):
+        fr = 1.0 - i / num_per_edge
+        points2d[ind, 1] = fr * msg.height
+        ind += 1
+
+    # idealized points all at range 1.0
+    ideal_points = cv2.undistortPoints(points2d, camera_matrix, dist_coeff)
+
+    points3d_in_camera = np.ones((num_points + 1, 3))
+    points3d_in_camera[:-1, 0] = ideal_points[:, 0, 0]
+    points3d_in_camera[:-1, 1] = ideal_points[:, 0, 1]
+
+    # the origin of the camera
+    points3d_in_camera[-1, 0] = 0.0
+    points3d_in_camera[-1, 1] = 0.0
+    points3d_in_camera[-1, 2] = 0.0
+
+    # rospy.loginfo_throttle(6.0, f"\n{points2d}")
+    # rospy.loginfo_throttle(6.0, f"\n{points3d_in_camera}")
+
+    # put numpy/cv2 points into a point cloud
+    field_points = []
+    for ind in range(points3d_in_camera.shape[0]):
+        x = points3d_in_camera[ind, 0]
+        y = points3d_in_camera[ind, 1]
+        z = points3d_in_camera[ind, 2]
+        pt = [x, y, z]
+        field_points.append(pt)
+
+    fields = [PointField('x', 0, PointField.FLOAT32, 1),
+              PointField('y', 4, PointField.FLOAT32, 1),
+              PointField('z', 8, PointField.FLOAT32, 1),
+              ]
+
+    pc2_in = point_cloud2.create_cloud(msg.header, fields, field_points)
+    # pc2_in.header.stamp = msg.header.stamp
+    # TODO(lucasw) probably a more efficient transform on a Point array than converting to PointCloud2
+    pc2_out = do_transform_cloud(pc2_in, tfs)
+    pc2_points = point_cloud2.read_points(pc2_out, field_names=("x", "y", "z"), skip_nans=True)
+
+    marker = Marker()
+    marker.header.stamp = msg.header.stamp
+    marker.header.frame_id = self.target_frame
+    marker.ns = "camera_info"
+    marker.id = self.marker_id
+    marker.type = Marker.LINE_STRIP
+    marker.pose.orientation.w = 1.0
+    marker.lifetime = rospy.Duration(0.0)
+    marker.frame_locked = False
+    marker.scale.x = 0.05
+    marker.color.r = 0.7
+    marker.color.g = 1.0
+    marker.color.a = 1.0
+
+    # convert from generator to list
+    pc2_points = [pt for pt in pc2_points]
+
+    # the camera origin in the target frame
+    pt0 = pc2_points[-1]
+    x0 = pt0[0]
+    y0 = pt0[1]
+    z0 = pt0[2]
+
+    for pt1 in pc2_points[:-1]:
+        x1 = pt1[0]
+        y1 = pt1[1]
+        z1 = pt1[2]
+        # is the ray facing away from the plane, or parallel, and will never intersect?
+        if z1 >= z0 and z0 >= 0.0:
+            continue
+        elif z1 >= z0 and z0 <= 0.0:
+            continue
+
+        scale = z0 / (z0 - z1)
+        x2 = x0 + (x1 - x0) * scale
+        y2 = y0 + (y1 - y0) * scale
+        # this should be 0.0
+        z2 = z0 + (z1 - z0) * scale
+
+        pt = Point(x2, y2, z2)
+        # pt = Point(x1, y1, z1)
+        marker.points.append(pt)
+
+    marker_array = MarkerArray()
+    marker_array.markers.append(marker)
+    self.marker_pub.publish(marker_array)
+

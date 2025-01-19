@@ -1,0 +1,59 @@
+Q:
+
+[ROS2 Humble] Segmentation Fault for assigning Header/Frame ID to shared pointer
+
+Hi Community,
+i am currently struggling with some segmentation fault which i don't understand while assigning the Frame ID to the header of a Odometry Message
+auto odom_pose = nav_msgs::msg::Odometry::SharedPtr();
+// odom_pose->header.stamp = pose->header.stamp;
+odom_pose->header.frame_id = std::string("map");
+odom_pose->child_frame_id = "track_"+std::to_string(uuid_);
+odom_pose->pose = pose->pose;
+setCurrentOdomPose(odom_pose);
+
+Does SegFault at the assignment of frame_id, but it also occured that it seg faulted at assigning the stamp or if i would assign directly the header of pose to my odom_pose.
+I changed the code to create only the Odometry message and later create a shared pointer of it which does not seg fault at the assignment of the Header.
+auto odom_pose = nav_msgs::msg::Odometry();
+// odom_pose->header.stamp = pose->header.stamp;
+odom_pose.header.frame_id = std::string("map");
+odom_pose.child_frame_id = "track_"+std::to_string(uuid_);
+odom_pose.pose = pose->pose;
+auto odom_pose_ptr = std::make_shared<nav_msgs::msg::Odometry>(odom_pose);
+setCurrentOdomPose(odom_pose_ptr);
+
+The backtrace didn't give any good information too, it only showed where the segfault occured and in case of assigning the header instead of directly the sub variables i got this additional frame on top.
+#0  0x00007f420c3c1904 in std_msgs::msg::Header_<std::allocator<void> >::operator= (
+this=0x0)
+at /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/header__struct.hpp:36
+
+Originally posted by wienans on ROS Answers with karma: 3 on 2023-02-07
+Post score: 0
+
+A:
+
+This appears to be a C++ problem, not a ROS one.
+Summarising:
+
+auto odom_pose = nav_msgs::msg::Odometry::SharedPtr() initialises odom_pose as a shared pointer. Just a pointer. No storage is allocated for the actual object (or pointed-to)
+auto odom_pose = nav_msgs::msg::Odometry() actually initialises odom_pose to an instance of nav_msgs::msg::Odometry. So that's an instance (ie: an object) of the class nav_msgs::msg::Odometry. This allocates storage for the object
+
+In the first case (the problematic one), you have just a pointer pointing to nothing (either 0x0 or garbage). Dereferencing an invalid pointer typically leads to SEGFAULTs.
+In other words: you cannot write anything to the fields of the object your smart pointer points to, as they don't "exist". And even that's not correct, as there is no "object your smart pointer points to".
+In the second case (the working one), all of that is "solved", as there is actual memory reserved for your nav_msgs::msg::Odometry object, and all its fields are usable by you.
+
+Originally posted by gvdhoorn with karma: 86574 on 2023-02-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by wienans on 2023-02-07:
+Hi @gvdhoorn
+thank you now the 0x0 in the gdb message also does make sense.
+Then
+auto odom_pose = std::make_shared<nav_msgs::msg::Odometry>();
+
+instead of
+auto odom_pose = nav_msgs::msg::Odometry::SharedPtr();
+
+should do the trick? :D
+

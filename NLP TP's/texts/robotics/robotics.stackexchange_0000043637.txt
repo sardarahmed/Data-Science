@@ -1,0 +1,52 @@
+Q:
+
+get the raw kinect data
+
+In openni, I think sensor_msgs encode data.
+Because, rostopic echo /camera/depth/image and /camera/depth/disparity pulish not 16bit or 11bit, just 0~255.
+I think the data is not actual depth data( distance )
+I want to know depth value. But I don't know how to get the depth value.
+I know the relation ( Z=fT/d ).
+I think the fomula substituted raw data is right.
+How can I get the raw kinect sensor data?
+Or How can I get the actual depth value?
+
+Originally posted by ha on ROS Answers with karma: 1 on 2012-08-28
+Post score: 0
+
+Original comments
+Comment by ha on 2012-08-29:
+I think sensor_msgs/image message format is 8bit and using cv_bridge is 16bit or 32bit. Dose from 8bit to 32bit make loss accuracy?
+
+A:
+
+Looking at the openni_camera documentation on the ROS wiki, you can see that the openni_node broadcasts several topics.
+I think for the data that you are looking for, the topics of interest will be the depth/image_raw messages, or the depth_registered/image_raw if you have the OpenNI registration turned on.
+The */image_raw messages are in the sensor_msgs/Image message format, which stores the data in a byte array, that can then be reassembled in the subscriber.  This is accomplished using cv_bridge.
+cv_bridge allows you to write code like this for your callback:
+void imageCb(const sensor_msgs::ImageConstPtr& msg)
+{
+  cv_bridge::CvImagePtr cv_ptr;
+  try
+  {
+    cv_ptr = cv_bridge::toCvCopy(msg, enc::TYPE_32FC1);
+  }
+  catch (cv_bridge::Exception& e)
+  {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    return;
+  }
+  cv::imshow(WINDOW, cv_ptr->image);
+  image_pub_.publish(cv_ptr->toImageMsg());
+}
+
+cv_ptr->image will contain an OpenCV cv::Mat, in this case containing floating point values, which represent the depth in millimeters for that pixel.
+
+Originally posted by mjcarroll with karma: 6414 on 2012-08-29
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by shinnqy on 2014-05-21:
+Can you tell how to access the floating point values in cv_ptr->image?
+

@@ -1,0 +1,46 @@
+Q:
+
+How to invoke callback functions sequentially
+
+This is how my main looks like:
+ros::init(argc,argv,"moving");
+ros::NodeHandle n1; 
+ros::NodeHandle n2;
+
+image_transport::ImageTransport it(n1);
+image_transport::ImageTransport it1(n2);
+
+image_transport::Subscriber sub1 = it1.subscribe("camera/rgb/image_color", 1, imageCallback);
+image_transport::Subscriber sub2 = it.subscribe("camera/depth/image", 1, depthCallback);
+
+ros::Rate r(10);
+
+while(ros::ok()){
+    ros::spinOnce();
+    r.sleep();
+}
+
+I need to first invoke imageCallback and use data it generates in depthCallback function. But ros::spinOnce() calls them in a random order.
+How do I call them sequentially, in the order listed, first imageCallback then depthCallback?
+
+Originally posted by pronik on ROS Answers with karma: 30 on 2015-01-03
+Post score: 0
+
+A:
+
+Technically, I don't think the callbacks are actually random; rather, they occur in the order in which messages are received...even though that may appear to be random. I mention that because it indicates a fundamental misunderstanding of the mechanism: you do not call the callbacks, the callbacks are event-driven, ordered by message reception.
+With that said, you want to impose some kind of message reception synchronization. Perhaps something in the message_filters package will do? Specifically, it seems to me that ApproximateTime would work for you.
+If not, off the top of my head, a simple solution would be to use the callbacks to store message values then call a common method. The common method short-circuits unless both message values are filled, otherwise processing the stored values in the order you specify.
+It's important to note that the callback mechanism already imposes per-message synchronization (unless you're multi-threading); that is, only one callback executes at any time, and does so to completion. So implementation is straightforward -- you can simply have a boolean flag for each message type, only performing full processing when both are true.
+One final (unrelated) point: you do not need two NodeHandle objects, as they are reference-counted copies of a global object. See NodeHandle Overview or, for more detail, the NodeHandle API (specifically the default constructor).
+
+Originally posted by kramer with karma: 1470 on 2015-01-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pronik on 2015-01-03:
+Thanks for the tip. I used callbacks to store message values and then calling a common method. It worked.
+Comment by kramer on 2015-01-03:
+You're welcome, glad you figured it out. If you think the answer is adequate, please accept it and close the question.
+

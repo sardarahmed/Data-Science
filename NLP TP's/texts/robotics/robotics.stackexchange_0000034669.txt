@@ -1,0 +1,50 @@
+Q:
+
+error: ‘__s_getMD5Sum’ is not a member
+
+I keep getting this error while porting old code to adjust to the current ROS. Any idea to workaround would be appreciated. Let me notice that I'm not that familiar with boost::bind yet, and I'm asking at this forum because I wonder if this is either bind question, ROS' or else.
+Extracted code:
+class CS {
+ private:
+    ros::NodeHandle *ros_node_;
+    void bvmHandler(void *flag) {
+        *(bool *) flag = true;
+    }
+    void funcB() {
+        ros_node_->subscribe("topic", //
+          1000, //
+          &CS::bvmHandler, //     <----- line #431
+          this);
+    }
+};
+
+Error:
+CS.cpp:431:   instantiated from here
+/opt/ros/electric/stacks/ros_comm/clients/cpp/roscpp_traits/include/ros/message_traits.h:121: error: ‘__s_getMD5Sum’ is not a member of ‘void*’
+
+Environment: Ubuntu 10.10, ROS Electric
+
+Update 10/5/2011) Thanks to @Eric Perko, I modified the code to workaround (at least compile moves on to the next phase):
+#include "std_msgs/Bool.h"
+void bvmHandler(std_msgs::BoolConstPtr *flag)
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2011-10-04
+Post score: 1
+
+A:
+
+Take a look at the roscpp::NodeHandle docs for the subscribe method. These valid signatures are also included on the wiki. None of those look like they will work with a function that takes a void* argument. All seem to require a function or method that takes a ros message either by value or shared_ptr.
+Note that your callback function should take some type of ROS message, not a void*. Changing CS::bvmHandler to something like CS::bvmHandler(std_msgs::Bool::Ptr flag) would probably compile (once you fix up the function body logic for the new flag type), since it gives the compiler enough hints about which subscribe template to pick and instantiate.
+
+Originally posted by Eric Perko with karma: 8406 on 2011-10-04
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Eric Perko on 2011-10-05:
+Added the list of signatures on the wiki to my answer.
+Comment by 130s on 2011-10-05:
+Thanks. Your link didn't open itself. This should work http://goo.gl/Dqmxm
+Comment by tfoote on 2011-10-04:
+There's a list of valid callback signatures on the wiki at http://www.ros.org/wiki/roscpp/Overview/Publishers%20and%20Subscribers#Callback_Signature
+

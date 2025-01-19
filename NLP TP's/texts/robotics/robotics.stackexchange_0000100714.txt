@@ -1,0 +1,71 @@
+Q:
+
+How to use slotcar plugin for my own robot?
+
+Hi, I have read about the RMF in ROS2, but I want to use slotcar plugin for my own robot in ROS1 to integrate it into the RMF.
+Beside adding this plugin to my urdf robot file and change the parameters, should I do anything else for this to work?
+
+Originally posted by Kevin1719 on ROS Answers with karma: 58 on 2021-12-02
+Post score: 0
+
+A:
+
+Hi @Kevin1719
+To use the plugin you will need to compile it as a library then added to your model urdf/sdf:
+Refer to this tutorial that shows you how to.
+To add it to library path:
+export GAZEBO_PLUGIN_PATH=$HOME/gazebo_plugin_tutorial/build:$GAZEBO_PLUGIN_PATH
+
+The source code for the slotcar plugin can be found in this repo
+class IGNITION_GAZEBO_VISIBLE SlotcarPlugin
+  : public System,
+  public ISystemConfigure,
+  public ISystemPreUpdate
+
+As per the tutorial in your link to use:
+<plugin name="slotcar" filename="libslotcar.so">
+  <nominal_drive_speed>0.5</nominal_drive_speed>
+  <nominal_drive_acceleration>0.25</nominal_drive_acceleration>
+  <max_drive_acceleration>0.75</max_drive_acceleration>
+  <nominal_turn_speed>0.6</nominal_turn_speed>
+  <nominal_turn_acceleration>1.5</nominal_turn_acceleration>
+  <max_turn_acceleration>2.0</max_turn_acceleration>
+  <tire_radius>0.1</tire_radius>
+  <base_width>0.3206</base_width>
+  <stop_distance>0.75</stop_distance>
+  <stop_radius>0.75</stop_radius>
+</plugin>
+
+To use with ROS, then refer to this tutorial how to add Gazebo Plugins.
+
+Originally posted by osilva with karma: 1650 on 2021-12-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Kevin1719 on 2021-12-05:
+Thanks @osilva for a comprehensive answer, I will follow your instructions and reply the outcome as soon as possible. By the way, I'm wondering how slotcar simulates robot models in Gazebo, when I launch the clinic demo from this, I can see it publishes messages to /robot_state topic after running rqt_graph command, but Gazebo doesn't subscribe to that topic, and the robots still move normally in Gazebo simulation. Can you explain the mechanism under the hood, please?
+Comment by osilva on 2021-12-05:
+I think the best way is to study the source code for the plugin link
+void SlotcarPlugin::send_control_signals(EntityComponentManager& ecm,
+  const std::pair<double, double>& velocities,
+  const std::unordered_set<Entity> payloads,
+  const double dt)
+{
+  auto lin_vel_cmd =
+    ecm.Component<components::LinearVelocityCmd>(_entity);
+  auto ang_vel_cmd =
+    ecm.Component<components::AngularVelocityCmd>(_entity);
+
+  double v_robot = lin_vel_cmd->Data()[0];
+  double w_robot = ang_vel_cmd->Data()[2];
+  std::array<double, 2> target_vels;
+  target_vels = dataPtr->calculate_model_control_signals({v_robot, w_robot},
+      velocities, dt);
+
+For example the function above sends control signals of linear and angular velocities.
+Comment by osilva on 2021-12-05:
+The plugin is another gazebo objects that interacts with Gazebo's physics engine, so if the robot moves for example, the engine knows that the robot is in motion, those physical properties can be read by the plugin in simulation. Hope that makes a little more clear.
+Comment by Kevin1719 on 2021-12-06:
+@osilva Yes, that makes sense, I will dig into the code to see if there is anything related. Thanks a lot.
+

@@ -1,0 +1,36 @@
+Q:
+
+How to avoid/manage process/thread starvation?
+
+Short version: how to keep one (cpu bound) node from starving all other nodes without explicit sleep()?
+
+I have a system in which one node (in particular) is a cpu hog and also publishes a lot of messages. This node is a source node, with the rest of the nodes waiting and only acting on messages they receive (from the cpu hog, or other nodes).
+What I'd like to do is give this source node a lower priority, so that it only gets the cpu if the other nodes are idle (or at least, not very busy). The idea is that the source will still publish ('as fast as possible'), but without getting in the way of the processing nodes.
+AFAIK, nice should do this on Linux, and can be used as a launch-prefix to run a node at a specific nice level, but it "doesn't seem to work" in my case. I've verified the nice level with ps axl | grep -i nodename, and it is at 19 (with PRIO at 39), but the other nodes (at NI 0 and PRIO 20) are still starved of cpu and are loosing many messsages (note that higher PRIO values are less likely to be given cpu time).
+I'm wondering if nice is the proper way to achieve the described behaviour, or should I use something else?
+PS: there is no sleep(..) anywhere in the source node, it's essentially an infinite 'busy' while. Sleeping 'solves' the described issue, but there is no explicit need for periodicity and also seems to incur overhead (ie less messages published than possible). For obvious reasons a request-reply (even if a pub-sub acknowledge) system is undesirable.
+
+Originally posted by ipso on ROS Answers with karma: 1416 on 2012-07-29
+Post score: 3
+
+Original comments
+Comment by dornhege on 2012-07-30:
+Does maybe a usleep(1); help?
+Comment by ipso on 2012-07-30:
+Well 'yes': sleeping allows other processes/tasks to get some cpu time, but I'd like to avoid it, as it puts an (artificial) upper limit on the maximum nr of messages published, even if there are no other nodes using cpu. Thanks for your comment though.
+Comment by dornhege on 2012-07-30:
+The usleep(1); hack shouldn't really be influencing the number of messages much as it is only one microsecond or better it gives up control to other processes for a very short time. If that works, it might be worth a try with no other processes running. Although I do remember using this only for inner process "nicing".
+
+A:
+
+You can make your process explicitly relinquish its cpu time by calling sched_yield, defined in the header file sched.h. It just moves your process to the end of the scheduling queue for the corresponding priority.
+I guess the reason why renicing the process doesn't have the expected effect is that the scheduler is only called after your thread's time is over, i.e. processes with a higher priority are called only after your thread either performs a syscall or the OS calls the scheduler through a timer interrupt. That's really just a guess though. Using sched_yield should work, even when you don't change the priority.
+
+Originally posted by Lorenz with karma: 22731 on 2012-07-30
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by ipso on 2012-07-30:
+Yes, I've tried that, but using boost::thread::yield() in the while loop. I need to do some more testing I guess. Yielding helps to a degree, but not as much as I'd like.
+

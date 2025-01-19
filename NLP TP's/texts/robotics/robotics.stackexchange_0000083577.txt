@@ -1,0 +1,133 @@
+Q:
+
+Could use some guidance on how to navigate while avoiding obstacles
+
+I have a physical robot that needs to navigate from its current location A to some point B defined by a GPS coord while avoiding all physical obstacles.
+The robot is equipped with a GPS of its own and has a LIDAR. Just not sure how to approach this.
+The LIDAR has limited range so the robot can't see very far, this can cause it to get stuck in certain situations. If the robot was making a map of the environment as it went along, something like SLAM, then this could be avoided.
+I'm just not sure how I can do SLAM while also navigating to a specific goal while also doing obstacle avoidance.
+I looked at this tutorial: http://wiki.ros.org/cob_tutorials/Tutorials/Navigation%20%28slam%29 but didn't learn from it.
+
+Originally posted by Auton0mous on ROS Answers with karma: 38 on 2017-10-27
+Post score: 0
+
+A:
+
+Your problem requires a lot of work.
+First, let's separate your questions into two problems:
+
+How to navigate using SLAM
+How to navigate using GPS
+
+Those are two different things and need to be dealt separately.
+I'll treat in this answer how to solve the first question, using the ROS navigation stack (that is what is used in the link provided, but the link has already prepared everything for the cob robot).
+
+In order to do navigation using a laser for localization and obstacle avoidance, you need to do first a map of the environment you want to move through. For that you need to use the gmapping package. Launch the gmapping package, and then move the robot around using the keyboard or joystick so it can build the map. Below, included an example of gmapping launch file for the Kobuki robot, that you may try to modify for your robot:
+
+Once the map is done, you need to save it using the following command:
+rosrun map_server map_saver -f name_of_map
+
+Then you are ready to use that map for localization and sending the robot to different locations in the map, while avoiding obstacles. Kill the gmapping node and launch now the localization package (the amcl). Together with the amcl you need to launch the map_server (to use the map you created on the previous step) and the move_base (to make the robot move around while avoiding obstacles). An example launch file for that would be the following:
+
+Here the amcl.launch.xml file:
+<launch>
+<arg name="use_map_topic"   default="false"/>
+<arg name="scan_topic"      default="kobuki/laser/scan"/> 
+<arg name="initial_pose_x"  default="0.0"/>
+<arg name="initial_pose_y"  default="0.0"/>
+<arg name="initial_pose_a"  default="0.0"/>
+<arg name="odom_frame_id"   default="odom"/>
+<arg name="base_frame_id"   default="base_footprint"/>
+<arg name="global_frame_id" default="map"/>
+<node pkg="amcl" type="amcl" name="amcl">
+<param name="use_map_topic"             value="$(arg use_map_topic)"/>
+<!-- Publish scans from best pose at a max of 10 Hz -->
+<param name="odom_model_type"           value="diff"/>
+<param name="odom_alpha5"               value="0.1"/>
+<param name="gui_publish_rate"          value="10.0"/>
+<param name="laser_max_beams"             value="60"/>
+<param name="laser_max_range"           value="12.0"/>
+<param name="min_particles"             value="500"/>
+<param name="max_particles"             value="2000"/>
+<param name="kld_err"                   value="0.05"/>
+<param name="kld_z"                     value="0.99"/>
+<param name="odom_alpha1"               value="0.2"/>
+<param name="odom_alpha2"               value="0.2"/>
+<!-- translation std dev, m -->
+<param name="odom_alpha3"               value="0.2"/>
+<param name="odom_alpha4"               value="0.2"/>
+<param name="laser_z_hit"               value="0.5"/>
+<param name="laser_z_short"             value="0.05"/>
+<param name="laser_z_max"               value="0.05"/>
+<param name="laser_z_rand"              value="0.5"/>
+<param name="laser_sigma_hit"           value="0.2"/>
+<param name="laser_lambda_short"        value="0.1"/>
+<param name="laser_model_type"          value="likelihood_field"/>
+<!-- <param name="laser_model_type" value="beam"/> -->
+<param name="laser_likelihood_max_dist" value="2.0"/>
+<param name="update_min_d"              value="0.25"/>
+<param name="update_min_a"              value="0.2"/>
+<param name="odom_frame_id"             value="$(arg odom_frame_id)"/> 
+<param name="base_frame_id"             value="$(arg base_frame_id)"/> 
+<param name="global_frame_id"           value="$(arg global_frame_id)"/>
+<param name="resample_interval"         value="1"/>
+<!-- Increase tolerance because the computer can get quite busy -->
+<param name="transform_tolerance"       value="1.0"/>
+<param name="recovery_alpha_slow"       value="0.0"/>
+<param name="recovery_alpha_fast"       value="0.0"/>
+<param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
+<param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
+<param name="initial_pose_a"            value="$(arg initial_pose_a)"/>
+<remap from="scan"                      to="$(arg scan_topic)"/>
+</node>
+</launch>
+
+And here, the move_base.launch.xml file, for your reference.
+<launch>
+<include file="$(find turtlebot_navigation)/launch/includes/velocity_smoother.launch.xml"/>
+<include file="$(find turtlebot_navigation)/launch/includes/safety_controller.launch.xml"/>
+<arg name="odom_frame_id"   default="odom"/>
+<arg name="base_frame_id"   default="base_footprint"/>
+<arg name="global_frame_id" default="map"/>
+<arg name="odom_topic" default="odom" />
+<arg name="laser_topic" default="/kobuki/laser/scan" />
+<arg name="custom_param_file" default="$(find turtlebot_navigation)/param/dummy.yaml"/>
+<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+  <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+  <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />   
+  <rosparam file="$(find turtlebot_navigation)/param/local_costmap_params.yaml" command="load" />   
+  <rosparam file="$(find turtlebot_navigation)/param/global_costmap_params.yaml" command="load" />
+  <rosparam file="$(find turtlebot_navigation)/param/dwa_local_planner_params.yaml" command="load" />
+  <rosparam file="$(find turtlebot_navigation)/param/move_base_params.yaml" command="load" />
+  <rosparam file="$(find turtlebot_navigation)/param/global_planner_params.yaml" command="load" />
+  <rosparam file="$(find turtlebot_navigation)/param/navfn_global_planner_params.yaml" command="load" />
+  <!-- external params file that could be loaded into the move_base namespace -->
+  <rosparam file="$(arg custom_param_file)" command="load" />
+  <!-- reset frame_id parameters using user input data -->
+  <param name="global_costmap/global_frame" value="$(arg global_frame_id)"/>
+  <param name="global_costmap/robot_base_frame" value="$(arg base_frame_id)"/>
+  <param name="local_costmap/global_frame" value="$(arg odom_frame_id)"/>
+  <param name="local_costmap/robot_base_frame" value="$(arg base_frame_id)"/>
+  <param name="DWAPlannerROS/global_frame_id" value="$(arg odom_frame_id)"/>
+  <remap from="cmd_vel" to="/cmd_vel"/>
+  <remap from="odom" to="$(arg odom_topic)"/>
+  <remap from="scan" to="$(arg laser_topic)"/>
+</node>
+</launch>
+
+Those files are prepared for a Turtlebot (Kobuki), so you may need to adapt them for your specific case.
+I know all that can be very confusing.
+For that reason, I have created this video, showing in real time the whole process explained above.
+However, this is just an example that works for the Kobuki robot. For your robot you will need to modify many of the config files above. Your question should be: how do I modify those?
+That is a long story to explain just here. Your options are:
+
+Check the wiki of the ROS navigation stack.
+Do this online course, step by step tutorial about how to configure the navigation stack for a wheeled robot.
+
+Next is your question about the GPS. That's a lot more of work! I recommend you to do this online course that shows how to use a Summit XL robot (by Robotnik) for GPS navigation.
+Keep pushing your ROS learning!
+
+Originally posted by R. Tellez with karma: 874 on 2017-10-30
+This answer was ACCEPTED on the original site
+Post score: 1
+

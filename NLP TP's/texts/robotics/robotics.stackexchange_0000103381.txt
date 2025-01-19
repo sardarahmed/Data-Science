@@ -1,0 +1,56 @@
+Q:
+
+How to define PID in diff_drive_controller
+
+I am trying to understand how diff_drive_controller works by following the documentation: http://wiki.ros.org/diff_drive_controller
+1 - I don't understand why the PID parameters are not set ?
+2 - If these parameters are not useful, then I would like to understand how the system manages to regulate itself ?
+
+Thank you for your answer, I understand.
+So DiffDriveController allows to calculate the speed of each wheel then send this speed to the motor (VelocityJointInterface) the motor must be controlled by the speed.
+In the case where a DC motor driven with an arduino and H bridge is used, the speed control loop is implemented at the level of the arduino, which makes configuration difficult.
+For my part I wrote an effort controller (effort_controllers/JointVelocityController) for each wheel. This controller allows to control each wheel individually in speed.
+drive_train:
+  wheels_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+
+  left_wheel_joint_velocity_controller:
+    type: effort_controllers/JointVelocityController
+    joint: left_wheel_joint
+    pid: {p: 6.0, i: 21.0, d: 0.0, i_clamp_min: -255.0, i_clamp_max: 255, antiwindup: True}
+
+  right_wheel_joint_velocity_controller:
+    type: effort_controllers/JointVelocityController
+    joint: right_wheel_joint
+    pid: {p: 6.0, i: 21.0, d: 0.0, i_clamp_min: -255.0, i_clamp_max: 255, antiwindup: True}
+
+Is it possible to use the controller I just wrote in DiffDriveController. Indeed the real time constraint will not be respected, but it is more logical from an architectural point of view. If possible can you show me how to do it..
+
+Originally posted by hdd--robot on ROS Answers with karma: 38 on 2023-06-30
+Post score: 1
+
+Original comments
+Comment by Mike Scheutzow on 2023-07-01:
+It's not clear what question you are asking.
+To support experimentation, move_base & ros_control are highly modular, and support control-feedback mechanisms in multiple places. You are unlikely to understand the big picture just by looking at the diff_drive_controller plugin to ros_control. Part of the story is explained by http://wiki.ros.org/ros_control (but this page is not a tutorial.)
+
+A:
+
+The DiffDriveController forwards incoming velocity commands to the VelocityJointInterfaces it has been configured to control, after converting the Twist into velocities for the individual joints.
+
+I don't understand why the PID parameters are not set ?
+
+You don't specify which PIDs you refer to, but since this is an open-loop (most likely always linear) conversion, there are no gains to configure.
+
+If these parameters are not useful, then I would like to understand how the system manages to regulate itself ?
+
+To answer your question very directly: there is nothing to regulate, at least not at the DiffDriveController level, with an open-loop hw interface, and the default configurations.
+The VelocityJointInterface handles which communicate with the underlying system/controller/embedded-hw/something else have the responsibility to ensure the wheels attain the velocities commanded by the DiffDriveController.
+In other words: the DiffDriveController does not consider it its responsibility to close the loop at the velocity level. That responsibility is delegated to whatever entity is actually controlling motor/wheel velocity, and which accepts the setpoints the DiffDriveController calculates (based on the incoming Twist).
+ros_control nomenclature for this would be something akin to the forward_command controllers, which also don't close the loop, but open-loop forward whatever command they receive to the underlying hw.
+
+Originally posted by gvdhoorn with karma: 86574 on 2023-07-01
+This answer was ACCEPTED on the original site
+Post score: 3
+

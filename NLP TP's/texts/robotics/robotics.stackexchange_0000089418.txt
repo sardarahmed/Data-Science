@@ -1,0 +1,93 @@
+Q:
+
+Passing ros message field argument as reference
+
+Hi all,
+Here is a little code illustrating my issue :
+void test2(bool &test)
+{    
+    return;
+}
+void test(std_msgs::Bool &bool_test)
+{
+    //TEST 1
+    bool a_bool;
+    test2(a_bool); //Ok
+
+    //TEST 2
+    a_bool = bool_test.data;
+    test2(a_bool); //Ok
+
+   //TEST 3
+    bool_test.data = a_bool;
+    test2(bool_test.data); //Not okay
+    return;
+}
+
+I'm not able to compile something like this and I don't know how I can use a function taking as argument a reference of the same type of one field of a ros message.
+The error is the following :
+error: invalid initialization of non-const reference of type ‘bool&’ from an rvalue of type ‘bool’
+     test2(odom_test.data);
+
+I'm a little bit confused about this rvalue in the error. I've looked into it and the definition is :
+
+rvalue is an expression that can only
+appear on the right hand side of an
+assignment
+
+Why does bool_test is considered as rvalue ? If it was true I wouldn't be able to write bool_test.data = a_bool; in TEST 3.
+I know that I could do like TEST 2 and create a variable for each field of my message but I would like to understand why the TEST 3 isn't compiling. Is it even possible ?
+NB : I used std_msgs::Bool and a function with bool argument just as an example, it happens with other type messages too.
+
+Originally posted by Delb on ROS Answers with karma: 3907 on 2018-10-26
+Post score: 1
+
+Original comments
+Comment by jacobperron on 2018-10-26:
+I've deleted my answer as I misunderstood the issue. Seems like it might not be possible with std_msgs/Bool, but I'm not sure why. The issue can be made more succinctly:
+std_msgs::Bool my_bool;
+bool & ref_my_bool = my_bool.data;
+
+A:
+
+After some digging, it would appear that the underlying type of std_msgs::Bool.data is uint8_t (source).
+This is why something like the following fails to compile:
+std_msgs::Bool my_bool;
+bool & ref_my_bool = my_bool.data;
+
+Perhaps a workaround is to use uint8_t type explicitly:
+std_msgs::Bool my_bool;
+uint8_t & ref_my_bool = my_bool.data;
+
+Or passing by reference to a function:
+#include <stdint.h>
+#include <std_msgs/Bool.h>
+
+void data_by_ref(uint8_t &test)
+{
+    return;
+}
+void std_bool_by_ref(std_msgs::Bool &bool_test)
+{
+    data_by_ref(bool_test.data);
+}
+
+int main(void)
+{
+  std_msgs::Bool my_bool = std_msgs::Bool();
+  std_bool_by_ref(my_bool);
+  return 0;
+}
+
+Originally posted by jacobperron with karma: 1870 on 2018-10-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Delb on 2018-10-27:
+Thanks for the reply, unfortunately it's giving the same error, so yes uint8_t is the right type for bool but I would like to know if it's possible without using another variable and directly have a function correctly defined to accept a reference to bool_test.data as argument.
+Comment by jacobperron on 2018-10-29:
+I've updated my answer to contain a complete example of what I think you are asking. As long as the callback signature for the data member has type uint8_t, you shouldn't need another variable as described. Changing your example fails to compile because of "TEST 1".
+Comment by Delb on 2018-10-30:
+Thank you that's exactly what I've been looking for ! (Sorry I just realised your previous answer worked too but I misread that you changed the argument in the function from bool to uint8_t which was the main issue)
+

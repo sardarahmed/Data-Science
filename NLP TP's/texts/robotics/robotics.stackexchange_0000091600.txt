@@ -1,0 +1,69 @@
+Q:
+
+ros2 access current LaunchConfiguration
+
+I'm in the middle of migrating a ROS1 app of mine to ROS2 and I'm currently trying to convert a .launch file to a python script.
+I want to be able to pass a command line argument to the script and then get its value in the generate_launch_description call.
+This is how I currently pass extra arguments to the LaunchDescription:
+run_rqt_arg = DeclareLaunchArgument(name="run_rqt",
+                                    default_value="True",
+                                    description="Launch RQT?")
+run_rviz_arg = DeclareLaunchArgument(name="run_rviz",
+                                     default_value="True",
+                                     description="Launch RVIZ?")
+
+if run_rqt:
+    rqt = Node(...)
+    l.append(rqt)
+if run_rviz:
+    rviz = Node(...)
+    l.append(rviz)
+
+return LaunchDescription(l, run_rqt, run_rviz)
+
+I'm running the launch script via ros2 launch ...
+Is the passing of extra arguments handled correctly?
+How do I fetch the values of these cli args at runtime?
+
+Originally posted by bergercookie on ROS Answers with karma: 257 on 2019-05-07
+Post score: 1
+
+A:
+
+The launch argument's value is stored in the "Launch Configurations", and those can be accessed using a substitution called launch.substitution.LaunchConfiguration(name) -> string.
+If you want to do something conditionally based on this, I'd recommend using a launch.Condition which may be passed to any launch.Action, e.g.:
+def generate_launch_description():
+    run_rqt_arg = DeclareLaunchArgument(
+        name="run_rqt",
+        default_value="True",
+        description="Launch RQT?")
+    run_rviz_arg = DeclareLaunchArgument(
+        name="run_rviz",
+        default_value="True",
+        description="Launch RVIZ?")
+
+    rqt = Node(...,
+        condition=launch.conditions.IfCondition(launch.LaunchConfiguration("run_rqt")))
+    rviz = Node(...,
+        condition=launch.conditions.IfCondition(launch.LaunchConfiguration("run_rviz")))
+
+    return launch.LaunchDescription([run_rqt_arg, run_rviz_arg, run_rqt, run_rviz])
+
+See also:
+
+https://github.com/ros2/launch/blob/d9def23d24b500c7c4b10f79297059b793b27152/launch/launch/actions/declare_launch_argument.py#L35-L37
+https://github.com/ros2/launch/blob/d9def23d24b500c7c4b10f79297059b793b27152/launch/launch/action.py#L58
+
+Originally posted by William with karma: 17335 on 2019-05-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by relffok on 2019-12-26:
+Hi William, is this feature (launch.substitution.LaunchConfiguration(name) -> string) still supported in the current dashing version? I have been trying to use launch.substitutions.LaunchConfiguration to access my arguments but it does not return a string. Any ideas on that?
+I have also opened a question for this: https://answers.ros.org/question/340705/access-launch-argument-in-launchfile-ros2/
+Comment by achille on 2021-03-23:
+This is not supported anymore indeed.
+Comment by M@t on 2021-07-05:
+So this answer is now out-of-date?
+

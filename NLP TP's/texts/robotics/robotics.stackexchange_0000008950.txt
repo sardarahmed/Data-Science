@@ -1,0 +1,143 @@
+Q:
+
+Wheel encoder triggers interrupt too many times
+
+I am building a simple robot with two driving wheel.
+I want to control the wheel rotation using a wheel encoder like this one.
+Here is a code I have on Arduino to try to understand the problem I'm facing:
+int count = 0;
+void setup() {
+  Serial.begin(9600);
+  attachInterrupt(digitalPinToInterrupt(2), upL, RISING);
+  pinMode(2, INPUT);
+}
+
+void loop() {
+  Serial.println(String(digitalRead(2)) + "__" + String(count));
+}
+
+void upL(){
+  count++;
+}
+
+What I notice is:
+The interrupt is triggered multiple times when the sensor beam is cut once.
+But when I digitalRead the pin, then there is only one change.  
+I also noticed that the interrupt is also triggered when going from HIGH to LOW.
+Here is an example of the ouput I have:
+0__0
+0__0
+0__0
+0__0
+...
+...
+0__0
+0__0
+0__0   <<< change from LOW to HIGH... 
+1__9   <<< the interrupt must have incremented only once... 9 instead !
+1__9
+1__9
+1__9
+...
+...
+1__9
+1__9   <<< change from HIGH to LOW. the interrupt shouldn't be triggered
+0__24  <<< still... we have 15 increments
+0__24
+0__24
+0__24
+0__24
+...
+...
+0__24
+0__24   <<< same here...
+1__51   <<< 26 increments
+1__51
+...
+...
+1__51  <<< same here...
+0__67  <<< 16 increments
+0__67
+0__67
+
+The only way I can explain that is that during a change of state, the signal received from the sensor is not really square, but somehow noisy.
+Like in this image :
+
+Therefore we would have, indeed, many RISING on one change....
+(However reading the output of the sensor on an analog pin shows a direct variation from 880(HIGH) to 22(LOW))
+Does anyone have another explanation? Or a solution to this problem ?
+
+EDIT
+Thanks to @TobiasK I know that this is called a bouncing effect. By doing further research I came across this solution:
+playground.arduino.cc/Main/RotaryEncoders (Ctrl+F for rafbuff).
+I'm trying it and i'll let you know.
+
+A:
+
+After studying the code I cited on the EDIT of my question.
+I came up with this solution which is working so far
+
+# define encoderRight 2
+# define encoderLeft 3
+
+volatile int countR = 0;
+volatile int countL = 0;
+volatile boolean firstChangeR = true; // expecting the 1st change of the bounce
+volatile boolean firstChangeL = true; // same
+boolean right_set = true;
+boolean left_set = true;
+
+void setup() {
+  Serial.begin(9600);
+  // Right encoder
+  attachInterrupt(digitalPinToInterrupt(encoderRight), doEncoderRight, CHANGE);
+  pinMode(encoderRight, INPUT);
+  digitalWrite(encoderRight, HIGH);  // turn on pullup resistor
+
+  // Left encoder
+  attachInterrupt(digitalPinToInterrupt(encoderLeft), doEncoderLeft, CHANGE);
+  pinMode(encoderRight, INPUT);
+  digitalWrite(encoderLeft, HIGH);
+}
+
+void loop() {
+  firstChangeR = true; // we reset to true to expect next change triggered
+  firstChangeL = true; // by the interrupt
+  // printing
+  String txt = String(countL);
+  txt += "__";
+  txt += String(countR);
+  Serial.println(txt);
+}
+
+void doEncoderRight(){
+  if (firstChangeR) delay(1); // if this is the first detection then we wait
+                              // for the bounce to be over
+
+  // if the current state is different from the last saved state then:
+  // a real change happened and it's not part of the bouncing but 
+  // actually the real beginning of the change: the first bounce !
+  if (digitalRead(2) != right_set) {
+    right_set = !right_set; // so we change the real state
+    countR ++;  // we also increment the right encoder
+
+    // since this was the firstChange the next are part of bouncing, so:
+    firstChangeR = false;
+  }
+
+}
+
+void doEncoderLeft(){
+  if (firstChangeL) delay(1);
+
+  if (digitalRead(3) != left_set) {
+    left_set = !left_set;
+    countL ++;
+
+    firstChangeL = false;
+  }
+
+}
+
+Tell me what do you think about it? Do you think it's reliable and is there any improvement you can propose?
+

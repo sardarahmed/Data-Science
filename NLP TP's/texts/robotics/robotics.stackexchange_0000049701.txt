@@ -1,0 +1,86 @@
+Q:
+
+Updates for tf::MessageFilter example in geometry_tutorials
+
+Hi,
+I was trying to work through the tf tutorials, and had some issues when I got to the part about message filters. The tutorial refers to "turtle_tf_sensor.launch" which is not in the package. I am using Fuerte, and it appears that the file is also missing from Groovy. Also, this issue was previously raised, but I cannot see it being fixed.
+I have recreated the missing launch file, and a python node that it runs, based on code from Box Turtle.
+If you want me to submit a patch somewhere else please advise.
+Missing file 1:
+geometry_tutorials/turtle_tf/launch/turtle_tf_sensor.launch
+
+<launch>
+    &ltinclude file="$(find turtle_tf)/launch/turtle_tf_demo.launch" />
+    <node name="turtle_pose_stamped_publisher" pkg="turtle_tf" type="turtle_tf_message_broadcaster.py" respawn="false" output="screen" /> 
+</launch>
+
+Missing file 2:
+geometry_tutorials/turtle_tf/nodes/turtle_tf_message_broadcaster.py
+[Note: this was modified from Box Turtle code to use Point instead of Pose to match the tutorial code]
+
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest('turtle_tf')
+import rospy
+
+import tf
+import turtlesim.msg, turtlesim.srv
+from geometry_msgs.msg import PointStamped, Point
+from std_msgs.msg import Header
+
+class PointPublisher:
+    def handle_turtle_pose(self, msg, turtlename):
+        self.pub.publish(PointStamped(Header(0, rospy.rostime.get_rostime(), "/world"), Point(msg.x, msg.y, 0)))
+
+    def __init__(self):
+        self.turtlename = "turtle3" #rospy.get_param('~turtle')
+        self.sub = rospy.Subscriber('/%s/pose' % self.turtlename,
+                         turtlesim.msg.Pose,
+                         self.handle_turtle_pose,
+                         self.turtlename)
+        self.pub = rospy.Publisher('turtle_point_stamped', PointStamped)
+    
+
+if __name__ == '__main__':
+    rospy.init_node('tf_turtle_stamped_msg_publisher')
+    rospy.wait_for_service('spawn')
+    spawner = rospy.ServiceProxy('spawn', turtlesim.srv.Spawn)
+    spawner(4, 2, 0, 'turtle3')
+
+    pp = PointPublisher()
+
+    pub = rospy.Publisher("turtle3/command_velocity", turtlesim.msg.Velocity)
+    while not rospy.is_shutdown():
+        pub.publish(turtlesim.msg.Velocity(1,1))
+        rospy.sleep(rospy.Duration(0.1))
+
+It would also be great to add to the tutorial that the following lines should be added to CMakeLists.txt (assumes the file with code is named "turtle_msgfilter.cpp").
+
+rosbuild_add_boost_directories()
+rosbuild_add_executable(turtle_msgfilter src/turtle_msgfilter.cpp)
+rosbuild_link_boost(turtle_msgfilter signals)
+
+Originally posted by dougbot01 on ROS Answers with karma: 342 on 2013-03-24
+Post score: 1
+
+A:
+
+Thanks for the corrections, @dougbot01.
+To update the ROS geometry stack:
+
+Create a new issue explaining the problem. Link to this question to avoid repetition.
+Fork the ros/geometry repository.
+Apply your changes.
+Submit a github pull request.
+
+To update the wiki, log in and make those changes.
+
+Originally posted by joq with karma: 25443 on 2013-03-25
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by dougbot01 on 2013-04-01:
+Thanks for pointing me in the right direction! My pull request was already merged into geometry_tutorials.
+

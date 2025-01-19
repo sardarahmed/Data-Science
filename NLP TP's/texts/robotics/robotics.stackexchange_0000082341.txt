@@ -1,0 +1,62 @@
+Q:
+
+How can I load a yaml rosparam file for a nodelet?
+
+Usually, when writing a launch file and wanting to set many rosparams at once, one would place them in a YAML file which is then loaded for the node like this:
+   <node
+        name="$(arg node_name)"
+        pkg="pylon_camera"
+        type="pylon_camera_node"
+        output="screen"
+        respawn="$(arg respawn)"
+        launch-prefix="$(arg launch_prefix)" >
+        <param name="camera_frame" value="$(arg node_name)" type="string" />
+        <rosparam command="load" file="$(arg config_file)" />
+    </node>
+
+Now, the same does not seem to work in a nodelet.
+<node if="$(arg start_pylon_driver)"
+    pkg="nodelet"
+    type="nodelet"
+    name="PylonNodelet"
+    args="load pylon_camera/PylonNodelet $(arg manager_name)"
+    output="screen"
+    respawn="false">
+      <param name="camera_frame" value="pylon_camera" type="string" />
+      <rosparam command="load" file="$(arg config_file)" />
+</node>
+
+The nodelet loads and runs, but the parameters are all default values, not the ones set in the config.yaml.
+How can this be accomplished?
+
+Originally posted by themightyoarfish on ROS Answers with karma: 11 on 2017-08-15
+Post score: 0
+
+Original comments
+Comment by lucasw on 2017-08-15:
+What pylon_camera is this?  https://github.com/magazino/pylon_camera doesn't support nodelets.
+Comment by themightyoarfish on 2017-08-15:
+What do you mean it doesn't support nodelets? I simply made the required additions to the codebase, it's basically as simple as writing a nodelet subclass which does what main.cpp does otherwise. The nodelet is working alright, it just doesn't respect the config params.
+
+A:
+
+It's possible the param getting is being done wrong within the nodelet, and it is loading params from the manager namespace rather than the nodelet.
+The nodelet needs to be using
+getPrivateNodeHandle().getParam("camera_frame", camera_frame_)
+
+rather than the following which is what a non-nodelet node would usually do:
+ros::NodeHandle nh("~");
+nh.getParam("camera_frame", camera_frame_);
+
+Also try rosparam list to see if the parameters in the yaml files are correctly being loaded.
+
+Originally posted by lucasw with karma: 8729 on 2017-08-15
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by themightyoarfish on 2017-08-15:
+These two code snippets look as if they were doing the same thing. isn't "~" a private namespace?
+Comment by lucasw on 2017-08-15:
+The plugins get loaded and run inside the nodelet manager, which has a different private namespace from the node that asks the manager to launch a specific nodelet.  getPrivateNodeHandle() gets you the namespace of the nodelet launcher.
+

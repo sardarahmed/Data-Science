@@ -1,0 +1,81 @@
+Q:
+
+rosserial_arduino: lost sync with device when handling interruptions
+
+I'm implementing a motor controller on Arduino connected to ROS stack via rosserial_arduino.
+The motors have a Hall sensor-based wheel encoders with a relatively high resolution (~3000 ticks per turn of the wheel). So I'm measuring the speed of the wheel using interrupts (one of the 2 outputs of a hall sensor is connected to interrupt pin).
+When I run the program and connect it to ROS with rosserial.py everything runs smoothly (I'm getting ROS messages from Arduino) till the interrupt is triggered for the first time (i.e. the wheel starts turning).
+At this point it seems like Arduino program is restarted (crashes?) and rosserial loses connection to it (I get "lost sync with device")
+I troubleshooted the problem a little bit and have minimized the code to just this:
+ros::NodeHandle nh;
+void motorInterruptLeft() {
+// literary just an empty function
+}
+void setup() {
+attachInterrupt(1, motorInterruptLeft, CHANGE);
+nh.initNode();
+}
+void loop() {
+nh.spinOnce();
+long curTime = millis();
+static long lastTrigger = 0;
+if (curTime - lastTrigger > 100) {
+lastTrigger = curTime;
+// logger.publish(...);  // doing some publishing every 100ms
+}
+}
+I still get the same "Lost sync with device" problem. Anyone has ideas about how to use ROS on Arduino while still being able to handle interrupts?
+
+Originally posted by gorsman on ROS Answers with karma: 16 on 2013-07-15
+Post score: 0
+
+Original comments
+Comment by HenryW on 2013-07-16:
+Hey,
+I do exactly as you have described with my robot to get wheel speeds. Have not encountered this issue myself however. What version of ROS are you using?
+I will look at my code and see if I spot anything overly different
+Comment by HenryW on 2013-07-16:
+OK, one difference I can see.
+Do you really want to set an interrupt on change? Rising would make more sense as you only want a interrupt when the hall effect goes high, not both rising and falling edges.
+Other than that, can't see any problems sorry.
+Comment by gorsman on 2013-07-17:
+Triggering on both rising and falling effectively makes the resolution of measuring wheel encoder ticks twice as high (as on both of these 2 events I can figure out the direction of a wheel turn by XORing the measurements from the hall sensor pins).
+
+A:
+
+Ok, so I figured out what code was triggering the issue.
+The thing is that I was trying to measure the time it takes to publish a message to ROS from Arduino. So the code I had was something like this:
+ros::NodeHandle nh;
+LogMsgType log_msg;  // where LogMsgType is some/any ROS message type
+ros::Publisher logger("logger", &log_msg);
+
+void motorInterruptLeft() {
+  // literary just an empty function
+}
+
+void setup() {
+  attachInterrupt(1, motorInterruptLeft, CHANGE);
+  nh.initNode();
+  nh.advertise(logger);
+}
+
+void loop() {
+  nh.spinOnce();
+
+  long curTime = millis();
+  static long lastTrigger = 0;
+  if (curTime - lastTrigger > 100) {
+    lastTrigger = curTime;
+    static long time = 0;
+    logger.publish( &log_msg ); // doing some publishing every 100ms
+    time = millis();  // !!!!!! THIS CALL CAUSES ROSSERIAL TO LOOSE CONNECTION
+  }
+}
+
+I'm not sure exactly how it works internally, but apparently there is some sort of clash between ROS publisher communicating over Serial, interruptions being triggered (I mean 'motorInterruptLeft') and reading the current time with 'millis()' call. It probably has something to do with 'millis()' disabling the interrupts in order to read consistent view of the current time. However when I read the time before calling 'logger.publish()' the problem doesn't reproduce, so it's definitely something related to serial communication being performed.
+I'm new to microcontroller development. Would be nice to hear comments from professionals.
+
+Originally posted by gorsman with karma: 16 on 2013-07-18
+This answer was ACCEPTED on the original site
+Post score: 0
+

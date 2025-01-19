@@ -1,0 +1,74 @@
+Q:
+
+Inter-robot Collision Avoidance
+
+I try to understand some MATLAB code (see below) i found from the web for inter-robot collision avoidance. But I'm not really understand, how the theory behind this code work. Can anyone help me explained the theory behinds this code?  
+% Collision avoidance using distance-based velocity scaling (scale by alpha)
+% along the vector between an agent and the agent nearest to it
+%        1 |          _______
+%  alpha   |        /
+%          |      /
+%        0 |___ /
+%          0   R2    R1    ++++
+%            distance
+%  u: velocity
+%  p: position
+
+    function u = avoidCollisions(states, n, u)
+
+        R1 = COLLISION_RAD*3;
+        R2 = COLLISION_RAD;
+        dist = Inf;
+        % checking for the nearest robot
+        for j = 1:N
+            d = norm(states(n).p-states(j).p);
+            if (j ~= n) && (d < dist)
+                k = j;
+                dist = d;
+            end
+        end
+        pDiff = states(n).p - states(k).p;
+
+        if dist > R2
+            alpha = (dist-R2)/(R1-R2);
+        else
+            alpha = 0;
+        end
+        if dot(u, pDiff) < 0
+            v2 = project(u, [pDiff(2); -pDiff(1)]);
+            u = alpha*u + (1-alpha)*v2;   
+        end        
+    end
+
+% Vector projection of b onto a
+    function v = project(b, a)
+        v = dot(a, b)/sum(a.^2)*a;
+    end
+
+A:
+
+General Idea
+This assume that each agent as a velocity trajectory it is following, to avoid collision this velocity is going to be scaled by a factor $\alpha$ computed at each step.
+At every step, the distance to the nearest agent is computed, then as the illustration at the beginning of the code suggests
+
+if the distance is superior than $R_1$ then $\alpha=1$, i.e. no
+scaling of the velocity;
+if the distance is smaller than $R_2$ then  $\alpha=0$, i.e. the agent stops; 
+if the distance is between the two radius then a linear scaling is applied
+
+This means that when the agents are sufficiently far away the collision avoidance has not impact on them. If they come close in a certain neighborhood they will slow down, and if they are to close they will stop.
+Implementation
+From the codes it seems that the parameters of the function avoidCollisions are:
+
+states: the state of all agent
+n: the index of the considered agent
+u: the desired velocity of this agent
+
+It also seems that this is applied to 2D cases.
+In the code once the smallest closest agent is found (index k) the distance is stored (dist) and also the relative coordinates of the agent n w.r.t. to agent k (pDiff).
+The value of $\alpha$ is computed as described below put leaving the possibility to have it greater than 1 if the distance is greater than $R_1$.
+Then the code check if the desired velocity is orthogonal to the position of the agent k relatively to agent n, if this is the case n is not going toward k so no collision avoidance is necessary (not that if pDiff was the relative position of agent k w.r.t. agent n, the sign would be more intuitive). 
+Then $v_2$ is introduced, it is the projection a vector orthogonal to the position of agent k relative to agent n, and the velocity vector u. 
+This way the velocity u is scaled by alpha only in the direction non-orthogonal to the relative position.
+Note that $\alpha$ should be forced to remain less than or equal to 1.
+

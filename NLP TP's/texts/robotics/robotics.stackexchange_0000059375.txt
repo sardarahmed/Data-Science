@@ -1,0 +1,73 @@
+Q:
+
+move_base and extrapolation errors into the future
+
+I'm trying to launch the navigation stack in a PatrolBot from an external computer. From the internal computer, I have RosAria reporting odometry, sicktoolbox_wrapper reporting laserScans (using laser_filters::LaserScanFootprintFilter to remove laser points inside the robot's body), and a TF publisher for the laser to the robots frame (base_link). I had some problems with extrapolation errors, which were remedied by modifying the rate of the laser TF publications, as well as running chrony in both machines with having the internal computer syncing with the chronyd in the external computer.
+I've been able to create a map with the instructions published in the MappingFromLoggedData tutorial.
+I've created the move_base launch file, with the appropriate yaml files and map files, as explained in the "Creating a Launch File for the Navigation Stack" section of the RobotSetup tutorial.
+Running rosrun tf tf_monitor shows apropriate transform delays (including a negative one from AMCL).
+I run the navigation stack, and with rviz succesfully propose an initial 2D estimate. If at this point, I manually move the robot (via joystick), its position is refreshed adequately (with some minimal error) in rviz, meaning that AMCL is doing its job.
+Everything is well up until this point.
+However, when I propose a Navigation goal through rviz, the following error appears in the terminal where I run the move_base launch file:
+
+Extrapolation Error: Lookup would
+require extrapolation into the future.
+Requested time ... but the latest data
+is at time ..., when looking up
+transform from frame [/odom] to frame
+[/map]. Global Frame: odom Plan Frame
+size ...: map Could not transform the
+global plan to the frame of the
+controller
+
+I've narrowed down the error to the base_local_planner when trying to execute the transformGlobalPlan function in goal_functions.cpp
+After a couple of days of searching for a solution it appears as though a waitForTransform would be required in this function right before doing the lookupTransform. However, before I go in and start modifying the source code and compiling the whole of move_base to do this, I was wondering if anybody has encountered this issue and can recommend me a workaround.
+I'd attach my yaml and launch files, to see if I've missed something, but I don't have the karma points for it.
+I can copy and paste them in the comments below if need be.
+Thanks.
+EDIT 2014-05-22:
+I have downloaded the move_base git, and compiled the base_local_planner agent (which requires to gitclone cmake_modules from github as well, by the way).
+I've added the following in line 110 in goal_functions.cpp (right before the lookuptransform call) and compiled:
+
+tf.waitForTransform(global_frame,
+ros::Time::now(),
+plan_pose.header.frame_id,
+plan_pose.header.stamp,
+plan_pose.header.frame_id,
+ros::Duration(0.5));
+
+The error of future extrapolation has disappeared, however the base is still not moving.
+The following warning is now repeatedly shown:
+
+Control loop missed its desired rate
+of 20.0000Hz... the loop actually took
+XXXXX seconds
+
+XXXXX is a value between 0.11 and 0.08, so yeah, definitely below 20 hz. I found that I could change the controller frequency via the parameter move_base/controller_frequency to something around 5 hz, but the base still doesn't move.
+I've researched around, and tested another theory that it could be that amcl is too slow, so I've changed quite a few parameters to no avail (min_particles, max_particles, laser_max_beams). Interestingly if I do rostopic hz /odom no information is given. Still, if I manually teleoperate the robot, I can see in rviz how the cloud of amcl estimates moves around accordingly. However, I see that the "odom" in my tf tree does not move with the amcl estimate cloud, while the base_link and laser tf does, however I do see a yellow link between the odom tf and the base_link. Is the odom topic suppose to stay static like this? Could this be a reason for the control loop error?
+My tf tree seems ok (map->odom->base_link->laser).
+Any suggestions?
+
+Originally posted by balkce on ROS Answers with karma: 31 on 2014-05-14
+Post score: 3
+
+Original comments
+Comment by peterwe on 2017-04-19:
+Hey,
+I have the same problem. What did you finally do to solve it?
+Comment by balkce on 2017-04-20:
+It's been a while. The version of move_base in Kinetic (and Indigo I think) have the correction in goal_functions.cpp. As for it not moving, a student that knew his way around move_base fiddled with the amcl and the costmaps configuration, but I don't remember what did he do exactly. I apologize.
+
+A:
+
+This bug appears to be around since quite some time, I opened a ticket about it: navigation issue 166. You´ll also find other people´s similar experiences linked there. If you modify the code and make it work, you can contribute your fix at github (or describe it at least).
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2014-05-14
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by balkce on 2014-05-15:
+Thanks for the opened ticket. So the next step is to amend the code in goal_functions.cpp
+I've downloaded the move_base source code from github and have confirmed that the absence of waitForTransform. Would I be able to compile only base_local_planner or would I need to recompile all of move_base?
+

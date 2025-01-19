@@ -1,0 +1,31 @@
+Q:
+
+What is ROS2 daemon?
+
+I am able to run ros2 topic pub /chatter std_msgs/String "data: Hello ROS Developer" this command and this command also able to publish data without starting ros2 daemon. What exactly is the function of ROS2 daemon?
+
+Originally posted by Deepan on ROS Answers with karma: 75 on 2019-06-30
+Post score: 7
+
+A:
+
+Short answer: The ROS 2 daemon fulfils the same role that the master fills in ROS 1. However, unlike ROS 1, it is not required, but an optimisation. ROS 2 nodes can function without it, unlike ROS 1 nodes which cannot function without the master.
+Long answer:
+DDS (the underlying communications middleware used by ROS 2 in its default configuration) has a discovery protocol. This is used to provide a decentralised way for nodes to find each other, rather than having to use a master as ROS 1 did. It works very well, but it also takes longer than the approach of using a master does, because every new node that starts has to send out a broadcast looking for other nodes and wait for responses to come in, as well as collecting hellos from other nodes that may arrive over time. The result is that knowing the existence and location on the network of other nodes is not a single-request thing any more, it takes time to build up the knowledge. That time grows longer if you have a more complex network involved. It is also difficult to know when you have found all nodes that are currently in existence.
+This is a significant drawback for nodes that want to start up, quickly perform some task, then shut down. An excellent example of these sorts of nodes is the short-life node created by  ros2 topic pub to send out some data when you run that command. You don't want it to sit around for 30 seconds collecting node hello broadcasts before doing what you asked it to. You could cut down the time it waits, but the shorter you have it wait, the less of the existing node graph it will find, which means your ros2 topic pub data might not go to every node that is actually listening to that topic.
+The solution is the ROS 2 daemon. This is a node that sits around all day just listening to discovery protocol traffic and making a record of which nodes are alive and where they are. Then, when a new node wants to know where other nodes are, it can bypass its own DDS discovery process and contact the ROS 2 daemon on a known port and ask it for the graph information.
+The nice thing about this scheme is that a new node still performs its standard DDS discovery process, so if the ROS 2 daemon does not exist, then it will still be able to find other new nodes and function properly. This is a significant difference from ROS 1, where if the master does not exist your node simply cannot function. Similarly, if the new node starts very shortly after the ROS 2 daemon, then the daemon won't yet have cached much information about existing nodes. However in this case as well the new node can still find the missing information from its DDS discovery process, so it is robust to that potential problem as well. This is different from ROS 1 where if you restarted the master after it died, any new nodes would function but they would have no way of finding nodes that were around before the master was restarted.
+
+Originally posted by Geoff with karma: 4203 on 2019-06-30
+This answer was ACCEPTED on the original site
+Post score: 23
+
+Original comments
+Comment by VictorLamoine on 2019-07-04:
+Why is the daemon not started automatically? Are there practical cases where I would want/need to disable it?
+Comment by Dirk Thomas on 2019-07-15:
+The daemon is being started automatically by the first command which tries to use the daemon.
+ros2 topic pub is not a good example since it doesn't use the daemon but creates its own node. Instead try calling ros2 daemon status, ros2 topic list and ros2 daemon status again.
+Comment by jeremya on 2022-06-22:
+I believe the downside of running the daemon automatically is that participant discovery traffic always running can have a cost on your network especially in wireless networks. It's nice to have the immediate response from the daemon keeping track of the domain entities, but you don't get that for free. This can also include your PC in the multicast group for publishers/user data that are publishing multicast further impeding your network performance.
+

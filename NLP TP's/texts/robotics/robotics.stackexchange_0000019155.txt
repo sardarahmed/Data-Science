@@ -1,0 +1,29 @@
+Q:
+
+All Joint Angle values not converging to desired set point (I am using Roy Featherstone's Spatial Toolbox)
+
+I need the robot joint angles to become the same as given (desired) joint angles. The kinematics and dynamics (used Spatial Toolbox) are correct and the motor models are realistic too. But out of 3 joint angles, only one is converging at the desired set point, while the other ones are 'converging' at a random point.
+I have tried tuning the 'PD controllers', 'PI controllers' as well as the 'gain' but only the 1st value converges. I am unable to understand the reason behind it. Kindly check the code and suggest if any improvement is needed.
+Simulink model:
+
+Joint angles: current and desired:
+
+Simulink model, robot model and motor parameters are given here: https://drive.google.com/open?id=0B1lgSdFRVsHGTVJ5ZWhURG05ZTg
+
+A:
+
+Sorry I saw this as I was checking emails. Just got off a very long international flight so my answer below may not be super coherent. tl;dr - You're not integrating your reference error anywhere and so there's nothing that would drive your reference error to zero. 
+The Simulink model is confusing to me. What are your units? I think it would be helpful to me (and you!) if you labeled or subdiagrammed this to show what each portion is doing. 
+The thing that's confusing for me is that feedback systems will typically operate on a feedback error, which is reference - feedback. The reference error is then modified and that's what drives the response - a PID controller is trying to drive the reference error to zero.
+It looks like you've got a Jacobian*Force term to generate some a torque signal, which seems okay because the Jacobian lets you relate an end effector's force to the joint forces.
+The way that I would expect you would be using it, the way you have the outputs done, is that you're going to use the current pose of the arm and provide a desired end effector force vector, and you're going to output the joint torques. 
+You've got the output Thm, but then it's not reference - feedback to try to drive the motor torques to that value. You've got instead a "Desired torque" vector, so you've got reference - other reference. 
+Then you've got a set of PD controllers, but there's no plant/dynamics involved directly after those controllers and so it's not clear to me what they're controlling. What are the input/output units? Are you doing PD control to accept a torque reference error and generate a terminal voltage to drive the motor?
+But if that is what you're doing, that summing junction between the PD controllers and PI controllers doesn't make sense to me, because the input on the negative junction is the output of 3DOF Robot and/or the motor PI control block. That same output though also gets summed with the Thm torque output of the Jacobian function. 
+Basically your Jacobian is outputting a torque, which seems okay but then, assuming you're using the same units on both sides of your summing junctions, the output of Motor PI is torque and the output of PD controllers is torque and the output of Reference Torque is torque. 
+So you've got a reference torque, the Jacobian Thm, and you're building a controller(s) to do something with that reference, but then you skip to the end of your cascaded controllers and just add that Thm signal in there. What is it that the other controllers are doing then if you're going to throw the Thm signal in at the end? 
+In any event, the output of that last summing junction looks like a torque, which then makes sense to go into the next section, which I'm assuming is FDab or similar - takes inputs of q, qd, and tau, and you've got q and qd fed back from the integrators and what I'm assuming is tau out of that summing junction. 
+So then it goes from there into a forward dynamics, and then this is where your real reference - feedback is going on, except you've got it as feedback - reference, which ultimately doesn't matter because it's just a gain of -1, but anyways this is where your joint angle controller should go because this is the only place in your code that you seem to be comparing a reference (Desired joint angles vector) to a feedback (integrated dynamics simulation), but even here you're not comparing joint angles, you're comparing the output of forward kinematics, which would imply you're only looking at the end effector. 
+Looking a little harder at it, your forward kinematics output a 3x1 vector, which would only cover x/y/z or roll/pitch/yaw of the end effector; you don't have something like a quaternion + x/y/z for a 7x1 vector.
+Finally, it would seem at a glance that you have something like a joint or end effector controller in that section of your code, but that block is a triangle, so it's just a gain. It's a gain acting on a reference error, so it's a proportional gain if you look at that like a PID controller. There's no integral term, so it's as though your integral gain is set to zero and you're never able to drive steady state error to zero.
+

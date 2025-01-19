@@ -1,0 +1,159 @@
+Q:
+
+Refactoring basic ROS code into object-oriented one
+
+I was trying to refactor the  existing basic ROS talker code into somewhat that of using OO paradigm. By the way, I am not a good object-oriented programmer but willing to practice a lot and apply in any projects that I am involved. Here I provide the code and there are currently 2 problems I am having. They are:
+
+Problem with the PointCloud constructor. I got an error of "extra qualification ‘PointCloud::’ on member ‘PointCloud’".
+I'm confused the way I should use loop_rate().
+
+Hopefully, someone who are very good in OO programming can help or improve this little thing..The code:
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include <sstream>
+
+class PointCloud
+{
+
+private:
+    int count;
+    PointCloud();
+    ros::NodeHandle n;
+    ros::Publisher chatter_pub;
+//  ros::Rate loop_rate(int);
+    std_msgs::String msg;
+    std::stringstream ss;
+
+public:
+
+PointCloud::PointCloud()
+{
+    chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+}
+
+void display();
+};
+
+void PointCloud::display()
+{
+//      loop_rate(10);
+
+    count = 0;
+    while (ros::ok())
+    {
+        ss << "hello world " << count;
+        msg.data = ss.str();
+
+        ROS_INFO("%s", msg.data.c_str());
+
+        chatter_pub.publish(msg);
+
+        ros::spinOnce();
+
+//          loop_rate.sleep();
+        ++count;
+    }
+ }
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "talker");
+    PointCloud pointCloud;
+    ROS_INFO("Node started");
+    ros::spin(); 
+    ROS_INFO("Node finished");
+
+   return 0;
+}
+
+The modified code:
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include <sstream>
+
+class PointCloud
+{
+private:
+    ros::NodeHandle n;
+    ros::Publisher chatter_pub;
+
+    int count;
+
+public:
+    PointCloud();
+    void display();
+};
+
+    PointCloud::PointCloud()
+    {
+        chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+            count = 0;
+    }
+
+    void PointCloud::display()
+    {
+        std_msgs::String msg;
+        std::stringstream ss;
+        ss << "hello world " << count;
+        msg.data = ss.str();
+        ROS_INFO("%s", msg.data.c_str());
+        chatter_pub.publish(msg);
+        ++count;
+    }
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "talker");
+    PointCloud pointCloud;
+    ROS_INFO("Node started");
+
+    ros::Rate loop_rate(10);
+
+    while (ros::ok())
+    {
+        ros::spinOnce();
+        pointCloud.display();
+        loop_rate.sleep();
+    }
+
+    ROS_INFO("Node finished");
+
+  return 0;
+}
+
+Originally posted by alfa_80 on ROS Answers with karma: 1053 on 2011-10-19
+Post score: 2
+
+A:
+
+Yes, just remove the extra PointCloud::
+Move the main loop functionality from display(). This should stay in main.
+You have a double main loop (ros::spin() implements one), but only one is called as no one calls display().
+Put the main loop from display() where ros::spin() is and call pointCloud.display() from there.
+Move the loop_rate part also there and uncomment it, it should work.
+
+Originally posted by dornhege with karma: 31395 on 2011-10-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by alfa_80 on 2011-10-21:
+@dornhege: Thanks a lot..that means using member variables, it never gets flushed as opposed to using as local variables..
+Comment by dornhege on 2011-10-21:
+A stringstream collects strings that you << into it. You never reset that and as its a member it is always ther.
+Comment by alfa_80 on 2011-10-20:
+@dornhege: Why when stringstream was declared as a member variable, the messages were accumulating? I didn't see any logic behind that..
+Comment by alfa_80 on 2011-10-20:
+@dornhege: Thanks a lot for the code modification and sharing..
+Comment by dornhege on 2011-10-20:
+I've updated your modified code. It looks like it's supposed to now, but I didn't test it. The main loop goes in main() unless you have a good reason to outsource that. Regarding 2.: The stringstream was a member variable so you were accumulating messages there.
+Comment by alfa_80 on 2011-10-19:
+I've added the modified version of it. Kindly have a look. It works fine except it buffers every message to be sent, that means in message 1, it contains one message, in message 2, it contains previous message plus current message and so on..Please also comment from OO concept point of view as well.
+Comment by dornhege on 2011-10-19:
+You can add your modified code to the original post if you have some questions about that.
+Comment by alfa_80 on 2011-10-19:
+Thanks, I've just modified it differently, it somehow works even I've to modify it a little bit more..thanks anyway..
+Comment by dornhege on 2011-10-19:
+Basically take those whole display() function and put its code in main in place of ros::spin. You only keep the chatter_pub.publish(msg) line (+ the initialization code) in display.
+Comment by alfa_80 on 2011-10-19:
+I didn't get you. But I understood point No.1. As I tried further, I got a lot of bugs..Could you just show it by editing the code if possible, it's easier to view.
+

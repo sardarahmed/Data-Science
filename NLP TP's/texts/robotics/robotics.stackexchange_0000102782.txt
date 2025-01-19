@@ -1,0 +1,44 @@
+Q:
+
+Segmentation Fault at ros::NodeHandle nh("node_name")
+
+Hello there,
+I am facing a weird issue of getting a segmentation fault right in the second line of main function. Immediately after
+ros::init(argc,argv,"node_name");
+ros::NodeHandle nh("node_name");
+
+Getting segmentation at NodeHandle function. The following is the back trace of the callstack where exception has occured.
+Thread 1 "removed" received signal SIGSEGV, Segmentation fault.
+0x00007ffff750ec15 in ros::names::validate(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&) () from /opt/ros/noetic/lib/libroscpp.so
+(gdb) bt
+#0  0x00007ffff750ec15 in ros::names::validate(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&) () at /opt/ros/noetic/lib/libroscpp.so
+#1  0x00007ffff753d8a2 in ros::NodeHandle::resolveName(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool) const () at /opt/ros/noetic/lib/libroscpp.so
+#2  0x00007ffff753f5d5 in ros::NodeHandle::initRemappings(std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > const&) () at /opt/ros/noetic/lib/libroscpp.so
+#3  0x00007ffff7540a1e in ros::NodeHandle::NodeHandle(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > const&) ()
+    at /opt/ros/noetic/lib/libroscpp.so
+#4  0x00005555555e216d in main(int, char**) (argc=1, argv=0x7fffffffe1e8) at /removed/src/main.cpp:6
+
+Please help in troubleshooting this issue.
+Ros Version: ROS1 Noetic
+
+Originally posted by shouvik1984 on ROS Answers with karma: 28 on 2022-11-30
+Post score: 0
+
+A:
+
+Looks like there is an issue with using
+#pragma pack(1)
+
+for one of the include files I was using for several structures in it. Once they were removed the sigsev is removed. However this needs further investigation on why is this happening
+Regards
+Shouvik
+
+Originally posted by shouvik1984 with karma: 28 on 2022-12-02
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2022-12-03:
+A likely explanation would be you're changing the in-memory layout of structs. Since you are using a binary distribution of roscpp, which wasn't compiled with that particular setting for padding/packing, you've introduced an ABI incompatibility. SEGFAULTs are one of the many things which can then happen.
+If you need to override padding/packing settings for specific structs, limit the setting to just those data types. Do not set it globally, especially not before you #include other headers.
+

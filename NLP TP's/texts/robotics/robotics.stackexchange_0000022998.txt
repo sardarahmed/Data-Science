@@ -1,0 +1,84 @@
+Q:
+
+Covariance of fused poses. Should it be normalised by the number of poses?
+
+I came across this paper from T. Barfoot and P. Furgale:
+"Associating Uncertainty With Three-Dimensional Poses for Use in Estimation Problems"
+Link: http://ncfrn.mcgill.ca/members/pubs/barfoot_tro14.pdf
+where in Section IV.A is explained that if I have a list of $K$ measurements $x_k$ affected by zero-mean Gaussian noise $\{x_1, \Sigma_1\},\{x_2, \Sigma_2\}, ... ,\{x_K, \Sigma_K\}$ then the mean and covariance of the fusion of such measurements $\{\bar{x},\Sigma\}$ can be found in closed form:
+\begin{equation}
+\bar{x} = \Sigma \sum_{k=1}^K\Sigma_k^{-1}x_k,\quad\quad \Sigma = \Bigg(\sum_{k=1}^K\Sigma_k^{-1}\Bigg)^{-1}
+\end{equation}
+While the computation for the mean seems correct, I'm not totally convinced that $\Sigma$ is the true covariance of the fused measurements, because there is no normalisation against K, so the more measurements are present, the smaller the covariance will be.
+Let's consider the simplest case where I have two identical scalar measurements with two identical (co)variance values
+\begin{equation}
+\{x_1 = 1, \Sigma_1 = 4\}, \{x_2 = 1, \Sigma_2 = 4\}
+\end{equation}
+In that case, the mean would be obviously $\bar{x} = 1$, but the covariance would be halved: $\Sigma = (\frac{1}{4}+\frac{1}{4})^{-1} = 2$.
+Now, I understand that mere fact that there are two measurements instead of one gives a sort of confirmation that the true mean might be $1$, however I'd expect that the covariance would be still the same as the other two measurements, i.e. $\Sigma = \Sigma_1 = \Sigma_2$, because the second measurement is not bringing any additional information over the previous one.
+
+A:
+
+The short answer is no, there shouldn't be a normalizing constant, because the uncertainty should decrease as we get additional independent measurements.
+I'll use an example to explain this mathematically and then I'll try to give some high-level understanding of why that's the case.
+Simple example: Averaging random variables
+Say we want to measure some quantity (e.g., room temperature) using a thermometer.
+Furthermore, let's model the thermometer using a Gaussian random variable $\underline{y}$, where the error is given by $\underline{y} - x\sim\mathcal{N}(0, \sigma_{y}^{2})$, and $x$ is the true (unknown) temperature we're interested in measuring (note that I use underlines $\underline{(\cdot)}$ to denote a random variable).
+Then each measurement $y_{i}\leftarrow \underline{y}$ is an independent realization/sample of this random variable.
+The random variable can be rewritten as $\underline{y} - y_{i}\sim(0,\sigma_{y}^{2})$, which is useful for the derivation below.
+To estimate the true temperature $x$, we need an estimator, which can be thought of as a function of the observations $y_{i}$ sampled from the random variables $\underline{y}_{i}$.
+One possible estimator is the average estimator, given by
+$$
+\underline{\hat{x}} = \frac{1}{n}\sum_{i=1}^{n}\underline{y}_{i}.
+$$
+The estimate $\hat{x}$ is then the mean of the estimator $\underline{\hat{x}}$
+$$
+\hat{x}
+=
+\mathbb{E}[\underline{\hat{x}}]
+=
+\mathbb{E}\left[
+   \frac{1}{n}\sum_{i=1}^{n}\underline{y}_{i}
+\right]
+=
+\frac{1}{n}\sum_{i=1}^{n}\mathbb{E}[\underline{y}_{i}]
+=
+\frac{1}{n}\sum_{i=1}^{n}y_{i}
+$$
+where $\mathbb{E}[\cdot]$ is the expectation operator.
+The variance on the estimator $\hat{\sigma}^{2}$ is then
+$$
+\hat{\sigma}^{2}
+=
+\operatorname{Var}[\underline{\hat{x}}]
+=
+\operatorname{Var}\left[
+   \frac{1}{n}\sum_{i=1}^{n}\underline{y}_{i}
+\right]
+=
+\frac{1}{n^{2}}\sum_{i=1}^{n}\operatorname{Var}[\underline{y}_{i}]
+=
+\frac{1}{n^{2}}\sum_{i=1}^{n}\sigma_{y}^{2},
+$$
+which uses the (co)variance rules and assumes measurements are independent.
+Without this assumption, the result wouldn't hold.
+Note that the covariance is independent of the measurements, and is rather only dependent on the measurements' covariance $\sigma_{y}^{2}$, which is usually a property of the sensor.
+So, regardless of the sensor measurements (even if they're all identical), the covariance will decrease.
+This property is specific to Gaussian random variables passed through linear functions (e.g., the averaging operator) and, in general, doesn't hold for other arbitrary estimators.
+The above results are the same results you presented in your question.
+I won't go into more details into about estimators and state-estimation, but more info can be found on these slides.
+However, I'll try to give some insight into why the results make sense.
+Why does the covariance decrease?
+It may be counterintuitive that the estimate could have a smaller covariance than the measurements it's computing the estimate from.
+However, the answer is somewhat related to the law of large numbers, where the more measurements you have, the closer you get to the true distribution.
+This also makes sense intuitively, even in real life.
+For example, say you read the room temperature from the wall thermometer, and you're not so convinced.
+So you take another thermometer and see identical measurement.
+Wouldn't that give you confidence that the measurement was true in the first place?
+This feeling of confidence is a reduction in uncertainty.
+
+I'd expect that the covariance would be still the same as the other two measurements, i.e. $\Sigma = \Sigma_{1} = \Sigma_{2}$, because the second measurement is not bringing any additional information over the previous one.
+
+Actually, the mere presence of another independent measurement is additional information that reduces uncertainty.
+It's important that the measurements are independent. Otherwise, the new measurements are correlated to some older measurements, which is uninformative (i.e., we already got similar information).
+

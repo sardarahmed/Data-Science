@@ -1,0 +1,57 @@
+Q:
+
+data losted when subscribe from a bag file
+
+this bag file (T_01.bag)is publishing sensor_msgs::PointCloud2 on the topic "/points". i use the following code to subscribe to that topic and save the pointcloud to disk.
+#include <ros/ros.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/common/common.h>
+#include <pcl/io/pcd_io.h>
+
+int count = 0;
+pcl::PCDWriter pcdWriter;
+
+void cloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
+{
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_col(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*msg,*pc_col);
+    std::cout<<"saving "<<count<<std::endl;
+    std::stringstream ss;
+    ss<<"point"<<count<<".pcd";
+    pcdWriter.write(ss.str(),*pc_col);
+    count++;
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "listener");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("/points", 10, cloudCallback);
+
+  ros::spin();
+
+  return 0;
+}
+
+The problem is, there should be 4 pointclouds in this bag file. but most of the time my program can only record 3. Could anybody figure out why?
+p.s. how to make the subscriber quit automatically when the publisher is terminated?
+Thanks.
+
+Originally posted by yangyangcv on ROS Answers with karma: 741 on 2013-03-11
+Post score: 0
+
+A:
+
+It takes time for your program to load and join the ROS message graph. Rosbag may have already published some of the messages before you are ready to receive them.
+You can use rosbag play --delay=5 to delay five seconds after advertising the topic and before publishing messages. See the rosbag play documentation.
+
+Originally posted by joq with karma: 25443 on 2013-03-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by yangyangcv on 2013-03-12:
+Thanks man. it works. but i'm still wondering that, do we have something like publisher.getNumSubscribers() when playing bag files such that we can judge whether or not the subscriber is ready.
+Comment by joq on 2013-03-12:
+When rosbag play starts, it tries to publish all the messages at the same time interval as when they were recorded. It is not waiting for anything. Note: there is also a rosbag play --pause option.
+

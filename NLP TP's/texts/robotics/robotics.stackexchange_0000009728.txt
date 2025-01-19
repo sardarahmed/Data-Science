@@ -1,0 +1,68 @@
+Q:
+
+How to check for a sharp angle with a line follower?
+
+I have the mBot robot and I want to program it to follow the line. So far it can pass any kind of line that is >90°.
+I want it to be able to pass 90°-ish angles as well. Like this one:
+
+The problem is that my mBot robot has only 2 line following sensors (they are 5 mm apart and the line is 2 cm wide) so I can't use just the sensors.
+
+Most of the times it just goes to the line and when it's supposed to turn it just misses the line (goes on the white) and goes back to get back on track. Once it's back on the black line it once again tries to go forward but goes on the white instead of taking a turn. This happens endlessly.
+Sometimes it passes the angle by going back and forth and accidentally turning, but that's not even a workaround, let alone a solution.
+Here's a test course of the first round of the competition.
+
+My robot can pass this without a problem, but it gets stuck on this (poorly edited, sorry) course:
+
+It can't pass the 20 block if the robot enters it from a 15 or 20 block (so basically it gets stuck if it's coming from an angle and hits a 90 degree turn).
+The sensor value could be read as either 0, 1, 2 or 3 depending on what the robot currently sees:
+
+0 - on the line 
+1 - on the right of the line 
+2 - on the left of the line 
+3 - not on the line 
+Pseudo code of my current program:
+loop forever:
+    if (on the right of the line):
+        turn_left()
+    if (on the left of the line):
+        turn_right()
+    if (on the line):
+        go_forward()
+    if (not on the line):
+        go_backwards()
+
+So how would I go about taking such sharp turns?
+
+A:
+
+It can't pass the 20 block if the robot enters it from a 15 or 20 block (so basically it gets stuck if it's coming from an angle and hits a 90 degree turn).
+
+Somehow coming from an angled line makes it more likely that your robot moves orthogonal to the 90°-ish turn, so that it gets stuck in the back-and-forth loop. Maybe if it moved very slowly backwards it could detect the moment when only one sensor goes on, which would lead to a turn. But it's a competition after all, so let's not move backwards, especially not very slowly.
+I'm not sure if the image of the different sensor values is accurate in terms of scale. It looks like the line is not much thicker than the two sensors are apart. Now imagine the edge case that both distances were the same: the sensors are as far apart as the line is thick. In this case, the robot can only really move in the exact direction of the line. This is very bad for a 90°-ish turn for the reason mentioned above. The ratio between sensor distance and line thickness seems to play a role in how the robot behaves. You cannot change anything about the thickness of the line or the distance of the sensors, but I think it's important to think about what impact those values have or at least could have.
+What you can change though is what you consider to be the line. You can follow a line by following its edge, too. The code could look like this:
+loop forever:
+    if (on the right of the line):
+        turn_left()
+    if (on the left of the line):
+        go_forward()
+    if (on the line):
+        turn_left()
+    if (not on the line):
+        turn_right()
+
+As the edge is only a line, the behaviour depends more or less only on the distance of the sensors, not the ratio between the distance of the sensors and the thickness of the line. I'd give it a go and see how the behaviour changes.
+A ratio that you can change more continuously is that of the velocities. How many degrees is turn_left() and how many millimetres is go_forward()?
+Playing around with those values will lead to different, possibly more preferable behaviour of the robot.
+
+theory interlude
+In a nutshell, you want to control a system with two inputs: angular and radial velocity. Setting either one will influence the other. In your case, the radial velocity control loop freaked out and became unstable: back-and-forth motion forever. The important thing is that the system should have reacted with a large increase in angular velocity (to do the hard 90°-ish turn), but instead the radial velocity went mad.
+This is a sign that the interaction between the two is not well controlled and requires further investigation.
+Changing the ratio between both velocities essentially modifies the gains of the controllers. Lowering both velocities means more sensor readings per travelled distance and thus a higher sampling rate, which in general leads to more stable systems.
+
+tl,dr;
+Things to try
+
+Change both angular and radial velocities, but keep their ratio the same and see if that changes anything
+Change the ratio between the two and see if that changes the behaviour of the robot. Especially on different types of tiles. What ratio works best on straight tiles, what works better on curvy tiles. Is there some setting that works for both?
+Try both 1. and 2. for the on-the-line approach and the on-the-edge-of-the-line approach and see if you get to different results.
+

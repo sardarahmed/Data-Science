@@ -1,0 +1,66 @@
+Q:
+
+Compute Maximum End Effector Velocity Along Path
+
+Let's say I have a 2-link planar robot arm. The motors in both joints have maximum angular speeds that limit how fast they can spin. If I plan a path from point A to point B with a constant end effector velocity, how do I calculate the maximum velocity the end effector can travel with along this path?
+I know I can calculate the velocity of the end effector with this equation: $v=J(q)\dot{q}$.
+I could iterate through points along the path plugging in the joint's maximum angular speeds to calculate the maximum velocity at each point. Then I would use the smallest velocity as the "maximum" velocity the end effector can travel at.
+Is this the best way to accomplish my goal?
+
+A:
+
+Nope, you cannot simply plug the maximum joint velocities in the differential forward kinematic law, as you need to guarantee that $\mathbf{v}$ will always point toward the target: in fact, $\mathbf{v}$ is a vector.
+As a result, you need to solve the inverse kinematics problem first for each point of the path. This can be done iteratively:
+
+Assign a desired $\mathbf{v}$ with a given magnitude and direction.
+Solve for each point $\dot{\mathbf{q}} = \mathbf{J}^{-1} \cdot \mathbf{v}$.
+Check if the components of $\dot{\mathbf{q}}$ are within the allowed range of the motors throughout the entire path. If not, reduce the magnitude of $\mathbf{v}$ and iterate again.
+
+In practice, you ought to consider that the kinematic singularities may impede the simple solution resorting to the (pseudo)inverse of the Jacobian.
+To get around the singularities, one usually resorts to the Damped Least-Squares inversion $\mathbf{J}^*$ of the Jacobian $\mathbf{J}$, where
+$$
+\mathbf{J}^* = \mathbf{J}^T \left( \mathbf{J}\mathbf{J}^T + k^2\mathbf{I} \right).
+$$
+Then, because of the tuning of $k$, you won't have most likely a unique correspondence between the joint and the end-effector velocity, but rather you would need to reason in terms of margins.
+
+To elaborate more on the particular 2D case, I could argue the following:
+
+We need first to solve the IK problem and come up with the exact solution $f \left( q_1, q_2 \right) = \left( x, y \right)^T$.
+Then, we need to solve a constrained optimization problem to find the couple $\left( \dot{q}_1, \dot{q}_2 \right)$ that maximizes the Cartesian velocity knowing that this velocity is required to be along a given direction and we have bounds for the speed of the motors.
+
+Of course, the above procedure needs to be iterated throughout the points of the entire path anyway, to finally determine which is the lowest Cartesian velocity that can be attained. This will be your final value as it will guarantee that the bounds on the motor speeds won't be violated at any point of the path.
+Here below some more details.
+Step 1
+We know the exact solution of the IK problem:
+$$
+\begin{cases}
+q_1 = \arctan{\frac{y}{x}} + \tan{\frac{a_2\sin{q_2}}{a_1+a_2\cos{q_2}}} \\
+q_2 = -\arccos{\frac{x^2 + y^2 -a^2_1 -a^2_2}{2a_1a_2}}
+\end{cases},
+$$
+where $a_1$, $a_2$ are the link lengths.
+Step 2
+The velocity equations are:
+$$
+\begin{cases}
+\dot{x} = -a_1\sin{q_1}\cdot\dot{q_1} -a_2\sin{\left(q_1+q_2\right)} \cdot \left(\dot{q_1}+\dot{q_2}\right) \\
+\dot{y} = a_1\cos{q_1}\cdot\dot{q_1} +a_2\cos{\left(q_1+q_2\right)} \cdot \left(\dot{q_1}+\dot{q_2}\right)
+\end{cases},
+$$
+where $\left(q_1, q_2\right)$ are determined in step 1.
+The Cartesian velocities $\left( \dot{x}, \dot{y} \right)$ cannot be generic as they need to enforce the assigned direction; so, it holds that $\frac{\dot{y}}{\dot{x}} = \text{known constant} = c$.
+By aggregating all this information, we get that the solution $\left( \dot{q_1}, \dot{q_2} \right)^*$ is the outcome of the following constrained optimization problem:
+$$
+\begin{array}{lcr}
+\left( \dot{q_1}, \dot{q_2} \right)^* = \arg \max\limits_{\dot{q_1},\dot{q_2}} \frac{1}{2}\left( \dot{y}\left(\dot{q_1},\dot{q_2}\right) \right)^2 \\
+\text{s.t.} \begin{cases} \frac{\dot{y}}{\dot{x}} \left(\dot{q_1},\dot{q_2}\right) = c \\
+-M_1 < \dot{q_1} < M_1 \\
+-M_2 < \dot{q_2} < M_2
+\end{cases}
+\end{array},
+$$
+where $M_1$ and $M_2$ are the motors max speeds.
+The 2D case boils down to the maximization of a quadratic cost function subject to a hyperbolic constraint.
+Concluding remarks
+In the 2-steps procedure, I didn't mention that you would likely need to deal with kinematic singularities depending on the type of path you have in mind. This will certainly add up more difficulties on top of the process so that, I reckon, the fully-iterative routine detailed in the first place tends to be easier to implement, clearer to maintain, and definitely more scalable with respect to the number of DOF.
+

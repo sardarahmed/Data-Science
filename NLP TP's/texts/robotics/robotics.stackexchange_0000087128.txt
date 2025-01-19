@@ -1,0 +1,126 @@
+Q:
+
+arm_controller/joint_trajectory topics not being displayed
+
+Hey!
+For my GSoC 2018 project, I had previously attached a Kinect sensor to the UR5 robot, generated MoveIt! Config packages for them and tested it on RViz. I was able to spawn the robot with the controllers activated in Gazebo. The next step of my project was to be able to command the robot in Gazebo using MoveIt!.
+In this process of trying to launch the robot in Gazebo, I noticed that the arm_controller/joint_trajectory topics which are related to the action server are not being displayed while using rostopic list. However, the weird part is that on launch, the initial information from the terminal shows that the arm_controller_spawner node has started. This link had a related solution but it didn't work.
+I previously downloaded the Universal robot Github package and the ur5.launch file loads the required arm_controller.joint_trajectory topics properly. However, that same thing was not working with my files (which are minor edits of the UR5 files). I am not able to figure out why exactly is this happening. I have attached the related files with this question. Thanks in advance.
+Edit: While comparing with the UR5 launch, I realised that the arm_controller and joint_state_controller are not loaded successfully with my model as that message is not showing on the terminal with Gazebo launch.
+The complete URDF file can be accessed via this Google Drive Link.
+Gazebo Robot Launch file
+<?xml version="1.0"?>
+
+<!-- Gazebo Launch file -->
+<launch>
+  <arg name="limited" default="false"/>
+  <arg name="paused" default="false"/>
+  <arg name="gui" default="true"/>
+  
+  <!-- startup simulated world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" default="worlds/empty.world"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="verbose" value="true" />
+  </include>
+
+  <!-- send robot urdf to param server -->
+  <include file="$(find myworkcell_support)/launch/workcell_ur5.launch">
+  <!-- <arg name="limited" value="$(arg limited)"/> -->
+  </include>
+
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <node name="spawn_gazebo_model" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model robot -z 0.1" respawn="false" output="screen" />
+
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <include file="$(find myworkcell_support)/gazebo/launch/controller_utils.launch"/>
+
+  <rosparam file="$(find myworkcell_support)/gazebo/controller/myworkcell_control.yaml" command="load"/>
+  <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller" respawn="false" output="screen"/>
+
+</launch>
+
+workcell_ur5.launch file
+<launch>
+  <arg name="gui" default="true"/>
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find myworkcell_support)/urdf/workcell_gazebo_trial1.urdf'" /> 
+  <param name="use_gui" value="$(arg gui)"/>
+</launch>
+
+controller_utils.launch
+<?xml version="1.0"?>
+<launch>
+
+  <!-- Robot state publisher -->
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="50.0" />
+    <param name="tf_prefix" type="string" value="" />
+  </node>
+
+  <!-- Fake Calibration -->
+  <node pkg="rostopic" type="rostopic" name="fake_joint_calibration"
+        args="pub /calibrated std_msgs/Bool true" />
+  
+  <!-- joint_state_controller -->
+  <rosparam file="$(find myworkcell_support)/gazebo/controller/joint_state_controller.yaml" command="load"/>
+  <node name="joint_state_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn joint_state_controller" respawn="false" output="screen"/>
+  
+</launch>
+
+myworkcell_control.yaml
+arm_controller:
+  type: position_controllers/JointTrajectoryController
+  joints:
+     - shoulder_pan_joint
+     - shoulder_lift_joint
+     - elbow_joint
+     - wrist_1_joint
+     - wrist_2_joint
+     - wrist_3_joint
+  constraints:
+      goal_time: 0.6
+      stopped_velocity_tolerance: 0.05
+      shoulder_pan_joint: {trajectory: 0.1, goal: 0.1}
+      shoulder_lift_joint: {trajectory: 0.1, goal: 0.1}
+      elbow_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_1_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_2_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_3_joint: {trajectory: 0.1, goal: 0.1}
+  stop_trajectory_duration: 0.5
+  state_publish_rate:  25
+  action_monitor_rate: 10
+
+joint_state_controller.yaml
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+
+Originally posted by aaditya_saraiya on ROS Answers with karma: 105 on 2018-05-24
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-05-25:
+Please do not post screenshots of text in a console. This not only violates the support guidelines, but it also completely unnecessary.
+Comment by aaditya_saraiya on 2018-05-25:
+Oops. Sorry for that. Have removed the screenshots. Thanks!
+
+A:
+
+So after a bit of experimentation, I realized that the issue was with the URDF file where the control plugin had been put up. The robotNamespace had been set to myworkcell which was not similar to the namespace specified in the .yaml files. By commenting out the robotNamespace parameter as shown below, the topics joint_state_controller and the arm_controller were loaded successfully.
+<gazebo>
+  <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+<!-- <robotNamespace>/myworkcell</robotNamespace> -->
+  </plugin>
+</gazebo>
+
+I came to know about this issue after using the following command after launching the Gazebo file. This allowed me to see that the controller_manager was being created under the myworkcell namespace which wasn't how it was supposed to be.
+
+rosservice list | grep controller_manager
+
+This answer will also be helpful if this answer does not work out.
+
+Originally posted by aaditya_saraiya with karma: 105 on 2018-05-26
+This answer was ACCEPTED on the original site
+Post score: 0
+

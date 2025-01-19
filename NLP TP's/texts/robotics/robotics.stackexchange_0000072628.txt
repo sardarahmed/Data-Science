@@ -1,0 +1,86 @@
+Q:
+
+How to read LaserScan by Arduino?
+
+Hi
+I'm using Xtion sensor to get LaserScan data using the following commands:
+$ roslaunch turtlebot_bringup minimal.launch
+$ roslaunch rtabmap_ros demo_turtlebot_mapping.launch rgbd_odometry:=true
+$ roslaunch rtabmap_ros demo_turtlebot_rviz.launch
+
+I can read /scan which is type "sensor_msgs/LaserScan".
+I want to use this data in Aurdoino board.
+I think, I have to use the following headers in Arduino code :
+#include <ros/ros.h>
+#include <sensor_msgs/LaserScan.h>
+
+and the following codes:
+$ ros::NodeHandle nh;
+$ ros::Subscriber sub = nh.subscribe<sensor_msgs::LaserScan>("scan", 1000, scanCallback);
+
+Now how I can access to scan array?
+I appreciate if you help me.
+EDIT:
+I could finally find the issue.
+My Arduino board cannot read large data with high rate of publishing.
+So I just publish a std_msgs::Float32 message with low publish rate.
+
+Originally posted by Reza1984 on ROS Answers with karma: 70 on 2016-03-09
+Post score: 1
+
+A:
+
+I would like to summarize all the issues I faced and how I solved it:
+First issue: The following error in uploading the program:
+avrdude: ser_recv(): programmer is not responding
+avrdude: stk500_recv(): programmer is not responding
+There were some solution using reset bottom but it didn't work for me.
+I finally found out I should use "sudo arduino" to lunch the arduino and after that I can easily upload.
+Second issue: using "sudo arduino" gave me this error:
+fatal error: ros.h: No such file or directory
+compilation terminated.
+Unfortunately methods in internet didn't help me.
+I just tried to copy ros-lib form sketchbook to "/usr/share/arduino/libraries" and Hallelujah the error was gone! :)
+Finally the main part of my code is as follows:
+#include <ros.h>
+#include <sensor_msgs/LaserScan.h>
+
+void Callback_laser(const sensor_msgs::LaserScan& scan)
+{
+double minval = scan.ranges[0];
+
+    for(int i=0;i<500;i++)
+    {
+       if(scan.ranges[i]<minval or minval!=minval)
+           minval=scan.ranges[i];
+    } 
+   Serial.println(minval);
+}
+
+ros::NodeHandle nh;
+ros::Subscriber<sensor_msgs::LaserScan> laser_subscriber("scan", &Callback_laser);
+
+void setup() {
+  
+  nh.initNode();
+  nh.subscribe(laser_subscriber);
+
+}
+
+void loop() {
+
+ nh.spinOnce();
+ delay(100); 
+
+}
+
+I thought, it works fine but apparently it doesn't!
+When I put a command in callback function to on the LED it doesn't on the LED.
+I think the reason is the laserscan data is too large! (Not Sure Though)
+Even when I run "Hello World" program in ros-arduino tutorial, hello world with those strange characters are printed!
+In the following attached picture you can see the results. right terminal I run "rostopic echo /scan"; left terminal I run "rosrun rosserial_python serial_node.py _port:=/dev/ttyACM0", and top is Serial monitor.
+
+Originally posted by Reza1984 with karma: 70 on 2016-03-10
+This answer was ACCEPTED on the original site
+Post score: -1
+

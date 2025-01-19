@@ -1,0 +1,64 @@
+Q:
+
+How do I convert odom and pose information to grid location on occupancygrid map
+
+I am also using the occupancygrid.msgs type found in the topic  /map to get the costmap information found in member data. I am trying to figure out how to convert odometry and pose type data(x,y) to grid index[x,y] if that makes sense(this is after I convert msg.data to a 2D array that represents the 2D map). I have tried using the resolution found in the .yaml file of  created maps  but that doesnt seem to work very well, unless I am getting the calculations wrong? If there is any confusion to my question please inform me so I may try to explain more.
+The calculations I use to convert pose to pixel are here below(please not below is not actual code, its just i code form to delinate it from the rest of the text as calculation)
+origin:[-10,-10,0] which are the x,y and yaw respectively
+resolution: 0.05 meter/pixel
+
+to convert poses to  [i,j]( pixel location/grid index)
+i= ("pose.x" - (-10))/0.05
+j= ("pose.y"-(-10))/0.05
+
+It doesnt work completely accurately  for some reason. For context, I made an algorithm that generates points that I use as goals for the robot to move to. some times , some of the goals are outside of free space of the map(that is to say the some goals appear in physical co-ordinate points whose cost value in the occupancy grid  is either -1(unknown) or 100(occupied), What I wish my algorithm to do with these points is to completely skip them and not assign them as goals. Here is some pseudocode to explain what I thought would be an absolute solution:
+import rospy
+from nav_msgs.msg import OccupancyGrid
+def getcell(msg):
+    global grid
+    h = np.array(msg.data)
+    #grid = h.reshape(384,384)
+    grid = h
+
+rospy.init_node("controller_3")
+rospy.Subscriber("/map",OccupancyGrid,getcell)
+
+.........
+ex = ((goal.pose.position.x-(-10))/0.05)
+ey = ((goal.pose.position.y-(-10))/0.05)
+
+if grid[math.ceil(ex*384 + ey)] == -1 or  grid[math.ceil(ex*384 + ey)] == 100:
+    Skip the points 
+
+Points are still being created in grid cells that should be either -1 or 100 in cost value.
+
+Originally posted by distro on ROS Answers with karma: 167 on 2022-01-08
+Post score: 0
+
+Original comments
+Comment by Mike Scheutzow on 2022-01-08:
+Your definition of the value assigned to a grid cell is not a common one. Usually these are used for path planning, and the value is considered the cost incurred by the robot's center point passing through that cell. Hence the name costmap. Cell values >= some magic value are considered LETHAL (e.g. an obstacle that no part of the robot footprint can pass thru.)
+Regarding your question, edit your description and show us your math and we'll comment on it.
+Comment by distro on 2022-01-12:
+@Mike Scheutzow Sorry, I am using a  costmap, I messed up the terms, I have edited my question accordingly, I still have the same problem as before though.
+
+A:
+
+If the lower left corner of map is at coordinate (-10.0, -10.0), and pose is in the map coordinate system, then your math looks OK. Don't forget to truncate i, j to integer.
+
+Originally posted by Mike Scheutzow with karma: 4903 on 2022-01-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by distro on 2022-01-14:
+@Mike Scheutzow It doesnt work 100% of the time is the issue.I have updated my question to show you what I have done
+Comment by Mike Scheutzow on 2022-01-14:
+Your conversion to a single array index is wrong. It should be: i = (width * y) + x
+Comment by distro on 2022-01-14:
+@Mike Scheutzow why is that the case? Also, if you have familiarity with using teb_local_planner, please look at another Question I asked.
+Comment by Mike Scheutzow on 2022-01-14:
+This link says the array is row-major. According to the first 3 hits in google, this means "organized by rows".
+Comment by distro on 2022-02-07:
+@Mike Scheutzow would you know how to get x and y from i? its two unknown variables so I don't know.
+

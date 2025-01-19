@@ -1,0 +1,96 @@
+Q:
+
+Fuerte Explore package in a real environment problem (again)
+
+I created my own Explore package to be used in the real world. My package is basically identical to Explore_stage (http://www.ros.org/wiki/explore) with a few modifications to the XML, yaml and launch files, and altered to use gmapping as its map. Moreover, I have changed explore.cpp according to the 2 TODO comments. My modified package can be found here: https://github.com/LadyZayin/explore
+Explore works well on Stage (I receive many warnings, but it works). In the real world, the robot stops moving after exploring for a small while; it wanders across half of the room for some time (ranging from 10 seconds to 5 minutes), then it stops. If I wait for several minutes, it sometimes restarts moving for a few seconds, then stops again. I receive many of the following warning in the terminal: [ WARN] [1370547349.514586524]: Entropy has not been updated. Loop closure opportunities may be ignored. I don't know if both problems are related.
+Any ideas?
+
+Originally posted by Zayin on ROS Answers with karma: 343 on 2013-06-06
+Post score: 2
+
+A:
+
+Hi,
+I am using your configuration to try to work with Turtlebot.
+On Groovy, when I did a "rostopic echo /move_base/status", I received a lot of message to say that the goal has been cancelled by a new one.
+So, I reduce the frequency for the planner, and the turtlebot works:
+I hope it can help you.
+
+Originally posted by jannik.laval with karma: 46 on 2013-06-11
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Zayin on 2013-06-11:
+I'm glad my package worked for you (and on Groovy on top of that)! I'm happy my work has shown to be useful after all the questions I've asked here lol. Anyway, I'll try your suggestion and post the outcome. Thanks!
+By the way, what is the frequency that worked for you?
+Comment by jannik.laval on 2013-06-11:
+I added this value: , but it seems to depend on the size of the room. I don't understand why the algorithm don't use the move_base status feedback
+Comment by Zayin on 2013-06-11:
+Isn't that frequency too small? Did you mean 0.8? Or is it supposed to be very slow? It doesn't seem to help that much.
+Also, in which file have you put your line? explore_slam.xml?
+Comment by Zayin on 2013-06-11:
+I forgot to mention something. Have you modified explore.cpp in the main Explore folder? I have followed the suggestions in both TODOs. Maybe that's causing issues. I will revert them back and see what happens.
+Comment by jannik.laval on 2013-06-11:
+It is not too small: the explore node use a simple goal server. It means that when it send a goal, it override the previous one. This is why the robot doesn't move: it always cancel the destination. I added the line in explore_slam.xml.
+Comment by jannik.laval on 2013-06-11:
+I found the parameter in the explore.cpp file. But I don't change the explore.cpp. What do you change in that file ?
+Comment by jannik.laval on 2013-06-11:
+In fact, to determine the frequency, just run this line "rostopic echo /move_base/status" and see if there is too much canceling goals
+Comment by Zayin on 2013-06-11:
+There are two comments in explore.cpp labelled as TODO. Unless the Groovy version is different? But I think they're the same, aren't they?
+Comment by jannik.laval on 2013-06-11:
+Here, it seems to work fine with the remap.
+Comment by Zayin on 2013-06-11:
+I noticed that slam_entropy doesn't even have a publisher (hence, neither does gmapping/entropy). That could be my problem. So I replaced this in explore_slam.xml:
+ Now the topics communicate, but nothing is being published. What about you?
+Comment by jannik.laval on 2013-06-11:
+Yes, I have it too. And it works.
+Comment by Zayin on 2013-06-11:
+Do you mean that you replaced 'gmapping/entropy' with 'slam_gmapping/entropy'?
+Comment by jannik.laval on 2013-06-11:
+No, I kept gmapping/entropy
+Comment by Zayin on 2013-06-11:
+I see, thanks. Then, if you run "rostopic hz gmapping/entropy", I assume you get an output? Also, I assume your explore is using the gmapping map instead of the default explore map (which was programmed as such in the package I shared)?
+Comment by jannik.laval on 2013-06-11:
+You should know the process I used: first I run the turtlebot: "roslaunch turtlebot_bringup turtlebot.launch", then I run the gmapping from turtlebot "roslaunch turtlebot_navigation gmapping_demo.launch" (it is offered in Groovy package), then I run: roslaunch ~/ros/explore_real/explore_slam.xml
+Comment by Zayin on 2013-06-11:
+Ooh, that's not what I'm doing. When you said you were using my configuration, I thought you meant the package I've shared. I'll try it your way!
+Comment by jannik.laval on 2013-06-11:
+Yep, I use a part of your configuration (the part of explore) with specific footprint and some other configuration files.
+Comment by Zayin on 2013-06-11:
+I see. Well, I tried your way of launching the file, and the robot just rotates for a minute then stops. Would you mind sharing your explore folder? Maybe there's some detail that differs...
+Comment by jannik.laval on 2013-06-11:
+You can find it here: https://dl.dropboxusercontent.com/u/7739334/explore_real.zip
+Comment by Zayin on 2013-06-11:
+So I had enough time to test your package, but it didn't work either; the robot started spinning again. I don't know how I'll fix this problem now. It's weird that Explore works so well on Stage, but not in the real world. There's probably a topic miscommunication or something.
+Comment by Zayin on 2013-06-12:
+So I just added back "sensor_frame: base_laser_link" and "observation_persistance: 0.0" to costmap_common.yaml, and it seems to work better now (or I was just lucky, it happens). The robot mapped most of the room, but it still didn't complete its job (it stopped as usual after a while). Grr.
+Comment by BlitherPants on 2013-07-11:
+Hi Zayin,
+I've been following your banter with jannik about explore, and I just reached an epiphany. If you remap "gmapping/entropy" to "slam_gmapping/entropy" (like you suggested), and then go to "global_costmap.yaml" and set "static_map" to true, it works so much better. Hope this helps!
+Comment by Zayin on 2013-07-11:
+Hi! Thanks for your suggestion! I'll have to try that next week.
+Comment by Zayin on 2013-07-16:
+Weird, my robot doesn't move at all with this setting.
+Comment by BlitherPants on 2013-07-16:
+I was using jannik.laval's files and test setup, if that helps. But now I've noticed that if we only use the explore_slam.xml file, then the only files that are relevant to running the robot are "footprint.yaml", "costmap_common.yaml", and "explore_costmap.yaml". Maybe the answer is in those?
+Comment by BlitherPants on 2013-07-16:
+My robot does try to explore but does a lot of the spinning behavior (which apparently means it thinks it's stuck). I'm pretty sure you and I are trying to do exactly the same thing! I'm still looking into it and I'll let you know if I come up with anything else.
+Comment by Zayin on 2013-07-16:
+I see! I kept my own set of files, which certainly explains why we don't get the same results from modifying the costmaps. You're right, there are so useless yaml files in there. Since I'm not very experienced, I decided to keep them instead of inadvertently deleting something I shouldn't be.
+Comment by BlitherPants on 2013-07-16:
+They're only useless if you're manually running gmapping_demo.launch and then explore_slam.xml like jannik suggested. To be honest I'm very inexperienced myself, so I'm still lost as to what the problem is. It's possible gmapping_demo doesn't set things up properly for explore?
+Comment by Zayin on 2013-07-16:
+I couldn't pinpoint the problem either, so I stopped searching. The program is more or less working after all. The problem could lie in gmapping_demo, but I really wouldn't know :(.
+Comment by BlitherPants on 2013-08-23:
+Me again! I'm not sure if you still care, but I just added these two lines to my global_costmap_params (used in the gmapping demo):
+"track_unknown_space: true
+unknown_cost_value: 255"
+Not sure if this is even a smart thing to do, but the robot's stopped spinning all the time and actually explores!
+Comment by Zayin on 2013-08-26:
+I still do! I only have 1 week left of my summer project, but I'll try to find time to test it. Thanks!
+Comment by chao on 2013-12-15:
+@jannik.laval, is turtlebot_gazebo working under groovy? i tried to run it and it gave me quite a few problems.
+

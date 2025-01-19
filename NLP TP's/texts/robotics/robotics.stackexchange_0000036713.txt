@@ -1,0 +1,115 @@
+Q:
+
+Not being able to build a point cloud out of pose and laser messages
+
+I have been trying for a few weeks to build a point cloud out of pose and laser data that I have, however, it is still not working until now. The code snippet looks like below:
+void PointCloudBuilder::computePointCloud()
+{
+    sensor_msgs::PointCloud cloud;
+
+    pose3D_LD2.header.stamp = ros::Time::now();
+    pose3D_LD2.header.frame_id = "pose3D_LD2";
+
+    pose3D_LD2.pose.position.x = previous_poseLD_.pose.position.x;
+    pose3D_LD2.pose.position.y = previous_poseLD_.pose.position.y ;
+    pose3D_LD2.pose.position.z =  previous_poseLD_.pose.position.z ;
+
+    pose3D_LD2.pose.orientation.x = previous_poseLD_.pose.orientation.x;
+    pose3D_LD2.pose.orientation.y = previous_poseLD_.pose.orientation.y;
+    pose3D_LD2.pose.orientation.z = previous_poseLD_.pose.orientation.z;
+    pose3D_LD2.pose.orientation.w = previous_poseLD_.pose.orientation.w;
+
+    static tf::TransformBroadcaster tfb;
+    tf::Transform xform;
+    xform.setOrigin(tf::Vector3(previous_poseLD_.pose.position.x, previous_poseLD_.pose.position.y, previous_poseLD_.pose.position.z));
+    tf::Quaternion qt(previous_poseLD_.pose.orientation.x, previous_poseLD_.pose.orientation.y, previous_poseLD_.pose.orientation.z, previous_poseLD_.pose.orientation.w);
+    xform.setRotation(qt);
+    tfb.sendTransform(tf::StampedTransform(xform, ros::Time::now(), "base_frame", "target_frame"));
+
+    projector_.transformLaserScanToPointCloud("base_link", previous_scan_, cloud, tfListener_);
+      // Do something with cloud.
+
+    pose3D_usinglocalizationdata_pub2.publish(pose3D_LD2);
+    point_cloud_publisher_.publish(cloud);
+
+}
+
+When I issue a command of rostopic echo -c /cloud, it returns nothing there. Also from the terminal, I got an error like below:
+terminate called after throwing an instance of 'tf::ExtrapolationException'
+
+  what():  Lookup would require extrapolation at time 1324837730.494437690, but only     time  1324837730.469437690 is in the buffer, when looking up transform from frame     [/laser] to frame [/base_link]
+[pointcloud_builder_node-5] process has died [pid 29991, exit code -6].
+log files: /home/shah/.ros/log/4995859a-2f26-11e1-84b5-c42c03199b29    /pointcloud_builder_node-5*.log
+
+Am I missing something or the order is not correct? Hope somebody can guide me on this.
+EDIT(After adding waitForTransform, need somebody to check the use of it):
+    tf::StampedTransform transform;
+
+    //static tf::TransformBroadcaster tfb;
+    tf::Transform xform;
+    xform.setOrigin(tf::Vector3(previous_poseLD_.pose.position.x, previous_poseLD_.pose.position.y, previous_poseLD_.pose.position.z));
+    tf::Quaternion qt(previous_poseLD_.pose.orientation.x, previous_poseLD_.pose.orientation.y, previous_poseLD_.pose.orientation.z, previous_poseLD_.pose.orientation.w);
+    xform.setRotation(qt);
+    //tfb.sendTransform(tf::StampedTransform(xform, ros::Time::now(), "base_frame", "target_frame"));
+
+    /*try{
+            tfListener_.waitForTransform("/base_link", "/laser", ros::Time(0), ros::Duration(3.0));
+            tfListener_.lookupTransform("/base_link", "/laser", ros::Time(0), transform);
+        }
+         catch (tf::TransformException ex){
+             ROS_ERROR("%s",ex.what());
+         }*/
+
+    projector_.transformLaserScanToPointCloud("base_link", previous_scan_, cloud, xform);
+      // Do something with cloud.
+
+    pose3D_usinglocalizationdata_pub2.publish(pose3D_LD2);
+    point_cloud_publisher_.publish(cloud);
+
+Originally posted by alfa_80 on ROS Answers with karma: 1053 on 2011-12-25
+Post score: 0
+
+A:
+
+I think the problem is that instead of using the transform directly you are broadcasting it via tf and the in the next line using the transformlistener. But the listener needs some (small) time to receive the transform, and thus gives the exception.
+Whatever your project class does, might be easier to do direclty with the appropriate transform (without broadcasting it first).
+If you want to proceed this way, maybe a waitForTransform call fixes the issue, but be aware that the transform should actually have been broadcast to be able to wait for it.
+
+Originally posted by dornhege with karma: 31395 on 2011-12-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by alfa_80 on 2011-12-28:
+As if it needs a transformer not a transform to be passed in the 4th parameter. What is actually a transform. How to implement it?
+Comment by alfa_80 on 2011-12-28:
+"/opt/ros/electric/stacks/laser_pipeline/laser_geometry/include/laser_geometry/laser_geometry.h:177: note: candidates are: void laser_geometry::LaserProjection::transformLaserScanToPointCloud(const std::string&, const sensor_msgs::LaserScan&, sensor_msgs::PointCloud&, tf::Transformer&, double, int)"
+Comment by alfa_80 on 2011-12-28:
+The error is " "no matching function for call to ‘laser_geometry::LaserProjection::transformLaserScanToPointCloud(const char [10], sensor_msgs::LaserScan&, sensor_msgs::PointCloud&, tf::Transform&)’""
+Comment by alfa_80 on 2011-12-28:
+Unfortunately, an error in the line, "projector_.transformLaserScanToPointCloud("base_link", previous_scan_, cloud, xform);"
+Comment by alfa_80 on 2011-12-28:
+very sorry, I didn't realize you also edit the parameter in the projector call.
+Comment by alfa_80 on 2011-12-28:
+Thanks for the editing. I've one question, are we still using " xform" in this case? I actually need to relate the cloud with that "xform" as well.
+Comment by alfa_80 on 2011-12-27:
+I'm getting more confused. Could you alter the above code what actually you meant that?
+Comment by dornhege on 2011-12-27:
+Don't you already have a relation? Why do you need to match this via a tf broadcaster and listener?
+Comment by alfa_80 on 2011-12-27:
+But then, the broadcaster relates the pose messages with the point cloud to be built. How do I make use of my pose message then?
+Comment by dornhege on 2011-12-27:
+Just remove the broadcaster and listeners.
+Comment by alfa_80 on 2011-12-27:
+If it's possible, could you please edit the above code, because I can easily misunderstand it, I'm really confused with this broadcaster and listener stuff.
+Comment by dornhege on 2011-12-27:
+Basically take your code, remove the broadcaster and listener altogether and use xform instead of the listener in your projector class.
+Comment by alfa_80 on 2011-12-26:
+About this one, "use the transform directly instead of sending it", i didn't get this. Maybe if you show me with a code snippet it will be helpful.
+Comment by dornhege on 2011-12-26:
+I think you should use the same timestamp that you broadcast the tf with. But I would advise to use the transform directly instead of sending it.
+Comment by alfa_80 on 2011-12-25:
+@dornhege: I've just included the  "waitForTransform". Could you please check what's wrong the use of "waitForTransform" call there.
+Comment by alfa_80 on 2011-12-25:
+Should "waitForTransform()" be called before or after "tfb.sendTransform()"? Sorry for not getting it.
+

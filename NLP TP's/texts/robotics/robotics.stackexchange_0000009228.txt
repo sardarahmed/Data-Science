@@ -1,0 +1,40 @@
+Q:
+
+Evaluating the similarity of two 7 Degree of Freedom Arms
+
+I am working on the Baxter robot where I have a first arm configuration and a bunch of other arm configurations, where I want to find the closest arm configuration to the first among the many other arm configurations. The trick here is that the end effector location/orientation is the exact same for all the arm configurations, they are just different ik solutions. Can anyone point me towards the right direction towards this? Thank you.
+
+A:
+
+To compare two different arm configurations, Euclidean distance in joint space is usually sufficient.  
+$$
+d = \sqrt{\sum_{i=0}^n(q_i - q_{i_{ref}})^2}
+$$
+Where $q_i$ is joint $i$ of the test configuration, and $q_{i_{ref}}$ is the same joint in the reference configuration.  This will work even if the end-effector has a different pose.  But its usefulness goes down as the difference in end-effector poses grows.  I believe you can combat this effect somewhat by using a weighted distance metric.  
+Note that in general, you might want to have some global notion of the quality of an IK solution when you don't have a reference configuration.  The rest of this post deals with this scenario.  
+There are a few metrics for comparing IK solutions.  The first, that I have found to be most useful is manipulability measure.  Which is defined as:
+$$
+\mathit{w}(q) = \sqrt{det(\mathbf{J}(q)\mathbf{J}^T(q)}
+$$
+This is a rough measure of how easy it is for the arm to move in any direction.  It vanishes as singular configurations.  In the image below, it is a measure of the roundness of the manipulability ellipsoid.
+
+Interesting side note: an arm's (velocity) manipulability is orthogonal to it's force manipulability.  Which kind of makes intuitive sense.  Where your arm can move quickly, it can't lift very much, and vice versa.
+Distance from mechanical joint stops is another common metric:
+$$
+\mathit{w}(q) = -\frac{1}{2n}\sum_{i=1}^{n}\Big(\frac{q_i - \bar{q}_i}{q_{iM} - q_{im}}\Big)^2
+$$
+Where $q_{iM}$ and  $q_{im}$ are the maximum and minimum joint angles, and $\bar{q}_i$ is the middle value of the joint range.  Note that because this is just a unitless metric, you can tweak to suit your needs.  For example, using a higher exponent to have a flatter curve in the middle, and sharper penalties near the edges.
+
+I have also seen something called the condition number used.  Which is the ratio of the first and last eigen values of the SVD of the Jacobian.  Which is kind of another measure of the roundness of the arm's Jacobian.  But I have found this metric to be less useful.  
+If you are only interested in forces or velocities in a specific direction $u$, you can compute the manipulability ellipsoid like so:
+$$
+\alpha(q) = \Big(u^T\mathbf{J}(q)\mathbf{J}^T(q)u\Big)^{-1/2}
+$$
+$$
+\beta(q) = \Big(u^T\big(\mathbf{J}(q)\mathbf{J}^T(q)\big)^{-1}u\Big)^{-1/2}
+$$
+Where $\alpha$ is the force component, and $\beta$ is the velocity component.  
+You could also calculate the theoretical current draw for each arm configuration to find the most power efficient one.  
+Or you can make your own metric and combine some of these. 
+Note that you can use these approaches while treating IKFast as a black box.  IKFast gives you a number of potential solutions for the given end-effector pose.  You can simply iterate through them, evaluating the desired metric on each, then pick the best.  (Side note: IKFast works slightly differently in Python and C.  In Python, OpenRave automatically iterates your fixed joints through their entire range with some discretization.  So you can potentially get hundreds of solutions.  But in C, it only gives you the few permutations of joint flips.  So you only get a handful of solutions.  You are forced to call it multiple times to iterate through your fixed joint range.)
+

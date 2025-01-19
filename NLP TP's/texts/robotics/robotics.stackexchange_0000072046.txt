@@ -1,0 +1,56 @@
+Q:
+
+SMACH: How to stop an action currently run by the ActionServerWrapper?
+
+This question follows this old one. As @bit-pirate, I have my SM running inside an action server wrapper. Following @jbohren explanatios, my SM receives the Ctrl+C properly and stops. So all is fine if my SM wrapper action server is not executing a goal. But when it is, its internal thread(s) keeps running and the SM node always escalates to SIGTERM, then SIGKILL on ROS shutdown. The SM is waiting for a SimpleActionState to complete, but as I'm amidst a ROS shutdown, that never happens
+I have tried all tricks i can think about...
+
+request_preempt to the SM
+call _action_server.set_aborted
+send the  action server wrapper a goal that should stop intermediately
+...
+
+And all fails. So I must be missing an important point
+Here is the code in question
+Any clues?
+
+Originally posted by jorge on ROS Answers with karma: 2284 on 2016-02-14
+Post score: 1
+
+A:
+
+I think it is not a problem of your statemachine but of the states that are not preempting correctly. I currently have a similar issue when executing MoveIt states but have not had the time to investigate deeper.
+I found sending a new goal via axclient to the statemachine is a good way to debug this behaviour.
+Hopefully i will soon have time to take a closer look at the problem, if i find a solution i'll let you know :)
+
+edit:
+i just took a quick look at an actionserver that moves another part of our robot (not MoveIt!) which reacts correctly when an abort is requested or a new goal is sent.
+Below is a code snipped of the inside part execution. This corresponds to my current thoughts that if there is no frequent check whether a preempt or abort signal was sent the active goal execution will not be stopped...
+
+while(((position - goal->finalPosition) >= 0.001 || (position - goal->finalPosition)  0)
+            {
+                //timeout--;
+                // check that preempt has not been requested by the client
+                if (as_LinearGuideMove.isPreemptRequested() || !ros::ok())
+                {
+                    ROS_INFO("%s: Preempted", action_name_LinearGuideMove.c_str());
+                    // set the action state to preempted
+                    as_LinearGuideMove.setPreempted();
+                    success = false;
+                    break;
+                }
+                ros::spinOnce();
+                if(m_bLinearGuideActionAbort){
+                    #ifndef __SIM__
+                    m_CanCtrlPltf->setVelGearMpS(m_CanCtrlPltf->CANNODE_LINEARGUIDEMOTOR, 0);
+                    #endif
+                    ROS_INFO("%s: Aborted by operator", action_name_LinearGuideMove.c_str());
+                    as_LinearGuideMove.setAborted();
+                    success = false;
+                    break;
+                }
+
+Originally posted by ski11io with karma: 46 on 2016-04-07
+This answer was ACCEPTED on the original site
+Post score: 0
+

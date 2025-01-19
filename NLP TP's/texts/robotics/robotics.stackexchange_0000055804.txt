@@ -1,0 +1,62 @@
+Q:
+
+Robot Calibration not finding a solution
+
+We have a robot with a 6DOF arm and a 1 DOF neck joint and want to perform hand/eye calibration for this system. Before switching to the real system, we´d like to make sure things work using Gazebo. As the configuration used is very similar to ours, we started with the maxwell_calibration package and adapted it for our needs. We recorded a datasets of 25 checkerboard poses in Gazebo and tried running it through the estimation pipeline using a two-stage approach as in estimation_config.launch for maxwell. Unfortunately, the first step of calculating the checkerboard pose fails with a singular matrix error. Any ideas what could be the cause of this? The data should be close to ground truth, as everything is recorded in Gazebo pretty much without noise. Does a proper checkerboard transform start estimate have to be provided? If so, what is the coordinate frame convention for the checkerboard?
+/edit: Even with just one sample, optimization is not converging. Is there any way I can find out why the RMS error stays high?
+/edit: This is the camera_info of my simulated camera in Gazebo:
+header: 
+  seq: 9744
+  stamp: 
+    secs: 558
+    nsecs: 490000000
+  frame_id: left_camera_optical_frame
+height: 800
+width: 800
+distortion_model: plumb_bob
+D: [0.0, 0.0, 0.0, 0.0, 0.0]
+K: [476.7030836014194, 0.0, 400.5, 0.0, 476.7030836014194, 400.5, 0.0, 0.0, 1.0]
+R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+P: [476.7030836014194, 0.0, 400.5, -0.0, 0.0, 476.7030836014194, 400.5, 0.0, 0.0, 0.0, 1.0, 0.0]
+binning_x: 0
+binning_y: 0
+roi: 
+  x_offset: 0
+  y_offset: 0
+  height: 0
+  width: 0
+  do_rectify: False
+
+Can´t really see anything wrong with that, so my current hypotheses are:
+
+Calibration does not like the one
+joint neck chain
+Calibration does not
+like a fixed joint in my arm chain
+
+Originally posted by Stefan Kohlbrecher on ROS Answers with karma: 24361 on 2013-12-01
+Post score: 1
+
+A:
+
+The calibration needs to compute the inverse Jacobians from your joint chain as described in the paper [1]. If there is only one or no joint in the chain (or joints with parallel axes), the Jabobian will be singular. That would explain why you get a singular matrix error.
+I've run into the same problem and added a 'translation' parameter to the 'cov' section in the estimation parameters at some point, which lets you specify a diagonal matrix to add on top of the Jacobian to get an invertible covariance Matrix. This is undocumented unfortunately, like the rest of the calibration pipeline.. :/
+my_chain:
+  root: base_link
+  tip: head_link
+    cov:
+       joint_angles: [0.01]
+       translation: [0.002, 0.002, 0.002]
+
+The calibration pipeline should also publish Markers under the topic "pose_guesses" that give you some introspection into how the calibration converges, and there's a tool called error_visualization.py that you should take a look at.
+Good luck!
+[1] http://www.willowgarage.com/sites/default/files/calibration.pdf‎
+
+Originally posted by dgossow with karma: 1444 on 2013-12-04
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Stefan Kohlbrecher on 2013-12-04:
+Thanks for the answer! I indeed was lucky and found a nicely converging solution for a set of 4 checkerboards (out of 27). I tried the translation trick, but it does not appear to be used. Even putting some BS like " translation: ["blablabla"]" does not have any effect (neither do numbers).
+

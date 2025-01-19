@@ -1,0 +1,82 @@
+Q:
+
+How to overlay the correct way
+
+Let's say I want to overlay the rcl package.
+Right now I have eloquent installed from deb packages.
+So rcl lib is at /opt/ros/eloquent/lib/librcl.so .
+Then I have an overlay workspace overlay_ws, where the rcl repo is checked out from source.
+And a development workspace dev_ws.
+I build overlway_ws first, then dev_ws.
+And I source in this order:
+
+/opt/ros/eloquent/setup.sh
+overlay_ws/local_setup.sh
+dev_ws/local_setup.sh
+
+The sourcing happens in my .bashrc. So by opening a new terminal or calling an alias I can source the ros environment.
+So first I source my environment, then build overlay_ws.
+Then source the environment and build dev_ws.
+Then source again, to have dev packages available.
+But it always gets the installed lib (/opt/ros/..) linked and not the overlayed one.
+If I remove the installed lib, it works. But that's not what I want.
+Can someone hint me in the right direction?
+Is this the way it should work?
+
+Originally posted by madmax on ROS Answers with karma: 496 on 2020-04-20
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2020-04-20:
+Could you clarify when you actually source any workspaces? Right now it's rather ambiguous whether you first build everything and only afterwards source, or whether you interleave those commands.
+It would be important to know when you run which command.
+Comment by madmax on 2020-04-20:
+Ok, updated my question.
+Comment by gvdhoorn on 2020-04-20:
+If you start with overlays, I would suggest not to source anything in your .bashrc (at least initially). It will only confuse. Do it manually.
+The correct order would be:
+
+source /opt/ros/eloquent
+build your overlay_ws (which is actually an underlay I would say)
+source overlay_ws
+build your dev_ws
+source dev_ws
+
+To source a workspace (or install location) essentially activates it. If you don't do that in the correct order, package paths will not be resolved to the correct workspace.
+Having written this, I recall there are currently some issues with overlaying and ROS 2 workspaces, but I can't find the details right now.
+Perhaps @marguedas can add something here.
+Comment by madmax on 2020-04-20:
+If the dev_ws was not build before, the setup.bash is non existant and I can't source it anyway, which leads me to the next question. Do I need to build dev_ws from a clean state? Is it possible that a previous build cached some cmake linking paths or so? Then sourcing the overlay wouldn' have an effect at all.
+Comment by madmax on 2020-04-20:
+Now I removed the installed librcl.so as a test, tried to build dev_ws and it failed. So my custom rcl lib is not found although it's built.  Then I removed the build folder of the failing package, built again and now it find's my lib. Looks like I need to clean the dev_ws completely.
+Comment by marguedas on 2020-04-20:
+@gvdhoorn maybe you're referring to https://answers.ros.org/question/349612/ros2-osrf-docker-container-fails-to-build/ this was a temporary issue that has now been solved.
+The suggested workflow of not sourcing automatically before building and building + sourcing moving up the workspace chain looks good :+1:
+In my experience having dedicated (different) terminals for building and running code helps as wel
+However what @madmax is trying to do is not a supported use case that I know of.
+Building packages already installed from debs in overlay is discouraged. It may work but may break in subtle ways. You'd need to at least make sure to rebuild every dependent of RCL (rclcpp, rclpy and any branch up your dependency tree from rcl) in your overlay and they should be before the debs ones on your various paths (AMENT_PREFIX_PATH, CMAKE_PREFIX_PATH, LD_LIBRARY_PATH, PATH etc) .  Otherwise some libraries may still be pointing to the old rcl library.
+This is most likely what's happening here
+Comment by madmax on 2020-04-20:
+Building packages already installed from debs in overlay is discouraged. -> this would be a good hint in the documentation. I do it like that because of the discussion here. And I hoped it would be enough to just build rcl and spdlog package.  But after cleaning dev_ws and building again, it will always take the installed lib instead of the last sourced one.
+I hoped the sourcing also does something like a library priorization, like on which path to look first for a library when building but that doesn't seem to be the case.
+But after opening a new terminal, which resets all the PATH variables, and building dev_ws from there, the linking was correct.
+Comment by tianb03 on 2020-04-20:
+Could you pls provide the ROS_PACKAGE_PATH and CMAKE_PREFIX_PATH after all your source operation?
+
+A:
+
+So to sum it up:
+I first cleaned my dev_ws and cleared the package and prefix path vars.
+Then  sourced and build the underlay of dev_ws.
+Source the underlay and build overlay.
+Source overlay.
+In my case I call a function which sources .bashrc and the workspaces in correct order.
+export LD_LIBRARY_PATH=""                                                                                                                                                  
+export AMENT_PREFIX_PATH=""                                                                                                                                                
+export CMAKE_PREFIX_PATH=""                                                                                                                                                
+source ~/.bashrc 
+
+Originally posted by madmax with karma: 496 on 2020-04-21
+This answer was ACCEPTED on the original site
+Post score: 0
+

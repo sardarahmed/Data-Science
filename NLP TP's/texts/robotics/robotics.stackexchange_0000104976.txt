@@ -1,0 +1,83 @@
+Q:
+
+Convert ROS2 SQLite bag to MCAP format
+
+I've got some ROS2 bags in SQLite format that I'd like to convert to MCAP format, but I cannot find any examples or tools that do it. I'd have hoped there would be an obvious option for ros2 bag convert, like the --output-options YAML's storage_id:, but it's not obvious to me what to use.
+
+A:
+
+There's a guide on the MCAP website here:
+$ cat << EOF > convert.yaml
+output_bags:
+  - uri: ros2_output
+    storage_id: mcap
+    all: true
+EOF
+$ ros2 bag convert -i ros2_input.db3 -o convert.yaml
+
+If you have the rosbag2_storage_mcap package installed, this should work out of the box.
+
+A:
+
+I did this recently with the mcap cli tool built from source https://github.com/foxglove/mcap:
+sudo apt install golang-go
+git clone git@github.com:foxglove/mcap.git
+cd mcap/go
+make -C cli/mcap build
+./cli/mcap/bin/mcap version  # show the binary works
+
+After that you need to have all the message definitions of all the messages in the .db3 file available, source the workspace they were built in (e.g. source /opt/ros/humble/setup.bash works if using humble and all of the required messages were apt installed, or source ~/my_ros2_ws/install/setup.bash if you had to build some packages with custom messages):
+source your_ros2_ws/install/setup.bash 
+cd directory_with_db3
+# I made a symlink to ./mcap/go/cli/mcap/bin/mcap so it is on my PATH
+mcap convert foo.db3 foo.mcap
+# see that all the messages are there
+mcap info foo.mcap
+library:   mcap go v1.0.4                                              
+profile:   ros2
+messages:  834056                                                      
+duration:  9m38.219675178s                                             
+start:     2022-01-07T12:39:35.007852857-08:00 (1641587975.007852857)  
+end:       2022-01-07T12:49:13.227528035-08:00 (1641588553.227528035)  
+compression:
+    zstd: [1834/1834 chunks] [15.58 GiB/10.90 GiB (30.03%)] [19.31 MiB/sec] 
+channels:
+...
+
+There's an example mcap I made (and also used mcap filter to reduce the size) attached to the issue here (and a workaround to related issue with viewing the mcap in plotjuggler): https://github.com/facontidavide/PlotJuggler/issues/878
+mcap convert while missing messages
+...failed to convert file: failed to find schema for novatel_oem7_msgs/msg/BESTVEL: schema not found
+
+It exits immediately on encountering an unknown message and leaves behind an mcap file of size 0.
+ros2 bag convert
+ros2 bag convert also works (going from https://mcap.dev/guides/getting-started/ros-2#using-ros2-bag-convert), at least with the ros2 bag I built from iron sources:
+convert.yaml:
+output_bags:
+  - uri: ros2_output
+    storage_id: mcap
+    all: true
+
+The uri is the output directory the mcap conversion will be stored in, it doesn't look possible to specify it on the command line as with the mcap tool.  More possible parameters for the yaml are listed in https://github.com/ros2/rosbag2#converting-bags but not documented.
+ros2 bag convert -i E-SOLO-FAST-140-170.db3 -o ../../../convert.yaml
+
+closing.
+
+closing.
+[INFO] [1698332502.004769814] [rosbag2_storage]: Opened database 'E-SOLO-FAST-140-170.db3' for READ_ONLY.
+
+It creates a subdirectory ros2_output/ with metadata.yaml and ros2_output_0.mcap (now format libmcap 0.8.0), looks to have all the messages in it.
+ros2 bag convert while missing messages
+ros2 bag convert -i . -o ../../../convert.yaml 
+^C[INFO] [1698419071.371486821] [rosbag2_storage]: Opened database './T-MULTI-FAST-EURO.db3' for READ_ONLY.
+[WARN] [1698419071.444842070] [ROSBAG2_TRANSPORT]: Topic '/vehicle_3/radar_front/esr_status1' has unknown type 'delphi_esr_msgs/msg/EsrStatus1' . Only topics with known type are supported. Reason: 'package 'delphi_esr_msgs' not found, searching: [/home/lucasw/ros/ros2_iron/install/rqt_bag_plugins, /home/lucasw/ros/ros2_iron/install/rosbag2,
+
+In contrast with mcap the ros2 bag convert converts every message it does understand and skips the rest.
+ros2 bag zstd compression
+These compression options can be added to convert.yaml, but the output .mcap.zstd file is not readable by the mcap cli tool (while ros2 bag info works with it):
+    compression_mode: file
+    compression_format: zstd
+
+This yields mcap files readable by the mcap tool but the files are a little larger, appears to be the same as the default settings of the mcap cli tool:
+    compression_mode: message
+    compression_format: zstd
+

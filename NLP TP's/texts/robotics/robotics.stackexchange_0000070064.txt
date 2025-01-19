@@ -1,0 +1,131 @@
+Q:
+
+image_proc not working as expected
+
+Hello everyone,
+I'm trying to use image_proc to rectify my image, coming from a folder.
+Here is my launch file:
+<launch>
+
+<group ns="calibration">
+    <rosparam command="load" file="/home/george/GOPRO/chessboard/calibrationdata/cal.yml"/>
+    <!-- <node pkg="green_eye" name="camera_info_pub" type="camera_info_pub" output="screen" /> -->
+</group>
+
+<node pkg="green_eye" name="file_monitor" type="file_monitor" output="screen"/>
+<node pkg="green_eye" name="image_processor" type="image_processor" output="screen"/>
+<group ns="camera">
+    <node pkg="image_proc" name="image_proc" type="image_proc" output="screen"/>
+    <node pkg="image_view" name="image_raw" type="image_view" output="screen">
+        <remap from="image" to="image_raw" />
+    </node>
+    <node pkg="image_view" name="image_mono" type="image_view" output="screen">
+        <remap from="image" to="image_mono" />
+    </node>
+    <node pkg="image_view" name="image_rect" type="image_view" output="screen">
+        <remap from="image" to="image_rect" />
+    </node>
+    </group>
+</launch>
+
+The file_monitor node checks for new images in a folder and publishes the image path.
+image_processor reads that path and uses openCV to read the image and publish it to the /camera/image_raw node.
+It also stamps and publishes the CameraInfo topic in the /camera/camera_info path.
+From there on, I expect image_proc to do its job, but it fails.
+While the image_raw and image_mono topics are visible by the image_view, image_rect always stays grey (in fact it is never published).
+I also get the following warning (not actually pasted exactly)
+  [image_transport] Topics '/camera/image_mono' and '/camera/camera_info' do not appear to be synchronized. In the last 10s:
+  Image messages received: 4
+  CameraInfo messages received: 4
+  Synchronized pairs: 0
+
+image_mono seems to be a product of image_proc, but not actually a topic I publish myself, which lags image_raw by some 10s of ms and is displayed correctly. However, image_raw should be the only input of image_proc that I have to stamp.
+Thus, I don't know why this warning should appear, or whether it affects my result.
+Any ideas welcome,
+Thanks in advance!
+Edit -------------------------------------------------------------------------------------------------------------------------
+I managed to have the intended result with the cv::undistort API, but the solution is less modular and I'm not sure whether the result is as sound as the well-documented image_proc, so I'll leave this open.
+Edit 2 ----------------------------------------------------------------------------------------------------------------------
+Here is the code which I use to fill the camera_info message, having the converted .yaml file loaded in the parameter server:
+pub_img_raw = it.advertise("/camera/image_raw",1);
+pub_cfg = n.advertise<sensor_msgs::CameraInfo>("/camera/camera_info",1);
+    
+sensor_msgs::CameraInfo cfg;
+XmlRpc::XmlRpcValue list;
+int i;
+
+cfg.header.frame_id = "camera";
+double temp;
+ros::param::get("/calibration/image_height", temp);
+cfg.height = (uint)temp;
+ros::param::get("/calibration/image_width", temp);
+cfg.width = (uint)temp;
+ros::param::get("/calibration/distortion_model", cfg.distortion_model);
+ros::param::get("/calibration/distortion_coefficients/data", list);
+cfg.D.clear();
+for (i=0;i<5;i++) {
+    cfg.D.push_back((double)list[i]);
+}
+ros::param::get("/calibration/camera_matrix/data", list);
+for (i=0;i<9;i++) {
+    cfg.K[i] = list[i];
+}
+ros::param::get("/calibration/rectification_matrix/data", list);
+for (i=0;i<9;i++) {
+    cfg.R[i] = list[i];
+}
+ros::param::get("/calibration/projection_matrix/data", list);
+for (i=0;i<12;i++) {
+    cfg.P[i] = list[i];
+}
+
+and later in the code:
+sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg();
+msg->header.stamp = ros::Time::now();
+msg->header.frame_id = "camera";
+pub_img_raw.publish(msg);
+
+cfg.header.stamp = ros::Time::now();
+pub_cfg.publish(cfg);
+
+Originally posted by Georacer on ROS Answers with karma: 67 on 2015-10-25
+Post score: 2
+
+Original comments
+Comment by Georacer on 2015-10-25:
+I just realized that the warning comes from image_transport, not image_proc, so one less thing to worry about. But the fact that image_rect is never published is still a problem.
+Comment by Stefan Kohlbrecher on 2015-10-25:
+image_transport is used within image_proc so it is likely that this is indeed a thing to worry about :)
+
+A:
+
+The warning message indicates that the Image and CameraInfo message timestamps are not synchronized. Per default, per published Image message, there should be a CameraInfo message with the exact same timestamp published. Otherwise, the default synchronization policy used by many tools with result in exactly the warning (and issues) you observe.
+Note that issues with this pop up once in a while and you'll be able to find more info about time sync issues when searching this site, for instance this Q/A.
+/edit: You call ros::Time::now twice for settings timestamps, which can lead to inconsistent stamps. Essentially the exact same issue as described here. Not sure this will fix things, but it's a good idea to eliminate obvious potential sources of error.
+Note you could also use a CameraPublisher for convenience.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2015-10-25
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Georacer on 2015-10-25:
+It turns out this was not the problem: /camera/camera_info is published and stamped by me. image_proc reads it along with /camera/camera_raw and produces among other things /camera/image_mono, but with some delay.
+image_transport sees this and complains, but it shouldn't matter.
+Comment by Stefan Kohlbrecher on 2015-10-25:
+Normally this matters as the callback of a CameraSubscriber is never called when you never have a synchronized pair.
+I recommend you do not erase info from your question, as I refer to the warning message in my answer and things get very hard to understand for others.
+Comment by Georacer on 2015-10-25:
+It indeed was wrong from my part to edit the question by deleting content. I realize that now. Sorry about that. Let me re-instate the deleted content.
+Comment by Georacer on 2015-10-25:
+Thanks for taking the time to answer, Stefan. However, even though I had seen the linked thread, I can't understand how it helps.
+The warning is complaining about the stamps of an image_proc input topic and an output topic, which seems weird to me.
+Comment by Georacer on 2015-10-25:
+To add to the conversation, I noticed that the /rectify nodelet of image_proc does use image_mono as input, but I sure didn't try to use it.
+Comment by Stefan Kohlbrecher on 2015-10-25:
+Then everything makes perfect sense and a timestamp problem is plausible. Not sure why rectify uses image_mono per default. See updated answer.
+Comment by Georacer on 2015-10-25:
+Ugh... it was the different timestamps after all... such a silly mistake. Even for those nanoseconds image_proc complained.
+I was used to the tf package which is not as strict with sliding frames but this time it bit me.
+Thanks a bunch!
+

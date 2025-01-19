@@ -1,0 +1,74 @@
+Q:
+
+ekf_localization_node exhibits unexpected behavior
+
+I have two instances of ekf_localization_node. The first, used for odometry, reads the x velocity (in the base_link frame) from the wheel encoder odometry topic and publishes the odom-to-base_link transform. The second node, used for absolute orientation, reads the x velocity in the same manner as the first node, but also reads the roll, pitch, and yaw angles from the solar compass topic (a PoseWithCovarianceStamped message). The absolute orientation node publishes the map-to-odom transform. Furthermore, the absolute orientation node does not receive poses from the solar compass when the compass is in shadow.
+What I am doing:
+
+Drive the robot forward until it is in shadow.
+Make a 90-degree right turn.
+Drive the robot forward until it is out of shadow.
+
+I am using RViz to display odometry/filtered (published by the odometry ekf_localization node), with the fixed frame set to "map".
+What I expect:
+
+The odometry display draws arrows that correspond to the robot's path as it moves into shadow.
+The 90-degree right turn adds no arrows to the odometry path. This is due to the fact that the robot is not translating or, from the absolute orientation node's point of view, rotating. Since the solar compass is in shadow, it does not publish any poses that would be received by the absolute orientation node.
+When I resume driving the robot  forward, arrows should continue to be added to the odometry path, as if the right turn never took place. When the robot moves out of shadow, arrows added after leaving the shadow should be oriented 90 degrees right, relative to the earlier arrows. The new arrows should form a straight line pointing right.
+
+From above, the result should look like this:
+X>>>>>>>>>>
+^
+^
+^
+R->->->->->->
+^
+^
+E
+^
+^
+^
+
+E is the point where the robot enters the shadow, R is where the right turn is made, and X is the point where the robot leaves the shadow. The "->" symbols show the actual path of the robot after the right turn.
+What actually happens:
+X
+^
+^
+^
+R->->->->->->
+^
+^
+E______Y>>>>>>>>>>
+^
+^
+^
+
+The underscores are supposed to be spaces, but I couldn't get non-breaking spaces to work.
+When the robot exits the shadow at point X, it is then translated to point Y. It appears that the robot's path between E and X is rotated, instead of just the robot itself. I suspect that the sum of all the position changes caused by x velocity messages since the last pose (orientation) message are being rotated around the position that was current when the last pose message was received. Is this expected behavior? I am using the robot_localization package from the ROS Indigo binary release.
+
+Originally posted by Jim Rothrock on ROS Answers with karma: 792 on 2015-04-10
+Post score: 0
+
+A:
+
+none of your sensor data has any covariance values filled out
+
+Each sensor now provides variance values on the diagonal of its covariance matrix. The off-diagonal entries are zero. This had no noticeable effect.
+
+you don't have anything measuring Z or Z velocity, which is a big problem.
+
+The wheel encoder odometry now provides the z velocity, which is always zero. This had no noticeable effect.
+
+if it still misbehaves, try feeding some absolute orientation data to your odom instance of ekf_localization_node
+
+This resulted in the same translation discontinuity that occurred when the absolute orientation data was provided by the localization instance of ekf_localization_node.
+I fixed the problem by replacing the localization ekf_localization_node instance with a nodelet that subscribes to odometry/filtered and the pose provided by the solar compass. The nodelet accumulates the twist data from odometry/filtered, replaces the orientation component of the estimated pose when a pose message arrives, and publishes the map-to-odom transform.
+
+Originally posted by Jim Rothrock with karma: 792 on 2015-04-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Tom Moore on 2015-04-21:
+Great, sounds like you have it sorted. My guess is that it's still related to covariance explosion when solar compass readings stop arriving, but I'd have to see a bag. If you have time, I'd be interested in verifying that, but I understand if not.
+

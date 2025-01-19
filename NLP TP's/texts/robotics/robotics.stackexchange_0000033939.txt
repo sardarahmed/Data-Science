@@ -1,0 +1,71 @@
+Q:
+
+How to set up VPN between ROS machines
+
+I have a Fedora14 machine on our robot and a Fedora14 workstation. High level and visualization nodes are run on the workstation. The communication is working unless I activate the firewalls.
+I want to try to activate the firewalls and set up a VPN between those machines, as the network is a bigger one. So I'm needing a probably simple bidirectional VPN which forwards packets to each other machine through the VPN.
+I never set up a VPN, and couldn't find instructions I get along with. Are there any advices how to proceed?
+In the future another workstation may be introduced and needed simultaneously, if that's significant.
+
+Originally posted by felix k on ROS Answers with karma: 1650 on 2011-08-29
+Post score: 4
+
+A:
+
+Setting up openvpn is actually really simple. I can summarize the steps for you.
+First install openvpn via your package installation tool.
+Now create a set of certificates that are used for authentication. The openvpn package should contain a directory easy-rsa somewhere, on ubuntu it's in /usr/share/doc/openvpn/examples/easy-rsa. Switch to it or one if it's subdirectories indicating a version and source the file vars. Please note that you need to execute all following commands as root because the keys are generated into /usr/share/doc/openvpn/examples/easy-rsa/2.0/keys. If you want to create the keys as a user, you need to copy the whole directory to a place you have write permissions for.
+cd /usr/share/doc/openvpn/examples/easy-rsa/2.0
+source vars
+
+Then clear all previously generated keys and generate new ones:
+./clean-all
+./build-ca
+./build-key-server server
+
+This generates a certificate and a server key. Now you can either generate one key for each client or you can generate one key and use it for all clients, depending on how secure you want to have your system. To generate a key for the client, execute:
+./build-key client
+
+Finally you need to generate Diffie Hellman parameters:
+./build-dh
+
+Now copy everything that's related to the server to /etc/openvpn, the directory we will put the config in:
+cp ca.crt ca.key dh1024.pem server.crt server.csr server.key /etc/openvpn
+
+Finally, we need to create a config file for the server. Create /etc/openvpn/server.conf by copying (and maybe uncompressing) /usr/share/doc/openvpn/examples/server.conf or server.conf.gz.
+The default config is based on routing and not bridging which should be fine for almost all cases. The default config should be fine already but if you want you can go through it and change some parameters. For instance, you might want to uncomment the parameters client-to-client and duplicate-cn. Test your config by executing openvpn by hand:
+cd /etc/openvpn
+openvpn ./server.conf
+
+If it starts up correctly, you can let the system start up the server at boot time. Not sure how you do that on your system, but on Ubuntu you just edit /etc/default/openvpn and uncomment AUTOSTART="all".
+Finally, you need a client config. Create a new directory somewhere and copy the files ca.crt, client.crt and client.key that we created during key generation into it. Then create the file client.conf and put the following lines into it:
+client
+dev tap
+proto udp
+remote <ip or domain of your server>
+persist-key
+persist-tun
+nobind
+ca ca.crt
+cert client.crt
+key client.key
+resolv-retry infinite
+comp-lzo
+verb 3
+
+Copy the directory to your client, switch into it and execute as root or with sudo:
+openvpn client.conf
+
+Now a connection should be established.
+Please note that you need to set ROS_IP to the ip address of tap0. If you have several machines on the robot's network, you might also need to configure routing into the vpn. Alternatively you can use a bridged network for vpn. Please look at the tutorials for instructions to do that.
+
+Originally posted by Lorenz with karma: 22731 on 2011-08-30
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by mjcarroll on 2011-08-30:
+This is probably way more to-the-point than my answer.  Everything seems pretty straightforward the way that @Lorenz has laid it out.
+Comment by tfoote on 2011-08-30:
+There are lots of example configurations in @mjcarroll's answer.  And I'll confirm it was noteably easier to setup than I expected when I tried it.
+

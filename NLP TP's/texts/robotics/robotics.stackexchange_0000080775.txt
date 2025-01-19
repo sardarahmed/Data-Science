@@ -1,0 +1,70 @@
+Q:
+
+Get timestamp during roslaunch
+
+Hi ROS community!
+Is there a way to get the date/time to pass on as a (string) parameter, when roslaunching a node?
+The idea is to pass a filename as parameter to a node, which will have a specific timestamp.
+I was expecting to be able to import a bash script variable to roslaunch, such as  "$(date +'%d-%m-%Y_%Ih%Mm%S')", but I guess that this isn't supported using 'find', 'env', 'optenv', 'anon', or 'arg'.
+Another possible way to go would be using "$(eval )" with a python expression to get the timestamp. However,  I have no idea how this can be done.
+I'm using ROS Kinetic in Ubuntu 16.04.
+Is this possible? If so, how can it be accomplished?
+Thanks in advance.
+
+Originally posted by DavidPortugal on ROS Answers with karma: 349 on 2017-05-12
+Post score: 2
+
+A:
+
+You can use the <param> tag with the command argument to run an arbitrary command and store the output in a parameter. In you case it looks like you want:
+<param name="start_time" command="date +'%d-%m-%Y_%Ih%Mm%S'"/>
+
+Have a look at the param tag docs for more details.
+
+Originally posted by ahendrix with karma: 47576 on 2017-05-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by DavidPortugal on 2017-05-15:
+ty @ahendrix. had no idea about this!
+With
+<param name="dst" command="$(env ROS_WORKSPACE)/`date +%d-%m-%Y_%Ih%Mm%S`.mp3"/>
+
+I get
+Invalid  tag: Invalid  tag: Cannot load command parameter [dst]: no such command [/home/stop/catkin_ws/date +%d-%m-%Y_%Ih%Mm%S.mp3].
+Any idea?
+Comment by lucasw on 2017-05-15:
+It sounds like you want the equivalent of:
+rosparam set dst $ROS_WORKSPACE/`date +%d-%m-%Y_%Ih%Mm%S`.mp3
+
+I tried
+<param name="dst" command="echo `$ROS_WORKSPACE/\`date +%d-%m-%Y_%Ih%Mm%S\`.mp3`"/>
+
+but:
+rosparam get /dst
+'`$ROS_WORKSPACE/`date +%d-%m-%Y_%Ih%Mm%S`.mp3`
+
+ '
+
+Comment by lucasw on 2017-05-15:
+What works better is to make a shell script in package foo:
+#!/bin/sh
+echo $ROS_WORKSPACE/`date +%d-%m-%Y_%Ih%Mm%S`.mp3
+
+but the single quotes and the carriage return are still in there
+<param name="dst" command="$(find foo)/scripts/timestamp.sh" />
+
+Comment by DavidPortugal on 2017-05-15:
+Hi @lucasw, thank you. I was able to solve the issue before with an external script, but I was curious to know if it could actually be done somehow relying only on a single launch file.
+Comment by lucasw on 2019-09-05:
+This almost works but there is an annoying trailing linebreak:
+ <param name="dst" command="date +$(env ROS_WORKSPACE)%d-%m-%Y_%Ih%Mm%S.mp3" />
+Comment by davidllp on 2019-09-26:
+I haven't managed to call the command directly without the trailing linebreak, however, if using the solution with the shell script, instead of using echo, you can use printfas:
+#!bin/bash
+printf "${ROS_WORKSPACE}/%(%d-%m-%Y_%Ih-%Mm-%S)T.mp3"
+
+Comment by atyshka on 2019-10-31:
+Any updates here? I am trying to get a file path from a bash script but the param ends up having both single quotes and a trailing newline, which the pcd_to_pointcloud node doesn't like
+

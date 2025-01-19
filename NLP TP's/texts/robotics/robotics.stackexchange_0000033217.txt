@@ -1,0 +1,106 @@
+Q:
+
+High level convenience classes for ros_serial
+
+I thought I'd come up with two convenience classes to wrap up ROS communication in my ATmega1280 code. This may not be the most indispensible part of my project, but just for the fun of learning C++ template programming I thought I'd give it a try. My code is as follows:
+#include <ros.h>
+
+template <class T>
+class ROSLogger {
+public:
+    ROSLogger(ros::NodeHandle* nh, char* topic, short pubFrequency);
+    virtual ~ROSLogger();
+
+    void advertise();
+    void publish();
+    T& getMsg();
+
+private:
+    ros::NodeHandle* nh_;
+    ros::Publisher publisher_;
+    T msg_;
+    const char* topic_;
+    short pubFrequency_;
+};
+
+template <class T>
+ROSLogger<T>::ROSLogger(ros::NodeHandle* nh, char* topic, short pubFrequency) :
+    nh_(nh),
+    topic_(topic),
+    pubFrequency_(pubFrequency),
+    publisher_(topic_, static_cast<ros::Msg*>(&msg_)) {}
+
+template <class T>
+ROSLogger<T>::~ROSLogger() {}
+
+template <class T>
+void ROSLogger<T>::advertise() {
+    nh_->advertise(publisher_);
+}
+
+template <class T>
+T& ROSLogger<T>::getMsg() {
+    return msg_;
+}
+
+template <class T>
+void ROSLogger<T>::publish() {
+    publisher_.publish(&msg_);
+}
+
+To use it one would create a ros::NodeHandle, initialize it, create a ROSLogger, advertise a topic and then publish data, as below.
+unsigned char hello[13] = "hello world!";
+ros::NodeHandle nh;
+ROSLogger<std_msgs::String> rl(&nh, "test", 10);
+
+void setup() {
+  nh.initNode();
+  rl.advertise();
+}
+
+void loop() {
+  nh.spinOnce();
+  rl.getMsg().data = hello;
+  rl.publish();
+}
+
+At the end I'd create a vector of ROSLogger's in a containing class and their publish methods would fire only with the desired frequency automatically. Of course the latter is not yet implemented. Even if the added value is small, I'd still like to make it work. The point is, now it doesn't, and I don't know why. After running serial_node.py only an error appears:
+[INFO] [WallTime: 1311526103.141689] ROS Serial Python Node
+[INFO] [WallTime: 1311526103.149892] Connected on /dev/ttyUSB0
+[ERROR] [WallTime: 1311526118.161632] Lost sync with device, restarting...
+/opt/ros/diamondback/stacks/ros_comm/clients/rospy/src/rospy/topics.py:640: UserWarning: '' is not a legal ROS graph resource name. This may cause problems with other ROS tools
+  super(Publisher, self).__init__(name, data_class, Registration.PUB)
+Unable to register with master node [http://localhost:11311]: master may not be running yet. Will keep trying.
+
+Any clues?
+
+Originally posted by tom on ROS Answers with karma: 1079 on 2011-07-24
+Post score: 1
+
+A:
+
+OK, I figured this out. The problem was a C++ peculiarity when initializing class members with constructor's initialization list. The thing is, class members get initialized in the order of their declaration in class'es body, not in the order you name them in the initialization list (more on that eg. here). So changing the declaration this way solves the problem:
+template <class T>
+class ROSLogger {
+public:
+    ROSLogger(ros::NodeHandle* nh, char* topic, short pubFrequency);
+    virtual ~ROSLogger();
+
+    void advertise();
+    void publish();
+    T& getMsg();
+
+private:
+    ros::NodeHandle* nh_;
+    const char* topic_;     //DECLARATION ORDER CHANGED HERE
+    T msg_;
+    ros::Publisher publisher_;
+    short pubFrequency_;
+};
+
+The way I programmed this before publisher_ got initialized before topic_ was set, so this couldn't work.
+
+Originally posted by tom with karma: 1079 on 2011-07-24
+This answer was ACCEPTED on the original site
+Post score: 0
+

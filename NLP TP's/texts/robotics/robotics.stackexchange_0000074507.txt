@@ -1,0 +1,85 @@
+Q:
+
+How to move any 2 robots simultaneously in gazebo?
+
+I need to put any 2 robots in gazebo and keep them moving simultaneously in a fixed square path. I wanted to know which robot should I use and how should I command them to move? I am using ROS-Indigo with Gazebo-2.2.2 on Ubuntu 14.04.
+
+Originally posted by Pikachu on ROS Answers with karma: 15 on 2016-06-14
+Post score: 1
+
+A:
+
+If Your robot models and names are same, you need to cover in a namespace each of them. As far as I know, There is no tutorial exists for converting any robot's packege to namespaced one in indigo. I'll write later. But You can start by following this answer.
+
+If their models aren't same, Directly start from this 2nd section. (But I don't think so. Because everyone is naming topics  by same way.) Just publish to their own velocity topics simultaneously. or You can use their own move_base topics to do it.
+
+After following stages in the link above, You must create launch files before section 2 above. You need one gazebo process, sample launch file, world.launch;
+<launch>
+  <arg name="world"  default="milvus_repo"/>  
+  <arg name="world_path" default="$(find mrp2_gazebo)/worlds/"/>             
+  <arg name="gui" default="true"/>
+  <arg name="debug" default="false"/>
+  <arg name="paused" default="false"/>
+  <env name="GAZEBO_MODEL_PATH" value="$(find mrp2_gazebo)/models:$(optenv GAZEBO_MODEL_PATH)" />
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_path)$(arg world).world"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="paused" value="$(arg paused)"/>
+  </include>
+</launch>
+
+Then start one of the robots with its namespace via robot1.launch;
+<launch>
+    <arg name="robot_name" default="robot1" />
+    <group ns="$(arg robot_name)">
+        <include file="$(find mrp2_gazebo)/launch/include/single_mrp2.launch" >
+            <arg name="init_pose" value="-x 3.0 -y 0.0 -z 0.0 -R 0.0 -P 0.0 -Y 0.0" />
+            <arg name="robot_name" value="$(arg robot_name)" />
+        </include>
+        <include file="$(find mrp2_control)/launch/controls.launch" >
+            <arg name="robot_name" value="$(arg robot_name)" />
+            <arg name="sim" value="true" />
+        </include>
+    </group>
+</launch>
+
+single_mrp2.launch contains mrp2.launch and some teleop and diagnostic launches. If you have a running robot without namespace, you probably have these ones. (And if you will use these ones in first try, some remapping operations may be needed in inside of them). mrp2.launch file:
+<launch>
+    <arg name="robot"  default="full"/>
+    <arg name="gzpose" default=""/>
+    <arg name="robot_name" default="robot1"/>
+    <!-- PARSE ROBOT MODEL -->
+    <include file="$(find mrp2_description)/launch/description.launch" >
+        <arg name="robot" value="$(arg robot)"/>
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>
+    <!-- SPAWN IN GAZEBO -->
+    <node pkg="gazebo_ros" type="spawn_model" name="$(anon spawn_model)"
+          args="-urdf -param robot_description $(arg gzpose) -model mrp2_$(arg robot_name)" />
+    <remap from="odom" to="$(arg robot_name)/odom"/>
+</launch>
+
+Finally, here is the description file, also be sure the joints and frames are different, (You must edit your urdf files for this) description.launch;
+<launch>
+    <arg name="config" default="base" />
+    <arg name="robot" default="full" />
+    <arg name="robot_name" default="robot1"/>
+    <param name="robot_description" command="$(find xacro)/xacro.py '$(find mrp2_description)/robots/mrp2_$(arg robot).urdf.xacro' robot_name:=$(arg robot_name)" />
+    <node name="robot_state_publisher_$(arg robot_name)" pkg="robot_state_publisher" type="robot_state_publisher">
+        <param name="use_tf_static" value="true"/>
+        <remap from="/joint_states" to="/$(arg robot_name)/joint_states" />
+    </node>
+</launch>
+
+After following steps carefully, and after remapping some topics like  this: <remap from="odom" to="$(arg robot_name)/odom"/>, Do same steps for each robot. (Just change robot name from robot1 to robot2 or may be optimus_prime) Your robots will move simultaneously.
+
+Originally posted by Orhan with karma: 856 on 2016-06-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Pikachu on 2016-06-17:
+Thanks ! It really helped. :)
+

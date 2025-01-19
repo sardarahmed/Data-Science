@@ -1,0 +1,50 @@
+Q:
+
+How to specify the network interface ros2 uses for communication?
+
+When I launch my node, after installing a docker image, I get following warning, luckily it arbitrarily selects the right interface, but how can I specify it to get rid of the warning?
+[od-1] 1614701696.982410 [0]         od: using network interface eno1 (udp/192.168.254.20) selected arbitrarily from: eno1, docker0, br-ab6309382a59, tun0
+I'm using Ros2 build from source master and ros2 branches.
+I found: https://answers.ros.org/question/299940/explicitly-constraining-which-network-interfaces-are-used-in-ros2/
+and I was wondering if this applies in my case? I didn't find much information and before reading the extensive fast dds api to figure out how to set it, I ask here to make sure, this would even be a solution to my problem and if there is a new(set it directly by ros2) way to specify the network instead of going and fiddling with the default implementation.
+
+Originally posted by Hakaishin on ROS Answers with karma: 142 on 2021-03-02
+Post score: 1
+
+A:
+
+Create a file like this: example.xml and launch the node with following command: FASTRTPS_DEFAULT_PROFILES_FILE=<path/to/xml/example.xml> RMW_IMPLEMENTATION=rmw_fastrtps_cpp ros2 launch my_node file.launch
+<?xml version="1.0" encoding="UTF-8" ?>
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <transport_descriptors>
+        <transport_descriptor>
+            <transport_id>CustomUDPTransport</transport_id>
+            <type>UDPv4</type>
+            <interfaceWhiteList>
+                <address>enp3s0</address>
+            </interfaceWhiteList>
+        </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="CustomUDPTransportParticipant">
+        <rtps>
+            <userTransports>
+                <transport_id>CustomUDPTransport</transport_id>
+            </userTransports>
+        </rtps>
+    </participant>
+</profiles>
+
+Originally posted by Hakaishin with karma: 142 on 2021-04-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by omair50 on 2021-05-10:
+Hi, I tried your proposed solution, but it does not not send the data over the specified interface. Do we have to change something inside the pub/sub code?
+https://fast-rtps.docs.eprosima.com/en/latest/fastdds/transport/whitelist.html
+Comment by Hakaishin on 2021-08-25:
+No, that was all that was needed for me
+Comment by antonyramsy on 2022-02-05:
+thanks very very much. I was using docker with ros2 (Ardupilot's SITL + mavros2 + ros2 in docker and my own script from the host! ) and I was really really confused by its behavior. I could send my messages with rqt and command line but my scripts wouldn't work.
+it took me about 2-3 days until I realized it's not my script's bug, QoS mismatch, docker's network bad config, mavros/mavlink bad behavior, etc! and suddenly solved everything!
+

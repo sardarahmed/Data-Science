@@ -1,0 +1,263 @@
+Q:
+
+Correct way to use Subsumption Architecture with Robot C
+
+I've been doing a lot of reading lately about Subsumption Architecture and there are a few different ways people seem to advocate. 
+For instance some people use a global "flag" variable to have a task take control. Others use the endTimeSlice() and allow the arbiter to really choose. And I think this is correct. 
+I have this small section of RobotC code that I'm working on for a line following robot but am not sure I am doing it right as currently the track method will always take over the find method. The correct flow should be that find should guide the robot to the line using a spiral path to find the line. Once the line is found track should take over. 
+task evade(){
+    if(SensorValue(forwardSonarSensor) > threshold){
+            //box the obstruction
+    }
+}
+
+task find(){
+    if(SensorValue(lightSensor) > threshold){
+            //spiral the robot
+    }
+}
+
+task track(){
+
+    if(SensorValue(lightSensor) < threshold){
+            //go straight
+    }else{
+                //execute turns to follow the line
+    }
+}
+
+task main(){
+    while(true){
+        StartTask(evade,9);
+        StartTask(track,8);
+        StartTask(find,7);
+        wait1Msec(250);
+    }
+}
+
+I've just used some comments here rather than the actual code to keep it brief. Are my if statements not good enough as conditions because when the robot is off the line, track() takes over. Is this due to the else statement within track? If so, how to have track() perform turns when it looses the line without taking over from forage at the start of the program? 
+
+A:
+
+With Subsumption Architecture, you should carefully design your behaviors in such a way that if you assign task T priority n, then T should be what the robot should do if all tasks with higher priority than n are ignored.
+Let's order your example tasks, then figure out a way to implement it. Your tasks are evade, find and track.
+In general you would want the robot to track a line. However, if it couldn't detect the line, then it should try to find it. Above all, it should evade obstacles. This gives us the following ordering:
+
+Highest priority: evade
+Then: find
+Then: track
+
+The reason find has higher priority than track is that, as I mentioned above, you would track only if evade and find are unnecessary. If you put find below track, that means you start tracking if there is no obstacle, even if you are not on the line.
+Now let's look at your implementation:
+task find(){
+    if(SensorValue(lightSensor) > threshold){
+            //spiral the robot
+    }
+}
+
+task track(){
+
+    if(SensorValue(lightSensor) < threshold){
+            //go straight
+    }else{
+                //execute turns to follow the line
+    }
+}
+
+Remember that we gave find a higher priority. Therefore, if the robot cannot sense the lightSensor, it will go in spiral trying to find the line. Once it does, track kicks in. As you can see, the else condition of track never happens.
+While this works, the robot would move very awkwardly. There is not much you can do about it in fact, given the current build of your robot.
+
+Although I already answered your question, but here is a simple improvement to your line tracking:
+Instead of one light sensor, use two; ls_left and ls_right. Using (at least) two sensors, you can understand whether you are totally out of the track, or about to go out of the track. In the second case, you can easily turn to the proper direction and get back on track.
+Your find task is similar:
+task find(){
+    if (SensorValue(ls_left) > threshold
+        && Sensorvalue(ls_right) > threshold){
+            //spiral the robot
+    }
+}
+
+That is, you go in spiral only if you don't sense anything at all
+Your track task now becomes more efficient:
+task track(){
+
+    if (SensorValue(ls_left) < threshold
+        && SensorValue(ls_right) < threshold){
+            //go straight
+    } else if (SensorValue(ls_left) < threshold
+        && SensorValue(ls_right) > threshold){
+            //turn left
+    } else if (SensorValue(ls_left) > threshold
+        && SensorValue(ls_right) < threshold){
+            //turn right
+    } else {
+            // shouldn't happen, but go on spiral anyway
+    }
+}
+
+Obviously, with a matrix of light sensors, you can better judge how badly you are going out of track (i.e. with what angle) and better decide how to get back on track (i.e. with what angular speed).
+
+A:
+
+short answer; no you really need to do things quite a bit differently.
+long incomplete answer;
+Let me give you some psuedo code appropriate for robotC, that puts you on a better path. First, do not use tasks - this is NOT what robotC tasks are for. They could be made to work, maybe, maybe not (and you need quite a few changes to even try).
+// global variables
+int distance;
+int light;
+
+main() {
+   while (true) {
+   distance = read_distance;
+   light = read_light;
+   if (task1_wantsToRun())
+     task1_run();
+   if (task2_wantsToRun())
+     task2_run();   
+   }
+}
+
+there is a couple of things here; priority becomes irrelevant. As nice as it seems to have tasks in robotC with priorities, they are not a good choice for subsumption implementation in my experience. For reasons like, priorities are not always honored, tasks can not be interrupted (sometimes) so when a higher priority event occurs, it is not going to react like you expect, robotC only recently became re-entrant, so things like accessing a sensor from more than 1 task may be risky (I2C timing issues), and in some cases it is not (automatically polled sensors).
+You can add your own priority implementation to the above loop as you get things working, but it really is not needed for starts.
+Your comment "//box the obstruction"  describes a ballistic behavior. Those are a bit tricky to implement using multi-tasking. The simple loop I used makes it a lot easier, and better for starters/learning.
+The other thing I will leave you with, is that subsumption while being neat and appropriate for a lot of things, is not a good way to implement what is better done traditionally. Indeed the 'evade' portion may be a good candidate for subsumption, but honestly your other task should be called 'GoOnAboutYourBusiness'. I say this because you probably do not want to change from searching to following with subsumption. Handle those with traditional programming loops. With a single sensor, - is the light sensed darker or lighter than it was last loop?  if it got darker (assuming black line) keep turning the same direction, if it got lighter turn the other way, if it stayed the same, go straight. You probably need to add some PID and use a steering curve instead of just turning left and right to be smoother.
+And yes, multiple sensors help. http://www.mindsensors.com/  - yeah, that's me in the movie currently (11/10/2012)
+Update: actual code
+I will try this out in a little while, but it compiles and illustrates what I wrote above:
+#pragma config(Sensor, S1,     S_LIGHT,        sensorLightActive)
+#pragma config(Sensor, S2,     S_DISTANCE,     sensorSONAR)
+#pragma config(Motor,  motorB,          LEFT,          tmotorNXT, PIDControl, encoder)
+#pragma config(Motor,  motorC,          RIGHT,         tmotorNXT, PIDControl, encoder)
+//*!!Code automatically generated by 'ROBOTC' configuration wizard               !!*//
+
+int distance_value, light_value;
+
+bool evade_wantsToRun()
+{
+    return distance_value < 30;
+}
+
+void evade_task()
+{
+    // full stop
+    motor[LEFT] = 0;        
+    // evade the object ballistically (ie in full control)  
+    // turn left, drive
+    nSyncedTurnRatio = 0;
+    motor[LEFT] = -20;
+    Sleep(500);
+    nSyncedTurnRatio = 100;
+    Sleep(1000);
+    // turn right, drive
+    nSyncedTurnRatio = 0;
+    motor[LEFT] = 20;
+    Sleep(500);
+    nSyncedTurnRatio = 100;
+    Sleep(1000);
+    // turn right, drive
+    nSyncedTurnRatio = 0;
+    motor[LEFT] = 20;
+    Sleep(500);
+    nSyncedTurnRatio = 100;
+    Sleep(1000);
+    // turn left, resume
+    nSyncedTurnRatio = 0;
+    motor[LEFT] = 20;
+    Sleep(500);
+    motor[LEFT] = 0;
+}
+
+///////////////////////////////
+
+void TurnBySteer(int d)
+{
+    // normalize -100 100 to 0 200
+    nSyncedTurnRatio = d + 100; 
+}
+///////////////////////////////
+
+typedef enum programPhase { starting, searching, following, finished };
+programPhase phase = starting;
+
+// these 'tasks' are called from a loop, thus do not need to loop themselves
+
+void initialize()
+{
+    nSyncedTurnRatio = 50;
+    nSyncedMotors = synchBC;
+    motor[LEFT] = 30;       // start a spiral drive
+    phase = searching;
+}
+
+void search()
+{
+    if (light_value < 24)
+    {
+        nSyncedTurnRatio = 100;
+        phase = following;
+    }
+}
+
+int lastLight = -1;
+int currentSteer = 0;
+void follow()
+{
+    // if it is solid white we have lost the line and must stop
+    // if lightSensors detects dark, we are on line
+    // if it got lighter, we are going more off line
+    // if it got darker we are headed in a good direction, slow down turn in anticipation
+    // +++PID will be even smoother
+    if (light_value > 64)
+    {
+        motor[LEFT] = 0;
+        phase = finished;
+        return;
+    }
+    if (light_value < 24)
+        currentSteer = 0;
+    else if (light_value > lastLight)
+        currentSteer += sgn(currentSteer) * 1;
+    else    // implied (light_value < lastLight)
+        currentSteer -= sgn(currentSteer) * 1;      
+
+    TurnBySteer(currentSteer);
+}
+
+bool regularProcessing_wantsToRun()
+{
+    return phase != finished;
+}
+
+void regularProcessing_task()
+{
+    switch (phase)
+    {
+    case starting:
+        initialize();
+        break;
+    case searching:
+        search();
+        break;
+    case following:
+        follow();
+    }
+}
+
+task main()
+{
+    // subsumption tasks in priority oder
+    while (true)
+    {
+        // read sensors once per loop
+        distance_value = SensorValue[S_DISTANCE];
+        light_value = SensorValue[S_LIGHT];
+        if (evade_wantsToRun())
+            evade_task();
+        if (regularProcessing_wantsToRun())
+            regularProcessing_task();
+        else
+            StopAllTasks();
+        EndTimeSlice();     // give others a chance, but make it as short as possible
+    }
+}
+

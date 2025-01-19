@@ -1,0 +1,70 @@
+Q:
+
+Pose in stage_ros simulation is incorrect
+
+Environment and package:
+Ubuntu 16.04, ros-kinetic, stage_ros branch lunar-devel
+Problem encountered:
+When a node keeps publishing a static geometry_msgs/Twist until desired time is over. Stage is expected to update robot's /odom to desired pose but it does not.
+When I publish the msg from terminal once, stage seems keep moving the robot for a period of time.
+Problem example:
+A while loop publishes geometry_msgs/Twist with 3.03rad/s on z rotation for 0.12s, after that a geometry_msgs/Twist with 0 is published, which should result in 3.03*0.12=0.36 rad = 20 deg.
+Stage either:
+
+Turns the robot to an angle < 20 deg (ex: 17 deg)
+Not turning at all
+
+Question:
+
+When publishing 3.03 rad/s for 0.12s, why the /odom of robot in stage simulation is not exactly 0.36 rad?
+What can I do to make it work?
+
+More details:
+What I have checked:
+
+The while loop indeed keeps publishing till the desired time is finished.
+Verified the topic is published with rostopic echo
+The default interval_sim of stage is 100ms, changing it to 1ms does not help much. (the final pose is different but still having the same problems)
+By setting interval_sim to 1s and publish a geometry_msgs/Twist from terminal (publish only once), it seems stage will keep executing the command until 1s is over (the robot turns 3.03rad/s * 1s = 3.03rad).
+When 2 different commands are sent, stage only execute the last one.
+I was expecting a higher publish and subscribe rate helps (ex: publish and subscribe at 1000Hz), but it turns out the robot is not turning at all.
+By setting interval_sim to 1ms and publish a geometry_msgs/Twist from terminal (publish only once), the /odom is correct (3.03rad/s * 1ms = 0.003rad = 0.17 deg), but the robot on the UI turns a lot more.
+
+My doubt:
+The cause of the problem might be timing/clock issue, but I do not know how to validate it or solve the problem.
+Based on point 4 & 5, I guess stage receives command periodically, and executes this command until next clock time.
+If there are more than 1 commands received in this interval, it only executes the last one.
+Thank you.
+
+Edit 2019.0214:
+Some more findings to get the desired pose.
+
+peteblackerthe3rd 's answer is one of the keys, close loop control would be more precise
+Set interval_sim in you world file, this is by default 100 (ms). ref
+Set update_interval in your position model, this is also by default 100 (ms). ref
+Set base_watchdog_timeout in your launch file, this is by default 0.2 (s) ref. Setting this too low will have more chances to miss subscriptions.
+
+I have not yet implement close loop control, if anyone knows a good library please recommend me.
+Currently still 1 problem that sometimes stage does not respond to commands. I am not sure if it is because of base_watchdog_timeout or if there is still any other settings.
+
+Originally posted by adayoegi on ROS Answers with karma: 3 on 2019-02-13
+Post score: 0
+
+A:
+
+The  behaviour you're seeing is what we would expect. The timing of message delivery is non-deterministic and in fact message delivery at all is not guaranteed.
+You will not be able to precisely control your robot by publishing Twist messages on the cmd_vel topic for a given amount of time, because the amount the robot will move by is determined by the time at which these messages are received which is non-deterministic. Also it was never inteded for the ROS message passing system to be used in this way.
+If you want to precisely control the position of your robot in simulation as in the real world you will need some form of closed loop control. That is measuring the position of your robot and sending the appropriate movement commands until it is within a given tolerance of where you want it to be. You could do this by listening to the odom topic in simulation or using some type of sensor based localisation system in the real world robot.
+Hope this makes sense.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2019-02-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by adayoegi on 2019-02-13:
+You answer makes sense but cannot explain point 6.
+If it is due to non-deterministic issue, at least it receives 1 msg (100 msgs published in 0.1s), the robot should still make some move. It can move to some incorrect pose but should not be no change at all.
+Comment by PeteBlackerThe3rd on 2019-02-14:
+I'm not sure whats going on for point 6. However there is no such thing as a 'subscribe rate' for a node. The callback will execute every time a message is received, CPU time allowing. The rate is determined by the publisher less any messages lost in transit or buffers overflowing.
+

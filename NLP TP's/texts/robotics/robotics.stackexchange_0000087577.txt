@@ -1,0 +1,58 @@
+Q:
+
+TF2 lookupTransform problem in Qt5
+
+When I was writing a Qt5 widget use tf2, I got all zero when print Translation and Rotation.
+I reviewed some similar questions and modified my program, it was written inside the UI's constructor, just like this:
+tf2_ros::TransformListener tfListener(tfBuffer, nh_);
+
+connect(ui->testButton, SIGNAL(clicked()), this, SLOT(testTf2()));
+
+try{
+    if(tfBuffer.canTransform("map", "base_link", ros::Time::now(), ros::Duration(1)))
+        ts = tfBuffer.lookupTransform("map", "base_link", ros::Time::now(), ros::Duration(0));
+} catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+}
+
+And in testTf2(), I print ts.
+qDebug() << ts.transform.translation.x;
+qDebug() << ts.transform.rotation.w;
+etc.
+
+I had set the target_time and time_out param, and in case, add a canTransform func, but still got 0.
+With rosrun tf tf_echo map base_link print:
+- Translation: [-0.478, 0.148, 0.017]
+- Rotation: in Quaternion [0.000, 0.000, -0.802, 0.597]
+            in RPY (radian) [0.000, 0.000, -1.862]
+            in RPY (degree) [0.000, 0.000, -106.708]
+
+I also run rosrun tf2_tools view_frames.py, it seems good.
+
+I want to know if my method is wrong, or the parameters set are wrong?
+
+Originally posted by TifferPelode on ROS Answers with karma: 96 on 2018-06-28
+Post score: 1
+
+A:
+
+I see two issues.
+The first is that you appear to be constructing the Listener immediately before trying to query transforms from it. But you're not giving it any time to populate before trying to query the buffer. Without that your lookup will likey be unable to get lucky enough to get exactly the right transform data during the timeout for your canTransform call.
+It makes sense to have the TransformListener initialized in a constructor, but it should be persistent and continue in the background not be on the stack. Otherwise it will stop listening when your constructor is completed. And secondly your queries for the value should be done in a way that it will retry, or fail and try again the next time around.
+If you do get lucky enough for the canTransform call to succeed you most likely won't be able to execute the lookup transform because you're querying it with a different timestamp. If you want to use this construct you should compute the time at which you want to run your query and then use that same timestamp in the subsequent lookup.
+However I'll suggest that you use the lookupTransform method with the timeout integrated to avoid this issue all together.
+
+Originally posted by tfoote with karma: 58457 on 2018-06-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by TifferPelode on 2018-06-30:
+Thank you for your detailed explanation.
+In fact if I change the Duration parameter in canTransform,it throw out a time error just like you described.
+I'm try to create a thread to keep the listener, I was using waitForTransform to wait in tf1, so it may take some time to understand tf2.
+Comment by TifferPelode on 2018-06-30:
+lookupTransform("map", "base_link", ros::Time::now(), ros::Duration(1));
+It delay for 0.15s, how can I deal with it?
+Lookup would require extrapolation into the past.  Requested time 1530356857.364972440 but the earliest data is at time 1530356857.509407043
+

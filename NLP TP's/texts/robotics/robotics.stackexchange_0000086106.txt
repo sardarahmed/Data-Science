@@ -1,0 +1,72 @@
+Q:
+
+When is ${catkin_EXPORTED_TARGETS} needed
+
+This is basically a follow-up to #q285772
+During my use of ROS, I adopted to call the following line on any (C++) target that I try to build:
+add_dependencies(MYTARGET ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+using ${${PROJECT_NAME}_EXPORTED_TARGETS} only when building msg/srv/actions/dynamic_reconfigure in the package I am workin on, and ${catkin_EXPORTED_TARGETS} always.
+This is a constant source of error, as well in the above cited question. Thus, I always adviced People to follow the same strategy.
+In a comment to the above question, @gvdhoorn described the approach to always use ${catkin_EXPORTED_TARGETS} as "cargo-cultish" (nice term :-D)
+
+re: adding catkin_EXPORTED_TARGETS:
+that's a bit cargo cult-ish. I
+wouldn't add that unless it's needed.
+
+Checking the documentation (e.g. wiki, catkin docs 1 or catkin docs 2) I'm not quite sure when to use it.
+The wiki suggest that:
+
+If you have a target which (even
+transitively) depends on some other
+target that needs
+messages/services/actions to be built,
+you need to add an explicit dependency
+on target catkin_EXPORTED_TARGETS, so
+that they are built in the correct
+order. This case applies almost
+always, unless your package really
+doesn't use any part of ROS.
+Unfortunately, this dependency cannot
+be automatically propagated.
+(some_target is the name of the target
+set by add_executable()):
+add_dependencies(some_target ${catkin_EXPORTED_TARGETS})
+
+This is basically saying: You Need it always (solution 1).
+The catkin docs rather say, if you Need any msg/srv/action/dynamic_reconfigure from another catkin package (solution 2).
+Which is the right way to go?  I'd be happy for any insights.
+
+Originally posted by mgruhler on ROS Answers with karma: 12390 on 2018-03-23
+Post score: 4
+
+Original comments
+Comment by peci1 on 2022-01-25:
+I think solution 1 becomes more important with the number of packages you build from source for the first time. Imagine the theoretical case where you'd like to build whole ROS up to your package from source. If your package's targets are missing the dependency on ${catkin_EXPORTED_TARGETS}, they could be built earlier than the messages from the dependencies are generated. Or at least this is how I understand it. Thanks to the ordering catkin creates, builds with -j1 should succeed, while multi-job builds could run into this issue.
+
+A:
+
+Afaik, the main difference between catkin_EXPORTED_TARGETS and ${PROJECT_NAME}_EXPORTED_TARGETS is that the former contains the exported targets (ie: message, service, action generation targets, dynamic_reconfig, etc) of all your build dependencies, while the latter contains those targets for just the current package (see ros/catkin/cmake/catkinConfig.cmake).
+By making a target depend on catkin_EXPORTED_TARGETS, that specific target will only be built after all its build dependencies have been built (ie: all the exported targets in all the build dependencies).
+By adding a dependency on ${PROJECT_NAME}_EXPORTED_TARGETS, a target will be built after the targets in just that set have been built.
+It's rarely the case that ${catkin_EXPORTED_TARGETS} == ${${PROJECT_NAME}_EXPORTED_TARGETS}, so this can affect the build order significantly. As an extreme example: a node that needs a single header for a custom message that it provides itself, but does have 10 other build dependencies (but none that don't exist already), would be prevented from building until all 10 build dependencies have had all their targets completely built, even though it doesn't actually depend on any of those.
+
+See also the Catkin documentation's section on Extracted CMake API reference - catkin_package(..).
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-03-23
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by gvdhoorn on 2018-03-23:
+Note that this may not actually be such a big problem, after all: waiting for everything to complete >= waiting for just your specific dependencies. But your question was slightly academic, so the answer is as well.
+Comment by mgruhler on 2018-03-23:
+Thanks @gvdhoorn for the detailed answer (and I agree that this is rather academic and of less practical relevance). I've been aware about most parts.
+Basically, catkin_EXPORTED_TARGETS contains ALL targets (i.e. msg/srv/action/dyn_reconf/libraries etc.) right? This could obviously lead ...
+Comment by mgruhler on 2018-03-23:
+to a slow-down of the build process. Even though it should be pretty reproducable then.
+What I don't get is:
+How can ${catkin_EXPORTED_TARGETS} == ${${PROJECT_NAME}_EXPORTED_TARGETS} except for the obvious case of both being empty. Doesn't this mean we have some cyclic dependency then?
+Comment by mgruhler on 2018-03-23:
+And even then, to my understanding, this would only mean that ${${PROJECT_NAME}_EXPORTED_TARGETS}  is only a subset of ${catkin_EXPORTED_TARGETS}, and not completely equal. Or am I missing something?
+

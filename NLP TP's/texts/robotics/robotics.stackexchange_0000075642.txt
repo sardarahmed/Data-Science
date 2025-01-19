@@ -1,0 +1,60 @@
+Q:
+
+How to RUN rosdep init and update in Dockerfile
+
+What's the correct way of running sudo rosdep init followed by rosdep update in a Dockerfile?
+Looking at OSRF's indigo-ros-core Dockerfile, there's a simple:
+RUN rosdep init \
+    && rosdep update
+
+However, running rosdep update like that in my own Dockerfile results in a warning, since it was essentially run with sudo. In turn, this results in rosdep install not finding dependencies later on.
+So, since I'll be running this Docker image on a Raspberry Pi 3, I've been trying the Docker-raspbian-ros-indigo Dockerfile, which sets up a new user, pi, and then runs the rosdep commands as that user (see link for details).
+USER pi
+RUN sudo rosdep init
+RUN rosdep update
+
+But trying to build my Dockerfile like that gives me the following error message:
+Step 12 : RUN sudo rosdep init
+---> Running in d10888b83a25
+sudo: effective uid is not 0, is /usr/bin/sudo on a file system with the 'nosuid' option set or an NFS file system without root privileges?
+
+I also tried the trick from osblinnikov/ros-docker. In a nutshell:
+RUN adduser --gecos "ROS User" --disabled-password ros
+RUN usermod -a -G dialout ros
+USER ros
+RUN HOME=/home/ros rosdep update
+# ...
+RUN rosdep install --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y
+
+However, the rosdep install commands fails with:
+Step 20 : RUN rosdep install --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y
+ ---> Running in 3be8cdf3c72a
+sudo: no tty present and no askpass program specified
+ERROR: the following rosdeps failed to install
+  apt: command [sudo -H apt-get install -y python-mock] failed
+executing command [sudo -H apt-get install -y python-mock]
+The command '/bin/sh -c rosdep install --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y' returned a non-zero code: 1
+
+Update: This last error was resolved by:
+
+letting the ros user execute commands as sudo without password (ros ALL=(ALL) NOPASSWD: ALL)
+and also adding RUN sudo apt-get update before rosdep install in order to update the package lists
+
+Originally posted by spmaniato on ROS Answers with karma: 1788 on 2016-08-04
+Post score: 2
+
+A:
+
+If you're doing all of this in the Dockerfile it's recommended to run everything as root.
+There's no point in changing the user to pi then using sudo to run the command with super user privlages. You only want to drop into the pi user shortly before you finish the Dockerfile and provide the entrypoint.
+
+Originally posted by tfoote with karma: 58457 on 2016-08-04
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by spmaniato on 2016-08-04:
+Thanks for the quick reply Tully. So, I guess it's OK to ignore Warning: running 'rosdep update' as root is not recommended. in a Dockerfile? Looks like it worked so no complaints here :-)
+Comment by tfoote on 2016-08-04:
+If you run rosdep update as root only root will have access to the database. This is typically a problem if people run sudo rosdep update then try to run rosdep install at which time root has the db, but the USER does not. In this case you are going to run rosdep install as root. So it's fine.
+

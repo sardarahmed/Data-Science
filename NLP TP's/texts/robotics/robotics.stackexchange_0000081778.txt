@@ -1,0 +1,74 @@
+Q:
+
+How to switch local planner in move base?
+
+Hi, all. Thanks to @Akif, I have succesfully implemented a package to switch global planner as this link advises.
+Then I also want to implement a package to switch local planner as the way I did in implementing the global planner switcher.
+Unfortunately, it was not as smooth as the implementation of global planner switcher.  After I implemented a supervisory local planner and launched move_base to test it. An error was output:
+[FATAL] [1499944083.575647406, 2061.510000000]: Failed to create the sup_local_planner/sup_l_planner planner, are you sure it is properly registered and that the containing library is built? Exception: Failed to load library /home/scopus/scopus_planning_ws/devel/lib//libsup_local_planner.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = /home/scopus/scopus_planning_ws/devel/lib//libsup_local_planner.so: undefined symbol: _ZN11suplPlanner13sup_l_plannerD1Ev)
+
+The content of blp_plugin.xml file is :
+    <library path="lib/libsup_local_planner">
+  <class name="sup_local_planner/sup_l_planner" type="suplPlanner::sup_l_planner" base_class_type="nav_core::BaseLocalPlanner">
+    <description>
+    A implementation of a local planner using DWA and ftc approach based on configuration parameters.
+    </description>
+  </class>
+</library>
+
+Parts of my cpp file is:
+......
+
+PLUGINLIB_EXPORT_CLASS(suplPlanner::sup_l_planner, nav_core::BaseLocalPlanner)
+
+namespace  suplPlanner {
+
+sup_l_planner::sup_l_planner(std::string name, tf::TransformListener *tf, costmap_2d::Costmap2DROS *costmap_ros)
+    :dwa_planner_(),ftc_planner_(),initialized_(false)
+{
+    initialize(name, tf, costmap_ros);
+
+}
+void sup_l_planner::initialize(std::string name, tf::TransformListener *tf, costmap_2d::Costmap2DROS *costmap_ros)
+{
+    if(!initialized_)
+    {
+        //costmap_ros_ = costmap_ros;
+        pl_type_ = FTC_L;
+        ftc_planner_ = boost::shared_ptr<ftc_local_planner::FTCPlanner>(new ftc_local_planner::FTCPlanner(name, tf, costmap_ros));
+        dwa_planner_= boost::shared_ptr<dwa_local_planner::DWAPlannerROS>(new dwa_local_planner::DWAPlannerROS(name,tf, costmap_ros));
+        ros::NodeHandle private_nh("~/sup_l_Planner");
+        change_plan_srv_= private_nh.advertiseService("change_plan",&sup_l_planner::changepl, this);
+        initialized_ = true;
+    }
+    else
+        ROS_WARN("This planner has already been initialized, you can't call it twice, doing nothing");
+
+}
+
+You can see that the name of space and the name of class are consistent. So I can't understand why the output error says : "
+........., and that names are consistent between this macro and your XML. Error string: Could not load library ......
+
+Looking forward to anyone give me any advice!
+Thank you !
+
+Originally posted by scopus on ROS Answers with karma: 279 on 2017-07-13
+Post score: 0
+
+A:
+
+I put the error message through c++filt to demangle the function name, and got the following error:
+Poco exception = /home/scopus/scopus_planning_ws/devel/lib//libsup_local_planner.so: undefined symbol: suplPlanner::sup_l_planner::~sup_l_planner()
+
+It looks like the destructor for your class was declared virtual (probably in the base class) but you haven't implemented it, and that results in an undefined symbol when loading the library.
+
+Originally posted by ahendrix with karma: 47576 on 2017-07-15
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by scopus on 2017-07-16:
+Thank you very much! I found the destructor is defined but not implemented.
+Comment by troyelex on 2021-08-20:
+is it worked?
+

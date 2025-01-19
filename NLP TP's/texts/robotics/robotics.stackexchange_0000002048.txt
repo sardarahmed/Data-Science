@@ -1,0 +1,72 @@
+Q:
+
+Encoder based speed control for Rover 5
+
+I am trying to get precise control over the speed of rover 5 based robot. It has four PWM controlled motors and 4 Optical Quadrature Encoders. I am using 4-channel motor controller with rover 5 chassis. I am using arduino Nano for control. I am able to read encoder INT output and change PWM based on pulse width to control speed. But, as a result, I am getting heavy oscillations in the control output. That makes, the robot to move in steps, as PWM is changing constantly. I need an algorithm which can minimize this ringing and have a smooth moving robot. Here is my arduino code snippet.
+void setup() {
+    Serial.begin(9600);
+    init_motors();
+    init_encoders();        
+    req_speed[0] = 20;
+    req_speed[1] = 20;
+    req_speed[2] = 20;
+    req_speed[3] = 20;
+}
+
+void loop() {
+  update_encoders();
+  update_motors();
+}
+
+void update_motors() {
+  int i, err;
+  unsigned long req_width;
+  if(micros() - mtime > 2999) {
+    mtime = micros();
+
+    for(i=0; i<4; i++) {
+      digitalWrite(pins_dir[i], req_speed[i]>0);
+      if(mtime - change_time[i] > 50000ul && req_speed[i] != 0) {
+        cur_pwm[i] += 5;
+      } 
+      if(req_speed[i] > 0)
+        cur_err[i] = req_speed[i]*10  - cur_speed[i];
+      else
+        cur_err[i] = (-req_speed[i]*10)  - cur_speed[i];
+      if(cur_err[i] > 0 && cur_pwm[i] < 255) {
+        cur_pwm[i]++;
+      } else if(cur_err[i] < 0 && cur_pwm[i] > 0) {
+        cur_pwm[i]--;
+      }
+      analogWrite(pins_pwm[i], cur_pwm[i]);
+    }
+  }
+}
+
+void update_encoders() {
+  int i;
+  unsigned long w;
+  enc_new = PINC & B00001111;
+  unsigned long etime = micros();
+  for (i=0; i<4; i++) {
+    if((enc_old & (1 << i)) < (enc_new & (1 << i)))
+    {
+      w = (unsigned long)(((etime - change_time[i])));
+      pulse_width[i] = (w + pulse_width_h1[i] + pulse_width_h2[i])/3;
+      pulse_width_h2[i] = pulse_width_h1[i];
+      pulse_width_h1[i] = pulse_width[i];
+      change_time[i]=etime;
+      pulse_count[i]++;
+      cur_speed[i] = (3200000ul / pulse_width[i]);
+    }
+  }
+  enc_old=enc_new;
+}
+
+Here req_speed is between -100 to 100, where sign indicates direction. Please consider all undefined variables as globals. I experimentally measured that, when motor is running at full speed, the pulse width is around 3200us.
+Encoders' INT outputs (XOR of A and B) are connected to A0 thru A3. Motor PWM is connected to D3, D5, D6, D9. Please let me suggest any improvements to this code and advice me about what am I missing here.
+
+A:
+
+I looked at the PID controller basics and found that its the canonical solution for this kind of speed control problem. I used the arduino PID library and it worked pretty well. I had to spend some time figuring out the PID parameters (Kp, Ki, Kd) manually by trial and error. But,  with this, I am now able to get my motors running at the required speed with pretty much stable behaviour. You can take a look the new PID based code here
+

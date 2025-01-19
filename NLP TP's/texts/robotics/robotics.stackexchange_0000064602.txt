@@ -1,0 +1,54 @@
+Q:
+
+How to transform tf::Vector3 with tf::TransformListener::transformVector?
+
+I am trying to convert a tf::Vector3 with tf::TransfomListener::transformVector(string("/base_link"), sourceV, targetV). What I get is the following:
+*no known conversion for argument 2 from 'const tf::Vector3' to 'const Vector3Stamped& {aka const geometry_msgs::Vector3Stamped_std::allocator<void >&}' *
+Ok, so I figured I need a Stamped version of my vector. I tried this:
+tf::Stamped<tf::Vector3> sv(sourceV, ros::Time(), string("/odom"));
+
+and got this:
+no known conversion for argument 2 from 'tf::Stamped<tf::Vector3>' to 'const Vector3Stamped& {aka const geometry_msgs::Vector3Stamped_std::allocator<void >&}'
+Then I realized that it is requesting geometry_msgs::Vector3Stamped. How come the transformation listener from tf doesn't take tf::Vector3?
+Ok, then I tried to get the right type:
+    geometry_msgs::Vector3Stamped gV;
+    gV.vector = sourceV;
+    gV.header.stamp = ros::Time();
+    gV.header.frame_id = "/odom";
+
+This resulted in:
+no match for 'operator=' (operand types are 'geometry_msgs::Vector3Stamped_std::allocator<void >::vector_type {aka geometry_msgs::Vector3std::allocator<void >}' and 'const tf::Vector3')
+In the end my code looked like this:
+    geometry_msgs::Vector3Stamped gV, tV;
+    gV.vector.x = sourceV.x();
+    gV.vector.y = sourceV.y();
+    gV.vector.z = sourceV.z();
+    gV.header.stamp = ros::Time();
+    gV.header.frame_id = "/odom";
+    getTransformListener()->transformVector(string("/base_link"), gV, tV);
+    targetV.setX(tV.vector.x);
+    targetV.setY(tV.vector.y);
+    targetV.setZ(tV.vector.z);
+
+Even though I think this should be a one-liner without all that unnecessary object creation and assigment:
+    getTransformListener()->transformVector(string("/base_link"), sourceV, targetV);
+
+Question:
+Is the one-liner somehow possible? Is there another easy way to do this that I am missing?
+
+Originally posted by Sheridan Vespo on ROS Answers with karma: 11 on 2014-12-12
+Post score: 1
+
+A:
+
+When you call the tf API the datatypes need to match, source and target. (tf2 supports implicit conversion but not tf.) Make sure that they both match and are stamped.
+The assignment does not work between a tf datatype and geometry_msgs datatypes. You need to use the conversion functions: http://docs.ros.org/indigo/api/tf/html/c++/transform__datatypes_8h.html
+
+Originally posted by tfoote with karma: 58457 on 2014-12-12
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by RohitM on 2017-03-31:
+Are there python equivalents of these functions available?
+

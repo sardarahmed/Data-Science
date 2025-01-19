@@ -1,0 +1,51 @@
+Q:
+
+2d navigation robot setup dependency
+
+So I am doing a 2d navigation and am using create_autonomy for irobot
+I am following this tutorial
+In it I need to create a package with dependency:
+my_tf_configuration_dep
+my_odom_configuration_dep
+my_sensor_configuration_dep
+
+if I am using create_autonomy package and urg_node package do I still need to create those dependency? If so how?
+Update:
+I created move_base with dependency of move_base urg_node and ca_driver.
+
+Originally posted by Usui on ROS Answers with karma: 21 on 2019-06-06
+Post score: 0
+
+A:
+
+I believe what you need is an equivalent of my_tf_configuration_dep.
+create_autonomy (specifically, ca_driver) provides odometry on a topic and the transform from the odometry frame to the base frame on /tf. And urg_node is providing sensor data.
+Specifically, I think you need to provide the transform from your robot base to your range finder. There are a few ways you could do this. Assuming that your range finder will not be moving with respect to the robot base, you could use a static transform publisher. For example:
+rosrun tf2_ros static_transform_publisher X Y Z YAW PITCH ROLL base_footprint laser
+
+I'm assuming that the robot base and range finder frames are base_footprint and laser, but these are configurable in create_autonomy and urg_node respectively. You should replace X Y Z YAW PITCH ROLL with the actual transformation from base_footprint to laser.
+Launch file equivalent:
+<launch>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_laser_broadcaster"
+             args="X Y Z YAW PITCH ROLL base_footprint laser" />
+</launch>
+
+Other options are to describe your robot configuration with URDF and publish the transform using robot_state_publisher (tutorial1,  tutorial2) or, publish the laser transform from code (tutorial).
+
+Originally posted by jacobperron with karma: 1870 on 2019-06-06
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Usui on 2019-06-06:
+oh you mean this: rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link laser 100?
+I have this already so I just need to configs and launch file then?
+So then I just need to do: catkin_create_pkg my_robot_name_2dnav move_base
+instead of catkin_create_pkg my_robot_name_2dnav move_base my_tf_configuration_dep my_odom_configuration_dep my_sensor_configuration_dep ?
+Comment by jacobperron on 2019-06-06:
+That sounds about right to me. Maybe you can replace the "my_configuration_*" dependencies with the actual packages you are depending on e.g. ca_driver and urg_node.
+Comment by Usui on 2019-06-06:
+Okay I will try that. Oh and I don't need the robot_configuration launch file right? just the move_base launch file
+Comment by Usui on 2019-06-09:
+@jacobperron I updated my progress. Now it just spins alot. Here's a link to it: http://answers.ros.org/question/325237/2d-navigation-goal-robot-spinning-even-when-disconnected/
+

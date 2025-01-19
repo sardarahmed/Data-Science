@@ -1,0 +1,59 @@
+Q:
+
+ROS tutorials no longer working
+
+Has anyone ever run into a case where a fresh install of ROS cannot run its tutorial packages?
+I am running ROS Indigo on an nVidia Jetson TK1, using the nVidia-supplied Ubuntu image. I just did a fresh install, Ubuntu and ROS, just to keep things clean for this project. I am building a kind of 'demo-bot' for some students I will be teaching; it will use both the demo files and some of my own code. Now, after setting things up, I try to run the talker tutorial just to check to make sure that everything is running, and rospack is pretty sure that the tutorials don't exist.
+For example, inputting this into the terminal
+rosrun rospy_tutorials talker
+
+Outputs
+[rospack] Error: package 'rospy_tutorials' not found
+
+This is the case for every tutorial file; python and C++. Now, I am sure the tutorials are installed. I am looking right at them in the file system, installed from the latest versions on github. So I think it is something on ROS' side of things.
+Has anyone ever bumped into something similar before, where a ROS package that supposedly was installed correctly isn't found by ROS itself? I would rather not have to reinstall again if I can avoid it.
+EDIT #1
+After playing with it some more, I discovered that multiple packages were not running. All of them - some turtlebot code, and some of my own packages - returned the same error as above. So I suspect something got messed up during the install of ROS.
+roswtf was able to run, but it did not detect any problems. However, going forward.
+EDIT #2
+I double checked the bashrc file. One export was missing, for ROS directory I was trying to work within. Adding it did not solve the problem. 
+I am still looking for a solution, that hopefully does not involve reflashing the TK1.
+EDIT #3
+Alright, so I've been poking at this for a few days now and pretty much gave up trying to get ROS to work correctly, and decided a re-flash was necessary. But I think I found something when I booted up my host machine. In my downloads folder, I have the v2.0 and the v1.2 JetPack. I know I used the v2.0 for this latest install, and it has been the only time I have used it (it provides some useful updates for OpenCV and bug fixes, among other things). I'm going to re-flash using the v1.2 JetPack this time, see if things behave better with ROS under that version. Its a long shot, but it is all I have to work with at the moment, and it shouldn't lose any ROS capabilities (aside from some of the stuff I wanted to do with OpenCV). I'll update everyone if that seems to work.
+EDIT #4
+Ok, everything seems to be working now. The problem does seem to be an issue with Jetpack v2.0. I suspect that some change, somewhere between v1.2 and v2.0 (made to accommodate the new TX1 board), messes with running ROS indigo on a TK1. I'm going to be a more detailed explanation in an answer to this question.
+
+A:
+
+After wrestling with this one for almost a week, I believe I have found the cause; and unfortunately the only solution seems to be a re-flash.
+The problem was ROS didn't seem to be linking properly to some of the shared resources (specifically, rospy or roscpp tutorials) and did not want to work with packages I had developed myself or downloaded from code repositories like Github or Bitbucket. After a few days of playing with it, and two reflashes, I believe I found the issue: Jetpack v2.0 (though I do not know the exact details).
+roswtf did not find any issues, and I had already checked the exports and sources in the .bashrc file through:
+gedit ~/.bashrc
+
+I was looking right at the tutorial folders for rospy_tutorials and roscpp_tutorials, in the right folder /opt/ros/indigo/share/. Even the individual code files within could be opened and editted. I first wanted to make sure that it wasn't the way I configured ROS, I did a couple uninstalls/reinstalls of ROS itself (leaving Ubuntu in place). I tried two methods:
+First
+According to this ros.answers' question about removing ROS
+sudo apt-get purge ros-*
+sudo apt-get autoremove
+
+Second
+Following a different ros.answers' question as a guide
+sudo apt-get purge ros-*
+
+Neither of these seemed to allow ROS to be installed and configured properly. So I booted up my host to re-flash, and I realized something: I had both Jetpack v1.2 and Jetpack v2.0 in my downloads folder - and I knew that I had used v2.0 for this latest flash (it provided some graphical fixes and bug fixes for OpenCV4Tegra that I thought would be helpful for what I wanted to do). The critical different between Jetpack v1.2 and v2.0 is that v2.0 was released to add support for the new TX1 development board. The TX1 uses a new, 'more standard' ARM-CPU, while the TK1 uses an ARM-CPU that was designed/heavily modified by nVidia (if I am not mistaken about my understanding of these two CPUs). They are also using different GPUs, but I suspect this was less of an issue, since I hadn't gotten to any code that utilized the GPU.
+
+Solution
+I re-flashed using Jetpack v1.2
+After reflashing, I installed the Grinch Kernel following the instructions on the nVidia devtalk forums, and then installed ROS manually. Normally I just use the scripts provided by Jetsonhacks on their Github, but I wanted to see everything happening this time around. So I followed the instructions on the wiki.ros. Now, when installing ROS on an ARM-based platform or other embedded system, the desktop version WILL NOT install. I suspect something in the desktop version is looking for an x86 CPU, and it prevents the simulations (among other things) from installing correctly. Instead, what you can do is
+sudo apt-get install ros-indigo-robot
+
+This will install what is the 'most complete' (and appropriate, in my opinion) version of ROS for the TK1 if you are developing onboard and not cross-compiling your code. I do not believe using the robot variant of ROS prevents you from cross-compiling if you feel like it. The robot variant does not include (most of) the GUI components of ROS, you'll have to install those manually as you find yourself in need of them. I'm guessing the GPU and the GUI components aren't really sure what to do with one another in this case. The robot variant also does not install the tutorials (the broken thing that started this whole mess) either. Those will need to be installed with
+sudo apt-get install ros-indigo-ros-tutorials
+
+Once those are installed, start roscore in one terminal window, and type (in a separate terminal window):
+rosrun rospy_tutorials talker
+
+This will start the roscore processes, and the python talker program should start up just fine. All the other tutorials and packages also seem to work as well now too.
+Jetpack v2.0
+So I guess lesson learned? If you are planning on running ROS on a TK1, don't use v2.0 of the Jetpack. Not sure what is going on, but I am going to send what I did learn to nVidia and hope that v2.1 fixes the issues. Unfortunately, this amounts more to 'symptoms' than any actual causes. My guess it is a case of two different, highly specialized, experimental pieces of software just not knowing how to play nice together. There is always bound to be some issues. In the mean time, if you're like me, stick to v1.2 of the Jetpack, and you should be fine.
+

@@ -1,0 +1,46 @@
+Q:
+
+Extract Header from ShapeShifter
+
+I'm trying to implement something similar to  rospy.anymessage via roscpp. I am using Shapeshifter to extract the data. I only need the Header.stamp (I want to compare received time from the time the topic was published).
+I'm running into a wall trying to extract the header stamp. I know rosbag imeplement something like this, but I could only find they use SubscriptionCallbackHelperT, but not how.
+How can I extract the Header.stamp from a generic ros topic message?
+void PerformanceTracker::topicCallback(const ShapeShifter::ConstPtr topicType){
+   ros::Time begin = ros::Time::now();
+   unsigned char* data = ShapeShifterGetData(topicType);
+}
+
+unsigned char* ShapeShifterGetData(const ShapeShifter::ConstPtr message){
+  unsigned char* data = new unsigned char[message->size()];
+  std::OStream stream(data, message->size());
+  message->write(stream);
+  return data;
+}
+
+Originally posted by solb22 on ROS Answers with karma: 25 on 2016-02-11
+Post score: 1
+
+A:
+
+Here's easily understandable way that has to drawback of always serializing messages and interpreting the serialized result: topic_buffer_client.
+It looks like a more efficient way using SFINAE seems to be implemented here: timeextractor.h
+With the template magic it's a bit harder to understand though ;)
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2016-02-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by solb22 on 2016-02-12:
+Thanks Stefan, I will try both and get back to you. What do you means the drawback of always serializing messages? Are you saying serializing the messages wastes computation time? I can set the received time to before the serialization starts, so it wont affect the measurement of published-received
+Comment by Stefan Kohlbrecher on 2016-02-12:
+Yes, serialization can take up some CPU time (and it seems the second approach can do it without serialization).
+Comment by solb22 on 2016-02-12:
+Ok thanks. Yes the SFINAE is much less clear. Would I just include that file and user timewarp.extractTime() ? Thank you very much for the help !
+Comment by Stefan Kohlbrecher on 2016-02-12:
+Might be possible, but you could also copy parts and make your own minimal version of it (You're not really using it for "timewarping" for instance).
+Comment by solb22 on 2016-02-12:
+Yeah, I'm going to port that to C++11
+Comment by solb22 on 2016-02-12:
+One last question. Why in the SFINAE, is it     static yes& test(typename C::_header_type*); ? What does C::_header_type* mean? Type has a data member named _header_type? Does that match the current ros header data member name? And not just plain  C::_header*?
+

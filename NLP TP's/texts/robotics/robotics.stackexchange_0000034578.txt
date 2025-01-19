@@ -1,0 +1,67 @@
+Q:
+
+How to generate map with hector_slam and Kinect
+
+Has anyone successfully got the new hector_slam package to work with the Kinect yet?
+Below is the launch file I am using so far.
+<launch>
+  <!-- kinect and frame ids -->
+  <include file="$(find openni_camera)/launch/openni_node.launch"/>
+
+  <!-- static tf between openni_camera and map frame -->
+  <node pkg="tf" type="static_transform_publisher" name="map_link" args="0 0 0 0 0 0  /map /openni_camera 100" />
+
+  <!-- openni manager -->
+  <node pkg="nodelet" type="nodelet" name="openni_manager" output="screen" respawn="true" args="manager"/>
+
+  <!-- throttling -->
+  <node pkg="nodelet" type="nodelet" name="pointcloud_throttle" args="load pointcloud_to_laserscan/CloudThrottle openni_manager">
+    <param name="max_rate" value="2"/>
+    <remap from="cloud_in" to="/camera/depth/points"/>
+    <remap from="cloud_out" to="cloud_throttled"/>
+  </node>
+
+  <!-- fake laser -->
+  <node pkg="nodelet" type="nodelet" name="kinect_laser" args="load pointcloud_to_laserscan/CloudToScan openni_manager">
+    <param name="output_frame_id" value="/openni_depth_frame"/>
+    <remap from="cloud" to="cloud_throttled"/>
+  </node>
+
+  <node pkg="rviz" type="rviz" name="rviz"
+    args="-d $(find hector_slam_launch)/rviz_cfg/mapping_demo.vcg"/>
+
+  <include file="$(find hector_mapping)/launch/mapping_default.launch" />
+  <include file="$(find hector_geotiff)/launch/geotiff_mapper.launch" />
+</launch>
+
+I think I am getting close but here are the errors I get when I run it.
+[ INFO] [1317314893.381367375]: waitForTransform timed out
+[ERROR] [1317314893.887711864]: Transform failed Frame id /nav does not exist! Frames (7): Frame /openni_depth_optical_frame exists with parent /openni_depth_frame.
+Frame /openni_depth_frame exists with parent /openni_camera.
+Frame /openni_camera exists with parent /map.
+Frame /map exists with parent NO_PARENT.
+Frame /openni_rgb_optical_frame exists with parent /openni_rgb_frame.
+Frame /openni_rgb_frame exists with parent /openni_camera.
+Thanks in advance for any suggestions or help.
+-Scott
+
+Originally posted by Scott on ROS Answers with karma: 693 on 2011-09-29
+Post score: 3
+
+A:
+
+Hi Scott,
+I'm working on a "how to setup your robot for hector_slam" tutorial right now, but in the end it should work out of the box if you have a robot set up for gmapping. Assuming your laser scan has the "scan" topic name and you have set the base_frame parameter correctly, it should work.
+That being said, I haven't testet it with the Kinect yet, but I expect that it won't work too well because of the higher noise and much smaller FOV provided by the fake Kinect laser scans. hector_slam really works best with high update rate LIDARs.
+/Update: I did some testing of hector_mapping with the Kinect and can confirm it doesn't work well. There is potential for improvement, but I unfortunately currently do not have spare time to do work in this direction at the moment.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2011-09-29
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Stefan Kohlbrecher on 2011-09-30:
+Hi Scott, a IMU is only beneficial if the platform exhibits roll/pitch motion. There is no need for a IMU on a platform when this is not the case like for example a Turtlebot. We're working on a small tutorial here: http://www.ros.org/wiki/hector_slam/Tutorials/SettingUpForYourRobot
+Comment by Scott on 2011-09-29:
+Thanks Stefan. I noticed on reading your articled for Robocup that your hand held system had an IMU. Is that a requirement of this code as well? Thanks, -Scott
+

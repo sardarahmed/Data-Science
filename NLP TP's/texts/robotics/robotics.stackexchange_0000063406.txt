@@ -1,0 +1,129 @@
+Q:
+
+Subscriber and publisher in the same node not working with costum msg
+
+Hello,
+I know that this question might be asked before, but I did not find the final solution for it.
+Here is the question:
+I want to write a node that subscribe for data from a topic then publish these data to another topic. So, mainly I want a publisher and subscriber in the same node.
+So What I did so far is the following:
+#include "ros/ros.h"
+#include <geometry_msgs/Twist.h>
+#include "pctx_control/Control.h"
+#include "std_msgs/String.h"
+#include "pctx_control/pctx.h" 
+#include <sstream>
+
+pctx_control::Control controlmsg ;
+
+void function_callback (const geometry_msgs::Twist &msg) 
+ {
+
+controlmsg.ch = 0 ;
+controlmsg.values[0] = msg.linear.x;
+controlmsg.values[1] = msg.linear.y;
+controlmsg.values[2] = msg.linear.z;
+std::cout << "d1"<<controlmsg.values[0] << std::endl ;
+std::cout << "d2" <<controlmsg.values[1]<< std::endl ;
+std::cout << "d3" <<controlmsg.values[2]<< std::endl ;
+
+}
+
+int main(int argc, char **argv)
+{
+
+ ros::init(argc, argv, "my_node");
+  ros::NodeHandle n;
+ ros::Publisher pub = n.advertise<pctx_control::Control>("topic2", 100);
+
+  ros::Subscriber sub = n.subscribe("topic1", 1000, function_callback);
+
+ ros::Rate loop_rate(10);
+ ros::spinOnce();
+
+ int count = 0;
+ while (ros::ok())
+  {
+ 
+    pub.publish(controlmsg);
+
+  ros::spin();
+  loop_rate.sleep();
+   
+ }
+
+return 0;
+ }
+
+I want to save data that I want to publish in a "custom msg" pctx_control::Control type;
+This msg has the following format:
+int32 ch
+int32 value
+int16[] values
+
+Originally posted by RSA_kustar on ROS Answers with karma: 275 on 2014-10-19
+Post score: 1
+
+A:
+
+If you make the publisher global, you can publish as soon as the message is received in function_callback(). Then the while() loop can be replaced with just ros::spin();
+#include "ros/ros.h"
+#include <geometry_msgs/Twist.h>
+#include "pctx_control/Control.h"
+#include "std_msgs/String.h"
+#include "pctx_control/pctx.h" 
+#include <sstream>
+
+ros::Publisher pub;
+pctx_control::Control controlmsg;
+
+void function_callback (const geometry_msgs::Twist &msg) 
+{
+  controlmsg.ch = 0;
+  controlmsg.values.resize(3);
+  controlmsg.values[0] = msg.linear.x;
+  controlmsg.values[1] = msg.linear.y;
+  controlmsg.values[2] = msg.linear.z;
+  pub.publish(controlmsg);
+  std::cout << "d1" << controlmsg.values[0] << std::endl;
+  std::cout << "d2" << controlmsg.values[1] << std::endl;
+  std::cout << "d3" << controlmsg.values[2] << std::endl;
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "my_node");
+  ros::NodeHandle n;
+  
+  pub = n.advertise<pctx_control::Control>("topic2", 100);
+
+  ros::Subscriber sub = n.subscribe("topic1", 1000, function_callback);
+
+  // Handle ROS callbacks until shutdown
+  ros::spin();
+  
+  return 0;
+}
+
+Edit: Changed vector indexing to push_back()
+Edit: Changed vector indexing back to brackets, and reinitialize with resize() every iteration per comment from @dornhege
+
+Originally posted by kmhallen with karma: 1416 on 2014-10-19
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by RSA_kustar on 2014-10-20:
+@kmhallen
+I did what you said, I got an error said Segmentation fault (core dumped) .
+Comment by RSA_kustar on 2014-10-20:
+I was tracing the problem it give me this error after this line of code
+controlmsg.values[0] = msg.linear.x;
+
+I maigh be filling this one in the wrong way.. what should I do ?? can you check the message type, please.
+Comment by RSA_kustar on 2014-10-20:
+I knew how to fill it using push_pack()..
+Thanks for your help
+Comment by dornhege on 2014-10-20:
+Careful, this code is buggy. You must clear the values in the controlmsg every time before publishing or mvoe that to a local variable.
+

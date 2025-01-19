@@ -1,0 +1,114 @@
+Q:
+
+Roslaunch and SSH over local and remote machines using avahi
+
+How do you setup a local and remote ROS system to launch a roscore and nodes on two machines with avahi/zeroconf, i.e. without hard coding IP addresses on your LAN?
+In my case, the requirements are:
+
+Local machine: some nodes for image visualization and slam
+Remote robot: roscore, platform specific nodes, sensor publishers
+Avoid hard coding IPs in  .launch, .bashrc and shell scripts - robot and laptop
+should find each other by a hostname without editing /etc/hosts
+
+Originally posted by fastestindian on ROS Answers with karma: 131 on 2017-08-23
+Post score: 2
+
+Original comments
+Comment by jayess on 2017-08-23:
+While I do appreciate the content and work laid out here, it would (in my mind) be more beneficial (and to the site's standards) to separate out the answer from the question.
+Comment by fastestindian on 2017-08-23:
+@jayess, you're absolutely right. Resolved!
+
+A:
+
+Some (long) hours later, here's an answer for those new to ROS who might face the same questions.
+The basic idea behind avahi is... you can resolve and connect to ROS machines without worrying about the IP they're behind. This particularly when moving from one LAN to another (e.g lab to field, lab to investor, etc). For e.g. theoretically, you could just connect your robot and laptop to a hotspot on your phone and demo your kit.
+Hint: a lowercase system hostname/avahi hostname will serve you well! Ssh issue avoided later.
+Avahi setup
+There are a number of good tutorials out there.
+Your machines would look like something.local and somethingelse.local
+In my case it was remote.local and local.local
+Do bi-directional ping tests so both machines can ping and resolve the avahi hostnames
+/etc/hosts
+In my opinion, this should be vanilla Ubuntu something like this:
+    127.0.0.1   localhost
+    # The following lines are desirable for IPv6 capable hosts
+    ::1     ip6-localhost ip6-loopback
+    fe00::0 ip6-localnet
+    ff00::0 ip6-mcastprefix
+    ff02::1 ip6-allnodes
+    ff02::2 ip6-allrouters
+
+SSH Issues:
+As some threads have noted, roslaunch uses an ssh lib that requires an RSA key (default is now ECDSA-SHA2).
+IMPORTANT: Check your machine hostname is lowercase. ssh-server defaults to lowercase in the authorized keys file so your remote machine will keep asking you for a password when you punch in your upper case hostname.
+$ ssh user@remote.local -oHostKeyAlgorithms=’ssh-rsa’
+
+Follow the prompts and say “yes”
+user@remote $ exit
+$ ssh-keygen
+
+Follow the prompt and generate a public-private key at ~/.ssh/
+Provide a password
+$ ssh-copy-id -i ~/.ssh/id_rsa.pub ssh user@remote.local 
+
+This copies your public key to the ~/.ssh/authorized_keys file on the other machines
+$  ssh user@remote.local
+
+Confirm a passwordless entry is possible
+Repeat for local.local from remote.local
+~/.bashrc
+I’ve setup my ~/.bashrc like so
+source /opt/ros/kinetic/setup.bash
+export ROS_MASTER_URI=http://local.local:11311
+export ROS_IP=local.local
+export ROS_HOSTNAME=local.local
+
+This allows me to launch roscore and nodes on my development machine when needed and   remote connect from remote.local as well. You can replicate the script as you please on remote.local
+I use  env-loader from roslaunch to setup environment variables on both machines
+Environment-loader script somewhere on remote.local:
+export ROS_IP=remote.local
+export ROS_MASTER_URI=http://remote.local:11311
+export ROS_HOSTNAME=remote.local
+exec "$@"
+# Anything else you need….
+
+Environment-loader script somewhere on local.local:
+export ROS_IP=local.local
+export ROS_MASTER_URI=http://remote.local:11311
+export ROS_HOSTNAME=local.local
+exec "$@"
+# Anything else you need….
+
+Again, above, my ros master needs to be on the remote robot so it’s alive even if the link dies.
+BTW these scripts MUST be read-writeable for the user you’re ssh-ing into
+For the launch file:
+    <launch>
+         <!-- Setup environment -->
+        <arg name="machine_bot" default = "remote"/>
+        <arg name="machine_c2i" default = "local"/>
+        <arg name="ip_bot" default = "remote.local"/>
+        <arg name="ip_c2i" default = "local.local"/>
+        <arg name="machine_bot_user" default = "abc"/>
+        <arg name="machine_c2i_user" default = "xyz"/>
+        <machine name="$(arg machine_bot)"
+                 address="$(arg ip_bot)"
+                 user="$(arg machine_bot_user)"
+                 env-loader="path_to/script.sh”
+        <machine name="$(arg machine_c2i)"
+                 address="$(arg ip_c2i)"
+                 user="$(arg machine_c2i_user)"
+                 env-loader="path_to/script.sh”
+                 timeout="10.0"
+                 default="never" >
+        </machine>  
+<!-- ALL OTHER NODES GO HERE -->
+ </launch>   
+
+$ roslaunch your_package your_launch.launch
+eh voila! No more static IP management. I hope it works for you.
+
+Originally posted by fastestindian with karma: 131 on 2017-08-23
+This answer was ACCEPTED on the original site
+Post score: 5
+

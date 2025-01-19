@@ -1,0 +1,193 @@
+Q:
+
+ublox_gps doesn't publish fix messages inside docker
+
+I'm using Kumar's driver's for ublox f9p GPS on a jetson nano with ubuntu 20.04 and ros foxy. I connect the GPS to USB and it is assigned to ttyACM1. I can ros2 launch and get fix messages, so it is working ok here.
+Now I'm moving to Docker:
+My dockerfile:
+FROM ros:humble-ros-base
+
+RUN mkdir -p /ublox_ws/src
+WORKDIR /ublox_ws
+
+RUN git -C src clone -b ros2 https://github.com/KumarRobotics/ublox.git
+COPY f9p.launch.py src/ublox/ublox_gps/launch
+COPY zed_f9p.yaml src/ublox/ublox_gps/config
+
+RUN apt update \
+    && apt install -y python3-pip \
+    && . /opt/ros/$ROS_DISTRO/setup.sh \
+    # && sudo rosdep fix-permissions \
+    && rosdep update \
+    && rosdep install --from-paths src --ignore-src -y \
+    && colcon build \
+    # && .install/setup.sh \
+    && apt autoremove -y \
+    # && rm -rf log/ build/ src/* \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ros_entrypoint.sh /
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
+
+f9p.launch.py
+import os
+ 
+import ament_index_python.packages
+import launch
+from launch_ros.actions import Node
+ 
+ 
+def generate_launch_description():
+    config_directory = os.path.join(
+        ament_index_python.packages.get_package_share_directory('ublox_gps'),
+        'config')
+    params = os.path.join(config_directory, 'zed_f9p.yaml')
+    ublox_gps_node = Node(package='ublox_gps',
+                            executable='ublox_gps_node',
+                            output='screen',
+                            parameters=[params],
+                            #  remappings=[('/fix', '/gps/fix'),]
+                            )
+ 
+    return launch.LaunchDescription(
+        [ublox_gps_node,
+         launch.actions.RegisterEventHandler(
+            event_handler=launch.event_handlers.OnProcessExit(
+                target_action=ublox_gps_node,
+                on_exit=[launch.actions.EmitEvent(event=launch.events.Shutdown())],
+                )
+            ),
+        ])
+
+zed_f9p.yaml
+ublox_gps_node:
+  ros__parameters:
+    debug: 4                    # Range 0-4 (0 means no debug statements will print)
+    device: /dev/ttyACM1
+    frame_id: gps
+    config_on_startup: false
+    uart1:
+      baudrate: 38400
+    gnss:
+      glonass: false
+      beidou: false
+      gps: true
+      qzss: false
+      galileo: false
+      imes: false
+    # TMODE3 Config
+    tmode3: 1                   # Survey-In Mode
+    # sv_in:
+    #   reset: True               # True: disables and re-enables survey-in (resets)
+    #                             # False: Disables survey-in only if TMODE3 is
+    #                             # disabled
+    #   min_dur: 300              # Survey-In Minimum Duration [s]
+    #   acc_lim: 3.0              # Survey-In Accuracy Limit [m]
+ 
+    inf:
+      all: true                   # Whether to display all INF messages in console
+ 
+    publish:
+      all: false
+      # nav:
+      #   all: true
+      #   relposned: true
+      #   posllh: true
+      #   posecef: true
+
+I build it with:
+ docker build . -t ublox_gps
+and running it with:
+docker run -it --rm  --net=host --device=/dev/ttyACM1 ublox_gps:latest /bin/bash
+once inside the container I run:  ros2 launch ublox_gps f9p.launch.py
+and on my host computer ros2 topic list  and there is no fix topic published.
+as I enabled debug messages on the config file I can see this INF messages on driver startup:
+root@nano:/ublox_ws# ros2 launch ublox_gps f9p.launch.py
+[INFO] [launch]: All log files can be found below /root/.ros/log/2024-01-03-12-16-23-433919-nano-62
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ublox_gps_node-1]: process started with pid [63]
+[ublox_gps_node-1] [INFO] [1704284183.931021489] [ublox_gps_node]: U-Blox: Opened serial port /dev/ttyACM1
+[ublox_gps_node-1] [DEBUG] [1704284183.933363780] [ublox_gps_node]: U-Blox sent 8 bytes:
+[ublox_gps_node-1] b5 62 a 4 0 0 e 34
+[ublox_gps_node-1] [DEBUG] [1704284183.934180100] [ublox_gps_node]: U-Blox received 128 bytes
+[ublox_gps_node-1] b5 62 a 4 dc 0 45 58 54 20 43 4f 52 45 20 31 2e 30 30 20 28 66 31 30 63 33 36 29 0 0 0 0 0 0 0 0 30 30 31 39 30 30 30 30 0 0 52 4f 4d 20 42 41 53 45 20 30 78 31 31 38 42 32 30 36 30 0 0 0 0 0 0 0 0 0 0 0 46 57 56 45 52 3d 48 50 47 20 31 2e 31 33 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 50 52 4f 54 56 45 52 3d 32 37 2e 31 32 0 0 0 0 0 0 0 0 0
+[ublox_gps_node-1] [DEBUG] [1704284183.934492554] [ublox_gps_node]: U-Blox received 100 bytes
+[ublox_gps_node-1] 0 0 0 0 0 0 0 0 4d 4f 44 3d 5a 45 44 2d 46 39 50 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 47 50 53 3b 47 4c 4f 3b 47 41 4c 3b 42 44 53 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 53 42 41 53 3b 51 5a 53 53 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 f3 b0
+[ublox_gps_node-1] [DEBUG] [1704284183.935095484] [ublox_gps_node]: U-Blox received 279 bytes
+[ublox_gps_node-1] b5 62 1 7 5c 0 ac 8b 15 12 e8 7 1 3 c 10 17 37 19 0 0 0 e1 ac a1 35 3 1 ea f e4 3e 33 dc 61 18 7 ec ca d5 0 0 95 94 0 0 35 5 0 0 80 9 0 0 2f 0 0 0 14 0 0 0 14 0 0 0 33 0 0 0 ec d 23 2 e4 0 0 0 80 a8 12 1 ad 0 0 0 6c 18 42 3e 0 0 0 0 0 0 0 0 38 f 24 47 4e 52 4d 43 2c 31 32 31 36 32 33 2e 39 30 2c 41 2c 33 33 33 30 2e 34 37 35 39 36 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 30 2e 31 30 30 2c 2c 30 33 30 31 32 34 2c 2c 2c 41 2c 56 2a 31 34 d a 24 47 4e 56 54 47 2c 2c 54 2c 2c 4d 2c 30 2e 31 30 30 2c 4e 2c 30 2e 31 38 35 2c 4b 2c 41 2a 33 30 d a 24 47 4e 47 47 41 2c 31 32 31 36 32 33 2e 39 30 2c 33 33 33 30 2e 34 37 35 39 36 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 31 2c 31 32 2c 30 2e 37 33 2c 33 38 2e 30 2c 4d 2c 31 36 2e 37 2c 4d 2c 2c 2a 37 42 d a
+[ublox_gps_node-1] [INFO] [1704284183.935094963] [ublox_gps_node]: EXT CORE 1.00 (f10c36), HW VER: 00190000
+[ublox_gps_node-1] [DEBUG] [1704284183.935447992] [ublox_gps_node]: ROM BASE 0x118B2060
+[ublox_gps_node-1] [DEBUG] [1704284183.935519191] [ublox_gps_node]: FWVER=HPG 1.13
+[ublox_gps_node-1] [DEBUG] [1704284183.935531171] [ublox_gps_node]: U-Blox received 306 bytes
+[ublox_gps_node-1] 24 47 4e 47 53 41 2c 41 2c 33 2c 32 38 2c 31 38 2c 32 33 2c 33 31 2c 30 35 2c 32 35 2c 32 39 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 31 2a 30 41 d a 24 47 4e 47 53 41 2c 41 2c 33 2c 37 35 2c 38 35 2c 37 33 2c 2c 2c 2c 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 32 2a 30 42 d a 24 47 4e 47 53 41 2c 41 2c 33 2c 32 35 2c 33 36 2c 31 32 2c 31 30 2c 32 34 2c 2c 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 33 2a 30 37 d a 24 47 50 47 53 56 2c 32 2c 31 2c 30 38 2c 30 35 2c 33 30 2c 31 32 34 2c 32 33 2c 31 32 2c 30 37 2c 30 34 30 2c 31 32 2c 31 38 2c 37 35 2c 32 36 38 2c 32 31 2c 32 33 2c 32 39 2c 30 30 39 2c 31 37 2c 31 2a 36 44 d a 24 47 50 47 53 56 2c 32 2c 32 2c 30 38 2c 32 35 2c 34 31 2c 30 33 31 2c 32 34 2c 32 38 2c 32 35 2c 33 30 32 2c 33 31 2c 32 39 2c 35 32 2c 31 33 31 2c 33 34 2c 33 31 2c 32 38 2c 32 37 32 2c 32 32 2c 31 2a 36 33 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.935604141] [ublox_gps_node]: PROTVER=27.12
+[ublox_gps_node-1] [DEBUG] [1704284183.935728206] [ublox_gps_node]: MOD=ZED-F9P
+[ublox_gps_node-1] [DEBUG] [1704284183.935768884] [ublox_gps_node]: GPS;GLO;GAL;BDS
+[ublox_gps_node-1] [DEBUG] [1704284183.935780707] [ublox_gps_node]: U-Blox received 33 bytes
+[ublox_gps_node-1] 24 47 50 47 53 56 2c 31 2c 31 2c 30 31 2c 31 32 2c 30 37 2c 30 34 30 2c 31 35 2c 35 2a 35 35 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.936009098] [ublox_gps_node]: U-Blox received 118 bytes
+[ublox_gps_node-1] 24 47 50 47 53 56 2c 32 2c 31 2c 30 36 2c 31 38 2c 37 35 2c 32 36 38 2c 33 32 2c 32 33 2c 32 39 2c 30 30 39 2c 32 31 2c 32 35 2c 34 31 2c 30 33 31 2c 31 37 2c 32 36 2c 33 36 2c 32 32 38 2c 32 31 2c 36 2a 36 43 d a 24 47 50 47 53 56 2c 32 2c 32 2c 30 36 2c 32 38 2c 32 35 2c 33 30 32 2c 32 37 2c 33 31 2c 32 38 2c 32 37 32 2c 31 38 2c 36 2a 36 41 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.936199883] [ublox_gps_node]: U-Blox received 123 bytes
+[ublox_gps_node-1] 24 47 50 47 53 56 2c 31 2c 31 2c 30 34 2c 31 30 2c 30 31 2c 33 34 38 2c 2c 31 35 2c 30 32 2c 30 36 39 2c 2c 31 36 2c 31 32 2c 32 32 32 2c 2c 32 30 2c 30 31 2c 31 34 36 2c 2c 30 2a 36 31 d a 24 47 4c 47 53 56 2c 31 2c 31 2c 30 33 2c 37 33 2c 32 36 2c 30 30 35 2c 32 38 2c 37 35 2c 34 31 2c 32 32 32 2c 32 37 2c 38 35 2c 33 38 2c 32 36 32 2c 32 36 2c 31 2a 34 30 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.935830917] [ublox_gps_node]: SBAS;QZSS
+[ublox_gps_node-1] [DEBUG] [1704284183.936488223] [ublox_gps_node]: U-Blox received 136 bytes
+[ublox_gps_node-1] 24 47 4c 47 53 56 2c 31 2c 31 2c 30 34 2c 36 39 2c 31 34 2c 30 37 39 2c 32 31 2c 37 33 2c 32 36 2c 30 30 35 2c 32 37 2c 37 35 2c 34 31 2c 32 32 32 2c 32 33 2c 38 35 2c 33 38 2c 32 36 32 2c 31 35 2c 33 2a 37 39 d a 24 47 4c 47 53 56 2c 32 2c 31 2c 30 35 2c 36 38 2c 31 32 2c 31 32 37 2c 2c 37 34 2c 36 34 2c 33 32 32 2c 2c 38 33 2c 30 32 2c 31 32 38 2c 2c 38 34 2c 34 39 2c 31 37 34 2c 2c 30 2a 37 35 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.936693227] [ublox_gps_node]: U-Blox received 31 bytes
+[ublox_gps_node-1] 24 47 4c 47 53 56 2c 32 2c 32 2c 30 35 2c 38 34 2c 34 39 2c 31 37 34 2c 2c 30 2a 34 46 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.936928128] [ublox_gps_node]: U-Blox received 203 bytes
+[ublox_gps_node-1] 24 47 41 47 53 56 2c 31 2c 31 2c 30 34 2c 31 38 2c 34 37 2c 31 30 39 2c 32 31 2c 32 34 2c 35 30 2c 30 33 32 2c 32 31 2c 32 35 2c 37 31 2c 32 33 36 2c 33 30 2c 33 36 2c 33 38 2c 33 30 30 2c 32 37 2c 32 2a 37 46 d a 24 47 41 47 53 56 2c 32 2c 31 2c 30 37 2c 31 30 2c 35 35 2c 31 34 38 2c 33 30 2c 31 32 2c 33 31 2c 31 33 38 2c 31 37 2c 31 38 2c 34 37 2c 31 30 39 2c 32 38 2c 32 34 2c 35 30 2c 30 33 32 2c 32 37 2c 37 2a 37 41 d a 24 47 41 47 53 56 2c 32 2c 32 2c 30 37 2c 32 35 2c 37 31 2c 32 33 36 2c 32 33 2c 33 31 2c 30 32 2c 30 33 38 2c 31 31 2c 33 36 2c 33 38 2c 33 30 30 2c 31 37 2c 37 2a 34 33 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.937139278] [ublox_gps_node]: U-Blox received 94 bytes
+[ublox_gps_node-1] 24 47 41 47 53 56 2c 31 2c 31 2c 30 32 2c 30 32 2c 32 30 2c 32 32 32 2c 2c 31 31 2c 37 38 2c 32 30 38 2c 2c 30 2a 37 31 d a 24 47 4e 47 4c 4c 2c 33 33 33 30 2e 34 37 35 39 36 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 31 32 31 36 32 33 2e 39 30 2c 41 2c 41 2a 37 32 d a
+[ublox_gps_node-1] [DEBUG] [1704284183.937310584] [ublox_gps_node]: U-Blox received 72 bytes
+[ublox_gps_node-1] b5 62 1 3c 40 0 1 0 0 0 ac 8b 15 12 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 dd d9                                     [ublox_gps_node-1] [INFO] [1704284183.943404466] [ublox_gps_node]: U-Blox Firmware Version: 9
+[ublox_gps_node-1] [INFO] [1704284183.945315133] [ublox_gps_node]: U-Blox configured successfully.
+[ublox_gps_node-1] [DEBUG] [1704284183.945396853] [ublox_gps_node]: Subscribing to U-Blox messages
+[ublox_gps_node-1] [DEBUG] [1704284183.945785403] [ublox_gps_node]: Setting rate 0x01, 0x07, 1
+[ublox_gps_node-1] [DEBUG] [1704284183.945990616] [ublox_gps_node]: Waiting for ACK 0x06 / 0x01
+[ublox_gps_node-1] [DEBUG] [1704284183.946135828] [ublox_gps_node]: U-Blox sent 11 bytes:
+[ublox_gps_node-1] b5 62 6 1 3 0 1 7 1 13 51
+[ublox_gps_node-1] [DEBUG] [1704284183.946389062] [ublox_gps_node]: U-Blox received 10 bytes
+[ublox_gps_node-1] b5 62 5 1 2 0 6 1 f 38
+[ublox_gps_node-1] [DEBUG] [1704284183.946568806] [ublox_gps_node]: U-blox: received ACK: 0x06 / 0x01
+[ublox_gps_node-1] [DEBUG] [1704284183.947036733] [ublox_gps_node]: Setting rate 0x01, 0x3c, 1
+[ublox_gps_node-1] [DEBUG] [1704284183.947196423] [ublox_gps_node]: Waiting for ACK 0x06 / 0x01
+[ublox_gps_node-1] [DEBUG] [1704284183.947273196] [ublox_gps_node]: U-Blox sent 11 bytes:
+[ublox_gps_node-1] b5 62 6 1 3 0 1 3c 1 48 bb
+[ublox_gps_node-1] [DEBUG] [1704284183.947922064] [ublox_gps_node]: U-Blox received 10 bytes
+[ublox_gps_node-1] b5 62 5 1 2 0 6 1 f 38
+[ublox_gps_node-1] [DEBUG] [1704284183.948054307] [ublox_gps_node]: U-blox: received ACK: 0x06 / 0x01
+[ublox_gps_node-1] [DEBUG] [1704284183.948741717] [ublox_gps_node]: Configuring INF messages
+[ublox_gps_node-1] [DEBUG] [1704284183.949149330] [ublox_gps_node]: Waiting for ACK 0x06 / 0x02
+[ublox_gps_node-1] [DEBUG] [1704284183.949326678] [ublox_gps_node]: U-Blox sent 28 bytes:
+[ublox_gps_node-1] b5 62 6 2 14 0 0 0 0 0 f f f f f f 1 0 0 0 f f f f f f d1 7a
+[ublox_gps_node-1] [DEBUG] [1704284183.949636372] [ublox_gps_node]: U-Blox received 10 bytes
+[ublox_gps_node-1] b5 62 5 1 2 0 6 2 10 39
+[ublox_gps_node-1] [DEBUG] [1704284183.949748041] [ublox_gps_node]: U-blox: received ACK: 0x06 / 0x02
+[ublox_gps_node-1] [DEBUG] [1704284184.036972589] [ublox_gps_node]: U-Blox received 205 bytes
+[ublox_gps_node-1] b5 62 1 7 5c 0 10 8c 15 12 e8 7 1 3 c 10 18 37 19 0 0 0 c9 c3 fc ff 3 1 ea f e4 3e 33 dc 60 18 7 ec ac d5 0 0 77 94 0 0 35 5 0 0 80 9 0 0 17 0 0 0 10 0 0 0 1b 0 0 0 1b 0 0 0 ec d 23 2 cf 0 0 0 80 a8 12 1 ad 0 0 0 6c 18 42 3e 0 0 0 0 0 0 0 0 43 9d 24 47 4e 52 4d 43 2c 31 32 31 36 32 34 2e 30 30 2c 41 2c 33 33 33 30 2e 34 37 35 39 37 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 30 2e 30 35 33 2c 2c 30 33 30 31 32 34 2c 2c 2c 41 2c 56 2a 31 43 d a 24 47 4e 56 54 47 2c 2c 54 2c 2c 4d 2c 30 2e 30 35 33 2c 4e 2c 30 2e 30 39 39 2c 4b 2c 41 2a 33 42 d a
+[ublox_gps_node-1] [DEBUG] [1704284184.040197033] [ublox_gps_node]: U-Blox received 1190 bytes
+[ublox_gps_node-1] 24 47 4e 47 47 41 2c 31 32 31 36 32 34 2e 30 30 2c 33 33 33 30 2e 34 37 35 39 37 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 31 2c 31 32 2c 30 2e 37 33 2c 33 38 2e 30 2c 4d 2c 31 36 2e 37 2c 4d 2c 2c 2a 37 34 d a 24 47 4e 47 53 41 2c 41 2c 33 2c 32 38 2c 31 38 2c 32 33 2c 33 31 2c 30 35 2c 32 35 2c 32 39 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 31 2a 30 41 d a 24 47 4e 47 53 41 2c 41 2c 33 2c 37 35 2c 38 35 2c 37 33 2c 2c 2c 2c 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 32 2a 30 42 d a 24 47 4e 47 53 41 2c 41 2c 33 2c 32 35 2c 33 36 2c 31 32 2c 31 30 2c 32 34 2c 2c 2c 2c 2c 2c 2c 2c 31 2e 37 33 2c 30 2e 37 33 2c 31 2e 35 37 2c 33 2a 30 37 d a 24 47 50 47 53 56 2c 32 2c 31 2c 30 38 2c 30 35 2c 33 30 2c 31 32 34 2c 32 33 2c 31 32 2c 30 37 2c 30 34 30 2c 31 32 2c 31 38 2c 37 35 2c 32 36 38 2c 32 31 2c 32 33 2c 32 39 2c 30 30 39 2c 31 37 2c 31 2a 36 44 d a 24 47 50 47 53 56 2c 32 2c 32 2c 30 38 2c 32 35 2c 34 31 2c 30 33 31 2c 32 34 2c 32 38 2c 32 35 2c 33 30 32 2c 33 31 2c 32 39 2c 35 32 2c 31 33 31 2c 33 34 2c 33 31 2c 32 38 2c 32 37 32 2c 32 32 2c 31 2a 36 33 d a 24 47 50 47 53 56 2c 31 2c 31 2c 30 31 2c 31 32 2c 30 37 2c 30 34 30 2c 31 35 2c 35 2a 35 35 d a 24 47 50 47 53 56 2c 32 2c 31 2c 30 36 2c 31 38 2c 37 35 2c 32 36 38 2c 33 32 2c 32 33 2c 32 39 2c 30 30 39 2c 32 31 2c 32 35 2c 34 31 2c 30 33 31 2c 31 37 2c 32 36 2c 33 36 2c 32 32 38 2c 32 32 2c 36 2a 36 46 d a 24 47 50 47 53 56 2c 32 2c 32 2c 30 36 2c 32 38 2c 32 35 2c 33 30 32 2c 32 37 2c 33 31 2c 32 38 2c 32 37 32 2c 31 38 2c 36 2a 36 41 d a 24 47 50 47 53 56 2c 31 2c 31 2c 30 34 2c 31 30 2c 30 31 2c 33 34 38 2c 2c 31 35 2c 30 32 2c 30 36 39 2c 2c 31 36 2c 31 32 2c 32 32 32 2c 2c 32 30 2c 30 31 2c 31 34 36 2c 2c 30 2a 36 31 d a 24 47 4c 47 53 56 2c 31 2c 31 2c 30 33 2c 37 33 2c 32 36 2c 30 30 35 2c 32 38 2c 37 35 2c 34 31 2c 32 32 32 2c 32 37 2c 38 35 2c 33 38 2c 32 36 32 2c 32 36 2c 31 2a 34 30 d a 24 47 4c 47 53 56 2c 31 2c 31 2c 30 34 2c 36 39 2c 31 34 2c 30 37 39 2c 32 31 2c 37 33 2c 32 36 2c 30 30 35 2c 32 37 2c 37 35 2c 34 31 2c 32 32 32 2c 32 33 2c 38 35 2c 33 38 2c 32 36 32 2c 31 35 2c 33 2a 37 39 d a 24 47 4c 47 53 56 2c 32 2c 31 2c 30 35 2c 36 38 2c 31 32 2c 31 32 37 2c 2c 37 34 2c 36 34 2c 33 32 32 2c 2c 38 33 2c 30 32 2c 31 32 38 2c 2c 38 34 2c 34 39 2c 31 37 34 2c 2c 30 2a 37 35 d a 24 47 4c 47 53 56 2c 32 2c 32 2c 30 35 2c 38 34 2c 34 39 2c 31 37 34 2c 2c 30 2a 34 46 d a 24 47 41 47 53 56 2c 31 2c 31 2c 30 34 2c 31 38 2c 34 37 2c 31 30 39 2c 32 31 2c 32 34 2c 35 30 2c 30 33 32 2c 32 31 2c 32 35 2c 37 31 2c 32 33 36 2c 33 30 2c 33 36 2c 33 38 2c 33 30 30 2c 32 37 2c 32 2a 37 46 d a 24 47 41 47 53 56 2c 32 2c 31 2c 30 37 2c 31 30 2c 35 35 2c 31 34 38 2c 33 30 2c 31 32 2c 33 31 2c 31 33 38 2c 31 37 2c 31 38 2c 34 37 2c 31 30 39 2c 32 38 2c 32 34 2c 35 30 2c 30 33 32 2c 32 37 2c 37 2a 37 41 d a 24 47 41 47 53 56 2c 32 2c 32 2c 30 37 2c 32 35 2c 37 31 2c 32 33 36 2c 32 33 2c 33 31 2c 30 32 2c 30 33 38 2c 31 31 2c 33 36 2c 33 38 2c 33 30 30 2c 31 37 2c 37 2a 34 33 d a 24 47 41 47 53 56 2c 31 2c 31 2c 30 32 2c 30 32 2c 32 30 2c 32 32 32 2c 2c 31 31 2c 37 38 2c 32 30 38 2c 2c 30 2a 37 31 d a 24 47 4e 47 4c 4c 2c 33 33 33 30 2e 34 37 35 39 37 2c 53 2c 30 36 30 30 33 2e 37 32 38 30 34 2c 57 2c 31 32 31 36 32 34 2e 30 30 2c 41 2c 41 2a 37 44 d a b5 62 1 3c 40 0 1 0 0 0 10 8c 15 12 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 42 84                                                                 [ublox_gps_node-1] [DEBUG] [1704284184.136470579] [ublox_gps_node]: U-Blox received 441 bytes
+.....
+
+but here is the wierd thing, I have a ubuntu 22.04 WSL system running ros2 humble and a bridged network, there I run ros2 topic list and get:
+/diagnostics
+/nmea
+/parameter_events                                                                                                                                                                           /rosout
+/rtcm                                                                                                                                                                                       /ublox_gps_node/fix
+/ublox_gps_node/fix_velocity
+elgarbe@elgarbe:~$
+
+finally if I run  docker exec -it d566a995b706 /bin/bash  in a second jetson nano terminal and run ros2 topic list I don't get ublox_messages.
+Am I missing something?
+EDIT1: Using this dockerfile:
+ docker run -it --rm --net=host --device=/dev/ttyACM0 microros/micro-ros-agent:humble serial --dev /dev/ttyACM0
+I can see the topics published by microros in the ubuntu host computer. I'm trying to replicate the way that this image is created, but I can't figure out where the differences are.
+
+A:
+
+Ok, I found the problem and solution. I think that this needs to be included on ros2 docker page because there are a lot of people struggled with this.
+It's ros2 trying to use shared memory between docker and host (because of net=host it thinks that it's the same computer). The problem is docker and host are not running on the same user. So, the solution is sharing the host user or disable share memory:
+https://stackoverflow.com/questions/65900201/troubles-communicating-with-ros2-node-in-docker-container
+

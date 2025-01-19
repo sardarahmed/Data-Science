@@ -1,0 +1,62 @@
+Q:
+
+Error when setting dynamically created joints axis in Gazebo 1.8.0
+
+Hi,
+I am using Gazebo 1.8.0, during the simulation I create dynamically joints between objects, but when I set their axis I get the following error (this used to work on older Gazebo versions):
+Error [SDF.cc:761] Missing element description for [axis]
+gazebo: /usr/include/boost/smart_ptr/shared_ptr.hpp:418: T* boost::shared_ptr<T>::operator->() const [with T = sdf::Element]: Assertion `px != 0' failed.
+
+This happens when I use the SetAxis() function
+math::Vector3 axis;
+...
+this->myJoint->SetAxis(0, axis);
+
+Without it, the joint creation works without any problems.
+I noticed a similar error in this question, not sure if they are related, plus it says that it is fixed since release 1.6.3
+UPDATE!!! (the working code, thanks to @scpeters, after adding the Load() function):
+// create the joint for the given model
+    this->myJoint = this->model->GetWorld()->GetPhysicsEngine()->CreateJoint("revolute",  this->model);
+
+// attach joint to links
+    this->myJoint->Attach(spatula_link, palm_link);
+
+// load the joint, and set up its anchor point
+    this->myJoint->Load(spatula_link, palm_link, math::Pose(spatula_link->GetWorldPose().pos, math::Quaternion()));
+
+// set the axis of revolution
+    this->myJoint->SetAxis(0, axis);
+
+// set other joint attributes
+    this->myJoint->SetAttribute("stop_cfm",0, this->stop_cfm);
+    this->myJoint->SetAttribute("stop_erp",0, this->stop_erp);
+    this->myJoint->SetAttribute("hi_stop",0, this->hi_stop);
+    this->myJoint->SetAttribute("lo_stop",0, this->lo_stop);
+
+Thanks,
+Andrei
+
+Originally posted by AndreiHaidu on Gazebo Answers with karma: 2108 on 2013-05-14
+Post score: 2
+
+Original comments
+Comment by scpeters on 2013-05-14:
+Can you show a bit more code that you use for creating the joints? I think the order in which you call the functions matters. For example in VRCPlugin::AddJoint, the order is joint = world->GetPhysicsEngine()->CreateJoint(), then joint->Attach(), then joint->Load(), then joint->SetAxis(), then eventually joint->Init().
+Comment by AndreiHaidu on 2013-05-15:
+Hey, thanks for the answer, It worked after I used the Load() function, but without Init() because then it sets some configured values to default ones. You should write your answer with the example link as an answer so I can mark it resolved. Cheers
+Comment by scpeters on 2013-05-15:
+If you don't mind posting what you did, I'll upvote it.
+Comment by awesomebytes on 2016-04-19:
+I'm battling with this problem on this package: https://github.com/pal-robotics/gazebo_ros_link_attacher (self contained) I get a crash when linking two models, and it seems I'm doing it like everyone else. The crash is: ***** Internal Program Error - assertion (self->inertial != __null) failed in static void gazebo::physics::ODELink::MoveCallback(dBodyID):
+/tmp/buildd/gazebo4-4.1.3/gazebo/physics/ode/ODELink.cc(178): Inertial pointer is NULL
+Comment by awesomebytes on 2016-04-22:
+The package is finished with my bug solved, you can attach any two links of the simulation and later detach them: https://github.com/pal-robotics/gazebo_ros_link_attacher should work on gazebo 2, 4 & 7.
+
+A:
+
+Answered in edited question.
+
+Originally posted by scpeters with karma: 2861 on 2013-05-15
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,44 @@
+Q:
+
+How to install single packages in a workspace?
+
+In our project we have certain packages that are custom and required to run our system, but which do not need to be rebuilt during everyday development. I would like to designate them to be "installed", so that they are built from source, but catkin clean does not remove them.
+I know that you can call make install in the build directory of your workspace (and in single packages) as described in the tutorial to create packages in the install directory, but as it is also deleted by catkin clean, I don't see the use.
+I found this and this answer, but they seem to deal with building from source, not with "installing" in the sense that I mean it. There are also other questions like this, but they seem to either not apply or be outdated.
+
+Can single packages in a workspace be installed so that catkin clean does not remove them? If yes, how is it done using the catkin tools?
+If it is not possible, what is the canonical way to deal with this? Build the packages to be installed in an intermediate workspace, and then extend another workspace? Build them in /opt/ros/melodic/?
+
+Thanks in advance.
+
+Originally posted by fvd on ROS Answers with karma: 2180 on 2019-08-05
+Post score: 0
+
+A:
+
+"installing" something (either with catkin_make or with catkin_tools) will always copy installable artefacts to the install space. With catkin_tools, catkin clean does indeed clear that directory out, unless you specify specific spaces to be deleted only (ie: with --log, --build, --devel and/or --install).
+That is rather brittle though (if/when someone forgets to pass those options your install space will be cleaned out again).
+
+If it is not possible, what is the canonical way to deal with this? Build the packages to be installed in an intermediate workspace, and then extend another workspace? Build them in /opt/ros/melodic/?
+
+Best practice would be -- apart from using an internal buildfarm, releasing those packages and installing them that way -- to create an underlay workspace that your regular workspace extends. You'd use workspace overlaying, like so:
+/opt/ros/$ROS_DISTRO
+└── /path/to/your/underlay_ws
+    └── /path/to/your/regular_ws
+
+In this setup, vanilla $ROS_DISTRO would be the install space populated by the .deb packages you install using apt (or built from sources on some platforms). You then build the underlay workspace with the packages that you "always need". You then activate the underlay workspace (either source /path/to/your/underlay_ws/install/setup.bash or by using catkin config --extend (recommended)) and build your regular_ws.
+A catkin clean of regular_ws will only clean out your regular workspace. It will not touch any underlays.
+Finally:
+
+underlay_ws can of course have any name, it doesn't need to be called underlay_ws
+it can also be located anywhere (here in my lab we have several underlays which are located in /opt/ros fi)
+if you have machines that are exact duplicates of each other, you could even share your underlay workspaces, avoiding the need to build the workspaces on all machines (but if you go this far, you might start looking into generating .debs)
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-08-05
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by fvd on 2019-08-07:
+Thanks. Very helpful as always. I extended our workspace and it worked on first try.
+

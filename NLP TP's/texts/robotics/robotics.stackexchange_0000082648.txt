@@ -1,0 +1,86 @@
+Q:
+
+why pcl algothm so fast?
+
+Hello:
+I want to write a VoxelGrid filter which can filter the center of the voxel. I just write the same as pcl source code in pcl/filters/include/pcl/filters/impl/filter.hpp. here is my code:
+pcl::PointXYZI min_p,max_p;
+pcl::getMinMax3D(*input_cloud_ptr_,min_p,max_p);
+
+int dx = static_cast<int64_t>((max_p.x - min_p.x) * inverse_leaf_size_[0]) + 1;
+int dy = static_cast<int64_t>((max_p.y - min_p.y) * inverse_leaf_size_[1]) + 1;
+int dz = static_cast<int64_t>((max_p.z - min_p.z) * inverse_leaf_size_[2]) + 1;
+
+if ((dx*dy*dz) > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+    std::cerr<<"leaf size is too small for the input cloud, Integer indices would overflow."<<std::endl;
+    return;
+}
+
+// Compute the minimum and maximum bounding box values
+min_bounding_idx_[0] = static_cast<int> (floor (min_p.x * inverse_leaf_size_[0]));
+max_bounding_idx_[0] = static_cast<int> (floor (max_p.x * inverse_leaf_size_[0]));
+min_bounding_idx_[1] = static_cast<int> (floor (min_p.y * inverse_leaf_size_[1]));
+max_bounding_idx_[1] = static_cast<int> (floor (max_p.y * inverse_leaf_size_[1]));
+min_bounding_idx_[2] = static_cast<int> (floor (min_p.z * inverse_leaf_size_[2]));
+max_bounding_idx_[2] = static_cast<int> (floor (max_p.z * inverse_leaf_size_[2]));
+
+div_bounding_ = max_bounding_idx_ - min_bounding_idx_ + Eigen::Vector3i::Ones ();
+
+// Set up the division multiplier
+divb_mul_ = Eigen::Vector3i (1, div_bounding_[0], div_bounding_[0] * div_bounding_[1]);
+
+cloud_index_.clear();
+cloud_index_.reserve (input_cloud_ptr_->size ());
+out_cloud_ptr->clear();
+voxel_idx_.clear();
+
+for (int i = 0; i < input_cloud_ptr_->size(); ++i) {
+    pcl::PointXYZI tmp_pt = input_cloud_ptr_->points[i];
+    int ijk0 = static_cast<int> (floor (tmp_pt.x * inverse_leaf_size_[0]) - static_cast<float> (min_bounding_idx_[0]));
+    int ijk1 = static_cast<int> (floor (tmp_pt.y * inverse_leaf_size_[1]) - static_cast<float> (min_bounding_idx_[1]));
+    int ijk2 = static_cast<int> (floor (tmp_pt.z * inverse_leaf_size_[2]) - static_cast<float> (min_bounding_idx_[2]));
+
+    // Compute the centroid leaf index
+    int idx = ijk0 * divb_mul_[0] + ijk1 * divb_mul_[1] + ijk2 * divb_mul_[2];
+    cloud_index_.push_back(CloudPointIndexIdx(static_cast<unsigned int> (idx), i));
+    voxel_idx_.push_back(Eigen::Vector3i(ijk0,ijk1,ijk2));
+}
+
+std::sort (cloud_index_.begin (), cloud_index_.end (), std::less<CloudPointIndexIdx> ());
+
+std::vector<Eigen::Vector3i>::iterator iter = std::unique(voxel_idx_.begin(),voxel_idx_.end());
+voxel_idx_.erase(iter,voxel_idx_.end());
+for(int i = 0;i < static_cast<int>(voxel_idx_.size());i++){
+    int ijk0 = voxel_idx_[i][0];
+    int ijk1 = voxel_idx_[i][1];
+    int ijk2 = voxel_idx_[i][2];
+    pcl::PointXYZI tmp_pt;
+    tmp_pt.x = (ijk0 + static_cast<float> (min_bounding_idx_[0])) * leaf_size_[0] + leaf_size_[0] / 2.;
+    tmp_pt.y = (ijk1 + static_cast<float> (min_bounding_idx_[1])) * leaf_size_[1] + leaf_size_[1] / 2.;
+    tmp_pt.z = (ijk2 + static_cast<float> (min_bounding_idx_[2])) * leaf_size_[2] + leaf_size_[2] / 2.;
+    out_cloud_ptr->push_back(tmp_pt);
+}
+
+I test my code and pcl with the same dataset, my code cost 50ms,and the pcl cost 2ms. I am just very curious why is so diffetrent. are there any skill ? I appreciate who can give me some answer! thx ~
+
+Originally posted by mjjdick on ROS Answers with karma: 3 on 2017-09-04
+Post score: 0
+
+A:
+
+If the source code is the same as PCL, you are probably compiling your code in debug mode.
+You could try to recompile using
+catkin_make -DCMAKE_BUILD_TYPE=Release
+
+This will tell catkin to compile the code optimized for release (without debug symbols) and will likely execute faster.
+
+Originally posted by Martin Peris with karma: 5625 on 2017-09-04
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mjjdick on 2017-09-04:
+you are right！thx very much！
+Comment by gvdhoorn on 2017-09-05:
+@mjjdick: if you feel your question has been answered, please indicate that by ticking the checkmark to the left of the answer of @Martin Peris.
+

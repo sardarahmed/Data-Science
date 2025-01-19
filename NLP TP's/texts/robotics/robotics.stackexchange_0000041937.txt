@@ -1,0 +1,31 @@
+Q:
+
+Calling ros::spinOnce() in nodelets?
+
+Is it possible to integrate a while(true){ros::spinOnce(); ..} loop into a nodelet? I've based mine on the velodyne_driver nodelet, which runs a separate thread which polls the device object.
+That while loop never sleeps though, and as the camera driver is a publisher, it doesn't have any callbacks to process, so there is no ros::spinOnce() either. I was wondering if that could be added there (to be able to handle callbacks) or if that would clash with the nodelet's manager?
+
+EDIT: I know the manager handles the spin logic, it actually calls spinOnce() after a 1e6 us usleep (which is equal to what ros::spin() does). What I'm really after is a way to reduce that sleep time. I'm guessing that is not possible without changing and recompiling the nodelet manager, but hoping I'm wrong.
+EDIT2: ^ all wrong. See @Lorenz's answer.
+
+Originally posted by ipso on ROS Answers with karma: 1416 on 2012-07-04
+Post score: 3
+
+A:
+
+The nodelet manager doesn't call spinOnce but spin as you can see in nodelet/src/nodelet.cpp, line 296, at least in Fuerte. Spin doesn't do any sleeps but calls callAvailable on the global callback queue in a loop. callAvailable doesn't sleep on a timeout either. It blocks on a condition variable until a message is received on the queue and executes all callbacks. That means that you shouldn't need to do any special handling or call spin or spinOnce by hand. Message callbacks should be executed at once, i.e. as soon as the main thread gets computation time by the OS scheduler.
+
+Originally posted by Lorenz with karma: 22731 on 2012-07-04
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by ipso on 2012-07-04:
+yep, you're right. I was looking under the command == "load" case, which is different from the manager. CallbackQueue::callAvailable() waits on timeout or a new event, so no sleeping. Basically, there is no explicit sleeping, only wait on timeout or event in the whole event loop (AFAICT).
+Comment by Lorenz on 2012-07-04:
+Exactly. However, the timout is only there to stop if ros::ok becomes false, i.e. the manager is shut down.
+Comment by ipso on 2012-07-04:
+And just to be absolutely clear: the 'no sleeping' also means that -- by default -- ROS tries to handle callbacks 'as fast as possible', to the abilities of the machine on which it runs.
+Comment by Lorenz on 2012-07-04:
+Yes. I think so.
+

@@ -1,0 +1,100 @@
+Q:
+
+[Solved] Error when subscribing to multiple topics in python
+
+Hello,
+I'm new to ROS and I'm having a problem when I try to move my turtle to a goal that I'm  publishing.
+I created a node that subscribes to 2 topics: the position of the turtle and the goal_position. The goal_position topic is being published in the terminal. The node also publishes the velocity of the turtle.
+The purpose of this node is that when the turtle arrives at the goal position, it will then go to the following goal.
+I tried to this code in python without using class in the following code, however I received the error:
+NameError: global name 'goal_pose' is not defined
+NameError: global name 'pose' is not defined
+
+What I don't understand is that I've defined them both.
+#!/usr/bin/env python
+
+import rospy
+from geometry_msgs.msg import Twist
+from turtlesim.msg import Pose
+from math import po`enter code here`w, atan2, sqrt
+import angles, math
+
+goal = False
+
+def update_pose(data):
+    global pose 
+    pose = data
+    pose.x = round(pose.x, 4)
+    pose.y = round(pose.y, 4)
+
+def update_goal(data1):
+    global goal_pose
+    goal_pose = data1
+    goal_pose.x = round(goal_pose.x, 4)
+    goal_pose.y = round(goal_pose.y, 4)
+
+def turtleWalk():
+    global pose,pub,vel_msg,goal_pose,goal
+    linear_gain = 4
+    angular_gain = 12
+    distance_tolerance = 0.1
+    vel_msg = Twist()
+    
+    while not goal:
+        distance  = round(sqrt(pow((goal_pose.x - pose.x), 2) + pow((goal_pose.y - pose.y), 2)), 3)
+        linear_vel = linear_gain*distance   
+        steering_angle = round(atan2(goal_pose.y - pose.y, goal_pose.x - pose.x),4) 
+        angular_vel = angular_gain*(angles.shortest_angular_distance(pose.theta,steering_angle))
+        while distance >= distance_tolerance:
+            
+            vel_msg.linear.x = linear_vel
+            vel_msg.angular.z = angular_vel
+            
+            pub.publish(vel_msg)
+        goal = True 
+
+def turtleController(): 
+    global pub,vel_msg,goal_pose,pose
+
+    rospy.init_node('turtle_controller',anonymous=True)
+    pub = rospy.Publisher('/turtle1/cmd_vel',Twist,queue_size=10)
+    rospy.Subscriber('/turtle1/pose',Pose,update_pose)
+    rospy.Subscriber('/goal',Pose,update_goal)
+    rate = rospy.Rate(10)
+
+    while not rospy.is_shutdown():
+        turtleWalk()
+        rate.sleep()
+    vel_msg.linear.x = 0        
+    vel_msg.angular.z = 0
+    pub.publish(vel_msg)
+
+if __name__ == '__main__':
+    try:
+        turtleController()
+    except rospy.ROSInterruptException:
+        pass
+
+The error happens in line 31 which is :
+  distance  = round(sqrt(pow((goal_pose.x - pose.x), 2) + pow((goal_pose.y - pose.y), 2)), 3)
+
+Originally posted by Gi99 on ROS Answers with karma: 5 on 2019-05-21
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-05-21:
+Don't paraphrase error messages. Copy-paste the exact and complete error message into your question.
+Line nrs are important here, and the backtrace you get from Python would show us those.
+Comment by Gi99 on 2019-05-21:
+Thanks!! I put rospy.sleep(10.) and it worked!
+Comment by jayess on 2019-05-21:
+@Gi99 perhaps you can put your solution as an answer and accept it?
+
+A:
+
+You initialized goal, but not goal_pose or pose at the top. If you call turtleWalk() before any of your subscribers have had a chance to run, then those variables will still be undefined. I'd say you should either define them with a default value, or ensure your callbacks have run before calling turtleWalk().
+
+Originally posted by jarvisschultz with karma: 9031 on 2019-05-21
+This answer was ACCEPTED on the original site
+Post score: 0
+

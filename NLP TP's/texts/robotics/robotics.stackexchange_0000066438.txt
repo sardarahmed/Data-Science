@@ -1,0 +1,72 @@
+Q:
+
+Publishing to Initialpose Programmatically on Turtlebot Navigation
+
+Hi,
+I am trying to set the initial pose of the turtlebot programmatically, and to do so I publish to initial pose using some code. I am following what is done here: http://answers.ros.org/question/114631/robot-estimated-pose/
+I can publish to initial pose, but the robot will not react. When I set a new nav goal, the robot will continue from its previously calculated pose. Here is what rostopic echo /initialpose looks like:
+    header: 
+  seq: 1
+  stamp: 
+    secs: 0
+    nsecs: 0
+  frame_id: map
+pose: 
+  pose: 
+    position: 
+      x: 100.0
+      y: 102.0
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.0267568523876
+      w: 0.999641971333
+  covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
+---
+
+One interesting thing is that that header here shows seq to be 1, when I never set it to be 1 in my code.
+My publishing code looks like this:
+def talker():
+pub = rospy.Publisher('/initialpose', geometry_msgs.msg.PoseWithCovarianceStamped, queue_size=10)
+rospy.init_node('talker', anonymous=True)
+rate = rospy.Rate(1) # 10hz
+    
+pose = geometry_msgs.msg.PoseWithCovarianceStamped()
+pose.header.frame_id = "map"
+pose.pose.pose.position.x=100
+pose.pose.pose.position.y=102
+pose.pose.pose.position.z=0
+pose.pose.covariance=[0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]
+pose.pose.pose.orientation.z=0.0267568523876
+pose.pose.pose.orientation.w=0.999641971333
+    rospy.loginfo(pose)
+    pub.publish(pose)
+rospy.spin()
+
+if name == 'main':
+try:
+talker()
+except rospy.ROSInterruptException:
+pass
+Does anyone know what might be happening?
+
+Originally posted by michaelyuan1 on ROS Answers with karma: 11 on 2015-03-18
+Post score: 0
+
+A:
+
+This is happening because publishers take a nonzero amount of time to start up. They will let you publish before they're ready, and silently fail. Simply waiting a bit before trying to publish will solve the problem.
+To be really robust to startup issues like this, you should check that the message you sent has the desired consequence. In this case, you can publish in a loop, and wait for amcl_pose to be consistent with the initialpose that you published.
+
+Originally posted by Dan Lazewatsky with karma: 9115 on 2015-03-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by michaelyuan1 on 2015-03-18:
+Hi Dan, thanks for your answer!
+I'm not sure if the publisher not starting up is the problem, because I do see the message coming out through rostopic echo. If the publisher were not up yet, I'd expect to not see any messages through rostopic echho
+Comment by Dan Lazewatsky on 2015-03-19:
+In that case, take a look at rqt_graph with amcl and your node running and make sure they're publishing and subscribing to the topics you expect.
+

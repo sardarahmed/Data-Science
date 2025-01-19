@@ -1,0 +1,65 @@
+Q:
+
+zbar_ros does not detect QR codes from Gazebo camera sensor
+
+I would like to detect QR codes in my gazebo simulation. To do this, I would like to use the zbar_ros package, since it is fast and has a small footprint. While I was able to detect QR codes using a real camera (simple usb camera), I cannot get it working with the virtual Gazebo camera sensor.
+I expect that the problem is in the encoding of the image, but I am not sure: I do not see the flaw in the configuration (and I tried a lot of different configurations already). Any ideas?
+To be clear: the node does not crash. It just detects zero codes.
+Sensor section in my URDF
+    <camera name='__default__'>
+      <horizontal_fov>1.047</horizontal_fov>
+      <image>
+        <width>1280</width>
+        <height>720</height>
+        <format>B8G8R8</format>
+      </image>
+      <clip>
+        <near>0.1</near>
+        <far>100</far>
+      </clip>
+    </camera>
+
+Some lines from my version of zbar_ros barcode_reader_nodelet.cpp
+void BarcodeReaderNodelet::imageCb(const sensor_msgs::ImageConstPtr &image)
+{
+cv_bridge::CvImageConstPtr cv_image;
+cv_image = cv_bridge::toCvShare(image, "bgr8");
+
+zbar::Image zbar_image(cv_image->image.cols, cv_image->image.rows, "GREY", cv_image->image.data,
+    cv_image->image.cols * cv_image->image.rows);
+
+And some proof that is really should be able to detect the code:
+
+For the sake of completeness:
+
+The default second argument for toCvShare() was mono16. That did not work for my webcam as well, mono8 did.
+I matched the second argument of toCvShare() to the configuration in my URDF: B8G8R8.
+zbar_image can also be initialized with the format "Y800" instead of "GREY". If I understand correctly, zbar_image does some conversion itself, so I prefer to do everything in grayscale.
+Making the QR code bigger does not help.
+
+Originally posted by Cees on ROS Answers with karma: 51 on 2017-01-31
+Post score: 1
+
+A:
+
+So, I figured out why this is not working.
+My initial approach was to revert to the settings of the real camera (since detection worked for this camera), and check the encoding by examining the messages on the camera topic. Turned out the encoding was RGB8. So: I changed my Gazebo camera settings to R8G8B8, and indeed: the encoding on the virtual topic was now RGB8. However: QR Codes were still not detected.
+I changed the zbar_ros nodes a little bit to show an OpenCV window to make sure the translation to OpenCV images was going well. This was the case, so the problem was still unknown.
+While on the verge of a mental breakdown, desperately staring at my screen, I noticed a difference between the QR code in simulation and the physical code on my desk: it was mirrored! Apparently, the QR code reader on my phone allows for mirrored QR codes, and was able to recognize it in the simulation, while zbar_ros does not support mirrored QR codes.
+So, in short: mirroring my textures solved everything.
+
+Originally posted by Cees with karma: 51 on 2017-02-15
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-02-15:
+I feel this might be nice to document somewhere (other than here on ROS Answers), but I don't really know where would be the best place for this.
+re: mirorred: have you verified that Gazebo renders everything correctly? There have been problems with the simulated camera in the past.
+Comment by Cees on 2017-02-15:
+I am not sure either: It is not related to zbar_ros, not really to Gazebo as well, but to Ogre3D if I understand correctly. I feel I do not know enough about how Ogre3D applies texture to recognize if this is a bug or not. If there is anything I can do to validate if the camera works correctly, lmk.
+Comment by paulbovbel on 2017-02-17:
+nice find! Feel free to add a gazebo-related note to the zbar_ros wiki.
+Comment by Cees on 2017-02-17:
+Will do somewhere the coming weeks, but first I'd like to validate if it has anything to do with this: http://answers.ros.org/question/232534/gazebo-camera-frame-is-inconsistent-with-rviz-opencv-convention/
+

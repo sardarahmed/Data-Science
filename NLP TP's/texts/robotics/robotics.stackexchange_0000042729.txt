@@ -1,0 +1,105 @@
+Q:
+
+Nodelets: pure virtual method called, process died (-6)
+
+I get the error in the question title everytime one of my Nodelet classes calls ros::requestShutdown(). I've tried debugging it in gdb, but besides the fact that the stacktrace is 5 pages (!) long, it doesn't tell me much, apart from a lot of references to boost::shared_ptr and checked_delete.
+Is calling ros::requestShutdown() from a Nodelet unsupported or is this a bug somewhere?
+Problem is the crash is causing my Nodelet destructors to not be called, which makes it hard to do proper cleanup of resources.
+Breaking using ctrl+c does cleanly shutdown everything and calls destructors.
+
+Edit: @Lorenz, you're right, I should've included more info.
+System: Ubuntu Lucid (10.04.3), ROS Electric from debs.
+The class that calls ros::requestShutdown() does so in a callback, whether that callback is called by a subscription or as a service doesn't matter.
+On second thought it seems like the Bond dtor (frame 10) tries to stop/delete some timer (frame 9) which seems to try to use the ros::TimerManager (frame 7) which might have already been stopped/destructed.
+Stacktrace:
+pure virtual method called
+terminate called without an active exception
+
+Program received signal SIGABRT, Aborted.
+0xb7fe2424 in __kernel_vsyscall ()
+(gdb) bt
+#0  0xb7fe2424 in __kernel_vsyscall ()
+#1  0xb785d651 in *__GI_raise (sig=6)
+    at ../nptl/sysdeps/unix/sysv/linux/raise.c:64
+#2  0xb7860a82 in *__GI_abort () at abort.c:92
+#3  0xb7aaa52f in __gnu_cxx::__verbose_terminate_handler() ()
+   from /usr/lib/libstdc++.so.6
+#4  0xb7aa8465 in ?? () from /usr/lib/libstdc++.so.6
+#5  0xb7aa84a2 in std::terminate() () from /usr/lib/libstdc++.so.6
+#6  0xb7aa9155 in __cxa_pure_virtual () from /usr/lib/libstdc++.so.6
+#7  0xb7e883fa in ros::TimerManager<ros::WallTime, ros::WallDuration, ros::WallTimerEvent>::remove(int) ()
+   from /opt/ros/electric/stacks/ros_comm/clients/cpp/roscpp/lib/libros.so
+#8  0xb7ed9779 in ros::WallTimer::Impl::stop (this=0x8076730)
+    at /tmp/buildd/ros-electric-ros-comm-1.6.7/debian/ros-electric-ros-comm/opt/ros/electric/stacks/ros_comm/clients/cpp/roscpp/src/libros/wall_timer.cpp:64
+#9  0xb7ed9813 in ros::WallTimer::stop (this=0x806f690)
+    at /tmp/buildd/ros-electric-ros-comm-1.6.7/debian/ros-electric-ros-comm/opt/ros/electric/stacks/ros_comm/clients/cpp/roscpp/src/libros/wall_timer.cpp:123
+#10 0xb7f30cc3 in ~Bond (this=0x806f420, __in_chrg=<value optimised out>)
+    at /tmp/buildd/ros-electric-bond-core-1.6.1/debian/ros-electric-bond-core/opt/ros/electric/stacks/bond_core/bondcpp/src/bond.cpp:91
+#11 0x0804f019 in checked_delete<bond::Bond> (this=0x0)
+    at /usr/include/boost/checked_delete.hpp:34
+#12 boost::detail::sp_counted_impl_p<bond::Bond>::dispose (this=0x0)
+    at /usr/include/boost/smart_ptr/detail/sp_counted_impl.hpp:78
+#13 0xb7b17779 in boost::detail::sp_counted_base::release (this=0x80791d0, 
+    __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/detail/sp_counted_base_gcc_x86.hpp:145
+#14 ~shared_count (this=0x80791d0, __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/detail/shared_count.hpp:217
+#15 ~shared_ptr (this=0x80791d0, __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/shared_ptr.hpp:169
+#16 boost::shared_ptr<bond::Bond>::reset (this=0x80791d0, 
+    __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/shared_ptr.hpp:386
+#17 ~Nodelet (this=0x80791d0, __in_chrg=<value optimised out>)
+    at /tmp/buildd/ros-electric-nodelet-core-1.6.2/debian/ros-electric-nodelet-core/opt/ros/electric/stacks/nodelet_core/nodelet/src/nodelet_class.cpp:48
+#18 0xb2ac307d in ~SenderNodelet (this=0x80791d0, 
+    __in_chrg=<value optimised out>)
+    at /home/ipso/ros/stacks/nodelet_test/src/nodelets/sender_nodelet.cpp:59
+#19 0xb7b1c808 in checked_delete<nodelet::Nodelet> (this=0x8076980)
+    at /usr/include/boost/checked_delete.hpp:34
+#20 boost::detail::sp_counted_impl_p<nodelet::Nodelet>::dispose (
+    this=0x8076980)
+    at /usr/include/boost/smart_ptr/detail/sp_counted_impl.hpp:78
+#21 0x0804e3d8 in boost::detail::sp_counted_base::release (this=0x8074180, 
+    __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/detail/sp_counted_base_gcc_x86.hpp:145
+#22 ~shared_count (this=0x8074180, __in_chrg=<value optimised out>)
+    at /usr/include/boost/smart_ptr/detail/shared_count.hpp:217
+#23 0xb7b1f820 in std::_Rb_tree<std::string, std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> >, std::_Select1st<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > >, std::less<std::string>, std::allocator<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > > >::_M_erase(std::_Rb_tree_node<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > >*) ()
+   from /opt/ros/electric/stacks/nodelet_core/nodelet/lib/libnodeletlib.so
+#24 0xb7b18eed in std::_Rb_tree<std::string, std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> >, std::_Select1st<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > >, std::less<std::string>, std::allocator<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > > >::clear (
+    this=0xbffff0a4, __in_chrg=<value optimised out>)
+    at /usr/include/c++/4.4/bits/stl_tree.h:726
+#25 std::map<std::string, boost::shared_ptr<nodelet::Nodelet>, std::less<std::string>, std::allocator<std::pair<std::string const, boost::shared_ptr<nodelet::Nodelet> > > >::clear (this=0xbffff0a4, __in_chrg=<value optimised out>)
+    at /usr/include/c++/4.4/bits/stl_map.h:626
+#26 ~Loader (this=0xbffff0a4, __in_chrg=<value optimised out>)
+    at /tmp/buildd/ros-electric-nodelet-core-1.6.2/debian/ros-electric-nodelet-core/opt/ros/electric/stacks/nodelet_core/nodelet/src/loader.cpp:176
+#27 0x0804d4e4 in main (argc=2, argv=0xbffff1c4)
+    at /tmp/buildd/ros-electric-nodelet-core-1.6.2/debian/ros-electric-nodelet-core/opt/ros/electric/stacks/nodelet_core/nodelet/src/nodelet.cpp:277
+
+Originally posted by ipso on ROS Answers with karma: 1416 on 2012-07-27
+Post score: 2
+
+Original comments
+Comment by Lorenz on 2012-07-27:
+Without seeing the backtrace, it's hard to say what's going wrong. Although it might not tell you much, we might be able to infer something.
+
+A:
+
+Nodelets are probably not supposed to call ros::requestShutdown(), but this is still a bug of some sort. Please open a defect ticket with a pointer back to this question.
+
+Originally posted by joq with karma: 25443 on 2012-07-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ipso on 2012-07-27:
+Done. ticket/4431 seems to be related.
+Comment by joq on 2012-07-27:
+Yes. I knew about that ticket and the lack of a clean way for a nodelet to shut itself down. Trying ros::requestShutdown() was a reasonable idea, but I think it shuts down the entire nodelet manager process (and not cleanly).
+Comment by ipso on 2012-07-27:
+@joq: well in my particular case I want to take the manager with me, but it should be done cleanly (or at least: not die in a horrible crash). Seeing the other tickets it'll probably be a while before this one is picked up.
+Comment by ipso on 2012-07-27:
+Oh, I forgot: 'this one' got ticket/5506.
+Comment by joq on 2012-07-27:
+You use case can probably be fixed, although well-behaved nodelets should probably avoid doing that, because they don't know what other nodelets are running in that manager process.
+

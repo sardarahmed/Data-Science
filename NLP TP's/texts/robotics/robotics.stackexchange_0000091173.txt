@@ -1,0 +1,105 @@
+Q:
+
+How to transform a vector in rospy?
+
+I couldn't find any tutorials for my situation.
+I have a vector (23.7, 0, 0) and I want to transform (only rotation no translation needed) it into another frame which is RPY (0.39, 0, 1.64).
+I'm trying with tf_conversions.posemath but couldn't get the correct answer which is nearly (-1.8, -21.8, 9.1). Any ideas?
+Code:
+current_pose_rpy = tf.transformations.euler_from_quaternion(quaternion) # which is (0.39, 0, 1.64).  
+tf_val = PyKDL.Frame(PyKDL.Rotation.RPY(*current_pose_rpy), PyKDL.Vector(0, 0, 0))   
+vel_val = PyKDL.Frame(PyKDL.Rotation.RPY(0, 0, 0), PyKDL.Vector(23.7, 0, 0))  
+transformed_vel = tf_val * vel_val
+
+Which is giving around what user janindu commented.
+But intuitively z component should be present which I'm not getting via this method.
+Original problem:
+My state estimator gives pose in state estimator frame (starting point as 0, 0, 0) and twist in state estimator frame. I want twist in base_link or drone frame as one opensource MPC controller takes base link twist. So, need to convert global velocity to local drone velocities.
+Tried these two solutions but still getting similar output as my code above.
+
+https://answers.ros.org/question/196149/how-to-rotate-vector-by-quaternion-in-python/?answer=196155#post-id-196155
+https://answers.ros.org/question/192273/how-to-implement-velocity-transformation/?answer=306449#post-id-306449
+
+Like when drone is rotated 90 deg left yaw and moving it's own right, we get those global velocity values of (23.7, 0, 0). In this instance, drone maintains constant roll, pitch, yaw which are (0.39, 0, 1.64) derived from pose.pose.orientation of odom message using tf.transformation.euler_from_quaternion(quaternion).
+Intuitively, as the drone is yaw left, rolled body right and going body right, that global x velocity should have both y, z components in drone frame. But z component is 0 when tried all these methods.
+Am I doing something wrong in rotations?
+And if I modify my code like this and transforming individually in each axis it is working but some velocities should be multiplied by -1 but values are correct. I mean I'm getting z component of velocity. I'm really confused and stuck here for two days.
+current_pose_rpy = tf.transformations.euler_from_quaternion(quaternion) # which is (0.39, 0, 1.64) .  
+tf_val = PyKDL.Frame(PyKDL.Rotation.RPY(0, 0, current_pose_rpy[2]), PyKDL.Vector(0, 0, 0))  
+tf_val_2 = PyKDL.Frame(PyKDL.Rotation.RPY(0, current_pose_rpy[1], 0), PyKDL.Vector(0, 0, 0))  
+tf_val_3 = PyKDL.Frame(PyKDL.Rotation.RPY(current_pose_rpy[0], 0, 0), PyKDL.Vector(0, 0, 0))  
+vel_val = PyKDL.Frame(PyKDL.Rotation.RPY(0, 0, 0), PyKDL.Vector(23.7, 0, 0))  
+transformed_vel_val = tf_val * vel_val  
+transformed_vel_val = tf_val_2 * transformed_vel_val  
+transformed_vel_val = tf_val_3 * transformed_vel_val
+
+Originally posted by SnShines on ROS Answers with karma: 3 on 2019-03-28
+Post score: 0
+
+Original comments
+Comment by janindu on 2019-03-28:
+Are you sure (-1.8, -21.8, 9.1) is the correct answer? Your vector is along the X axis so its immune to any rotations about the X axis (roll). You have zero pitch (rotation about Y axis). Yaw (rotation about Z axis can't change the Z component of the vector so the Z component of the answer should be zero. The result I got was
+x: -1.6388182331
+y: 23.6432712373
+z: 0.0
+
+Comment by jayess on 2019-03-28:\
+
+I'm trying with tf_conversions.posemath but coudln't get the correct answer...
+
+Specifically, what have you done (i.e., code)? Can you please update your question with the code that you're using
+Comment by SnShines on 2019-03-29:
+Thanks for reply guys.
+I've modified the question and added code and more info of what I'm exactly trying to solve. But couldn't figure out how to put a code block.
+I'm thinking the issue is my understanding of how Euler angles work. I can not put it in the code but intuitively see that z component should be there. And I'm also confused that transforming roll first and then yaw gives different output than doing yaw first and roll later (in my second code where I transformed individually each rotation). I'm really confused here.
+Comment by jhassold on 2019-03-29:
+Possibly a silly comment, but are you sure that gimbal lock isn't a factor here?
+Are you able to do the calculations in quaternion or rotation matrix form first, then turn them back into Euler angles? And does this give the answer you expect?
+Comment by SnShines on 2019-03-30:
+I don't think so. One Odom values (ground truth with local velocities) are from the gazebo simulator and another one are from my estimator. Everything is software and everything gives outputs as expected. Except for this transformation.
+I tried those two links posted in question where they used quaternions and still the output is the same as mine. But different than what I wanted.
+
+A:
+
+I think you need to apply the transformation in the reverse direction.
+import tf
+import tf2_geometry_msgs
+from geometry_msgs.msg import TransformStamped, Vector3Stamped
+
+v = Vector3Stamped()
+v.vector.x = 23.7
+
+t = TransformStamped()
+q = tf.transformations.quaternion_inverse(tf.transformations.quaternion_from_euler(0.39, 0, 1.64))
+
+t.transform.rotation.x = q[0]
+t.transform.rotation.y = q[1]
+t.transform.rotation.z = q[2]
+t.transform.rotation.w = q[3]
+
+vt = tf2_geometry_msgs.do_transform_vector3(v, t)
+
+vt looks like this
+header: 
+  seq: 0
+  stamp: 
+    secs: 0
+    nsecs:         0
+  frame_id: ''
+vector: 
+  x: -1.6388182331
+  y: -21.867875772
+  z: 8.98889782002
+
+Originally posted by janindu with karma: 849 on 2019-03-30
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by SnShines on 2019-03-30:
+This is amazing! It worked for all the cases. I've spent around 40 hrs trying to solve this issue.
+Any idea why we have to take quaternion inverse and do transform in reverse than usual?
+Just to make it clear for others, the original problem is converting global velocity to local drone velocity and this solution is working perfectly. Thanks a lot!
+Comment by janindu on 2019-03-30:
+The velocity is in the global frame. The state estimator gives the orientation of the body frame. That’s the transformation from body -> global. That can be used to transform any vector expressed in the body frame to the global frame. To transform a vector from global frame to the body frame, you need  global -> body transformation, which is the inverse of body -> global transformation.
+

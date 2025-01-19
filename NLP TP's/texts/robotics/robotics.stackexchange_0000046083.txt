@@ -1,0 +1,71 @@
+Q:
+
+ARM: Buffer Overrun debug help
+
+Hello fellow ROSers.
+I have compiled Fuerte from sources on an ACME FoxG20 board running embedian 6 wheezy (armv5tejl platform).
+I am now attempting to compile the publisher/subscriber tutorial.
+Everything appears to work, and it compiles fine.
+Problem is: I always get this error
+[ERROR] [1353939756.715474051]: Exception thrown when deserializing message of length [164] from [/add_two_ints_server]: Buffer Overrun
+
+The same code runs flawlessly on my computer.
+Whatever mixture of node topology I use, when any node (core, server, client... doesn't matter) is run on the ARM, I get this error.
+I suspect it may have something to do with the network buffers, but I can't believe such a stupid example can overflow the buffer.
+I already enlarged all TCP related buffers, so this shouldn't be the problem.
+Where else should I look for a solution?
+Followup.
+doing a grep -lri "buffer overrun" in ros-underlay returns
+roscpp_core/roscpp_serialization/src/serialization.cpp
+
+This here gives the function name
+throwStreamOverrun()
+
+Doing another grep on this yields:
+roscpp_core/roscpp_serialization/include/ros/serialization.h
+roscpp_core/roscpp_serialization/src/serialization.cpp
+
+Reading the serialization.h I did a grep on both ROSCPP_SERIALIZATION_DECL and StreamOverrunException whose result is
+roscpp_core/roscpp_serialization/include/ros/roscpp_serialization_macros.h
+roscpp_core/roscpp_serialization/include/ros/serialization.h
+roscpp_core/roscpp_serialization/include/ros/serialized_message.h
+
+Since this is leading me nowhere I decide to grep on the first part of the error message "Exception thrown when..." and this gives
+ros-underlay/ros_comm/clients/cpp/roscpp/src/libros/message_deserializer.cpp
+
+try
+  {
+    SubscriptionCallbackHelperDeserializeParams params;
+    params.buffer = serialized_message_.message_start;
+    params.length = serialized_message_.num_bytes - (serialized_message_.message_start - serialized_message_.buf.get());
+    params.connection_header = connection_header_;
+    msg_ = helper_->deserialize(params);
+  }
+  catch (std::exception& e)
+  {
+    ROS_ERROR("Exception thrown when deserializing message of length [%d] from [%s]: %s", (uint32_t)serialized_message_.num_bytes, (*connection_header_)["callerid"].c_str(), e.what());
+  }
+
+So somehow the try fails.
+Now how do I debug this???
+
+Originally posted by Claudio on ROS Answers with karma: 859 on 2012-11-26
+Post score: 0
+
+A:
+
+I would guess that your ARM machine is configured to run big-endian.  The ROS communication protocol uses little-endian on the wire and as far as I know, roscpp's seralizer doesn't account for running on a big-endian host.
+Adding big-endian support to roscpp has been discussed.
+But you can likely work around your problem by configuring your ARM machine to run as little-endian instead of big-endian.  There's usually a way to do that.
+Btw, I would expect rospy to work properly across mixed-endian machines as it's using Python's struct module to implement serialization.
+
+Originally posted by Brian Gerkey with karma: 2916 on 2012-11-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by enodiesop on 2013-05-03:
+I am the same error with same architecture (AT91SAM9G25) and same debian version. I have build ros-groovy myself. With "dpkg-architecture" I know that my machine is little-endian. So, how I can resolve this error? Claudio, you have answer?
+Comment by dave.peacock on 2014-02-25:
+Years later I run into the same problem, with ros-fuerte on an ARM host running squeeze. Host is little-endian, cross-compiled code says it is little endian. Saw some post on ros-users that mentioned sizeof int8 vs int32, maybe this is the problem. Can anyone shed light on what they found?
+

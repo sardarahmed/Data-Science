@@ -1,0 +1,63 @@
+Q:
+
+ROS2 Messages from IDL Files
+
+I've seen in the release notes for Dashing that the message generation pipeline now supports IDL files directly.  Are there any examples available on how to actually use an IDL file directly in a messages package?  Can I pass a list of IDL files directly to rosidl_generate_interfaces()?
+[UPDATE]
+Based on the advice of sloretz I've tried creating an example project that includes the MyMessage.idl test case from rosidl_parser.  It's located at idl_msgs.  It tries to generate messages from a single IDL file.  On Ubuntu 18.04 with Dashing, running 'colcon build' on the package produces several errors:
+davidhodo@ubuntu:~/devel/idl_test_ws$ colcon build
+Starting >>> idl_msgs
+--- stderr: idl_msgs
+AssertionError in template '/opt/ros/dashing/share/rosidl_generator_cpp/cmake/../resource/msg__struct.hpp.em': unknown primitive type 'long double'
+AssertionError when expanding 'idl__struct.hpp.em' into '/home/davidhodo/devel/idl_test_ws/build/idl_msgs/rosidl_generator_cpp/idl_msgs/idl/my_message__struct.hpp': unknown primiti
+ve type 'long double'
+Error processing idl file: /home/davidhodo/devel/idl_test_ws/src/idl_msgs/idl/MyMessage.idl
+TypeError in template '/opt/ros/dashing/share/rosidl_generator_dds_idl/resource/msg.idl.em': %d format: a number is required, not str
+TypeError when expanding 'idl.idl.em' into '/home/davidhodo/devel/idl_test_ws/build/idl_msgs/rosidl_generator_dds_idl/idl_msgs/idl/dds_opensplice/MyMessage_.idl': %d format: a numb
+er is required, not str
+Error processing idl file: /home/davidhodo/devel/idl_test_ws/src/idl_msgs/idl/MyMessage.idl
+
+The full error output is available here.
+Any suggestions would be appreciated.
+[UPDATE2]
+I was able to get it to build with a few modifications.  I had to remove the long double and wchar types as well as the includes.  I also had to change the top level module name to match my package name and the next level module name from 'msg' to 'idl'.
+module idl_msgs{
+  module idl {
+
+}
+}
+
+That compiled and gave me a working message.  The updated code is available at: https://github.com/davidhodo/idl_msgs.git
+Thanks,
+David
+
+Originally posted by david.hodo on ROS Answers with karma: 395 on 2019-06-03
+Post score: 0
+
+Original comments
+Comment by Dirk Thomas on 2019-06-04:
+Can you try to remove the long double field? The 128 bit floating point type doesn't exist anywhere in the ROS message format and therefore has probably never been tested with the generators.
+Comment by Dirk Thomas on 2019-06-04:
+If you want to use long double you can try the following two PRs which should make it work with FastRTPS: https://github.com/ros2/rosidl/pull/383 and https://github.com/ros2/rosidl_typesupport_fastrtps/pull/26
+
+A:
+
+The package rosidl_parser has a few test idl files:
+
+MyAction.idl
+MyMessage.idl
+MyService.idl
+
+The documentation for rosidl_generate_interfaces says IDL files can be passed directly to rosidl_generate_interfaces(). Internally all .action, .msg, and .srv are converted to .idl files before given to the code generators, so for more examples build a message package and look in the build directory for the generated files.
+The design page IDL -Interface Definition and Language Mapping documents the subset of OMG IDL 4.2 supported in Dashing.
+
+Originally posted by sloretz with karma: 3061 on 2019-06-03
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Dirk Thomas on 2019-06-03:
+You can convert existing .msg files using the following command: ros2 run rosidl_adapter msg2idl.py The same exists for .srv files too. In general you only want to do so if you want to leverage some features from .idl which aren't available in .msg / .srv.
+Comment by david.hodo on 2019-06-04:
+Thanks.  I've tried creating a basic package based on those test messages and haven't been able to get it successfully build.  Based on Dirk's comment, I might should see if what I'm attempting to do is even possible.  My main reason for trying this is to try to get ROS2 to interoperate with another system that is using DDS natively.  The IDLs don't contain features that aren't supported in ROS2's IDL subset, but I'm unable to generate .msg files that match them, mostly due to underscores in types and namespaces that are added by the ROS message generation process.
+

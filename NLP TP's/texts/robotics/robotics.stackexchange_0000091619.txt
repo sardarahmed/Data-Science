@@ -1,0 +1,133 @@
+Q:
+
+why the robot position coordinate change a lot when doing rotation?
+
+Dear all,
+Sorry forget my silly question, here I follow some tutorial code to write a test code to control TB3 burger to move a triangle shape.
+Below are part of code that to obtain the current position and then using "close-loop" way to move the burger to specified distance (say 0.3m) and then rotate specified angle (say 120deg).
+But I found issue so print-out the detail data to check--I find the problem is as soon as the burger starting rotate. the position.x obtained from  curr_pos_.x = msg->pose.pose.position.x will jumped a lot (from ~0.3 to ~0.5!!).. so I wonder if such way to get the "current" position of robot are correct or not??
+I search around and find suggestion that odometry is not precise, however it should be have such big error? if it indeed
+naturally is, should I consider to use some other way like IMU?
+Thanks a lot for your kindly suggestion..
+BR
+LM
+void velControl::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)  
+{  
+    geometry_msgs::Quaternion orientation = msg->pose.pose.orientation;  //obtain Quaternion info.
+    tf::Matrix3x3 mat(tf::Quaternion(orientation.x, orientation.y, orientation.z, orientation.w));  
+
+    double yaw, pitch, roll;  
+    mat.getEulerYPR (yaw, pitch, roll);
+    //Get the matrix represented as euler angles around YXZ, roundtrip with setEulerYPR. 
+    //Yaw around Z axis; Pitch around Y axis; Roll around X axis
+    curr_pos_.x = msg->pose.pose.position.x;  
+    curr_pos_.y = msg->pose.pose.position.y;  
+    curr_pos_.theta = yaw;  
+
+       velocityControl();
+
+    if(Is_Fininsh_)    //Is_Fininsh_ =true= robot complete one round line+rotaion;
+       {   start_pos_.x = curr_pos_.x;  
+        start_pos_.y = curr_pos_.y;  
+        start_pos_.theta = curr_pos_.theta; 
+       } 
+
+}
+Below are part of the move forward and rotate. I did not paste all as too much code.. concept are similar.
+   if ( line_travel < triagle_line1 )  
+        {  
+            #ifdef VERBOSE
+             cout<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<endl;
+              #endif
+            controlVel_.angular.z = 0.0;
+            controlVel_.linear.x  = vel_line_;
+            controlVel_.linear.y  = 0;
+            controlVel_.linear.z  = 0;  
+            Is_Fininsh_ = false;  
+        }  
+        else  
+        {   
+            controlVel_.angular.z = 0.0;
+            controlVel_.linear.x  = 0.0;
+            controlVel_.linear.y  = 0;  
+            controlVel_.linear.z  = 0;  
+            state_ = 1;  
+            Is_Fininsh_ = true;  
+       
+            cout<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<endl;
+             }  
+        break;  
+
+    case 1: 
+        ang_travel = abs(angleWrap(curr_pos_.theta - start_pos_.theta));
+        if ( ang_travel < TRIANGLE_Ang1 )  
+        {   
+            #ifdef VERBOSE
+            cout<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<endl;
+            #endif
+            controlVel_.angular.z = vel_angle_;  
+            controlVel_.linear.x  = 0;  
+            controlVel_.linear.y  = 0;  
+            controlVel_.linear.z  = 0;  
+            Is_Fininsh_ = false;  
+        }  
+        else  
+        {  
+            controlVel_.angular.z = 0.0;  
+            controlVel_.linear.x  = 0.0;  
+            controlVel_.linear.y  = 0;  
+            controlVel_.linear.z  = 0;  
+            state_ = 2;  
+            Is_Fininsh_ = true;  
+            cout<<"[State#1]: Angle1 rotation completed"<<endl;
+            cout<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<endl;
+            cout<<endl;
+            
+        }  
+        break; 
+
+Originally posted by macleonsh on ROS Answers with karma: 26 on 2019-05-09
+Post score: 0
+
+A:
+
+I see one possibility. Note you do not tell the robot to go 0.3m. You tell it go some velocity and then tell it to stop at some point in time after it has passed 0.3m. It's likely the code works as you expect. It passes 0.3m and then comes to a stop some distance later.
+The question is how long after it has passed 0.3m does the condition
+if ( line_travel < triagle_line1 )
+
+get checked? It if gets checked when robot is at 0.4m and takes a 0.1m to stop, then it's working great.
+If you provide the data that you print to the screen, but include the commanded velocity at each 'cout' statement, we'd have more to go on. You should change code so you can watch the robot come to stop prior to turning
+More like this:
+   if ( line_travel < triagle_line1 )  
+        { 
+            counter = 0; // init the counter
+            controlVel_.angular.z = 0.0;
+            controlVel_.linear.x  = vel_line_;
+            controlVel_.linear.y  = 0;
+            controlVel_.linear.z  = 0;  
+            Is_Fininsh_ = false;  
+            #ifdef VERBOSE
+             cout<<"In IF statement: "<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<"||  ||"<< line_travel <<"||  ||"<< controlVel_.linear.x <<endl;
+            #endif
+        }  
+        else  
+        {   
+            controlVel_.angular.z = 0.0;
+            controlVel_.linear.x  = 0.0;
+            controlVel_.linear.y  = 0;  
+            controlVel_.linear.z  = 0;  
+            state_ = 1;
+            cout<<"In ELSE statement: "<< counter << "||"<< curr_pos_.x <<"||"<< start_pos_.x<<"||  ||"<<curr_pos_.y<<"||"<<start_pos_.y<<"||  ||"<< line_travel <<"||  ||"<< line_travel <<"||  ||" << controlVel_.linear.x <<endl;
+
+           // Go through this else statement 20 times 
+           // so you can watch the robot come to stop before turning
+           if (counter++ > 20)  
+           {  
+            Is_Fininsh_ = true;  
+           }
+        }
+
+Originally posted by billy with karma: 1850 on 2019-05-10
+This answer was ACCEPTED on the original site
+Post score: 0
+

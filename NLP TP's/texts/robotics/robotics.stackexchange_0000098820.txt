@@ -1,0 +1,94 @@
+Q:
+
+Catkin make fails after adding gtest
+
+Hello,
+I have a package, that contains custom messages and services. This package was building well and everything was ok. But recently I added gtest to my package and faced with some interesting issue. If I build my package with:
+catkin_make my_pkg_name
+
+It builds ok, gtest also works after
+catkin_make run_test_my_pkg_name_gtest
+
+But if I try catkin_make without any arguments it fails with this error:
+/home/user/catkin_ws/src/my_pkg_name/include/my_pkg_name/map_handler.h:8:10:
+
+fatal error: custom_msgs/Map.h: no such file or directory
+
+include "custom_msgs/Map.h"
+             ^~~~~~~~~~~~~~~ compilation terminated 
+
+where Map.h is a definition of my custom service. If I switch to version of my package without gtest catkin_make works again.
+I suppose that problem connects with gtest module which doesn't know something about my custom messages and services at the building time. But strange that it works for building only one package (not whole catkin directory).
+Any ideas on this case? I would appreciate practical advise how to solve this problem and theoretical explanations about catkin_make features.
+
+Originally posted by Ivan4815162342 on ROS Answers with karma: 5 on 2021-04-14
+Post score: 0
+
+Original comments
+Comment by miura on 2021-04-15:
+Do you have your non-test code and your test code in different directories? The different directories might make some difference.
+In this case, you may be able to solve it by writing include_directories.
+Comment by Ivan4815162342 on 2021-04-16:
+Yes, my test code is in folder called test. If I move it to the src folder error doesn't disappear. Also I tried to add test folder in include_directories but result was the same.
+Comment by miura on 2021-04-17:
+You can get the build details by enabling VERBOSE=1.
+Can you please try
+catkin_make my_pkg_name VERBOSE=1
+
+and
+catkin_make run_test_my_pkg_name_gtest VERBOSE=1
+
+There should be some difference.
+Comment by Ivan4815162342 on 2021-04-19:
+Yes, results of above commands execution are difference. There are a lot of some different message and I actually don't understand what I should do with this information. As I can see the catkin_make run_test_my_pkg_name_gtest VERBOSE=1 enters into my_package_name directory only, when catkin_make my_pkg_name VERBOSE=1 enters into custom_msgs directory which contains definitions of my custom messages. Does this information tell you anything?
+Comment by miura on 2021-04-19:
+If you share the messages and CMakeLists.txt with us, we may be able to notice something.
+Comment by Ivan4815162342 on 2021-04-19:
+OK, There is my CMakeLists.txt, this is output of catkin_make my_pkg_name VERBOSE=1 and this is output of catkin_make run_test_my_pkg_name_gtest VERBOSE=1
+
+A:
+
+Fixing CMakeLists.txt seems to work.
+test/main_test.cpp defines a dependency that requires custom_msgs.
+## Add gtest based cpp test target and link libraries
+if (CATKIN_ENABLE_TESTING)
+  catkin_add_gtest(${PROJECT_NAME}-test test/main_test.cpp)
+  add_dependencies(${PROJECT_NAME}-test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}) # added
+  target_link_libraries(${PROJECT_NAME}-test ${catkin_LIBRARIES} ${PROJECT_NAME}_test)
+endif()
+
+Reference: https://answers.ros.org/question/286311/when-is-catkin_exported_targets-needed/
+Update
+I found something else.
+add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}) # added
+
+The following may also be relevant.
+catkin_package(
+# INCLUDE_DIRS include
+# LIBRARIES Software_maps_and_roots
+   CATKIN_DEPENDS roscpp std_msgs # update
+   r2_msgs # added
+   sensor_msgs # added
+   cv_bridge # added
+# DEPENDS system_lib
+)
+
+Originally posted by miura with karma: 1908 on 2021-04-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Ivan4815162342 on 2021-04-20:
+I tried to add this line to my CMakeLists.txt, but I have the same error.
+Comment by miura on 2021-04-20:
+I re-read CMakeLists.txt and updated it.
+Not an answer, but something I was wondering. add_message_files, generate_messages were commented. Are you building the custom messages in a separate CMakeLists.txt?
+Comment by Ivan4815162342 on 2021-04-21:
+Yes, I have separate ros-package with all my custom messages. I added to my CMakeLists.txt only this line:
+add_dependencies (${PROJECT_NAME}_test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+and everything works! I assume that is because my dependency 'test' was know nothing about other packages (including package with my custom messages). Now it works, thank you!
+Comment by miura on 2021-04-21:
+Congratulations.
+

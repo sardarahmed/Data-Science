@@ -1,0 +1,78 @@
+Q:
+
+How can I use a service/request to capture a single callback from a subscription
+
+Greetings,
+First, I apologize for not knowing how to format my code nicely, but it compiles and runs, so I know I don't have programmatic errors.
+I have a turtlebot using binocular cameras.  I am using two nodes to control the system, one has the locomotion/path planning the other deals with image processing.
+I am using the client to request information from the image capture, which is supplied by the service.  Inside the service I am using class methods to define my callbacks.
+Using ros::spin(), once the service calls "bool grab", the subscription for images from the cameras spin indefinitely.  I would like the ability to spin the service indefinitely, but force the camera images to be grabbed once and processed.  then if i need new images, I will request them from the client and grab two more, without spinning indefinitely.
+I think I can do this using separate queues, one for each camera stream, and a the master one for the service, but I don't think that will actually function the way I described.
+Note* I have removed most of the guts from the camera callback to simplify what I have posted, because it would have been unnecessary.
+class ImageGrab
+{
+private:
+ros::NodeHandle nh_;
+image_transport::ImageTransport it_;
+image_transport::Publisher image_pub_;
+image_transport::Subscriber image_subr_;
+image_transport::Subscriber image_subl_;
+ros::ServiceServer grab_service_;
+
+public:
+long int p_x1r, p_x2r;
+
+ImageGrab()
+: it_(nh_)
+{
+grab_service_ = nh_.advertiseService("/obj_31/Image_Grab", &ImageGrab::grab, this);
+}
+
+~ImageGrab()
+{
+cv::destroyWindow(WINDOW);
+}
+
+bool grab(obj_31::Pixels::Request  &req, obj_31::Pixels::Response &res )
+{
+ROS_INFO("entered bool grab");
+image_subr_ = it_.subscribe("/right/camera/image_raw", 1, &ImageGrab::imageCbr, this);
+image_subl_ = it_.subscribe("/left/camera/image_raw", 1, &ImageGrab::imageCbl, this);
+res.x1r = p_x1r;
+res.x2r = p_x2r;
+return true;
+}
+
+void imageCbr(const sensor_msgs::ImageConstPtr& msg)
+{
+p_x1r = 20;
+}
+
+void imageCbl(const sensor_msgs::ImageConstPtr& msg)
+{
+p_x2r = -56;
+}
+
+} // close ImageGrab class
+
+int main(int argc, char **argv) 
+{
+ros::init(argc, argv, "test_server");
+ImageGrab ig;
+ros::spin();
+return 0;
+}
+
+Originally posted by benjaminabruzzo on ROS Answers with karma: 45 on 2012-09-03
+Post score: 0
+
+A:
+
+I'm not sure if that's a good approach at all, but in your service callback you could use ros::topic::waitForMessage to get just one image. If you do that, make sure that you are actually running more than one spinner because otherwise waitForMessage in your service callback will block. You can use ros::AsyncSpinner for instance.
+As I said, above solution is probably not the best one. I would instead have the subscriber callbacks running all the time and just store the newest image in a member variable of the class. Then, you can always use the latest image in your service callback.
+Btw. please retag your question to help people to find your question easily.
+
+Originally posted by Lorenz with karma: 22731 on 2012-09-03
+This answer was ACCEPTED on the original site
+Post score: 1
+

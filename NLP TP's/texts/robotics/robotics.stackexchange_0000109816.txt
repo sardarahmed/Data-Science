@@ -1,0 +1,48 @@
+Q:
+
+How to get a Docker container to see ROS traffic from the local host?
+
+I am trying to get ROS traffic from the local host to a Docker container on that same host but I get an error when I run my Docker container.
+The Dockerfile is:
+FROM ros:noetic
+ARG ROS_APP_CFG=ros_app.cfg
+LABEL developer=jason@myemail.io
+
+RUN set -xe \
+    && apt-get update \
+    && apt-get -y install python3-pip
+
+RUN pip install --no-binary protobuf protobuf && \
+    pip install pyzmq
+
+RUN mkdir -p /opt/my_server
+
+COPY ./config-python /opt/my_server/config-python
+
+RUN cd /opt/my_server/config-python && \
+    pip install .
+
+EXPOSE 11311/udp
+
+COPY src/${ROS_APP_CFG} /ros_app.cfg
+COPY src/ros_app.py /
+
+WORKDIR /
+
+CMD ["python3", "ros_app.py"]
+
+The Docker build and run commands are:
+docker image build --build-arg="ROS_APP_CFG=jakal_sub.cfg" -t jakal_sub:1.0.0 -f Dockerfile_sub .
+
+docker container run --rm --name jakal-ros-sub -e ROS_MASTER_URI=http://0.0.0.0:11311 -p 11311:11311 jakal_sub:1.0.0
+
+I run roscore on my local host. The port is 11311. The error message is:
+docker: Error response from daemon: driver failed programming external connectivity on endpoint jakal-ros-sub (7d200e24af39943cad71874c08a3e4ee63a22b8ade479a753f87ce0f9d3a86b3): Error starting userland proxy: listen tcp4 0.0.0.0:11311: bind: address already in use.
+
+I assume it refers to the ROS master; but how do I get the Docker container to see the ROS traffic?
+
+A:
+
+It works when I use --network host in the command.
+docker container run --rm --name jakal-ros-sub -e ROS_MASTER_URI=http://0.0.0.0:11311 --network host jakal_sub:1.0.0
+

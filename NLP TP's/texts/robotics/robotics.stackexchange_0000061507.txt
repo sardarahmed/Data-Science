@@ -1,0 +1,134 @@
+Q:
+
+message headers won't build first
+
+I have been using ROS hydro and indigo for the past year, and I can't get my custom message files to build in the correct order. Whenever I move my packages to a new computer and do a fresh build, I get errors about missing message header files. I am usually able to get everything to build if I remove the executables from my  CMakeLists and only build the message files first, but this is cumbersome since I have 8 or 9 custom packages.
+Is there something I can do to my CMakeLists to fix this problem?
+
+Originally posted by Ralff on ROS Answers with karma: 280 on 2014-08-05
+Post score: 18
+
+A:
+
+As McMudro said you are missing some dependencies. To make it bit clearer:
+catkin creates several files which are used as flags to determine if something has been built or not. The flags for messages are always following the same naming convention:
+package_name_generate_messages_cpp
+
+Where 'package_name' is of course the name of your package and '_generate_messages_cpp' is a fixed name for the build flag and cannot be changed. One of the problems is that if you misspell it, catkin will not complain but it also does not have any effect. Therefore you have to make sure that you always spell it right.
+One example would be:
+cmake_minimum_required(VERSION 2.8.3)
+project(my_package)
+
+find_package(catkin REQUIRED COMPONENTS genmsg roscpp std_msgs geometry_msgs ... message_generation)
+
+## Generate messages in the 'msg' folder
+add_message_files(
+  FILES
+  MyMessage.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs 
+  ...
+  geometry_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS include
+# LIBRARIES strands_gazing
+  CATKIN_DEPENDS std_msgs geometry_msgs ...
+# DEPENDS system_lib
+)
+
+include_directories(include
+  ${catkin_INCLUDE_DIRS}
+)
+
+## Declare a cpp executable
+add_executable(foo foo.cpp)
+
+## Add cmake target dependencies of the executable/library
+## as an example, message headers may need to be generated before nodes
+add_dependencies(foo my_package_generate_messages_cpp)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(foo
+  ${catkin_LIBRARIES}
+)
+
+Where the important line is this one add_dependencies(foo my_package_generate_messages_cpp) which makes sure that the flag my_package_generate_messages_cpp exists before trying to build foo. Therefore it makes sure that the message headers are generated before building the binary.
+Now, what if you have custom messages in other packages on which this package relies and which therefore have to be build first? You could include them in the same way in the add_dependency line but it is much more convenient to use one of catkins makros for this: ${catkin_EXPORTED_TARGETS} which contains all the _generate_messages_cpp flags for all the catkin packages you listed in the find_package line. So all you have to change is:
+
+Add your second package to the find_package statement of the first one: find_package(catkin REQUIRED COMPONENTS my_other_package genmsg roscpp geometry_msgs ... message_generation)
+Add the macro to the dependencies add_dependencies(foo my_package_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
+
+In fact it can never hurt to include this macro.
+Another very common source of error is including the my_other_package_generate_messages_cpp flag in the dependencies of my_package (e.g. by using the catkin macro described above) and forgetting to add it in the package.xml file. If you do not add my_other_package as a build and run dependency to the package.xml of my_package, catkin will assume that both packages try to build the messages in my_other_package and since you cannot have the same type of message twice it will exit with a cmake error. So in this case your package.xml file would have to look similar to this:
+<?xml version="1.0"?>
+<package>
+ <name>my_package</name>
+ ...
+
+ <buildtool_depend>catkin</buildtool_depend>
+
+ <build_depend>my_other_package</build_depend>
+ <build_depend>geometry_msgs</build_depend>
+ <build_depend>genmsgs</build_depend>
+ <build_depend>roscpp</build_depend>
+ <build_depend>std_msgs_msgs</build_depend>
+ ...
+ <build_depend>message_generation</build_depend>
+
+ <run_depend>my_other_package</run_depend>
+ <run_depend>geometry_msgs</run_depend>
+ <run_depend>genmsgs</run_depend>
+ <run_depend>roscpp</run_depend>
+ <run_depend>std_msgs_msgs</run_depend>
+ ...
+ <run_depend>message_runtime</run_depend>
+
+ <export/>
+</package>
+
+Hope that helps.
+
+Originally posted by Chrissi with karma: 1642 on 2014-08-06
+This answer was ACCEPTED on the original site
+Post score: 41
+
+Original comments
+Comment by Ralff on 2014-08-06:
+Thanks. The problem was that I didn't add the dependencies for the message files from other packages for generating the messages. I only had the dependencies for the package itself.
+Comment by Andromeda on 2014-09-03:
+Hi Chrissi, maay I know where did you find those informations?
+I ve read lolts of tutorials about CMake but I found your explanation better than all those tutorials together
+Comment by Chrissi on 2014-09-03:
+Thank you.
+I have to say that I found that part very poorly documented so I found most of that via extensive google searches. But this is not a feature of cmake but more catkin related.
+Comment by Andromeda on 2014-09-03:
+Wow!!! Chrissi...
+Respect!
+Comment by Javier V. Gómez on 2015-05-21:
+I was having the same problem but your answer wasn't enough. I had to first build only the first package catkin_make --pkg my_package and then run catkin_make. However, I have this question, does it make sense to my_package to depend on my_other_package? That seems not very good.
+Comment by Chrissi on 2015-05-21:
+I don't get the problem. If you have to build one package first than the dependencies in the second package are not correctly defined. If you follow those instructions it should always work. You have to depend on packages if you use their custom messages.
+Comment by Javier V. Gómez on 2015-05-21:
+I have a srv_pkg (only with srv, no nodes) and user_pkg which depends on srv_pkg. In your first point, you do srv_pkg depend on user_pkg, but I do not understand why. However, it is clear that user_pkg should depend on srv_pkg. I have tried lots of things and couldn't make it work :(
+Comment by Chrissi on 2015-05-21:
+In the example my_package would be your user_pkg and therefore it has to depend on srv_pkg if you then add the ${catkin_EXPORTED_TARGETS} to the add_dependencies and also add srv_pkg to the package.xml of the user_pkg it should build fine.
+Comment by Chrissi on 2015-05-21:
+Please provide a link to the repository with your code if this still doesn't work.
+Comment by Javier V. Gómez on 2015-05-21:
+Thank you for your help. I was understanding it the other way around. In any case, I think I have already tried what you suggest unsuccessfully. I will try it again. :)
+Comment by Borob on 2016-01-21:
+Isn't <run_depend>message_generation</run_depend> wrong in the package.xml? It should be <run_depend>message_runtime</run_depend>.
+Comment by Chrissi on 2016-04-25:
+Correct, I'll fix it. Thanks.
+Comment by Stian on 2017-05-18:
+Instead of my_package_generate_messages_cpp, one can use ${${PROJECT_NAME}_EXPORTED_TARGETS}. This was useful when I had to add dependencies in several packages, because I could copy_paste most of it.
+Comment by Thomas D on 2018-11-30:
+Great answer! A minor clarification would be that the dependency is msg_pkg_generate_messages_cpp, in case the message file is found in a package different from the package currently being built. Right now the answer seems to assume the build target and message are in the same package.
+Comment by Jägermeister on 2019-02-18:
+What about Python ones? Is there a difference?
+

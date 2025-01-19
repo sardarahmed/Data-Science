@@ -1,0 +1,53 @@
+Q:
+
+Optionally build a package with catkin
+
+I have a package that provides a library. This library performs functions that do not explicitly rely on ROS and I want to be able to use this library in non-ROS contexts, i.e. in c++ programs I build with pure CMake.
+I am looking for a way to set up my package, specifically the CMakeLists.txt, such that this package builds both as a catkin package and stand alone. When building with catkin, I want to declare the library s.t. other ROS packages can find and use it. In the pure CMake case I want to just build the library and have other packages find it themselves, e.g. with a FindMYPACKAGE.cmake.
+I can already do this by manually defining my own variable in CMakeLists.txt, set(ROS 1), and then only doing catkiny stuff if that's defined.
+I tried using catkin_FOUND for this, but I have two problems: Even when the package is not actually in a catkin workspace and I'm not building with the catkin command,  catkin_FOUND is true (on systems with ROS installed). On systems without ROS, find_package(catkin ...) naturally causes an error, so I can't check for catkin that way.
+What variables exist that are already set at the top of a packages CMakeLists.txt with which I can check if catkin is the build tool in use?
+Thank you for your help
+
+Originally posted by NickDP on ROS Answers with karma: 148 on 2016-04-04
+Post score: 3
+
+A:
+
+I can already do this by manually defining my own variable in CMakeLists.txt, set(ROS 1), and then only doing catkiny stuff if that's defined. I tried using catkin_FOUND for this, but I have two problems: Even when the package is not actually in a catkin workspace and I'm not building with the catkin command, catkin_FOUND is true (on systems with ROS installed).
+
+Is that even without having sourced the distribution setup.bash? A quick test on my machine shows that find_package(catkin ..) actually fails if I don't have setup.bash sourced.
+
+On systems without ROS, find_package(catkin ...) naturally causes an error, so I can't check for catkin that way.
+
+Unless you add the QUIET argument. As that suppresses errors, and lets you use something like:
+find_package(catkin QUIET)
+if (catkin_FOUND)
+  ..
+else()
+  ..
+endif()
+
+This won't error out, even if Findcatkin.cmake isn't on the CMake search path.
+As to your question: the above technique only allows you to automatically skip building the ROS parts if ROS isn't installed (or can't be found). If it is found, your catkiny stuff will always still be build. To avoid that, I don't think you can avoid adding a CMake option that can be set by your user.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-04-04
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by NickDP on 2016-04-04:
+The comment setup.bash is a good point. However, I source it in my .bashrc so it'd inconvenient if I always have to make sure that it's not sourced. I'm currently checking if CATKIN_DEVEL_PREFIX is set, which seems to work. It's fine if the ROS stuff is always built if possible.
+Comment by NickDP on 2016-04-04:
+Right now I'm just having issues with linking the library when not building with catkin, although that is likely just a cmake issue.
+Comment by gvdhoorn on 2016-04-04:
+I'm a bit confused: if it's ok that "the ROS stuff is always built if possible" (ie: when catkin can be found, ie: when setup.bash is sourced), and it's also possible to detect when catkin is not found, then what is the issue with the proposed solution? Why check CATKIN_DEVEL_PREFIX?
+Comment by NickDP on 2016-04-04:
+Because catkin_FOUND is true even when not building with catkin. That tells me if the setup.bash was sourced. I.e. I would have to make sure that I don't source it (which I do in .bashrc), which is inconvenient and doesn't test what I care about.
+Comment by gvdhoorn on 2016-04-04:
+I'm probably dense, but I still don't get how this does not cover your requirements: catkin_FOUND is only true if ROS is actually installed and sourced (case 1). If not, it silently fails and sets catkin_FOUND=False, in which case you build without ROS (case 2).
+Comment by NickDP on 2016-04-04:
+That's true. But on my machine I want to test both cases, with and without ROS. So I have the same package cloned in the catkin ws and somewhere else. For the pure cmake case I don't want to have to remember to 'un-source' the setup.bash which I automatically source in my .bashrc. I'm just lazy.
+Comment by mikepurvis on 2023-06-14:
+I would strongly prefer that chimera packages like plotjuggler do a find_package(catkin QUIET) check as proposed in this answer, vs relying on CATKIN_DEVEL_PREFIX (which is an artifact of catkin_tools) or requiring an explicit CMake arg to be passed in.
+

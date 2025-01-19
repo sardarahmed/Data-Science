@@ -1,0 +1,58 @@
+Q:
+
+Integrate 1D-Odometry into EKF
+
+Hi,
+I have an Ackermann-steering style robot whose tri-phase motor encoder I read. I would like to use this information as odometry with an robot_localization EKF node. The EKF fuses IMU yaw successfully already.
+I build an PoseWithCovarianceStamped (which is expected by the EKF node) in my custom node. But I'm confused about how I should integrate my position, since the encoder tells only distance driven in base_link / X-direction (forward). I tried two approaches:
+
+On every encoder tick, add a certain
+length vector oriented like the IMU
+orientation quaternion axis. The
+message header's frame_id is odom.
+
+On each encoder tick, add a certain
+length along the X-axis. The
+message header's frame_id is base_link.
+
+Also, I'm not sure how to configure the pose0 in the EKF. In the first case, I tried:
+<param name="pose0_relative" value="true"/>    
+<rosparam param="pose0_config">
+  [true, true,  false,  # x, y, z, - we want x and y
+  false, false, false,  # roll, pitch, yaw,
+  false, false, false,  # vx, vy, vz,
+  false, false, false,  # vroll, vpitch, vyaw,
+  false, false, false]  # ax, ay, az
+</rosparam>
+
+And in the second case:
+<param name="pose0_differential" value="true"/>    
+<rosparam param="pose0_config">
+  [true, false, false,  # x, y, z, - we want x from motor encoder
+  false, false, false,  # roll, pitch, yaw,
+  false, false, false,  # vx, vy, vz,
+  false, false, false,  # vroll, vpitch, vyaw,
+  false, false, false]  # ax, ay, az
+</rosparam>
+
+The first case doesn't work at all (nothing moves in rviz). The second case works really well -- In the direction the car faces when the odometry stack is launched; but not at all perpendicular to that.
+How can I use my encoder information with the EKF?
+Cheers
+Laurenz
+
+Originally posted by lalten on ROS Answers with karma: 102 on 2016-01-19
+Post score: 0
+
+A:
+
+If you look at Coordinate Frames and Transforming Sensor Data you'll notice that pose data is interpreted relative to the world frame, while twist data is interpreted relative to the base_link frame.
+One proper way of providing the data would thus be to compute the velocity from the encoder ticks and time between encoder reads and then provide a nav_msgs/Odometry message with the correct velocity set in the twist/twist/linear/x field. This can then be fed into robot_localization (the correct field has to be set to "true" for the config of course).
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2016-01-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by lalten on 2016-01-20:
+Thanks a lot, that solved it!
+

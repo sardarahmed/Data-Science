@@ -1,0 +1,45 @@
+Q:
+
+Mapping in slam_toolbox using bag files (ros2)
+
+I am using slam_toolbox (in ROS Foxy) to generate a map of an environment using bag files of recorded laserScan and odometry data. The map is successfully generated, however, while running the node and visualising the sensor data (in frame 'cluod') on rviz, I get the following error,
+Transform
+No transform to fixed frame [map]. TF error: [Lookup would require extrapolation into the future. Requested time 1632836191.729568 but the latest data is at time 1631538428.177000, when looking up transform from frame [cloud] to frame [map]]
+
+The fixed frame is set to 'map'.
+Here is the tf_tree view from the tf2_tools view_frames.py program,
+
+I interpret from the above image, that slam_toolbox is publishing the map->odom transformation with the current system timestamp, while the odom->base_link and base_link->cloud transforms have a past timestamp (from the time the bag was recorded) on them and it may be the cause of my issue.
+I could not find any help on how to use slam_toolbox with recorded bag files and have also checked all the possible launch files in the slam-toolbox (e.g. offline, async, sync, etc). There was not much help to be found in the official documentation of slam_toolbox as well. Would be nice if anyone who's worked on a similar problem before, could help out with this.
+
+Originally posted by joesherman on ROS Answers with karma: 66 on 2021-09-28
+Post score: 2
+
+Original comments
+Comment by 3473f on 2021-11-21:\
+
+I interpret from the above image, that
+slam_toolbox is publishing the
+map->odom transformation with the
+current system timestamp, while the
+odom->base_link and base_link->cloud
+transforms have a past timestamp (from
+the time the bag was recorded) on them
+and it may be the cause of my issue.
+
+Your statement here is true. Try setting the use_sim_time parameter to true  for the slam_toolbox node. Currently, rosbag2 for Foxy doesn't support publishing the clock (available from Galactic onwards) so I am not sure if this would have any effect. This github issue has some workarounds.
+Comment by joesherman on 2021-11-22:
+Hey, you are right. rosbag2 in foxy does not publish the clock. But even if you publish the clock, the foxy-devel distribution (one that gets downloaded with the package manager install) of slam_toolbox will not use it.
+My workaround was to get the source code of the foxy-devel branch and then cherry-pick the "fixed timestamps input&output not synchronized  (#377)" commit from the 'ros-2' branch of slam_toolbox. The fix in this commit is to synchronize the i/p & o/p timestamps, i.e., it uses the timestamps of scan topic to publish the map->odom transform. This fixed my issue and I got some nice maps made out of it! No clock publishing is needed!
+Comment by 3473f on 2021-11-22:
+The fact that slam_toolbox wouldn't integrate this functionality as it is useless totally flew over my head. Glad you managed to find a workaround and thank you for documenting it here.
+
+A:
+
+The documentation everywhere suggest using the use_sim_time parameter to synchronize the output of the slam_toolbox to that of the bagged topics, but on a deeper look, firstly rosbag2 in foxy doesn't yet have the clock topic (available from Galactic onwards), which can be solved by publishing manually to this topic from the timestamps of the sensor/Odom data in the bags. Secondly, and more importantly, even that won't solve our problems as the foxy-devel branch of slam_toolbox (the one that gets downloaded with apt install ros-foxy-slam-toolbox) doesn't make use of the use_sim_time parameter anyway.
+So, my workaround was to get the source code of the foxy-devel branch and then cherry-pick the "fixed timestamps input&output not synchronized  (#377)" commit from the 'ros-2' branch of slam_toolbox. The fix in this commit is to synchronize the i/p & o/p timestamps, i.e., it uses the timestamps of scan topic to publish the map->odom transform. This fixed my issue and I got some nice maps made out of it! No clock publishing is needed!
+
+Originally posted by joesherman with karma: 66 on 2021-11-22
+This answer was ACCEPTED on the original site
+Post score: 0
+

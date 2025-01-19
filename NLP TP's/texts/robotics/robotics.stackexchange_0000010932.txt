@@ -1,0 +1,170 @@
+Q:
+
+Platooning leader follower code
+
+I'm trying to develop a platoon leader follower formation for two robots in Matlab. The paper I'm trying to follow is this.
+
+I've got next code, where I want follower robot to follow the leader robot's path, just in a very simple way, no kinematics. But I cannot get it. Does anybody know which is my error?
+x1=linspace(0,10,100); //x1 and y1 represent the leader's path
+y1=sin(x1);
+plot(x1(1:100),y1(1:100));
+hold on;
+
+x2=zeros(1,100);
+y2=zeros(1,100);
+
+x2(1)=-5; //x2, y2 represent the follower's position
+x2(2)=-4;
+landa=0.1; //represents the euclidean distance between robots
+
+theta_leader(2)=atan((y1(2)-y1(1))/(x1(2)-x1(1)));
+theta_follower(2)=atan((y2(2)-y2(1))/(x2(2)-x2(1)));
+alfa(2)=atan((y1(2)-y2(2))/(x1(2)-x2(2)))-theta_follower(2);
+phi(2)=pi-(theta_leader(2) - alfa(2) - theta_follower(2));
+
+for i=3:100
+     landa(i)=0.1;
+      x2(i)=x1(i)*cos(theta_leader(i-1))-landa(i)*cos(alfa(i-1)+theta_follower(i-1));
+      y2(i)=y1(i)*sin(theta_leader(i-1))-landa(i)*sin(alfa(i-1)+theta_follower(i-1));
+
+      theta_leader(i)=atan((y1(i)-y1(i-1))/(x1(i)-x1(i-1)));
+
+      alfa(i)=atan((y1(i)-y2(i))/(x1(i)-x2(i)))-theta_follower(i-1);
+      phi(i)=pi-(theta_leader(i) - alfa(i) - theta_follower(i-1));
+      theta_follower(i)=phi(i)-alfa(i)+theta_leader(i)-3.1415;
+  end
+
+  plot(x2,y2,'or');
+
+A:
+
+I don't have access to the article, so I have to guess about the expected behavior. 
+Looking at your code, the first thing I did was to change all of your atan functions to atan2 because atan doesn't work correctly in all quadrants. Never use atan.
+That didn't fix it. So the second thing I did was to change how you calculate the follower heading (theta_follower) from the way it was calculated in the loop (which seems to be based on the leader's heading) to the way it was calculated the first time, which is based on the difference in the current position and previous position. Still no dice. 
+So, then I was trying to figure out how else the follower's position is determined and I noticed it's not based on the leader's position. It's based on the leader's position times the sine/cosine of the leader's heading. I don't know why the sine/cosine of the leader's heading was included in the calculation, but I removed it. And then it worked. 
+Now, the only thing I'm not sure about is whether the follower's heading is supposed to be the way you have it in the loop or the way you have it the first time. That is, I can't tell if you want the follower's heading to be what it actually is or if you want it to be based on the leader's heading. The first time you calculate the heading, you calculated it to be the actual heading. 
+If you leave the theta_follower code in the loop the way you have it, then the follower's heading is set to be whatever the leader's heading is and the follower can never catch the leader. The follower's path is offset from the leader. 
+If you set the theta_follower code to be the actual heading, then the follower's path looks "messier", but it is actually tracking the path of the leader. It overshoots one side, overshoots the other, then back-and-forth oscillating about the leader's path. I think this is the behavior you want, because behavior like this would have the follower on the same road as the leader. The way it was written, the leader would be on the road and the follower would (smoothly) drive on the sidewalk because it can't course-correct to the same path. 
+Here's the code:
+x1=linspace(0,10,100); %x1 and y1 represent the leader's path
+y1=sin(x1);
+plot(x1(1:100),y1(1:100));
+hold on;
+
+x2=zeros(1,100);
+y2=zeros(1,100);
+
+x2(1)=-5; %x2, y2 represent the follower's position
+x2(2)=-4;
+landa=0.1; %represents the euclidean distance between robots
+
+%-------
+% Moved from atan to atan2
+%-------
+%theta_leader(2)=atan((y1(2)-y1(1))/(x1(2)-x1(1)));
+%theta_follower(2)=atan((y2(2)-y2(1))/(x2(2)-x2(1)));
+%alfa(2)=atan((y1(2)-y2(2))/(x1(2)-x2(2)))-theta_follower(2);
+theta_leader(2)=atan2((y1(2)-y1(1)),(x1(2)-x1(1)));
+theta_follower(2)=atan2((y2(2)-y2(1)),(x2(2)-x2(1)));
+alfa(2)=atan2((y1(2)-y2(2)),(x1(2)-x2(2)))-theta_follower(2);
+
+phi(2)=pi-(theta_leader(2) - alfa(2) - theta_follower(2));
+
+for i=3:100
+    landa(i)=0.1;
+
+    %-------
+    % THIS APPEARS TO HAVE BEEN THE PROBLEM
+    %-------
+    %x2(i)=x1(i)*cos(theta_leader(i-1))-landa(i)*cos(alfa(i-1)+theta_follower(i-1));
+    %y2(i)=y1(i)*sin(theta_leader(i-1))-landa(i)*sin(alfa(i-1)+theta_follower(i-1));
+    x2(i)=x1(i)-landa(i)*cos(alfa(i-1)+theta_follower(i-1));
+    y2(i)=y1(i)-landa(i)*sin(alfa(i-1)+theta_follower(i-1));
+
+    %-------
+    % Moved from atan to atan2
+    %-------
+    %theta_leader(i)=atan((y1(i)-y1(i-1))/(x1(i)-x1(i-1)));
+    theta_leader(i)=atan2((y1(i)-y1(i-1)),(x1(i)-x1(i-1)));
+    %alfa(i)=atan((y1(i)-y2(i))/(x1(i)-x2(i)))-theta_follower(i-1);
+    alfa(i)=atan2((y1(i)-y2(i)),(x1(i)-x2(i)))-theta_follower(i-1);
+
+    phi(i)=pi-(theta_leader(i) - alfa(i) - theta_follower(i-1));
+
+    %--------
+    % Questionable code here
+    %--------
+    theta_follower(i)=phi(i)-alfa(i)+theta_leader(i)-3.1415;  % Side comment - you add pi and then subtract it for some reason.
+    %theta_follower(i)=atan2((y2(i)-y2(i-1)),(x2(i)-x2(i-1)));
+
+    %--------
+    % Moved plot inside the loop to watch it for more intuition regarding
+    % what's happening.
+    %--------
+    plot(x2(i),y2(i),'or');
+    pause(0.1)
+end
+
+:EDIT:
+The authors of the paper don't include the code they used to generate any of the plots. Further, it looks like implementing the block diagram they provided doesn't work either. They do state that Equation 8 is used by referencing figure 5, which means that they have, in fact, incorrectly included the sine/cosine terms. The heading of the leader does not at all affect the position of the follower. 
+That said, I tried implementing their block diagram after making that change and I believe it works. You skipped quite a bit in your implementation, including finding the derivative of position and heading and then performing the numeric integration. See the revised code below (the earlier code above should not be used, but I'll leave it for posterity).
+Note the value k is used, as described in the paper, as a control gain to decide how well the follower tracks the leader. Play around with it to see how well the follower does or does not track the leader. Also, the initial path is odd because the follower starts so far from the leader. 
+x1=linspace(0,10,100); %x1 and y1 represent the leader's path
+y1=sin(x1);
+figure(1)
+clf;
+plot(x1(1:100),y1(1:100));
+hold on;
+
+x2=zeros(1,100);
+y2=zeros(1,100);
+
+x2(1)=-5; %x2, y2 represent the follower's position
+
+%------- END ORIGINAL CODE ---------%
+y2(1)=-4; % <---- NOTE: Originally this was x2(2) = -4. I'm assuming it should have been y2(1) = -4.
+alpha_d = 0;
+rho_d = 0.1;
+rho = sqrt((x1(1)-x2(1))^2 + (y1(1)-y2(1))^2);
+alpha = 0;
+phi = 0;
+prevLeaderAngle = 0;
+followerAngle = 0;
+
+dT = x1(2) - x1(1); % I don't have any reference for time scales or speed so I have to fake it.
+k = 1;
+fullIntegral = [rho; alpha; phi];
+
+for i = 2:numel(x1)
+    leaderLinearVelocity = sqrt((x1(i)-x1(i-1))^2 + (y1(i)-y1(i-1))^2)/dT;
+    % Linear velocity is change in position divided by change in time.
+    leaderAngle = atan2((y1(i)-y1(i-1)),(x1(i)-x1(i-1)));
+    leaderAngularVelocity = (leaderAngle-prevLeaderAngle)/dT;
+    prevLeaderAngle = leaderAngle;
+
+    leaderSpeed = [leaderLinearVelocity; leaderAngularVelocity];
+
+    formationDerivative = (k*eye(2))*[(rho_d-rho);(alpha_d-alpha)];
+    followerSpeed = [-(1/cos(alpha)) , 0; -(tan(alpha)/rho) , -1] * ...
+        (formationDerivative - [-(cos(phi)) , 0; (sin(phi)/rho) , 0] * leaderSpeed);
+
+    fullDerivative = [-cos(alpha) , 0; sin(alpha)/rho , -1; sin(alpha)/rho , 0]*...
+        followerSpeed + [-cos(phi) , 0; sin(phi)/rho , 0; sin(phi)/rho , -1]*...
+        leaderSpeed;
+    fullIntegral = fullIntegral + fullDerivative*dT;
+    rho = fullIntegral(1);
+    alpha = fullIntegral(2);
+    phi = fullIntegral(3);
+
+    x2(i) = x1(i) - rho*cos(alpha + followerAngle);
+    y2(i) = y1(i) - rho*sin(alpha + followerAngle);
+    followerAngle = phi - alpha + leaderAngle - pi;
+
+    newHeading = followerAngle + followerSpeed(2)*dT;
+    dS = followerSpeed(1)*dT;
+    plot(x2(i),y2(i),'o','Color',[1 0 0]);
+    plot(x1(i),y1(i),'x','Color',[0 0 1]);
+    drawnow;
+    pause(0.1)
+end
+

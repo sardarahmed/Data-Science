@@ -1,0 +1,55 @@
+Q:
+
+Is ROS responsive while doing heavy computation on one node
+
+Hey All!
+I am going to use an Nvidia Jetson Xavier in my new AGV Project to do some Neural Network inferencing. Of course there is going to be ROS:), and I think I'm going to run this neural network inference within a ros node. Now I know for a fact, that during these computations there is always a latancy. I would like to know if this latency would affect the responsiveness of my ROS-Core, for example to subscribe to some topics from another machine.
+Would I experience some kind of a lag? Or due to ROS's multi-threading architecture, does that not affect the system?
+I can accept the latency of the neural net, but I would like the system to be responsive all the time.
+Would it be reasonable to simply put another local host in the robot (e. g. a Raspberry Pi), to send and subscribe messages from? Or is that an overkill?
+
+Originally posted by teozk on ROS Answers with karma: 13 on 2020-03-31
+Post score: 1
+
+A:
+
+First a comment on this:
+
+Or due to ROS's multi-threading architecture, does that not affect the system?
+
+actually, I would call ROS a multi-process architecture, as nodes, almost the base unit of processing, are mapped onto processes, not threads.
+As to your other question:
+
+I would like to know if this latency would affect the responsiveness of my ROS-Core, for example to subscribe to some topics from another machine. Would I experience some kind of a lag? [..] I would like the system to be responsive all the time.
+
+I'm going to assume you are asking whether other nodes would be affected by a single node making heavy use of a shared resource -- in this case the CPU ("ROS-Core" is just a node, in essence).
+In general, the answer would be "yes", but it depends on how exactly your system is structured. If you have a multi-core CPU (which the Xavier is: it has 8 cores), a single process using up a single core should not pose much a problem. The OS should schedule other processes to run on the other cores.
+However: if that single process also has multiple threads, things become more difficult, as it could be that all of those threads are "busy", causing all of them to be scheduled on different cores, leaving less available for other processes. Depending on process and thread priorities, and the scheduler, this could lead to starvation of other nodes and/or threads.
+With a process using the GPU, things become somewhat more complex, as this is another shared resource which would need to be scheduled, but in general you could assume that as long as you have only one process using the GPU, there would be (almost) no contention and your node would have the GPU all to itself.
+Summarising: with a multi-core CPU and nodes which have been programmed in a reasonable way, and using a modern OS (such as Linux), a system should remain responsive for normal use, even if one process uses a lot of resources.
+It's hard to draw any conclusions though, as there are just too many variables here.
+In your specific case (with a single node using a GPU to run inference on) it is probably possible to assume other nodes won't be affected very much, but the only way to know for sure would be to measure it.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-03-31
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2020-03-31:
+Note btw: this is not ROS specific. As ROS nodes are "just processes", regular operating system concepts and mechanisms come into play (ie: scheduling, multi-core/processor support, resource contention, etc).
+Comment by teozk on 2020-03-31:
+Thank you so much for your thorrow explanation! As you said, I guess I'll just have to try it out. I'll post my results here.
+Comment by runtao on 2020-12-12:
+Hi @teozk, did you measure the latency? I'm also going to run neural network within a ros node, however, I don't know how to measure the latency of CPU and GPU respectively in this case.
+Comment by teozk on 2020-12-14:
+Hi @runtao! Unfortunately the project was aborted and I never have gotten the fancy problem of latency on an Xavier :)
+However for my specific case I would simpy do
+
+measure time 1_1
+node1 ---> node2
+node1 <--- node2
+measure time 1_2
+t_passed = t_2 - t_1
+
+with "--->/<---" being published messages, while doing heavy inference on node3.
+

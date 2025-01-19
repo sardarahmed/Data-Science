@@ -1,0 +1,61 @@
+Q:
+
+Multi-robot navigation
+
+Hi,
+I have problem with implementing navigation to work with multiple robots. Errors:
+Waiting on transform from /robot_1/base to /map to become available before running costmap, tf error: Frame id /robot_1/base does not exist!
+Waiting on transform from /robot_2/base to /map to become available before running costmap, tf error: Frame id /robot_2/base does not exist!
+Probably, the problem is in transformations that transform /map to /base and not from /map to /robot_1/base. I use groups/namespaces in launch file to separate each robot node with correspondiong move_base node from other nodes. To run navigation stack I launch robot_configuaration.launch and move_base.launch. I have found the following solution:
+<launch>
+  <group ns="robot_1">
+    <param name="tf_prefix" value="robot_1"/>
+    <node pkg="usarsim" type="usarsim.py" respawn="false" name="usarsim_1" output="screen">
+  </group>
+  <group ns="robot_2">
+    <param name="tf_prefix" value="robot_2"/>
+    <node pkg="usarsim" type="usarsim2.py" respawn="false" name="usarsim_2" output="screen">
+  </group>
+
+and
+<launch>
+  <node name="map_server" pkg="map_server" type="map_server" args="/home/user/Desktop/ROS/map.pgm 0.05" respawn="false">
+  </node>
+
+  <group ns="robot_1"><br>
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+      <rosparam file="$(find robot_2dnav)/costmap_common_params.yaml" command="load" ns="global_costmap" />
+      <rosparam file="$(find robot_2dnav)/costmap_common_params.yaml" command="load" ns="local_costmap" />
+      <rosparam file="$(find robot_2dnav)/local_costmap_params.yaml" command="load" />
+      <rosparam file="$(find robot_2dnav)/global_costmap_params.yaml" command="load" />
+      <rosparam file="$(find robot_2dnav)/base_local_planner_params.yaml" command="load" /><br>
+    </node><br>
+  </group>
+
+  <group ns="robot_2">
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    ...same as for group_1
+
+but this doesn't work. Is there some solution to
+automatically map all topics and tf's directly from .launch file?
+
+Originally posted by Jack Sparrow on ROS Answers with karma: 83 on 2011-04-28
+Post score: 3
+
+A:
+
+Well, it turns out that the python version of transformBroadcaster has a bug in that it doesn't read the tf_prefix parameter. I've filed a ticket to have this fixed here: https://code.ros.org/trac/ros-pkg/ticket/4943.
+In the meantime, you have a couple of options:
+
+Write the search param logic yourself for the transformBroadcaster, submit a patch to the above ticket, get mad props from the ROS community for fixing a bug :)
+
+Have a parameter on your node that allows you to change the frame name before you pass it to the transformBroadcaster.
+
+Switch to the C++ API which works as expected.
+
+Hope this helps.
+
+Originally posted by eitan with karma: 2743 on 2011-05-03
+This answer was ACCEPTED on the original site
+Post score: 3
+

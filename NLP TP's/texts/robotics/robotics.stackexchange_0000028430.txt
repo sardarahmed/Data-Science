@@ -1,0 +1,31 @@
+Q:
+
+Mobile arm simulation behaves strangely when adding ros_control plugin
+
+Greetings.  My model combining a simple mobile base with the UR10 acts strangely when I add
+<plugin name="ros_control" filename="libgazebo_ros_control.so" />
+
+which is needed for controlling the UR10 joints.  The strange behavior is that the mobile robot resists motion (or maybe it's just the mobile base that does this).  Two examples:
+(1) If I publish a large velocity twist to the cmd_vel topic for the differential_drive_controller on the mobile base the two wheels spin quickly but the robot rotates only very slowly.
+(2) If I publish a positive z-position to set_model_state, effectively dropping the robot from this height, it falls very slowly to the ground.  It falls so slowly that I was easily able to select the area to grab for this screenshot.  (The gap between the mobile base and the arm base is normal for the UR10.  It's present even with the ur_gazebo ur10.launch simulation.)
+
+The "real time factor" is 1.00 so it's not as if the simulation is running slowly when the plugin is added.  When I don't add the plugin the robot arm is floppy but it moves quickly, as one would expect (the base moves it around at the desired rate and it falls as fast as normal).  The two controllers both seem to be working well.  It's just that things overall get weird when I add the arm_controller.  If I keep it and remove the differential_drive_controller the strange behavior is still present.
+I will look through the husky simulator with UR5 enabled to try to find what is wrong with my robot.
+When publishing an arm pose to arm_controller/command the manipulator moves at a reasonable speed relative to its base but the overall mobile robot is still very slow.  For example, if I drop it from two meters and publish a manipulator pose the arm moves fine but the entire robot falls very slowly.
+For reference, here is the source (except for ur10.urdf.xacro).  The offending gazebo plugin tag is found in models/common.gazebo.xacro.
+
+Originally posted by raequin on Gazebo Answers with karma: 165 on 2018-03-02
+Post score: 1
+
+A:
+
+It's this really annoying regression in Gazebo: https://github.com/ros-simulation/gazebo_ros_pkgs/issues/612 . Basically everyone using ros_control (and many other plugins) + Gazebo is affected by this, and it looks like it won't get fixed in ROS Kinetic / Gazebo 7. :(
+For workarounds, see the issue I've linked to.
+The problem is that there is a regression in the Joint::SetPosition() method in Gazebo. Previously, it only did just that (it set the joint angle). Later, the implementation of that method was changed so that it also reset the link velocity of the link connected to the joint to zero - this is why your robot is falling so slowly: Gravity pulls the robot down, but the joint controller always involuntarily stops that falling motion when it sets the joint angle. Since the gravity force now doesn't work properly, the mobile base loses proper contact to the ground (you can see that when you visualize contacts in the Gazebo GUI); this is why the base doesn't properly respond any more.
+If you do any of the workarounds in the issue (adding pid_gains, using the VelocityJointInterface or EffortJointInterface instead of the PositionJointInterface), the ros_control Gazebo plugin won't call the Joint::SetPosition() method any more, thereby avoiding the problem.
+Please note that you also have to do the workaround for any other Gazebo plugin that might call the Joint::SetPosition() method, such as the mimic joint plugin.
+
+Originally posted by Martin Günther with karma: 226 on 2018-03-05
+This answer was ACCEPTED on the original site
+Post score: 4
+

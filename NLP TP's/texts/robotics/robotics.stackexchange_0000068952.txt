@@ -1,0 +1,183 @@
+Q:
+
+Subscriber callback function not called when trying to capture data using Kinect [Solved]
+
+This is my current code. It's a node, and I use rosrun to execute/run it.
+#include <iostream>
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <string.h>
+#include <ros/callback_queue.h>
+
+using namespace std;
+
+char filename[50];
+int imgtype;
+
+bool done=false;
+
+static const int MY_ROS_QUEUE_SIZE = 100;
+
+void depth_node_callback(const sensor_msgs::Image::ConstPtr& msg)
+ {
+
+ cout << "Entering Callback" << endl;
+
+ cv_bridge::CvImageConstPtr cv_ptr;
+ cv_ptr = cv_bridge::toCvShare(msg);
+
+ double max = 0,min=0;
+
+ cv::minMaxLoc(cv_ptr->image, &min, &max, 0, 0);
+ cv::Mat normalized,op;
+ cv_ptr->image.convertTo(normalized, CV_32F, 255/(max-min), -min) ;
+
+ cv::imwrite(filename,normalized);
+
+ done=true;
+ }
+
+int main(int argc, char **argv)
+ {
+ string type;
+ strcpy(filename,argv[1]);
+ imgtype=atoi(argv[2]);
+
+ ros::init(argc, argv, "depth_node");
+
+ cout << "Ready to save image" << endl;
+ ros::NodeHandle nh;
+
+ if(imgtype==1)
+ type="camera/rgb/image_color";
+
+ else if(imgtype==0)
+ type="camera/depth_registered/image_raw";
+
+ ros::Subscriber sub = nh.subscribe(type,MY_ROS_QUEUE_SIZE, depth_node_callback);
+
+ while(!done && ros::ok()) ros::spinOnce();
+ cout <<filename<<" Saved" << endl;
+ return 0;
+ }
+
+The callback function doesn't get called at all. It just kind of gets stuck and doesn't do anything.
+I am attempting to execute this node above that I have created at specific intervals and every interval it should take the necessary images and move forward to the next command (without having to ctrl+c myself), but it gets stuck without entering the callback function.
+Update I didn't mention properly that I use rosrun to call this node. But I also use rosrun right before this to call another node. Does that make any difference? I don't have an issue with the one before this (but that's not my own code/node).
+I noticed similar posts here which all mentioned spinOnce() which I included based on their suggestion right at the beginning.
+Update 2 Based on the given answer I added the rate.sleep(). However that leads to two issues. One I enter the callback initially and exit, without it doing anything, then it repeats that and writes the image as it's supposed to. So I don't know what that "blank call" the first time. And it either does that multiple times or not at all, so is that an issue with the Kinect trying to get the image? or with the code?
+Done!
+Kinect
+Ready to save image
+Entering Callback
+Entering Callback
+Entering Callback
+c_jac00.png Saved
+Ready to save image
+
+The second issue is that I am running two rosrun commands back to back for this node. The first one is to get image_color (rgb), the second to get image_raw gets "stuck" again. What's the reason behind that?
+I also get the following warning
+[ WARN] [1438986321.518503590]: TF exception:
+Lookup would require extrapolation into the past.  Requested time 1438986013.498032942 but the earliest data is at time 1438986311.630285300, when looking up transform from frame [camera_depth_optical_frame] to frame [camera_rgb_optical_frame]
+
+Solution
+@allenh1 's answer worked. The additional issues mentioned in the Update 2 were because I hadn't properly executed the Openni Roslaunch command.
+roslaunch openni_launch openni.launch depth_registration:=true
+
+I hadn't added the depth_registration flag.
+
+Originally posted by nemesis on ROS Answers with karma: 237 on 2015-07-28
+Post score: 0
+
+Original comments
+Comment by nemesis on 2015-08-07:
+@tfoote - I noticed some questions where you tried to solve this problem I believe. Could you take a look? The proposed solution isn't working entirely.
+
+A:
+
+I'll be glad to help you figure this out! First thing though... Don't mix namespaces... You have ROS, CV and std there... So, it is recommended that you not do using namespace std; and instead do std::cout as opposed to cout.
+Next, it looks like you are not fixing the rate. Does this help at all? I doubt it's this simple, but it's good to give it a go.
+#include <iostream>
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <string.h>
+#include <ros/callback_queue.h>
+
+// using namespace std; <- Don't mix namespaces!
+
+char filename[50];
+int imgtype;
+
+bool done=false;
+
+static const int MY_ROS_QUEUE_SIZE = 100;
+
+void depth_node_callback(const sensor_msgs::Image::ConstPtr& msg)
+{
+    std::cout <<"Entering Callback"<< std::endl;
+    
+    cv_bridge::CvImageConstPtr cv_ptr;
+    cv_ptr = cv_bridge::toCvShare(msg);
+    
+    double max = 0, min=0;
+    
+    cv::minMaxLoc(cv_ptr->image, &min, &max, 0, 0);
+    cv::Mat normalized,op;
+    cv_ptr->image.convertTo(normalized, CV_32F, 255/(max-min), -min) ;
+    
+    cv::imwrite(filename,normalized);
+    
+    done=true;
+}
+
+int main(int argc, char **argv)
+{
+    std::string type;
+    std::strcpy(filename,argv[1]);
+
+    imgtype=atoi(argv[2]);
+    
+    ros::init(argc, argv, "depth_node");
+
+    ros::Rate loop_rate(100);
+    
+    cout << "Ready to save image" << endl;
+    ros::NodeHandle nh;
+    
+    if(imgtype==1)
+        type="camera/rgb/image_color";
+    
+    else if(imgtype==0)
+        type="camera/depth_registered/image_raw";
+    
+    ros::Subscriber sub = nh.subscribe(type,MY_ROS_QUEUE_SIZE, depth_node_callback);
+    
+    
+    while(!done && ros::ok()) {
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
+
+    std::cout<< filename <<" Saved"<< std::endl;
+
+    return 0;
+}
+
+Originally posted by allenh1 with karma: 3055 on 2015-07-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by nemesis on 2015-07-28:
+I will try that out soon and update. Thanks for the reply. Does namespace really cause issue? Why so?
+Comment by allenh1 on 2015-07-28:
+See this answer. The main reason you shouldn't do it here is to make it clear where the functions you are using are coming from. It probably won't hurt in this situation, but it's just better practice.
+Comment by nemesis on 2015-08-07:
+@allenh1 - I have updated my question "Update 2", could you please look at it?
+

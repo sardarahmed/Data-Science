@@ -1,0 +1,41 @@
+Q:
+
+Bi-directional dynamic_reconfigure
+
+I have a few parameters that can be controlled either via dynamic_reconfigure, or via a subscriber, or by updating their value to the state of the hardware they act with.
+One direction works well - when I set a value using dynparam or rqt_reconfigure, an action is commanded to the hardware and a parameter update is published automatically.
+I want to know if there is a tutorial or at least guideline on how to deal with the other direction - something else (hw event, subscribed message) changes the state and I need the parameters to reflect it.
+Obviously, using dynamic_reconfigure.client is not the right way to do it, because it would issue commands instead of just changing parameter values.
+So I try publishing directly on ~/parameter_updates and manually setting the parameter value on the parameter server, which somehow works, but still it seems quite unreliable and cumbersome.
+Is there a better way to do it?
+
+Originally posted by peci1 on ROS Answers with karma: 1366 on 2015-09-09
+Post score: 2
+
+A:
+
+The dynamic reconfigure server has an undocumented updateConfig method, which appears to do what you're looking for:  https://github.com/ros/dynamic_reconfigure/blob/4e643b94a2487f6b70b9483e2ea657bc3b6a1030/include/dynamic_reconfigure/server.h#L99
+To use it, it looks like you also need to have an external mutex for controlling access to the dynamic_reconfigure config.
+Not tested, but this might work:
+boost::recursive_mutex config_mutex;
+dynamic_reconfigure::Server<dynamic_tutorials::TutorialsConfig> server;
+dynamic_reconfigure::Server<dynamic_tutorials::TutorialsConfig>::CallbackType f;
+
+f = boost::bind(&callback, _1, _2);
+server.setCallback(f);
+
+dynamic_tutorials::TutorialsConfig new_config;
+server.updateConfig(new_config);
+
+Note that the dynamic_recofigure::Server API doesn't require that the mutex be locked before calling updateConfig; it does the appropriate locking internally.
+
+Originally posted by ahendrix with karma: 47576 on 2015-09-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by peci1 on 2015-09-10:
+Great! I haven't mentioned it, but I looked for a solution in Python. Fortunately, there seems to be a similar method in server.py called _change_config. Though it is protected, thanks to Python's liberal object model I think I can call it without hesitation :)
+Comment by peci1 on 2015-09-10:
+There is one catch, though. You need to make sure (using e.g. a class-wide flag) that you don't call your API setting stuff again after calling _change_config. This way, you'd get into an infinite loop (or a deadlock because of the mutexes). You can also use update_configuration, which is public
+

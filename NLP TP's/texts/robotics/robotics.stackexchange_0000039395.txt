@@ -1,0 +1,77 @@
+Q:
+
+3D calibration in OpenCV without chessboard images?
+
+It takes me a long time to get functions to work in OpenCV  so I'd like to know whether my overall plan makes sense before I dive into the details of trying to make it happen.  (Open CV 2.3.1, Windows 7, C++) I'd be appreciative of any advice.
+Problem:
+I work at a skeet range & want to learn 3D information about the flight of the clay targets until they're hit.
+Data:
+
+The two cameras (eventually there will be a few more) are yards apart so it's not practical to make a chessboard large enough for them to both see.
+
+There are several trees between 50 to 100 yards each side of the sloping hill target area that cover the field of view of each camera at least horizontally.  I've measured distance to specific spots (like the junction of 1st left limb with trunk) on each of them.
+
+Plan
+
+Put the tree positions into an objectPoints vector as Point3f objects
+
+Find the points they appear on each camera's image at and put those Point2f objects into an imagePoints vector for each camera
+
+Stereo calibrate
+
+Questions
+
+Is my plan even in the ballpark?
+
+If it is
+
+would it be better to calibrate each camera by itself with a chessboard that's feet from the camera then pass the intrinsic and distCoeffs matrices to stereoCalibrate?
+
+If I stereoCalibrate without a chessboard what should I pass as Size to the function?
+
+Thank you for any help.
+Charles
+
+Originally posted by Cherry 3.14 on ROS Answers with karma: 41 on 2012-04-07
+Post score: 3
+
+Original comments
+Comment by Kevin on 2012-04-07:
+Cool project ... hope you can get it to work out!
+
+A:
+
+1.) Yes, it would be MUCH better to handle the intrinsic calibration of each camera beforehand with a reliable target.  If you only have a few manually measured points, you won't have good coverage in your entire image.
+2.) Have you considered making a circles grid by gluing targets (I'm assuming they are bright orange or obviously colored) onto a contrasting background?  We know that in order for your application to work, you need to be able to detect the targets at a distance.  If you have a good intrinsic calibration for each camera, you don't have to have a very large stereo calibration target.  You could arrange 3x3 or 4x4 targets onto a board and move to various positions/distances.  This way you get a better calibration through many board positions but fewer board points.
+You'll also need to consider the specifics of your application.  Ultimately, you need these steps:
+
+Good 3D projection model for each individual camera (intrinsic calibration)
+Calibration of the position and orientations between multiple cameras (extrinsic calibration)
+Detection of the target in the background scene
+Optimization between two or more cameras to determine position relative to the camera array.
+
+I don't think that a traditional stereo algorithm will work very well, and if it does, it will be overkill and not easily extensible to multiple cameras.
+Likely, you'll want to work in this order:
+
+Use camera_calibration to reliably and accurately calibrate each camera.
+Write a detector for the targets in the original, unrectified images.  If you have good targets, this will likely just be a color threshold and finding blob centroids.
+Perform a calibration by detecting a target grid with multiple cameras.  This will give you the transform between each of the cameras.  You can use the openCV stereo calibration or the pcl svd transform estimation for this.
+Now you can work on detecting the 3D position of a single target.
+Convert the coordinates to the rectified image.
+Once you know the centroid of the target in rectified coordinates, you can calculate the 3D ray from the camera that goes through the center of the target.
+Finally, write some sort of optimizer to output a 3D point from the intersection N-camera rays.  You'll likely not have perfect intersections, so you'll surely have to converge on something close.  You may even be able to determine the distance to the target using the measured size in pixels if you have sufficiently high resolution cameras.
+
+Originally posted by Chad Rockey with karma: 4541 on 2012-04-07
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Cherry 3.14 on 2012-04-13:
+OK, I'll do calibration on each camera before I calibrate the camera's together.  Could this intrinsic calibration be done before the camera is mounted if the camera isn't jostled, the lens rotated or the camera's body torqued when it's mounted?
+Whether the cameras are extrinsically calibrated with the object points I've measured (+- inch at hundreds of yards) or with object points on pattern boards that are held at different locations that both cameras can see ...
+
+What does the calibration generate?
+I know your answer includes it but I didn't understand how to use what the extrinsic calibration generates to determine a real-world 3D location of a point from 2D image locations on both of those cameras.  How do I?
+
+My guess is that StereoCalibration outputs rotation matrix and translation vector.  These two items are put into StereoRectify which will output a transformation matrix.  This transformation matrix is the input array to PerspectiveTransform which gives the function the values it needs to calculate one 3D location from two 2D image points from those cameras.  For every point frame for which I detect a clay target in both cameras (I can actually do object detection) PerspectiveTransform outputs an array of Point3f objects in real-world units from an array of 2D image points.
+

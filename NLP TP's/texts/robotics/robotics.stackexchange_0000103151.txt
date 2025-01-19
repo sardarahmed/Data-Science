@@ -1,0 +1,85 @@
+Q:
+
+Waiting for joint_group_position_controller/follow_joint_trajectory to come up
+
+Hi, I am using dobot cr5 with this package and want to control in realtime arm servoing tutorial, but found the following problem
+[ INFO] [1680115539.325299331, 24.522000000]: Added FollowJointTrajectory controller for cr5_robot/joint_controller
+[ WARN] [1680115544.378328009, 29.534000000]: Waiting for cr5_robot/joint_group_position_controller/follow_joint_trajectory to come up
+[ WARN] [1680115550.434961614, 35.535000000]: Waiting for cr5_robot/joint_group_position_controller/follow_joint_trajectory to come up
+[ERROR] [1680115556.490301391, 41.536000000]: Action client not connected: cr5_robot/joint_group_position_controller/follow_joint_trajectory
+
+The commands I use are as follows
+gazebo.launch
+moveit_planning_execution.launch  sim:=True
+moveit_rviz.launch config:=True
+
+I've solved this problem and this, which in gazebo.launch I add
+<rosparam file="$(find dobot_gazebo)/config/cr5_moveit_controllers.yaml" command="load"/>
+
+<node name="joint_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn cr5_robot/joint_controller" respawn="false" output="screen"/>
+
+<node name="ros_control_controller_manager" pkg="controller_manager" type="controller_manager" respawn="false" output="screen" args="load cr5_robot/joint_group_position_controller" />
+
+in cr5_moveit_controllers.yaml I have modified controller list as below, I try to add joint_group_position_controller to it. (I've tried building without cr5_robot but it didn't work.)
+cr5_robot:
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+  joint_controller:
+    type: position_controllers/JointTrajectoryController
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6
+  constraints:
+      goal_time: 0.6
+      stopped_velocity_tolerance: 0.05
+      joint1: {trajectory: 0.1, goal: 0.1}
+      joint2: {trajectory: 0.1, goal: 0.1}
+      joint3: {trajectory: 0.1, goal: 0.1}
+      joint4: {trajectory: 0.1, goal: 0.1}
+      joint5: {trajectory: 0.1, goal: 0.1}
+      joint6: {trajectory: 0.1, goal: 0.1}
+  stop_trajectory_duration: 0.5
+  state_publish_rate:  25
+  action_monitor_rate: 10
+  joint_group_position_controller:
+    type: position_controllers/JointGroupPositionController
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6
+
+and in moveit_planning_excution.launch have added
+<remap if="$(arg sim)" from="/follow_joint_trajectory" to="/cr5_robot/joint_controller/follow_joint_trajectory"/>
+
+I used to change the remap to cr5_robot/joint_group_position_controller/follow_joint_trajectory didn't work either.
+The result of all the fixes is that cr5_robot/joint_controller can be used normally but I still get stuck Waiting for cr5_robot/joint_group_position_controller/follow_joint_trajectory to come up and have rqt_graph as picture.
+
+which added ros_control_controller_manager according to the tutorial, it shouldn't be extracted like this.
+Anyway, this fix I've done on the Kuka KR16 and it worked but it didn't work this time.
+P.S. If I change the type from position_controllers/JointGroupPositionController to position_controllers/JointTrajectoryController, it can be summoned successfully, but it won't be right.
+
+Originally posted by PRA008 on ROS Answers with karma: 38 on 2023-03-29
+Post score: 0
+
+A:
+
+For anyone who is stuck with the same problem as me. The solution is that you have to create ros_control_controller_manager added to ros_control.xml file instead of building in gazebo.launch
+
+Originally posted by PRA008 with karma: 38 on 2023-04-03
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by quangg.07 on 2023-07-10:
+Can you specifically show the solution, cause I can't find the ros_control.xml anywhere
+Comment by PRA008 on 2023-07-17:
+@quangg.07 Create controller manager in crX_moveit_controllers.yaml (CR_ROS > dobot_gazebo > config) then add new controller name in load controllers of ros_control.xml (CR_ROS > dobot_gazebo > launch)
+

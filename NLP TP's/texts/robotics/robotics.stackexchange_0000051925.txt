@@ -1,0 +1,69 @@
+Q:
+
+Navfn - Potential Field Calculation
+
+I would like to use Navfn to let a robot follow a wall at a close distance. More precisely, I want Navfn to plan a path parallel to the wall at a given distance.
+However, with the current implementation, this is not possible because Navfn is planning a path by calculating a potential field based on the global costmap and then using gradient descent on this potential field to find a path. Visualizing this potential field in rviz shows that obstacles have a big influence on the field and as a result, Navfn always plans paths that move first away from the wall and then come back just before reaching the goal.
+Is this influence already present in the costmap or is it introduced in the calculation of the potential field? I am aware of the inflation radius in the costmap, but according to section 1.5 Inflation in the costmap_2d wiki page, a cell with a distance from an obstacle cell that is greater than the inflation radius has cost 0. This would mean that the influence of obstacles on the potential field is introduced in the potential field calculation.
+How would the Navfn code have to be adjusted so that obstacles affect the potential field only up to a defined distance away from the obstacle. I would guess that this parameter has to be introduced in NavFn::updateCell, but I cannot see how to do that. Also I expect that a new array has to be added which keeps track of the distance to the closest occupied cell for each cell.
+I hope somebody has enough insight into the code to help me with these questions or to explain me why it isn't possible.
+Thanks in advance.
+Update:
+The problem I experienced came from the costmap, and to be more precise, from the inflation radius. I got fooled by the topic costmap/inflated_obstacles which, according to the documentation, publishes the cells in the costmap that correspond to the occupied cells inflated by the inscribed radius of the robot. But this is wrong! Playing around with the parameters inflation_radius and robot_radius shows that the topic publishes only occupied cells inflated by the smaller of either inflation_radius or robot_radius. Increasing the inflated_radius over the robot_radius won't affect the cells published by this topic. But the inflation_radius is still taken into account when calculating the potential field.
+So in my case, the inflation_radius (0.5) was bigger than the robot_radius (0.25). The robot was approx 0.3 from the wall, which is outside the inflated obstacles, but still inside the inflation_radius, and the goal was set further along the wall at the same distance from the wall. This produced a curved path along the wall.
+http://www.dobots.nl/documents/10157/322bd1b7-154f-4e93-b2c5-2b12a81f4be9
+Setting the inflation_radius to the same value as robot_radius solved the problem and produced "straighter" paths along the wall.
+http://www.dobots.nl/documents/10157/c7071173-4156-44ac-9768-fcf286c39797
+
+Originally posted by Dominik on ROS Answers with karma: 68 on 2013-06-12
+Post score: 2
+
+Original comments
+Comment by 2ROS0 on 2014-11-14:
+Thanks for the update. Maybe make it an answer ?
+
+A:
+
+A couple notes:
+
+The work in Hydro Navigation gives you more control over the costmap, and may be of use to you.
+
+The package global_planner is a refactoring of NavFn and is in my opinion, much cleaner and easier to work with.
+
+To actually answer your question, there are three separate things than affect the behavior you're talking about.
+
+The Costmap Itself
+The Potential Field Calculation
+The Path Planning done using gradient descent
+
+I believe the problem you're seeing comes from either the first or third thing. If its the costmap itself, you should be able to see the costmap using roslaunch pr2_navigation_global  rviz_move_base.launch or something similar. If the costmap is causing the "large influence" then the adjustments need to be made there.
+The other possibility is that you're seeing weird behavior when the gradient descent algorithm bumps up next to a lethal obstacle and falls back on a non-gradient descent based approach.
+Edit: You're right about the problem being in the initial costmap. Check out the diagram in this documentation. The key thing to note is the difference between the inflation radius and the inscribed radius. (The number of times I'm confused these is sad.) The /inflated_obstacles topic publishes all the obstacles that are inflated using the inscribed radius, which when using a circular robot, is equal to robot_radius. These are all the cells with value 253 in the diagram.
+If the inflation radius is smaller than the robot radius changes the inflated_obstacles, since its not going to inflate beyond the inflation radius, even though it should.
+If the inflation radius is equal to the robot radius, you only get the leftmost part of the diagram. The only values in the costmap will be lethal values that indicate places where if the robot's center is in that cell, the robot will be in collision. This is probably the behavior you want, unless your robot accidentally hits the wall.
+If the inflation radius is larger than the robot radius, you get the "default user preference" mentioned in the diagram, which causes the robot to prefer not to drive really close to walls, which is what you observed in your original experiment.
+
+Originally posted by David Lu with karma: 10932 on 2013-06-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Dominik on 2013-06-13:
+Thanks for your help; you were right, the problem was the costmap, I edited my post to add the solution. A question about the global_planner: did you do improvements on the code or just refactored it? What would be the benefit in switching from navfn to global_planner? And can it be used in groovy?
+Comment by David Lu on 2013-06-14:
+There's not much in the way of actual improvements, although there is an A* planner additionally implemented, although it doesn't produce exactly the same paths yet.
+Comment by David Lu on 2013-06-14:
+If you end up wanting to edit the global planner, I would suggest editing global_planner and not navfn, but that's just me.
+Comment by Dominik on 2013-06-16:
+Ok I will keep it in mind, thanks again!
+Comment by RB on 2015-01-25:
+I am going through navfn. I am facing difficulty in understanding the code. Where do I get detail information (ROS specific) related to:
+
+Potential Field Calculation
+Path Planning done using gradient descent
+
+Comment by David Lu on 2015-01-25:
+Please open up a new question rather than just piggybacking on an existing question, unless there is specific overlap. Is there a reason why you didn't go through global_planner instead, as recommended above?
+Comment by RB on 2015-01-26:
+I have added a question here. Please have a look
+

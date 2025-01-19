@@ -1,0 +1,72 @@
+Q:
+
+How to control publish rate in ROS-enabled plugins?
+
+Are there any standard option for this? It used to be <updateRate> parameter, but it seems not to work anymore. Although there is <update_rate>, it works only for sensor plugins.
+At the moment my model plugin publishes data in OnUpdate() function without any additional time control.
+Should I publish the data in parallel thread and achieve necessary rate with something like ros::Rate::sleep() or there is a better option?
+Thanks
+
+Originally posted by Boris on Gazebo Answers with karma: 330 on 2013-03-25
+Post score: 1
+
+A:
+
+Hi,
+I don't think there is a dedicated function for this, but you can easily use it like this:
+// set the update rate (you can also set it as a parameter from the sdf file)
+this->updateRate = common::Time(0, common::Time::SecToNano(0.75));
+
+// initialize the prevUpdateTime
+this->prevUpdateTime = common::Time::GetWallTime();
+
+void PluginClass::OnUpdate()
+{
+  if (common::Time::GetWallTime() - this->prevUpdateTime < this->updateRate)
+    return;
+
+  ...
+
+  this->prevUpdateTime = common::Time::GetWallTime();
+}
+
+========UPDATE, HOW TO GET THE PARAMETER EXAMPLE=========
+
+in the sdf file:
+<plugin name='plugin_name' filename='libplugin_name.so'>
+    <sdf_parameter_update_rate>69.0</sdf_parameter_update_rate>
+</plugin>
+
+in the plugin:
+void PluginName::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
+...
+double param_update_rate;
+
+if (!_sdf->HasElement("sdf_parameter_update_rate"))
+{
+    // if parameter tag does NOT exist
+    std::cout << "Missing parameter <sdf_parameter_update_rate> in PluginName, default to 0" << std::endl;
+    param_update_rate = 0;
+}
+    // if parameter tag exists, get its value
+else param_update_rate = _sdf->GetElement("sdf_parameter_update_rate")->GetValueDouble();
+
+and then you use this param_update_rate in setting the updateRate value:
+this->updateRate = common::Time(0, common::Time::SecToNano(param_update_rate));
+
+Cheers, Andrei
+
+Originally posted by AndreiHaidu with karma: 2108 on 2013-03-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Boris on 2013-03-25:
+Thanks, will give it a try. Does this->updateRate load from  or <update_rate> parameter?
+Comment by AndreiHaidu on 2013-03-26:
+you set it in the code yourself ( common::Time(0, common::Time::SecToNano(0.75)); ), or you can load it as a parameter from the sdf file, I will update the answer to see how that is done
+Comment by Boris on 2013-03-26:
+Yeah, I know how to get parameters from SDF, but thanks for the code snippets anyway! I was wondering if some of the legacy parameters that use to load automagically are still persist... Looks like not.
+Comment by Boris on 2013-04-11:
+Finally added this functionality to my plugin. The only concern is the SecToNano() function, see details here.
+

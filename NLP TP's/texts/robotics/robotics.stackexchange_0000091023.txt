@@ -1,0 +1,47 @@
+Q:
+
+RCLCPP logging macros not a single expression
+
+I just discovered after a lot of confusion that the RCLCPP_ logging macros do not expand to a single expression and therefore cannot be used in brace-less if clauses and for loops. For example, this doesn't compile for me because the compiler sees an unexpected else:
+if (true)
+  RCLCPP_INFO(node->get_logger(), "true");
+else
+  RCLCPP_INFO(node->get_logger(), "false");
+
+Is this expected?
+Edit: added the mistakenly elided semi-colons from the original question
+
+Originally posted by jdlangs on ROS Answers with karma: 971 on 2019-03-20
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-03-20:
+"Expected" I don't know, but yes, all RCLCPP_* macros are two-liners: see here.
+Might be an oversight: perhaps they should be wrapped in do {  } while(0); constructs?
+Comment by allenh1 on 2019-03-20:
+There was some discussion about this last fall here. I suspect that ;'s might help you in the above example, but, otherwise, ROS 2 linters require curly braces on all if statements, so it's understandable as to how this was not caught earlier.
+
+A:
+
+@gvdhoorn is correct, it's an oversight that you cannot do:
+if (condition)
+  RCLCPP_INFO(...);
+else
+  RCLCPP_INFO(...);
+
+The macro's contents should be wrapped within a do { ... } while(0). This is done in the equivalent C API's, see:
+https://github.com/ros2/rcutils/blob/9e1f5593763cfdc64f2e590dbafb0c316926f628/resource/logging_macros.h.em#L66-L75
+But the rclcpp one's do not do this:
+https://github.com/ros2/rclcpp/blob/43f891dac8ff27839079f1c8b39527972ce65fc6/rclcpp/resource/logging.hpp.em#L92-L104
+I'd recommend opening an issue on rclcpp and ideally providing a pull request to help us fix it :D
+
+Originally posted by William with karma: 17335 on 2019-03-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by jdlangs on 2019-03-21:
+Thanks, I was really confused that no one seemed to be bothered that function-call semantics had been broken, knowing that many more people would be falling into this non-obvious trap. I will be able to open a PR against rclcpp shortly.
+Comment by Dirk Thomas on 2019-04-03:
+See https://github.com/ros2/rclcpp/pull/681
+

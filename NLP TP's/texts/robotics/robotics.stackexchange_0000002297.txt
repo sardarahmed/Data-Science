@@ -1,0 +1,50 @@
+Q:
+
+Quadcopter PID tuning
+
+In continuation of the question I asked here: Quadcopter instability with simple takeoff in autonomous mode
+  ...I'd like to ask a few questions about implementing a basic PID for a quadrotor controlled by an APM 2.6 module. (I'm using a frame from 3DRobotics)
+I've stripped down the entire control system to just two PID blocks, one for controlling roll and another for controlling pitch (yaw and everything else... I'd think about them later).
+I'm testing this setup on a rig which consists of a freely rotating beam, wherein I've tied down two of the arms of the quadrotor. The other two are free to move. So, I'm actually testing one degree of freedom (roll or pitch) at a time.
+Check the image below: here A, B marks the freely rotating beam on which the setup is mounted.
+
+With careful tuning of P and D parameters, I've managed to attain a sustained flight of about 30 seconds. 
+But by 'sustained', I simple mean a test where the drone ain't toppling over to one side. Rock steady flight is still no where in sight, and more than 30 secs of flight also looks quite difficult. It wobbles from the beginning. By the time it reaches 20 - 25 seconds, it starts tilting to one side. Within 30 secs, it has tilted to one side by an unacceptable margin. Soon enough, I find it resting upside down 
+As for the PID code itself, I'm calculating the proportional error from a 'complimentary filter' of gyro + accelerometer data. The integral term is set to zero. The P term comes to about 0.39 and the D term is at 0.0012. (I'm not using the Arduino PID library on purpose, just want to get one of my own PIDs implemented here.)
+Check this video, if you want to see how it works.
+http://www.youtube.com/watch?v=LpsNBL8ydBA&feature=youtu.be
+[Yeh, the setup is pretty ancient! I agree. :)]
+Please let me know what could I possibly do to improve stability at this stage.
+@Ian: Of the many tests I did with my setup, I did plot graphs for some of the tests using the reading from the serial monitor. Here is a sample reading of Roll vs 'Motor1 & Motor2 - PWM input' (the two motors controlling the roll):
+
+As for the input/output:
+Input: Roll and pitch values (in degrees), as obtained by a combination of accelerometer + gyro
+Output: PWM values for the motors, delivered using the Servo library's motor.write() function
+
+Resolution
+I resolved the problem. Here's how:
+
+The crux of the issue lied in the way I implemented the Arduino program. I was using the write() function to update the servo angles, which happens to accept only integer steps in the argument (or somehow responds only to integer input, 100 and 100.2 produces the same result). I changed it to writeMicroseconds() and that made the copter considerably steadier.
+I was adding up RPM on one motor while keeping the other at a steady value. I changed this to increase RPM in one motor while decreasing the opposing motor. That kinda keeps the total horizontal thrust unchanged, which might help me when I'm trying to get vertical altitude hold on this thing.
+I was pushing up the RPM to the max limit, which is why the quadcopter kept losing control at full throttle. There was no room for the RPM to increase when it sensed a tilt.
+I observed that one of the motor was inherently weaker than the other one, I do not know why. I hardcoded an offset into that motors PWM input.
+
+Thanks for all the support.
+
+Source Code:
+If you're interested, here's the source code of my bare-bones PID implementation: PID Source Code
+Please feel free to test it in your hardware. Any contributions to the project would be welcome.
+
+A:
+
+It looks like your proportional gain is too high.
+You seem to be constantly increasing RPM on one motor while locking in the other one to make the system rotate.  This isn't a good control strategy as eventually those are going to both saturate and you will lose control.  Also as time increases your ability to command the system decreases.  So you need a better model of the system.
+If you deal with #1, and #2 you'll have a more stable system but you may not be happy with the control bandwidth.  To deal with that you need to make your system stiffer which includes getting rid of any lag on the sensor side of things and on the control side of things.
+
+A:
+
+I'd start by reading over this question: What are good strategies for tuning PID loops?
+If I had to guess, I'd say you have a problem in the way your complimentary filter is constructed.  With the quadcopter motors off, you should tilt the frame back and forth and see if the roll / pitch values that are reported are actually accurate.  
+To me, it looks like there is a delay between the input from the accelerometer and the output of your filter -- the oscillation could be explained by late reactions to the input data.  The eventual turning over looks like a possible integration error that accumulates over time -- in other words, while your quadcopter is on its side it actually thinks it's hovering levelly.
+(Update) Regarding your graph, the fact that your motor speeds continue to increase (instead of staying balanced) means you have an error somewhere.  Perhaps your Integral term is growing unbounded, and you should specify a reasonable maximum for it.
+

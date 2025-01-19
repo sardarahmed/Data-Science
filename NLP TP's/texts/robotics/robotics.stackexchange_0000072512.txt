@@ -1,0 +1,86 @@
+Q:
+
+rosdistro add-on fork
+
+I'm following custom_rosdistro.rst#add-on-fork and this ros-sig-buildfarm thread about using the custom rosdistros
+list that additional distribution file after the "normal" one in the index.yaml
+in rosdistro/index.yaml is this adding a second jade: entry like:
+...
+ indigo:
+    distribution: [indigo/distribution.yaml]
+    distribution_cache: http://repositories.ros.org/rosdistro_cache/indigo-cache.yaml.gz
+  jade:
+    distribution: [jade/distribution.yaml]
+    distribution_cache: http://repositories.ros.org/rosdistro_cache/jade-cache.yaml.gz
+  jade:
+    distribution: [jade/addon_distribution.yaml]
+    distribution_cache: http://ros-build-farm-repo/rosdistro_cache/jade-cache.yaml.gz
+type: index
+version: 3
+
+Or add duplicate entries for all of the distributions?
+Or don't have the extra 'jade:', just add another distribution and distribution_cache directly under the other two?
+To my addon_distribution.yaml I added:
+tags: 
+- custom 
+
+Do I need to refer to this anywhere else?
+Will the tag become prominent in jenkins?
+I created an import_jade.yaml like suggested and put it into my forked buildfarm_deployment_config:
+jenkins-slave::reprepro_config:
+    '/home/jenkins-slave/reprepro_config/ros_bootstrap.yaml':
+        ensure: 'present'
+        content: |
+            name: ros_bootstrap
+            ...
+            verify_release: blindtrust
+    '/home/jenkins-slave/reprepro_config/import_jade.yaml':
+        ensure: 'present'
+        content: |
+            name: backfill-ros
+            method: http://packages.ros.org/ros/ubuntu/
+            suites: [trusty]
+            component: main
+            architectures: [amd64, source]
+            filter_formula: Package (% ros-jade-* )
+
+Some sources suggested it should go into /home/jenkins-slave/workspace, but I think reprepro_config is easier to get to jenkins when setting the job parameter.
+If you want to maintain and use your custom version of the rosdep database included in the forked rosdistro repository you have to perform the following changes:
+I don't want more maintenance, but do I have to in order to do the add-on fork?
+How do my custom packages get into the rosdep database if I don't modify it?
+Otherwise what is the basis for making this decision beyond the additional work/further divergence from upstream files?
+After forking the repository you must update the URLs to your custom locations for each distribution:
+Is this just for my one addon_distribution entry like shown above, or every distribution_cache in that list needs an updated url to point at my local repo machine?
+Every user must set an environment variable on the machine to use the custom rosdistro database:
+Does this matter within the virtual environment on my repo machine, the master or the slave?
+Or just users elsewhere?
+Note if you're overlaying you need to add a rodep file for the underlayed rosdistro if using one: https://github.com/mikepurvis/rosdep-generator
+Is overlaying different than add-on forking?
+Does it interact with the choice above to have a custom rosdep database?
+So far after going through the above steps with the above assumptions I can generate_all_jobs.py on my custom ros_buildfarm_config index.yaml, and it completes without error.
+The next thing to do is import_upstream, which is now in jenkins, so I went there, clicked 'Build with Parameters' and edit the config_file text entry box to use import_jade.xml (Which does exist).  I then see a message pending--There are no nodes with the label 'building_repository'
+Many of the other jenkins jobs are getting triggered and failing repeatedly, one prominent error is that some of them are try to get packages from my repo (after looking for others at archive.ubuntu.com), but because nothing has been built yet or other components are misconfigured that fails, and the rest of the job is never gotten to.
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2016-03-03
+Post score: 1
+
+A:
+
+pending--There are no nodes with the label 'building_repository'
+This was the result of a misconfigured repo/common.yaml (one of the ssh keys wasn't consistent with the master/common.yaml jenkins::private_ssh_key).
+Upon trying to run reconfigure.bash repo a couple of times it looked like the change wasn't working.  I ended up doing this on the repo machine:
+rm -rf /var/log/puppet.log  # Just to get a clean log, not necessary
+sudo deluser jenkins-slave
+sudo rm -rf /home/jenkins-slave
+sudo su
+./install_prerequisites.bash
+./reconfigure.bash repo
+
+And now I have a 'building_repository' build executor on my master jenkins server.  I also reran reconfigure on the master and slave several times, so I'm not 100% sure cleaning out jenkins-slave on the repo was the entire solution.
+Update
+I encountered some issues where simply deleting jenkins-slave did not do enough- trying to run reconfigure did not recreate the jenkins-slave home directory.  I ended up reinstalling ubuntu 14.04 server on the same repo vm instance and starting from scratch (and cloned the vm prior to making changes to save a little time if this step needed again).
+
+Originally posted by lucasw with karma: 8729 on 2016-03-04
+This answer was ACCEPTED on the original site
+Post score: 0
+

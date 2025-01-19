@@ -1,0 +1,89 @@
+Q:
+
+What are the differences between the different TransportHints?
+
+Hi all,
+Context: This week, I've experimented with publishing/subscribing and measured communication times with different TransportHints. More precisely, I've tried sending a fairly large custom message with the following transport hints:
+
+TransportHints().reliable()
+TransportHints().unreliable()
+TransportHints().udp()
+TransportHints().tcpNoDelay()
+TransportHints().tcp()
+
+Then, I've measured the average communication times for that custom message (i.e. from being published to being processed by a subscriber callback function). The node processing the callbacks was set on spin().
+Here are the measurements I've gathered:
+Subscriber queue size: 1, Publisher queue size: 1
+TransportHint --- Average communication time (ms)
+reliable -----------------7.5
+unreliable --------------0.4
+udp ----------------------0.4
+tcpNoDelay ------------0.4
+tcp -----------------------7.7
+Beside the reduced communication times, what are the differences between:
+
+reliable, tcp and tcpNoDelay?
+udp and unreliable?
+
+Also, if tcpNoDelay() is much better in terms of performance, why wouldn't you always want tcpNoDelay() then? If there are some downsides, could you explain what they are?
+Thanks!
+
+Originally posted by Pinknoise2077 on ROS Answers with karma: 69 on 2020-08-20
+Post score: 3
+
+A:
+
+First, the obligatory link to the wiki page: wiki/roscpp/Overview/Publishers and Subscribers - Transport_Hints, and the C++ API docs linked in that section: ros::TransportHints Class Reference.
+
+what are the differences between:
+
+reliable, tcp and tcpNoDelay?
+
+From the linked docs:
+
+reliable: Specifies a reliable transport. Currently this means TCP.
+tcp: Explicitly specifies the TCP transport.
+tcpNoDelay: If a TCP transport is used, specifies whether or not to use TCP_NODELAY to provide a potentially lower-latency connection.
+
+So both reliable and tcp currently result in TCP/IP being used. It says currently in the documentation, as specifying reliable could actually mean different things based on which underlying transports are available (it's just a hint).
+
+udp and unreliable?
+
+This is going to be similar:
+
+unreliable: Specifies an unreliable transport. Currently this means UDP.
+udp: Explicitly specifies a UDP transport.
+
+So again: both result in UDP being used, but unreliable could result in some other transport getting selected which could be considered unreliable.
+As an example: consider a roscpp modified to be aware of the physical layer. reliable could mean it would try (or make sure) to always route messages over a wired connection for subscribers which have set that transport hint. For subscribers which haven't done this, it could choose between wireless or wired, and for unreliable it could always route over a wireless connection (assuming the wireless connection is less reliable here of course).
+None of this is currently supported by the vanilla roscpp, but that's partly what the idea behind the transport hints was/is.
+
+Also, if tcpNoDelay() is much better in terms of performance, why wouldn't you always want tcpNoDelay() then? If there are some downsides, could you explain what they are?
+
+This is not actually a ROS-specific question. The generic form would be: if TCP_NODELAY results in lower latency, why don't we enable it for all connections?
+TCP_NODELAY controls whether or not Nagle's algorithm is enabled for that particular TCP connection. I'll not go into too much detail about how it works, as there are too many (very good) resources about it available (any book on networking at least mentions it, as do countless web pages).
+But Nagle's algorithm comes with a drawback: it (almost) trades bandwidth efficiency for latency. Efficiency comes from the fact that it delays sending data until it has a "full" packet (whatever that means for the connection). This (typically) results in fewer, but larger, packets getting transmitted. For topics which carry larg(ish) messages at a high rate, this can be important to reach saturation of the link.
+But for topics which carry smal(lish) messages, the batching behaviour of Nagle's will actually introduce additional latency (as data has to "wait" in a buffer more). So disabling the algorithm can be beneficial in that case.
+In essence, (dis|en)abling Nagle's is a trade-off, and the decision cannot be made by the infrastructure, as it requires knowledge about the data which will be transmitted (volume, frequency, etc), which is not available to the roscpp developers.
+Only you, as a user of roscpp know these characteristics of your topics. Hence the need for the transport hints, and why you need to do this yourself.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-08-21
+This answer was ACCEPTED on the original site
+Post score: 11
+
+Original comments
+Comment by gvdhoorn on 2020-08-21:
+A comment on something in your table:
+
+TransportHint   Avg comm. time (ms)
+
+reliable        7.5
+unreliable      0.4
+udp             0.4 
+
+You state:
+
+I've tried sending a fairly large custom message with the following transport hints
+
+I'd recommend to make sure how large, as the results you show here for UDP (and unreliable) could be misleading: there is no support for fragmentation/reassembly in UDPROS, so if the message becomes too large, data may be corrupted or not arrive at all.
+

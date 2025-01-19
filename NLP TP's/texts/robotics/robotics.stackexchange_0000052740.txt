@@ -1,0 +1,114 @@
+Q:
+
+Getting accurate real-time x,y coordinates with gmapping?
+
+Hello,
+I have a Turtlebot 2 (Kobuki base) running in Ubuntu 12.04, ROS Groovy. I want to be able to print out a map of the robot's X,Y coordinates in real time.
+Using information I've spliced together from various tutorials (still a newbie), I've come up with a node that uses a StampedTranform object to lookup the transform from "/map" to "base_link".  It then takes the transform.getOrigin().x() and transform.getOrigin().y() and prints it to a text file.
+My steps are this:
+roslaunch turtlebot_bringup turtlebot.launch
+
+roslaunch turtlebot_navigation gmapping_demo.launch
+
+roslaunch turtlebot_teleop keyboard_teleop.launch
+
+I then launch my application and manually drive the robot in a rectangular path around an office building (perhaps 50ft by 20ft). I load the resulting XY text file into MS Excel, and plot the points, but the path looks pretty awful.
+I don't have enough karma to post pictures here, but suffice to say it looks like a squashed rhombus.
+My question is, what am I doing wrong? Is there a different transform path I should be listening in on? Am I using the wrong function to extract X and Y? Or is it a bad idea in the first place to try and get the path coordinates in real time while the map is being built?
+Thanks in advance! I've posted my code below, if anyone is interested.
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include <tf/transform_listener.h>
+#include <iostream>
+#include <fstream>
+
+int main(int argc, char **argv)
+{
+
+  ros::init(argc, argv, "PoseUpdate");
+
+ 
+  ros::NodeHandle n;
+
+ 
+  ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+
+  tf::TransformListener listener;
+
+  ros::Rate rate(1.0);
+  std::ofstream myfile;
+  myfile.open("/tmp/OUTPUTXY.txt");
+  
+  while (n.ok())
+  {
+    tf::StampedTransform transform;
+    try
+    {
+        //ROS_INFO("Attempting to read pose...");
+        listener.lookupTransform("/map","/base_link",ros::Time(0), transform);
+        
+        ROS_INFO("Got a transform! x = %f, y = %f",transform.getOrigin().x(),transform.getOrigin().y());
+        myfile << transform.getOrigin().x() << "," << transform.getOrigin().y() << "\n";
+    }
+    catch (tf::TransformException ex)
+    {
+        ROS_ERROR("Nope! %s", ex.what());
+    } 
+
+    
+    rate.sleep();
+
+  }
+  myfile.close();
+  ROS_ERROR("I DIED");
+  return 0;
+}
+
+Originally posted by BlitherPants on ROS Answers with karma: 504 on 2013-07-12
+Post score: 5
+
+A:
+
+If you're using a TurtleBot with the Kinect or Asus Xion a space that large is going to be close to impossible to map.  The Kinect only has an effective range of 3m and with it's small field of view a lot of the time it will be out of visual range of any obstacle.  And the odometry of the Kobuki is much better than the Create, but it's still not going to allow many meters of deadreakoning. And with the small laser scan width, it is much harder for gmapping to do good scan matching since much of the time it will see feature less walls in it's small field of view.
+This is something that can be significantly improved but may require new tools and algorithms, not just tuning parameters.  Or a new sensor such as a longer range/wider field of view laser scanner will help significantly.
+
+Originally posted by tfoote with karma: 58457 on 2013-07-12
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by BlitherPants on 2013-07-12:
+It's a Kinect. The area I'm driving it around in has hallways that are about 5 feet wide (office with cubicles, etc). Is it really hopeless even with all the doorways and cubes in sight?
+Comment by BlitherPants on 2013-07-12:
+Also, if I drive around and do a map-saver to PGM, the output map looks pretty decent, so I had thought that the system was able to manage the office space...
+Comment by tfoote on 2013-07-12:
+It really depends on the space and how much you can keep the kinect scan line full.  The office space we were testing in had 10' wide corridors. There are techniques such as doing perimeter driving which can help a lot. If you're getting a decent PGM of the map, you should be able to make it work.
+Comment by BlitherPants on 2013-07-12:
+By "perimeter driving", do you just mean hugging the wall?
+Comment by tfoote on 2013-07-12:
+Pretty much.  Keep the kinect field of view as full as possible within 3m of distance.
+Comment by BlitherPants on 2013-07-12:
+That's encouraging to hear, thanks. Otherwise, do my methods of getting the transform look correct to you?
+Comment by tfoote on 2013-07-12:
+Ahh, sorry I didn't look closely at the code.  I think you're asking for the inverse of the transform you want.  Such that you're plotting the position of the origin of the map in relationship to the position of the robot.  Try reversing the argument order.
+Comment by BlitherPants on 2013-07-12:
+You mean like this?
+listener.lookupTransform(/base_link","/map","ros::Time(0), transform);
+Comment by BlitherPants on 2013-07-12:
+Hmm. Just tried that one line swap and got some pretty bizzare results that look nothing like a path. Not sure why.
+Comment by tfoote on 2013-07-12:
+Sorry maybe you were right originally.  The easiest way to know you're doing it right is to create a point at 0,0 of the robot and ask tf to transformPoint into the map.
+Comment by BlitherPants on 2013-07-12:
+Not sure how to do that. I'll have to read up on that. Thank you very much for your help!
+Comment by BlitherPants on 2013-07-30:
+(In case anyone reading this is curious, I have tried to create a point at 0,0 on base_link, then transformPoint()ed it into /map. I do get the same X,Y values as the method in my code above)
+Comment by Aarif on 2014-11-18:
+hi @BlitherPants, your code is very useful, i am new in ros and I've a question that, getting some data from a topic, we need to make a subscriber, but in you code as this line
+"ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);"
+suggests you made a publisher, how??
+Comment by BlitherPants on 2014-11-18:
+Hi @Aarif; the line you showed is actually leftover from previous code and is useless for this application. The code that is truly doing the work is the TransformListener in this line:
+listener.lookupTransform("/map","/base_link",ros::Time(0), transform);
+Comment by Aarif on 2014-11-21:
+Thank you very much @BlitherPants. :)
+

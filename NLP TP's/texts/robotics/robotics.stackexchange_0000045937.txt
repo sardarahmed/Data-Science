@@ -1,0 +1,317 @@
+Q:
+
+publisher and subscriber in the same node
+
+Hello, i have a subscriber that reads the values of a flex sensor that rosserial_arduino is reading, and have another file with a publisher that writes values in a topic of the shadow hand i need to send the flex sensor values to shadow hand, the question is, can i create only one .cpp file with the subscriber and the publisher there?
+already i have this two files:
+Subscriber:
+#include <ros/ros.h>
+#include <std_msgs/Float32.h>
+
+void indiceCallback(const std_msgs::Float32::ConstPtr& msg)
+{
+  ROS_INFO("Valor indice: [%f]", msg->data);
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "indice");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("indice", 500, indiceCallback);
+  ros::spin();
+
+  return 0;
+}
+
+Publisher file:
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+
+#include <sstream>
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "prueba");
+  ros::NodeHandle n;
+  ros::Publisher pub = n.advertise<std_msgs::Float64>("/sh_ffj3_mixed_position_velocity_controller/command", 1000);
+  ros::Rate loop_rate(10);
+
+  int count = 0;
+  while (ros::ok())
+  {
+    std_msgs::Float64 msg;
+    msg.data = 1.5;
+    ROS_INFO("%f", msg.data);
+    pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+
+  return 0;
+}
+
+As you can see the publisher file publish the data value, but there this value i change manually, i need to put there the value that i have reading in the subscriber.
+Thank you a lot people!!
+I already do this:
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+#include "std_msgs/Float32.h"
+
+#include <sstream>
+
+void indiceCallback(const std_msgs::Float64::ConstPtr& msg)
+{
+  ROS_INFO("Valor indice: [%f]", msg->data);
+}
+
+int main(int argc, char **argv)
+{
+
+  ros::init(argc, argv, "indice");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("indice", 500, indiceCallback);
+  ros::spin();
+
+  ros::init(argc, argv, "prueba");
+  //ros::NodeHandle n;
+  ros::Publisher pub = n.advertise<std_msgs::Float64>("/sh_ffj3_mixed_position_velocity_controller/command", 500);
+  ros::Rate loop_rate(10);
+
+  int count = 0;
+  while (ros::ok())
+  {
+    std_msgs::Float64 msg;
+    //msg.data
+    ROS_INFO("%f", msg.data);
+    pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+
+  return 0;
+}
+
+When i run everything the subscriber shows to me what is listening, now i need to deliver  this vlues to the publisher because i need to send this values to other topic. and if i do
+rostopic echo /sh_ffj3_mixed_position_velocity_controller/command
+
+it shoot me:
+WARNING: no messages received and simulated time is active.
+Is /clock being published?
+
+Any Idea??
+///////////////////////////////////Edit
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+    
+#include <sstream>
+
+void indiceCallback(const std_msgs::Float64::ConstPtr& msg)
+{
+  ROS_INFO("Valor indice: [%f]", msg->data);
+}
+
+int main(int argc, char **argv)
+{
+
+  ros::init(argc, argv, "indice");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("indice", 500, indiceCallback);
+  ros::spin();
+
+  ros::Publisher pub = n.advertise<std_msgs::Float64>("/sh_ffj3_mixed_position_velocity_controller/command", 500);
+  ros::Rate loop_rate(10);
+  ros::spinOnce();
+
+  int count = 0;
+  while (ros::ok())
+  {
+    std_msgs::Float64 msg;
+    //msg.data
+    ROS_INFO("%f", msg.data);
+    pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+
+  return 0;
+}
+
+EDIT///////////////////////////////////////////////////////////
+the code is like that:
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+#include <sstream>
+
+void indiceCallback(const std_msgs::Float64::ConstPtr& msg)
+{
+  ROS_INFO("Valor indice: [%f]", msg->data);
+}
+
+int main(int argc, char **argv)
+{
+
+  ros::init(argc, argv, "indice");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("indice", 50, indiceCallback);
+  ros::spinOnce();
+
+  ros::Publisher pub = n.advertise<std_msgs::Float64>("/sh_ffj3_mixed_position_velocity_controller/command", 50);
+  ros::Rate loop_rate(10);
+  ros::spinOnce();
+
+  int count = 0;
+  while (ros::ok())
+  {
+    std_msgs::Float64 msg;
+    pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+
+  return 0;
+}
+
+and the answer is this one in the subscriber:
+[ INFO] [1353578951.046220587, 3717.177000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.082715746, 3717.376000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.145255323, 3717.676000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.191476017, 3717.875000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.238836307, 3718.075000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.285820644, 3718.275000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.351882145, 3718.578000000]: Valor indice: [-0.177515]
+[ INFO] [1353578951.390390033, 3718.777000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.434999373, 3718.974000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.499188053, 3719.272000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.549386961, 3719.473000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.591178303, 3719.673000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.653046354, 3719.975000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.694743784, 3720.172000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.741287422, 3720.372000000]: Valor indice: [-0.157791]
+[ INFO] [1353578951.798968939, 3720.681000000]: Valor indice: [-0.157791]
+
+And the answer of the command
+rostopic echo /sh_ffj3_mixed_position_vocity_controller/command
+
+Is:
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+---
+data: 0.0
+
+Now i need to deliver the subscribing  data to the publisher...
+//////////////////////////EDIT//////////////////////////////////
+I created a global variable:
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+#include <sstream>
+
+std_msgs::Float64::ConstPtr mensaje;
+void indiceCallback(const std_msgs::Float64::ConstPtr& msg)
+{
+  ROS_INFO("Valor indice: [%f]", msg->data);
+  mensaje=msg;
+}
+
+int main(int argc, char **argv)
+{
+
+  ros::init(argc, argv, "segunda");
+  ros::NodeHandle n;
+
+   /////SUSCRIPTOR/////
+  
+  ros::Subscriber sub = n.subscribe("indice", 50, indiceCallback);
+  //ros::spinOnce();
+
+   /////PUBLICADOR/////
+ 
+  ros::Publisher pub = n.advertise<std_msgs::Float64>("/sh_ffj3_mixed_position_velocity_controller/command", 50);
+  ros::Rate loop_rate(10);
+  ros::spinOnce();
+
+  int count = 0;
+  while (ros::ok())
+  {
+    if(mensaje){
+    pub.publish(mensaje);
+    }
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+
+  return 0;
+}
+
+but when i run the program this happens:
+jose@ubuntu:~/prueba$ rosrun prueba segunda
+segunda: /usr/include/boost/smart_ptr/shared_ptr.hpp:412: boost::shared_ptr<T>::reference boost::shared_ptr<T>::operator*() const [with T = const std_msgs::Float64_<std::allocator<void> >, boost::shared_ptr<T>::reference = const std_msgs::Float64_<std::allocator<void> >&]: Assertion `px != 0' failed.
+Abortado (`core' generado)
+
+Originally posted by joseescobar60 on ROS Answers with karma: 172 on 2012-11-21
+Post score: 3
+
+Original comments
+Comment by dornhege on 2012-11-21:
+You only need the spinOnce in the main while loop.
+Comment by joseescobar60 on 2012-11-22:
+OK, it already works, but i need to take the value that i reading with the subscriber and deliver this value to the publisher, how can i do that??
+Comment by Lorenz on 2012-11-22:
+You added a a different question that is not really related to your original one. It's better to create a new question for that. In your case, the problem is that you are trying to access a pointer that hasn't been initialized yet in your main loop. Add an if(mensaje) { ... } around your publish.
+Comment by joseescobar60 on 2012-11-22:
+Thank you everybody, the problem was solved, i did what Lorenz said, thank you!!
+
+A:
+
+You are getting a warning that clock is not being published. This indicates that the parameter use_sim_time is set to true but there is no time source. This will cause your call to sleep to block forever and subscriber callbacks are not handled. Get rid of the parameter with
+rosparam delete use_sim_time
+
+or start a simulator to provide time.
+
+Originally posted by Lorenz with karma: 22731 on 2012-11-21
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by joseescobar60 on 2012-11-21:
+i did it, but the response is that the warning don't appear and the terminal remains freeze:
+Comment by Lorenz on 2012-11-21:
+And don't call ros::init twice.
+Comment by joseescobar60 on 2012-11-21:
+i let the code like is in the last edit, and the response is the same, subscriber shows to me what he is readieng but the publisher is dead
+Comment by Lorenz on 2012-11-21:
+The call to ros::spin will block so your program will never enter the publish loop. Get rid of the call to ros::spin and only keep ros::spinOnce.
+Comment by joseescobar60 on 2012-11-21:
+in the last edit i shows the answer....
+Comment by joseescobar60 on 2012-11-22:
+Do you know how can i take the message that i'm reading and deliver that message to the publisher, i need the topic /sh_ffj3_mixed_position_velocity_controller/command take the message that i'm subscribing.
+Comment by Lorenz on 2012-11-22:
+Either use a global variable (considered bad style) or use a class that contains your subscriber, publisher and the publish loop and use a member variable.
+Comment by joseescobar60 on 2012-11-22:
+how can i create a global variable of the type Float64?
+Comment by Lorenz on 2012-11-22:
+Just declare it on top-level, outside of any function.
+Comment by joseescobar60 on 2012-11-22:
+i'm doing that like this Float64 message; but when i do the make it says that Float64 is not a type!
+Comment by joseescobar60 on 2012-11-22:
+Lorenz, Sorry for the inconvenience i just did a edit in the question, i create the global variable but it gives me a problem..
+Comment by dornhege on 2012-11-22:
+It's the same error as before. You need to check that it is valid as @Lorenz said before with if(mensaje). Why did you remove that?
+Comment by joseescobar60 on 2012-11-22:
+Thank you everybody, the problem was solved, i did what Lorenz said, thak you!!
+

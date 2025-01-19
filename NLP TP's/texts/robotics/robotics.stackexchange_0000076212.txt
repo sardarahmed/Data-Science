@@ -1,0 +1,142 @@
+Q:
+
+Invalid Conversion from void(*) to ros::Subscriber function
+
+Hi Friends,
+I am new to ROS and Arduino programming. I am using linux ros system with intel nuc connected to a arduino mega2560 board which then connect to the DSP controller to control the left and right wheels of a robot to move around.
+I am trying to program a robot motor to run by sending command through the ros system. It then will translate the command to the arduino mega2560 board and then send signal to the controller.
+The problem that i am facing lies with these 2 lines
+ros::Subscriber std_msgs::Float32  lwheel_vtarget("lwheel_vtarget", lmotorCb);
+ros::Subscriber std_msgs::Float32  rwheel_vtarget("rwheel_vtarget", rmotorCb);
+and the error states that
+invalid conversion from 'void (*)()' to 'ros::Subscriber<std_msgs::float32>::CallbackT {aka void ()(const std_msgs::Float32&)}' [-fpermissive] ros::Subscriber<std_msgs::float32> lwheel_vtarget("lwheel_vtarget", lmotorCb);
+So i dont understand what the error is stating about and require some explanation from your expertise.
+Please do state which info you guys need and i will provide it accordingly.
+
+#include <ros.h>
+#include <std_msgs/Int32.h>
+#include <std_msgs/Int16.h>
+#include <std_msgs/Float32.h>
+#include <std_msgs/String.h>
+ 
+/**********************/
+/*  Variables setup   ****/
+/**********************/
+ 
+int interruptPin = 2;
+char bufferX[9];
+char bufferY[9];
+String str = "";
+String str_ = "";
+bool go = false;
+int R;
+int L;
+std_msgs::Int32 lwheel_msg;
+std_msgs::Int32 rwheel_msg;
+std_msgs::Float32 lmotor_msg;
+std_msgs::Float32 rmotor_msg;
+ 
+/***********************/
+/*  Subscribed Nodes    ****/
+/***********************/
+ 
+ros::NodeHandle nh;
+ros::Publisher lwheel("lwheel", &lwheel_msg);
+ros::Publisher rwheel("rwheel", &rwheel_msg);
+ 
+void lmotorCb(){
+    Serial1.print("V21=");  // left wheel
+    Serial1.println(L);
+    Serial1.println("V31=1");
+}
+void rmotorCb(){
+    Serial1.print("V22="); // right wheel
+    Serial1.println(R);
+    Serial1.println("V31=1");
+}
+  
+ros::Subscriber<std_msgs::Float32> lwheel_vtarget("lwheel_vtarget", lmotorCb);
+  
+ros::Subscriber<std_msgs::Float32> rwheel_vtarget("rwheel_vtarget", rmotorCb);
+ 
+void setup() {  
+  Serial.begin(115200);
+  Serial1.begin(38400);
+  pinMode(interruptPin, INPUT);  
+  UCSR1C = (UCSR1C & 0xCF) | (0b11 << 4);  // Enable odd parity
+ 
+  /**********************/
+  /*   ROS Node setup   ******/
+  /**********************/
+  
+  nh.getHardware()->setBaud(115200);
+  nh.initNode();
+  nh.subscribe(lwheel_vtarget);
+  nh.subscribe(rwheel_vtarget);
+  nh.advertise(lwheel);
+  nh.advertise(rwheel);
+}
+ 
+void loop() {
+  
+  //Fetching encoder line
+  Serial1.find('=');
+ 
+  str = Serial1.readStringUntil(',');
+  str_ = Serial1.readStringUntil('\n');
+  
+  strncpy(bufferX, str.c_str(), 9); //String to char
+  rwheel_msg.data = (unsigned int)strtol(&bufferX[1], NULL, 16);
+ 
+  strncpy(bufferY, str_.c_str(), 9); //String to char
+  lwheel_msg.data = (unsigned int)strtol(&bufferY[1], NULL, 16);
+  
+  lwheel.publish(&lwheel_msg);
+  nh.spinOnce();
+  rwheel.publish(&rwheel_msg);
+  nh.spinOnce();
+  
+  /**************************************/
+  /* Tesiting routine (use when needed) ******/
+  /**************************************/
+  /**
+  Serial.print("Left wheel: ");
+  Serial.print(lwheel_msg.data);
+  Serial.print(" - Right wheel: ");
+  Serial.print(rwheel_msg.data);
+  Serial.print("\n");
+  */
+  
+}
+
+Originally posted by AyeSir on ROS Answers with karma: 1 on 2016-09-09
+Post score: 0
+
+A:
+
+What are these lines?
+ros::Subscriber<std_msgs::Float32> lwheel_vtarget("lwheel_vtarget", lmotorCb);
+  
+ros::Subscriber<std_msgs::Float32> rwheel_vtarget("rwheel_vtarget", rmotorCb);
+
+Are you trying to create subscriber?
+AFAIK you need to create a subscriber using node handle
+,e.g. nh.subscribe("topic",queue_size,callback)
+See this tutorial for more detail
+
+Originally posted by alienmon with karma: 582 on 2016-09-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by AyeSir on 2016-09-09:
+Yes i am trying to create subscriber. The 2 lines are what my senior had used and implement it into my code which i dont really understand. i have change the 2 lines
+ros::Subscriber sub=nh.subscribe("lwheel_vtarget",10, lmotorCb);
+ros::Subscriber sub=nh.subscribe("rwheel_vtarget",10, rmotorCb)
+Comment by AyeSir on 2016-09-09:
+And the error shown is
+invalid use of template-name 'ros::Subscriber' without an argument list      on both lines
+So is there any right format for me to write the function correctly?
+Comment by alienmon on 2016-09-16:
+Please refer to this link --> http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber(c%2B%2B)
+

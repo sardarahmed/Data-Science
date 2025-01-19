@@ -1,0 +1,52 @@
+Q:
+
+How to perform decoupling between decision making and action execution in ROS2?
+
+Hi I'm making a robot using:
+
+ros2 foxy
+OS Ubuntu Linux 20.04.2 LTS (Focal Fossa).
+Linux 5.8.0-59-generic
+
+I built an Action based on the tutorial Building an Action Server and Client. Then expanded it using Serial and successfully managed to send messages to the serial port as seen in this thread.
+The structure of my project is the following:
+- workspace
+    - src
+        - arduino_comm #Represents the controller for the motor
+             - serial_server.py
+             - serial_client.py
+        - motor_interface
+        - other_interface
+
+The Server and Client use the following action, which is based on the tutorial
+##################################################
+#Action that sends robot towards a specific spatial position.
+##################################################
+#Goal of achieving a specific position.
+int32 botgoalposition
+---
+#Resulting position that we're aiming to attain.
+int32[] botendposition
+---
+#Feedback message about current position.
+int32[] botcurrposition
+
+So far it works well, now I want to create a main node that will take care of the decision making and indicate where the robot will move. So far I think I'll start with something simple like pressing the keyboard's arrowkeys to turn them into commands to the action server that represent a change in coordinates and make arduino_comm translate them to commands for the Arduino to move a pair of motors.
+I thought about it and to me it makes the most sense to build a service to send the coordinates only once to the action and then wait for a response from the action server called arduino_comm. Nonetheless I read that services are/used to? be blocking so if I want the main controller to perform other actions (such as receiving input from a joystick or a keyboard, or process from a camera) the robot wouldn't be able to do those decisions, right?
+On the other hand in the documentation here about publishers and subscribers it mentions that they're non-blocking and convenient for calling from a given topic to all the available nodes subscribed to that topic. But I'm not sure if sending a stream of data may impact my actions and cause them to reset.
+So I'd like to know what are the suggested options for the architecture of a robot like that.
+
+When to use publisher vs service as main control logic of a robot that will send data to all the other nodes?
+If I create a logic node that will send commands to all the others, do I need to send the commands to action clients (meaning I need to codify an action client for every node or just one client that is the logic node and holds the topics for all servers) or can I send them directly to the action server?
+What are some tutorials I can use for ROS2 on how to send and receive commands from one node to another? And does it matter if they're publishers/action/services?
+
+A:
+
+As a general rule of thumb, publications and topics are good for streaming data and commands where they're flowing continuously. Services are better for handling singular events that are not repeating such that you care about validating that every specific request has gone through and possibly want feedback.
+
+The action clients are just convenient mechanisms designed to facilitate interacting with the action server interface. You can instansiate multiple of them programmatically as classes inside your node for convenience or you can choose to do it manually and directly send commands to the server. I'd recommend at least leveraging the client classes as a base class so they take care of a lot of the logic for you.
+
+For tutorials on sending and receiving data in ROS 2 between nodes the Client Libraries Tutorials cover that well. (Make sure to select the right version you're working with). The different communication mechanisms are quite different and are designed such that you can take advantage of the different characteristics depending on your specific use cases. You may find this summary of pattern useful for how to differentiate topics services and actions.
+
+In the future please try to separate your questions in to separate more specific questions. Asking multiple questions at the same time is likely to get a good answer for one but not necessarily all of them together unless you can get someone who has expertise in all the areas.
+

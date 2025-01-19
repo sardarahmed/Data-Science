@@ -1,0 +1,68 @@
+Q:
+
+Planning for a dual arm robot in MoveIt
+
+Hello,
+I have been trying to plan for a dual arm robot ABB YuMi in MoveIt. The package now has a both_arm group and I can plan for this group by 'setPoseTarget()' for two end effectors and 'plan()' for the group. It works well. However, when I try to use 'computeCartesianPath', I realise this function does not allow specifying end effectors. Is there a way to compute trajectories with predefined waypoints for a two arm group?
+One way that I could think of was to compute trajectories for separate arm groups and combine the trajectories before execution. However, in this way, collision between two arms would not be taken into consideration, which could be a potential risk.
+Any idea is appreciated! Thanks in advance for your help.
+Edit: Here is how I combined the trajectories.
+
+Originally posted by Henning Luo on ROS Answers with karma: 58 on 2021-01-23
+Post score: 1
+
+A:
+
+I've defined my SRDF like this:
+<group name="a_bot">
+    <joint name="a_bot_shoulder_pan_joint" />
+    <joint name="a_bot_shoulder_lift_joint" />
+    <joint name="a_bot_elbow_joint" />
+    <joint name="a_bot_wrist_1_joint" />
+    <joint name="a_bot_wrist_2_joint" />
+    <joint name="a_bot_wrist_3_joint" />
+    <chain base_link="a_bot_base_link" tip_link="a_bot_gripper_tip_link" />
+</group>
+<group name="b_bot">
+    <joint name="b_bot_shoulder_pan_joint" />
+    <joint name="b_bot_shoulder_lift_joint" />
+    <joint name="b_bot_elbow_joint" />
+    <joint name="b_bot_wrist_1_joint" />
+    <joint name="b_bot_wrist_2_joint" />
+    <joint name="b_bot_wrist_3_joint" />
+    <chain base_link="b_bot_base_link" tip_link="b_bot_robotiq_85_tip_link" />
+</group>
+<group name="both_bots">
+    <group name="a_bot" />
+    <group name="b_bot" />
+</group>
+
+This preserves the end-effector information, so you can set multiple goals like this:
+group.setPoseTarget(home1, ee_link_a);  
+group.setPoseTarget(targetpose, ee_link_b);
+success_plan = group.plan(myplan);
+
+But this is for "free" planning, and you asked about cartesian planning with waypoints. I don't think that the current implementation supports this, and what you described (generating a cartesian path for each arm separately, then combining the trajectories) is the most appropriate workaround at the moment.
+I don't think that there is a convenience function to check for self-collisions in a given trajectory, but you can make one yourself. Step through each waypoint of your trajectory, set the RobotState of a PlanningScene object to the state at that waypoint using setCurrentState, then check collisions with isStateValid or isStateColliding.
+This does not guarantee safety since the states between waypoints are not checked, but with enough padding and a small step size it should be fine.
+
+Originally posted by fvd with karma: 2180 on 2021-01-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Henning Luo on 2021-01-27:
+Thanks fvd! That is exactly what I had been using! I was able to plan the trajectory by setting setPoseTarget, it worked perfectly. My problem is that I want to specify waypoints for the end effectors, this is usually done by computeCartesianPath. However, this function do not allow specifying end effectors. What I have been doing now is to use computeCartesianPath for each arm groups, merge the trajectories together and execute it with both_arms group. However, by executing them simultaneously, there is the potential risk that two trajectories might collide with each other.
+Comment by fvd on 2021-01-27:
+I see, I skipped over that part of your original question. I edited my answer.
+Comment by Henning Luo on 2021-01-27:
+Thank you so much for your answer! I will try to do collision detection as you mentioned!
+Comment by fvd on 2021-01-27:
+It could be helpful if you shared your code for this. See also this discussion about a new multi-arm MoveIt tutorial.
+Comment by Henning Luo on 2021-01-28:
+Yes of course, I will share it in my OP.
+Comment by Omar Islam on 2021-09-04:
+Can someone please elaborate on how to join trajectories because I joined the joint traj points as vectors but it doesn't seem to execute.
+Comment by fvd on 2021-09-05:
+Please post a separate question about your problem, making sure to include the details.
+

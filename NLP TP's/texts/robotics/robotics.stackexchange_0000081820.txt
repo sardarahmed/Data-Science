@@ -1,0 +1,57 @@
+Q:
+
+How to execute subscriber callback on some condition?
+
+Hi all,
+I am working on a small project in Python and ROS Indigo. To implement a small functionality, I have created a node in which the node has a subscriber (queue size 10) and corresponding callback method. The callback method makes a call to a web-api in turn.
+The web-api looses network connection to the server for a brief period and therefore the data is not pushed to the web-api. My understanding is ROS makes a queue for executing callback methods. Because then, I would hold the callback execution as long as there is no established connection to the web-api and execute callback once the connection is back. If the subscribed data would get accumulated, I wont loose them when eventually the callback would get execute.
+Please suggest how to achieve this. Thanks
+class Message():
+    def __init__(self):
+
+        # Create a subscriber for our custom message.
+        rospy.Subscriber("message_topic", String, self.callback, queue_size=10)
+
+        # Create the client
+        self.wc = WebClient(self.user_name)
+
+    def callback(self, data):
+        try:
+            # condition to check connection here does not help, still loose messages if no connection
+            # if self.wc.connect():
+            self.wc.api_call('send_msg', text=data.data)
+        except Exception as e:
+            print "Problem in connection : ",e
+            rospy.sleep(2.0)
+            self.make_connection()
+
+# Main function.
+if __name__ == '__main__':
+    # Initialize the node and name it.
+    rospy.init_node('web_message')
+    try:
+        msg = Message()
+     except rospy.ROSInterruptException: pass
+
+Originally posted by sosoup on ROS Answers with karma: 5 on 2017-07-17
+Post score: 0
+
+Original comments
+Comment by jayess on 2017-07-17:
+Part of the problem may be that callback() is only executed when data is received. So, if you're not connected, you're not receiving data, and therefore callback() is not executed.
+Comment by sosoup on 2017-07-18:
+Hi, thanks fo the response. Receiving subscribed data is not dependent on the network.
+
+A:
+
+Right now your queue_size is 10 meaning you will buffer 10 messages and no more while the sleep wait for the wifi connection is going on.  You could increase that size greatly to handle so many seconds of outage.
+Or you could buffer the incoming messages yourself (in a data structure you create in the python node) which would give you the ability to take other actions in the case of long outages- e.g. delete every other old message, only keep interesting ones, generate a warning to the user through another channel, or buffer without limit until you get a MemoryError exception and perhaps can recover or crash from it.
+
+Originally posted by lucasw with karma: 8729 on 2017-07-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by sosoup on 2017-07-19:
+Thank you for your response. This is exactly what I did. Things looks good now. Thank you so much for your answer anyway.
+

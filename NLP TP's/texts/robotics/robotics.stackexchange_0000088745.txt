@@ -1,0 +1,176 @@
+Q:
+
+Loading two PMD Pico Flexx into RVIZ with URDF
+
+Hey all, I'm a newer ROS user still trying to get his feet on the ground.
+I am trying to load two PMD Pico Flexx LiDARs into RVIZ, and it seems like the best way to load them in is to create a URDF with each sensor predefined, then use robot_state_publisher. I followed this tutorial to use a single Pico Flexx in RVIZ. I'm just trying to load one Pico Flexx into RVIZ using URDF and robot_state_publisher for now, then once that works out I will work on adding the other.
+I'm currently stuck trying to tie the Pico Flexx in the URDF (which I was able to load into RVIZ) with the driver provided in the above tutorial.
+I was able to create a basic URDF after following the tutorials.
+<?xml version="1.0"?>
+<robot name="multipleshapes">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.1" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+<link name="pico_de_gallo">  
+  <visual>
+    <origin xyz="0.0 0.2 0" rpy="0 0 30" />
+    <geometry>
+      <box size="0.01 0.05 0.03" />
+    </geometry>
+    <material name="Blue" />
+  </visual>
+</link>
+
+<joint name="pico_depth_joint" type="fixed">
+  <origin xyz="0.0 0.2 0" rpy="0 0 30" />
+  <parent link="base_link" />
+  <child link="pico_de_gallo" />
+</joint>
+
+</robot>
+
+I edited the tutorial URDF launch file to load the model into RVIZ, as shown below.
+<launch>
+
+  <arg name="model" default="$(find royale_in_ros)/urdf/model_1.urdf"/>
+  <arg name="gui" default="true" />
+  <arg name="rvizconfig" default="$(find royale_in_ros)/rviz/urdf.rviz" />
+
+  <param name="robot_description" command="$(find xacro)/xacro.py $(arg model)" />
+  <param name="use_gui" value="$(arg gui)"/>
+
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true" />
+
+</launch>
+
+And I was planning on including the launch file provided in the PMD tutorial, which runs the Pico Flexx driver. I removed the static_tf portion, since I was able to determine orientation in the URDF. The launch file is shown below.
+<launch>
+  <!-- node name: all topics will be advertised under this name -->
+  <arg name = "node_name"          default = "royale_camera"/>
+
+  <!-- nodelet manager -->
+  <node pkg = "nodelet" type = "nodelet" name = "$(arg node_name)" args = "manager" output = "screen"/>
+
+  <!-- camera_driver nodelet -->
+  <node pkg = "nodelet" type = "nodelet" name = "$(arg node_name)_driver"
+        args = "load royale_in_ros/royale_nodelet $(arg node_name)"
+        respawn = "true" output = "screen">
+    <param name = "node_name"          type = "str"    value = "$(arg node_name)"/>
+  </node>
+</launch>
+
+I'm trying to figure out how to define the Pico Flexx joint in the URDF with the camera driver launch file, or at least its contents. I can't seem to find any resources to join the two. Would anyone possibly know how to accomplish this? Or is the only way for me to move forward by me creating my own node to publish the pointclouds?
+Thank you in advance.
+
+Edit #1
+I was following Martin Gunther's advice, but I received the below catkin_make error on step 6 of the pico_flexx_driver installation walkthrough.
+-- +++ processing catkin package: 'pico_flexx_driver'
+-- ==> add_subdirectory(pico_flexx_driver)
+no SDKs found!
+CMake Error at /usr/share/cmake-3.10/Modules/FindPackageHandleStandardArgs.cmake:137 (message):
+Could not find royale SDK! please make sure to extract the royale SDK to
+~/catkin_ws/src/pico_flexx_driver/royale/ (missing:
+royale_LIB_DIR royale_LIBRARIES royale_INCLUDE_DIRS)
+Call Stack (most recent call first):
+/usr/share/cmake-3.10/Modules/FindPackageHandleStandardArgs.cmake:378 (_FPHSA_FAILURE_MESSAGE)
+pico_flexx_driver/cmake/Findroyale.cmake:26 (FIND_PACKAGE_HANDLE_STANDARD_ARGS)
+pico_flexx_driver/CMakeLists.txt:43 (find_package)
+I extracted the SDK into the "royale" folder, but it doesn't seem to contain any sort of "libraries" folder. I'm not too sure what I'm missing. Could someone please point me in the right direction?
+Thank you very much!
+
+Originally posted by astemeric on ROS Answers with karma: 25 on 2018-08-27
+Post score: 2
+
+A:
+
+If I understand you correctly, your problem is this:
+
+robot_state_publisher reads your URDF and publishes the TF transform base_link → pico_de_gallo.
+the ROS driver you are using (royale_in_ros) publishes the sensor data in the frame_id royale_camera_optical_frame.
+You don't know how to link the two.
+
+First of all, I wouldn't recommend using royale_in_ros. It's just a code sample that is shipped with the libroyale (i.e., the SDK for accessing the pico flexx cameras). Among other things, it has the limitation that you cannot change the frame_id in which the sensor data is published, so you cannot use two different pico flexx cameras at the same time.
+Instead, I would recommend using the pico_flexx_driver (full disclosure: I am a maintainer). Look at the README for all parameters. The pico_flexx_driver has a parameter called base_name_tf, which is by default pico_flexx. The sensor data is published in the $base_name_tf + "_optical_frame", so by default "pico_flexx_optical_frame". If the launch file arg publish_tf is true, the launch file also publishes TFs for $base_name_tf + "_link" → $base_name_tf + "_optical_frame".
+So what you could do is:
+
+Change your URDF so that the published TF transform is base_link → pico_de_gallo_link.
+Launch the pico_flexx_driver with publish_tf = true and base_name = pico_de_gallo: It will publish the TF transform pico_de_gallo_link → pico_de_gallo_optical_frame, and all sensor data in pico_de_gallo_optical_frame.
+
+Alternatively:
+
+Change your URDF so that the published TF transform is base_link → pico_de_gallo_optical_frame.
+Launch the pico_flexx_driver with publish_tf = false and base_name = pico_de_gallo: It will not publish TF transforms, and all sensor data in pico_de_gallo_optical_frame.
+
+The important point is that in both cases, all TF transforms together form a tree from base_link to the frame that your sensor data is published in.
+One more hint: When you want to run two pico_flexx cameras, you must start two nodelets, in the same nodelet manager (so that both end up in the same process). See end of the README. So you'll probably want to copy the launch file from pico_flexx_driver and modify it.
+
+Edit in response to your compilation problems:
+Your pico_flexx_driver directory should look like this:
+pico_flexx_driver
+├── cfg
+│   └── pico_flexx_driver.cfg
+├── cmake
+│   ├── findPicoFlexxSDK.py
+│   └── Findroyale.cmake
+├── CMakeLists.txt
+├── launch
+│   └── pico_flexx_driver.launch
+├── LICENSE
+├── nodelet_plugins.xml
+├── package.xml
+├── README.md
+├── royale
+│   └── libroyale-3.17.0.56-LINUX-x86-64Bit
+│       ├── API_Documentation.html
+│       ├── bin
+│       ├── CHANGELOG.txt
+│       ├── cypress_license.txt
+│       ├── doc
+│       ├── driver
+│       ├── Getting_Started_CamBoard_pico_flexx.pdf
+│       ├── Getting_Started_CamBoard_pico_maxx.pdf
+│       ├── Getting_Started_CamBoard_pico_monstar.pdf
+│       ├── gpl-3.0.txt
+│       ├── gradle-wrapper_license.txt
+│       ├── include
+│       ├── jquery_license.txt
+│       ├── kissfft_license.txt
+│       ├── lgpl-2.1.txt
+│       ├── lgpl-3.0.txt
+│       ├── matlab
+│       ├── packedarray_license.txt
+│       ├── README.md
+│       ├── royale_license.txt
+│       ├── RoyaleViewer.pdf
+│       ├── samples
+│       ├── share
+│       └── sizzle_license.txt
+└── src
+    └── pico_flexx_driver.cpp
+
+Originally posted by Martin Günther with karma: 11816 on 2018-08-28
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by astemeric on 2018-08-29:
+Hi Martin, thanks for getting back to me!
+I will be trying out the driver soon, but I received an error during the catkin_make portion of the installation. I updated the original question with the error.
+Thanks again!
+Comment by Martin Günther on 2018-08-30:
+I've edited my answer in response to your comment!
+Comment by astemeric on 2018-08-30:
+Thanks for the response!
+Hmmm... My directory looks just like the one that you posted. Do you have any idea why I would receive that error after trying catkin_make?
+Comment by Martin Günther on 2018-08-31:
+Are you sure that the royale library matches your kernel architecture? I.e., if uname -m returns x86_64, you should be using libroyale-3.17.0.56-LINUX-x86-64Bit and so on. Also, if you've changed the royale version, make sure to run catkin_make clean first.
+Comment by astemeric on 2018-09-07:
+It all worked out! Not too sure why it wasn't working in the first place, as I was using the x86-64Bit library. In any case, thanks for all the help Martin! :]
+

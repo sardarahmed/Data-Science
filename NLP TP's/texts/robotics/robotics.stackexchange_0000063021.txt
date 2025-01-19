@@ -1,0 +1,93 @@
+Q:
+
+Joy to control servo
+
+Hi, I'm using Hydro.
+I've been working on and off with this code to control a servo using rosserial with an Arduino, using a PS3 controller and the Joy node.
+I wrote my code based off of this tutorial. Here is my code
+ #include <ros/ros.h>
+#include <std_msgs/UInt16.h>
+#include <sensor_msgs/Joy.h>
+
+class Servo
+{
+public:
+  Servo();
+
+private:
+  void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+  
+  ros::NodeHandle nh_;
+
+ // Joystick tuning params
+  int linear_, angular_;
+  double l_scale_, a_scale_;
+  
+  // Joystick dev to listen to
+  ros::Subscriber joy_sub;
+
+  // Robot bits to control
+  ros::ServiceClient create_client;
+  ros::ServiceClient servo_client;
+
+  ros::Publisher deg_pub_;  // I want to publish an angle as std_msgs/UInt16
+  ros::Subscriber joy_sub_;
+};
+
+Servo::Servo():  
+  linear_(1),
+  angular_(2)
+{
+
+  nh_.param("axis_linear", linear_, linear_);
+  nh_.param("axis_angular", angular_, angular_);
+  nh_.param("scale_angular", a_scale_, a_scale_);
+  nh_.param("scale_linear", l_scale_, l_scale_);
+
+  deg_pub_ = nh_.advertise<std_msgs::UInt16>("servo", 1);
+
+  joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &Servo::joyCallback, this);
+
+}  
+
+void Servo::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{
+  std_msgs::UInt16 deg; 
+  deg = l_scale_*joy->axes[linear_];
+  deg_pub_.publish(deg);
+}
+
+int main(int argc, char** argv) 
+{
+  ros::init(argc, argv, "servo_joy");
+  Servo servo_joy;
+
+  ros::spin();
+}
+
+I get some errors when I try to build it.
+One is
+/home/donni/catkin_ws/src/rosberry_pichoptor/src/servo.cpp:55:35: error: no match for ‘operator=’ in ‘deg = (((Servo*)this)->Servo::l_scale_ * ((double)(& joy)->boost::shared_ptr<T>::operator-> [with T = const sensor_msgs::Joy_<std::allocator<void> >]()->sensor_msgs::Joy_<std::allocator<void> >::axes.std::vector<_Tp, _Alloc>::operator[] [with _Tp = float, _Alloc = std::allocator<float>, std::vector<_Tp, _Alloc>::const_reference = const float&, std::vector<_Tp, _Alloc>::size_type = unsigned int](((unsigned int)((Servo*)this)->Servo::linear_))))’
+
+I guess this means you can't use = with UInt16?
+The second error is
+/opt/ros/hydro/include/std_msgs/UInt16.h:55:8: note:   no known conversion for argument 1 from ‘double’ to ‘const std_msgs::UInt16_<std::allocator<void> >&’
+
+This is also about UInt. I think my code is using UInt and float interchangeably. I don’t know how to get around this. I'm also unclear on how the Arduino node will read the Joy values. Is there a way to do the calculations with doubles and change them to UInt?
+
+Originally posted by dshimano on ROS Answers with karma: 129 on 2014-10-02
+Post score: 1
+
+A:
+
+The std_msgs/UInt16 message is a wrapper around an integer type, not an integer type. This means that you can't assign directly into it; rather you have to set its data field. Try:
+deg.data = l_scale_*joy->axes[linear_];
+
+Originally posted by ahendrix with karma: 47576 on 2014-10-02
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by dshimano on 2014-10-07:
+Thanks, that fixed it!
+

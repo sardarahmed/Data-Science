@@ -1,0 +1,280 @@
+Q:
+
+AMCL: No laser scan received
+
+Hello everyone!
+After generating a map with a SLAM, I wanted to localize my robot in this map. For that purpose I want to use AMCL package. But I keep getting the same error:
+[ WARN] [1560764535.601073091, 398.853000000]: No laser scan received (and thus no pose updates have been published) for 398.853000 seconds.  Verify that data is being published on the /amazon_warehouse_robot/laser/scan topic.
+
+[ WARN] [1560764535.614184813, 398.865000000]: MessageFilter [target=odom ]: Dropped 100.00% of messages so far. Please turn the [ros.amcl.message_notifier] rosconsole logger to DEBUG for more information.
+
+I use the ROS Kinetic, Ubuntu 16.04, Gazebo
+I do the following:
+roslaunch amazon_navigation amazonrobot_1_warehouse.launch
+
+rosrun map_server map_server map.yaml
+
+rosrun amcl amcl scan:=amazon_warehouse_robot/laser/scan _odom_frame:=amazon_warehouse_robot/odom
+
+and
+rostopic echo /amazon_warehouse_robot/laser/scan 
+
+gives:
+header: 
+  seq: 2
+  stamp: 
+    secs: 1
+    nsecs: 101000000
+  frame_id: "amazon_warehouse_robot/hokuyo_link"
+angle_min: -1.57000005245
+angle_max: 1.57000005245
+angle_increment: 0.0175419002771
+time_increment: 0.0
+scan_time: 0.0
+range_min: 0.0799999982119
+range_max: 10.0
+ranges: [inf, inf, 6.664645671844482, 4.669021129608154, 3.3098554611206055, inf, inf, inf, inf, inf, inf, inf, inf, inf, inf, inf, inf, inf, 5.578123569488525, ....]
+intensities: [0.0, 0.0, 0.0, ...]
+
+rostopic echo /amazon_warehouse_robot/odom
+
+header: 
+  seq: 1785
+  stamp: 
+    secs: 178
+    nsecs: 601000000
+  frame_id: "amazon_warehouse_robot/odom"
+child_frame_id: "amazon_warehouse_robot/base"
+pose: 
+  pose: 
+    position: 
+      x: 0.000142417215952
+      y: 0.00111615755185
+      z: 0.050002391371
+    orientation: 
+      x: -1.3005763226e-07
+      y: -2.34663847428e-07
+      z: 4.42450664072e-05
+      w: 0.999999999021
+  covariance: [1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, ...]
+twist: 
+  twist: 
+    linear: 
+      x: 0.000189513575366
+      y: 0.000217444901386
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 2.97531367781e-06
+  covariance: [0.0, 0.0, 0.0,...]
+
+rostopic list
+
+/amazon_warehouse_robot/cmd_vel
+/amazon_warehouse_robot/joint_cmd
+/amazon_warehouse_robot/joint_states
+/amazon_warehouse_robot/laser/scan
+/amazon_warehouse_robot/odom
+/amcl/parameter_descriptions
+/amcl/parameter_updates
+/amcl_pose
+/clock
+/gazebo/link_states
+/gazebo/model_states
+/gazebo/parameter_descriptions
+/gazebo/parameter_updates
+/gazebo/set_link_state
+/gazebo/set_model_state
+/gazebo_gui/parameter_descriptions
+/gazebo_gui/parameter_updates
+/initialpose
+/map
+/map_metadata
+/particlecloud
+/rosout
+/rosout_agg
+/tf
+/tf_static
+
+tf tree looks like this:
+amazon_warehouse_robot/odom  
+                   ⇩ 
+amazon_warehouse_robot/base
+                   ⇩                                                                                             
+amazon_warehouse_robot/hokuyo_link
+
+I also did a transform:
+<node pkg="tf" type="static_transform_publisher" name="map_to_odom" 
+    args="0 0 0.1 0 0 0 1.0 /map /amazon_warehouse_robot/odom 100" />
+
+but it didn't had any effect. As I am aware, AMCL should publish its own transform
+I have gone through all similar answers, but still nothing changed. One of them was suggesting that if you have non integer value "inf" for me, that may be the cause of the problem, but I have added a filter to laserscan and result was the same.
+Any help is appreciated!! I don't know what to do now
+$ roswtf
+the rosdep view is empty: call 'sudo rosdep init' and 'rosdep update'
+No package or stack in context
+================================================================================
+Static checks summary:
+
+Found 1 error(s).
+
+ERROR ROS Dep database not updated: Please update rosdep database with 'rosdep update'.
+================================================================================
+Beginning tests of your ROS graph. These may take awhile...
+analyzing graph...
+... done analyzing graph
+running graph rules...
+... done running graph rules
+
+Online checks summary:
+
+Found 1 warning(s).
+Warnings are things that may be just fine, but are sometimes at fault
+
+WARNING The following node subscriptions are unconnected:
+ * /amcl:
+   * /tf_static
+   * /initialpose
+ * /gazebo:
+   * /gazebo/set_link_state
+   * /gazebo/set_model_state
+   * /amazon_warehouse_robot/joint_cmd
+   * /amazon_warehouse_robot/cmd_vel
+
+$ rostopic info /amazon_warehouse_robot/laser/scan
+Type: sensor_msgs/LaserScan
+
+Publishers: 
+ * /gazebo (http://shyngys-HP-ENVY-15-Notebook-PC:41995/)
+
+Subscribers: 
+ * /amcl (http://shyngys-HP-ENVY-15-Notebook-PC:38675/)
+
+$ rostopic info /amazon_warehouse_robot/odom
+Type: nav_msgs/Odometry
+
+Publishers: 
+ * /gazebo (http://shyngys-HP-ENVY-15-Notebook-PC:41995/)
+
+Subscribers: None
+
+Originally posted by kurshakuz on ROS Answers with karma: 76 on 2019-06-17
+Post score: 1
+
+Original comments
+Comment by kurshakuz on 2019-06-17:
+My launch file is following:
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="amazonrobot_1_warehouse.world"/> 
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+    <arg name="verbose" default="true"/>
+  </include>
+
+ <node pkg="tf" type="static_transform_publisher" name="base_to_laser" 
+    args="0.139000 0.000000 0.15 0.000000 0.000000 0.000000 /amazon_warehouse_robot/base /amazon_warehouse_robot/hokuyo_link 20" />
+
+<node pkg="tf" type="static_transform_publisher" name="base_to_chassis" 
+    args="0 0 0.1 0 0 0 1.0  /amazon_warehouse_robot/base /amazon_warehouse_robot/amazon_warehouse_robot::chassis 100" />
+
+</launch>
+
+Comment by kosmastsk on 2019-06-17:
+What is the frame_id of the map that you are loading? Try adding this as a parameter in the map_server node and set it to "/map" and see if anything changes
+Comment by ChuiV on 2019-06-17:
+Just to be sure, try changing
+rosrun amcl amcl scan:=amazon_warehouse_robot/laser/scan _odom_frame:=amazon_warehouse_robot/odom
+to
+rosrun amcl amcl scan:=/amazon_warehouse_robot/laser/scan _odom_frame:=/amazon_warehouse_robot/odom
+namespacing has gotten me a couple times.
+Comment by kurshakuz on 2019-06-18:
+Hi @kosmastsk! I have added the following:
+<node name="map_server" pkg="map_server" type="map_server" args="$(find amazon_navigation)/maps/map.yaml">
+    <param name="frame_id" value="/map"/>
+  </node>
+
+and get the following warning:
+Frame_id of map received:'/map' doesn't match global_frame_id:'map'. This could cause issues with reading published topics
+
+But if I change the value to map (without a /) warning disappears, but I keep getting the same error as in the question
+Comment by kurshakuz on 2019-06-18:
+@ChuiV the problem is still there :(
+Comment by damjan on 2019-06-18:
+Could you post the output of rosnode info /amcl, rostopic info /amazon_warehouse_robot/laser/scan and rostopic info /amazon_warehouse_robot/odom? Also, try running roswtf and post your rqt_graph.
+Comment by kurshakuz on 2019-06-22:
+@damjan
+rosnode info /amcl
+--------------------------------------------------------------------------------
+Node [/amcl]
+Publications: 
+ * /amcl/parameter_descriptions [dynamic_reconfigure/ConfigDescription]
+ * /amcl/parameter_updates [dynamic_reconfigure/Config]
+ * /amcl_pose [geometry_msgs/PoseWithCovarianceStamped]
+ * /particlecloud [geometry_msgs/PoseArray]
+ * /rosout [rosgraph_msgs/Log]
+ * /tf [tf2_msgs/TFMessage]
+
+Subscriptions: 
+ * /amazon_warehouse_robot/laser/scan [sensor_msgs/LaserScan]
+ * /clock [rosgraph_msgs/Clock]
+ * /initialpose [unknown type]
+ * /tf [tf2_msgs/TFMessage]
+ * /tf_static [unknown type]
+
+Services: 
+ * /amcl/get_loggers
+ * /amcl/set_logger_level
+ * /amcl/set_parameters
+ * /global_localization
+ * /request_nomotion_update
+ * /set_map
+
+Comment by kurshakuz on 2019-06-22:
+@damjan I also have added more info to the question. Please have a look, thanks for help :)
+Comment by billy on 2019-06-22:
+A note that may or may not help.
+My laser scan header does not have " "  around the frame id:
+header: 
+  seq: 1194
+  stamp: 
+    secs: 1561227281
+    nsecs: 427794935
+  frame_id: laser
+angle_min: 0.0
+
+In your post the frame id is in quotations:
+header: 
+  seq: 2 
+  stamp: 
+    secs: 1 
+    nsecs: 101000000 
+  frame_id: "amazon_warehouse_robot/hokuyo_link" 
+angle_min: -1.57000005245 
+
+I am using JADE and that may be the difference, but alos possible AMCL doesn't find it because frame id shows it incorrectly. IDK. Good luck
+
+A:
+
+Your _odom_frame parameter should actually be _odom_frame_id and you are missing the _base_frame_id parameter, i.e., i think that your rosrun command should look like this:
+rosrun amcl amcl scan:=amazon_warehouse_robot/laser/scan _odom_frame_id:=amazon_warehouse_robot/odom _base_frame_id:=amazon_warehouse_robot/base
+
+Please re-check the frame names. You can check that the AMCL parameters have been set correctly with rosparam get /amcl/odom_frame_id and rosparam get /amcl/base_frame_id.
+
+Originally posted by damjan with karma: 446 on 2019-06-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by kurshakuz on 2019-06-24:
+Thank you very much! That worked
+Comment by damjan on 2019-06-24:
+Glad to have helped! :) That LaserScan timeout error is actually quite misleading.
+Comment by frans on 2021-10-08:
+hi i have the same issue too, can you help me pls.. im using rplidar a1m8, and in my case the warning is: " No laser scan received (and thus no pose updates have been published) for 1633685695.210126 seconds.  Verify that data is being published on the /scan topic". im stuck....
+

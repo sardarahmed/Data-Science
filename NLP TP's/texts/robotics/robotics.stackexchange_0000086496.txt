@@ -1,0 +1,249 @@
+Q:
+
+robot arm is broken link by link in gazebo
+
+Hi all,
+I have succeeded loading my designed robot arm in rviz and finished planning and executing. Right now I want to use load kinect to get some simulated data for robot arm. Hence I am trying to load urdf file in gazebo. The problem is my robot arm is broken link by link. It seems joint element in urdf doesn't work. I followed the tutorial of urdf in gazebo and added friction and damping in the urdf. I am not sure where I got wrong. Thanks in advance for any suggestions.
+Here is the pic that robot arm in the rviz
+
+Here is the view that joint in gazebo:
+
+Here is the pic of using simulation pause:
+
+The pic of fixing exploding problem:
+
+Here is the sample of urdf for the robot arm:
+<link
+name="base_link">
+<inertial>
+  <origin
+    xyz="0.0321026763828113 2.50206915787532E-06 0.0657435992941309"
+    rpy="0 0 0" />
+  <mass
+    value="1.10920648420033" />
+  <inertia
+    ixx="0.00147297997205269"
+    ixy="5.79000298722719E-08"
+    ixz="0.000465603614160418"
+    iyy="0.00175551330106354"
+    iyz="8.33670869119005E-08"
+    izz="0.000282540363613262" />
+</inertial>
+<visual>
+  <origin
+    xyz="0 0 0"
+    rpy="0 0 0" />
+  <geometry>
+    <mesh
+      filename="package://finalarm_dualmotor/meshes/base_link.STL" />
+  </geometry>
+  <material
+    name="">
+    <color
+      rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+  </material>
+</visual>
+<collision>
+  <origin
+    xyz="0 0 0"
+    rpy="0 0 0" />
+  <geometry>
+    <mesh
+      filename="package://finalarm_dualmotor/meshes/base_link.STL" />
+  </geometry>
+</collision>
+</link>
+ <link
+name="link_2">
+<inertial>
+  <origin
+    xyz="-0.109631651147839 0.00554931888805481 -0.00279543211641581"
+    rpy="0 0 0" />
+  <mass
+    value="0.471538287399184" />
+  <inertia
+    ixx="0.000342180694725082"
+    ixy="0.000123860746353015"
+    ixz="-6.21619859185448E-05"
+    iyy="0.000321444130264041"
+    iyz="0.000137295563003535"
+    izz="0.000525597338936957" />
+</inertial>
+<visual>
+  <origin
+    xyz="0 0 0"
+    rpy="0 0 0" />
+  <geometry>
+    <mesh
+      filename="package://finalarm_dualmotor/meshes/link_2.STL" />
+  </geometry>
+  <material
+    name="">
+    <color
+      rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+  </material>
+</visual>
+<collision>
+  <origin
+    xyz="0 0 0"
+    rpy="0 0 0" />
+  <geometry>
+    <mesh
+      filename="package://finalarm_dualmotor/meshes/link_2.STL" />
+  </geometry>
+</collision>
+</link>
+
+ <joint
+name="joint_1"
+type="revolute">
+<origin
+  xyz="0.0672 0 0.058"
+  rpy="0.46565 1.5708 0" />
+<parent
+  link="base_link" />
+<child
+  link="link_2" />
+<axis
+  xyz="-1 0 0" />
+<limit
+  lower="-3.14"
+  upper="3.14"
+  effort="6"
+  velocity="2.0" />
+<dynamics damping="0.7"/>
+</joint>
+
+Originally posted by Oh233 on ROS Answers with karma: 55 on 2018-04-10
+Post score: 1
+
+Original comments
+Comment by Airuno2L on 2018-04-10:
+Can you post a sample of the urdf here? Something that shows a few links and joints.
+Comment by Oh233 on 2018-04-10:
+@Airuno2L I have added a sample which contains link1, link2 and joint1 in the problem. I wanted to attach the whole urdf file but it doesn't allow me to do it. Please tell me if you need anything. Thank you for your help.
+Comment by josephcoombe on 2018-04-10:
+Could you also update your post to include a picture of your robot in RViz, so we can see what it's supposed to look like? Also, in Gazebo could you try viewing joints (View -> Joints).
+Comment by Oh233 on 2018-04-10:
+@josephcoombe I already post the pic of arm in rviz and the view of joint_1 in gazebo but I am not sure whether the view of joint is the one you want. Please let me know if you know further infomation. Thanks.
+Comment by josephcoombe on 2018-04-11:
+@Oh233 By viewing joints, I mean in Gazebo go to top-left menu. Select 'View' menu. From drop-down list, check Joints. Gazebo will display RGB coordinate axes at each non-fixed joint in your model.
+
+A:
+
+The URDF is spawning successfully in Gazebo (i.e. it's not actually broken).
+The arm's links are jumbled up because the joints are not being actuated. 
+The robot is then "exploding" - after which all the links are collected at the origin.
+
+Update: At least one of the links in the URDF has an incorrect Inertial matrices (probably way too small)
+To fix:
+1) Change all your inertia tags to:
+<inertia ixx="0.0001" ixy="0.000"  ixz="0.000"  
+         iyy="0.0001" iyz="0.000"
+         izz="0.0001"
+/>
+
+(You can go back and fix these later. Either using geometric approximations or something like MeshLab
+Note: In Gazebo, View -> Inertia will give you a ballpark idea of the inertial matrices. To understand what the purple boxes actually mean check out http://gazebosim.org/tutorials?tut=inertia#CheckinginGazebo)
+2) If model still explodes, disable self-collision for all links:
+<gazebo reference="link_10">
+  <selfCollide>False</selfCollide>
+</gazebo>
+
+You can re-enable self-collisions selectively. Links that are penetrating on spawn can cause the model to "explode"
+3) (Optional) I always enable implicitSpringDamping for better stability simulating joint damping:
+<gazebo reference="joint_9">
+  <implicitSpringDamper>True</implicitSpringDamper>
+</gazebo>
+
+You should be able to spawn your model into Gazebo like so:
+
+Note: Gazebo Answers (http://answers.gazebosim.org/questions/) is usually where I go with these types of Gazebo-focused questions if you end up running into any other snags.
+
+Old: Maybe useful info but not the correct answer to OP's problem
+RViz is a visualizer, so you can "move" an arm in RViz just by broadcasting ideal joint states. Gazebo is a simulator, so you have to somehow inject joint forces into the simulated world. Otherwise you should expect limp arm behavior - similar to the real world.
+You have to write/use a Gazebo Plugin that applies efforts to the joints or use en existing package like ros_control.
+
+Some quick debugging:
+
+Spawn URDF in Gazebo off the ground (e.g. -x 0 -y 0 -z 6).
+ <!-- Spawn a urdf in Gazebo, taking the description from the parameter server -->
+ <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model"
+     args="-param robot_description -urdf -model robot -x 0 -y 0 -z 6" />
+
+As @ARB suggests, turn gravity off for your arm.
+
+View -> Joints
+
+View -> Inertia
+
+Start simulation Paused and manually advance simulation in small time steps to see if arm is collapsing normally under effects of gravity or is "exploding" due to some defect in model (inertial matrices looked pretty normal so unlikely).
+
+Use the joint_state_publisher (with GUI) and robot_state_publisher in RViz to verify joints are as expected.
+
+Originally posted by josephcoombe with karma: 697 on 2018-04-11
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Oh233 on 2018-04-11:
+Hi josephcoombe, I will try your suggestion. I have tried the way of turning  gravity off but it didn't help. I added the pic of view of joint. But there is no joint coordinate for every joint. And what is the purpose of lifting robot off the ground? I tried to lift it but it wasn't lifted.
+Comment by Oh233 on 2018-04-11:
+I added a fixed joint for base link and world. Does that link prevent me from lifting the arm?
+Comment by josephcoombe on 2018-04-11:
+Yes, that link prevents you from moving the arm once spawn. You can set the spawn location of the arm via the spawn_urdf node in the gazebo_ros package (updated my answer with example).
+Comment by josephcoombe on 2018-04-11:
+The purpose to changing the spawn location to be above the ground plane is that it may help clarify the kinematic structure of arm. If it droops naturally, joints aren't actuated. If it stays in a jumble, something funky may be happening.
+Comment by josephcoombe on 2018-04-11:
+From the updated joint view, it appears that all your joints are spawning in the same location.
+Have you tried starting the simulation paused and manually advancing in small time steps?
+Comment by Oh233 on 2018-04-11:
+I haven't tried that. I already tried to implement ros control but it didn't help solve the problem. I need to have lunch right now and will update my status as soon as possible. Thanks so much for your reply.
+Comment by Oh233 on 2018-04-11:
+I tried simulation pause and found that the arm is actually spawn right at first. But it will collapse after a small time step.
+Comment by josephcoombe on 2018-04-11:
+What happens when you change spawn location to 6 meters above ground plane via gazebo_ros spawn_urdf node?
+Comment by Oh233 on 2018-04-11:
+The arm is spawned at the position I specified -x 0 -y 0 -z 6. And it is straight like the fourth pic I posted but at different height. After a small time step. it fell to the ground and became the third pic. It seems that gravity is still working.
+Comment by josephcoombe on 2018-04-11:
+Spawn it at  -x 0 -y 0 -z 6, but leave in that fixed joint between the world and base_link links.
+Comment by josephcoombe on 2018-04-11:
+If you have it in a public repo somewhere, I'd be glad to take a look at it in Gazebo myself.
+Comment by Oh233 on 2018-04-11:
+I posted the code in github. Here is the link
+https://github.com/ruinianxu/ws_robot
+All arm related files are in the finalarm_dualmotor. The launch I am using is /finalarm_dualmotor/launch/fianlarm_gazebo.launch. Thanks for your help
+Comment by josephcoombe on 2018-04-11:
+At least one of your inertia matrices was incorrect (probably way too small) - links 9 and 10 has inertia matrices of zero if I recall. I've updated my answer with some steps that should let you spawn your arm in Gazebo w/o problems.
+Comment by Oh233 on 2018-04-11:
+Thanks so much for your help. I will fix the problem by following your suggestions.  My urdf file was automatically generated from solidworks hence I think it is normal that it has problems.
+Comment by Oh233 on 2018-04-12:
+I am sorry to bother you again. I tried all your suggestions but my robot will still jumble together after several time steps. Did you successfully get the arm like the pic you attached? I loaded another robot arm in gazebo and that one isn't messed up. But I can find explicit difference in urdfs.
+Comment by josephcoombe on 2018-04-12:
+Yes, that pic is a screenshot of your robot arm after I made my changes.
+Fyi, I edited finalarm_dualmotor/finalarm_dualmotor.urdf directly instead of messing with the xacro and changed the finalarm_dualmotor/finalarm_gazebo.launch to only spawn the .urdf.
+Comment by josephcoombe on 2018-04-12:
+Also made a quick PR of my changes to your model: https://github.com/ruinianxu/ws_robot/pull/1 roslaunch finalarm_dualmotor finalarm_gazebo.launch
+Comment by Oh233 on 2018-04-12:
+I got it work. Thank you so much for your help. But I am still confused about some behaviors about the arm. The first thing is even after I turned the gravity off, the arm would fall down after first generated straight. Then the arm will continue wiggling even I apply friction and damping.
+Comment by Oh233 on 2018-04-12:
+Is this because that I didn't implement controllers?
+Comment by josephcoombe on 2018-04-12:
+Yes, without controllers, the arm will go limp. For jitter, try increasing the joint dynamics damping values (0.5-0.7) and see what happens - I might add a little joint dynamics friction (0.1) too (I avoid friction generally cause it seems to cause instabilities).
+Comment by josephcoombe on 2018-04-12:
+Generally I recommend tuning an arm without any controller first - just apply impulses (note: these are applied for just 1 simulation time step) or drop arm repeatedly to see if it behaves like you'd expect. Then after you're happy with its passive behavior, you can add your controller.
+Comment by Oh233 on 2018-04-13:
+I used solidworks to get the inertia matrix for each link. Right now I found that the gripper will pass through other links when arm falls down from the original position. It seems that the gripper is not solid. Then I found that two sides of gripper became non concentric to the corresponding motor.
+Comment by josephcoombe on 2018-04-13:
+The gripper falling through other links is a direct result of setting the gazebo selfCollide tag to False in the URDF. You'll have to flip that to True to enable collisions between links in the robot model (I think True is actually the default...)
+Comment by Oh233 on 2018-04-13:
+I turned selfcollide into true and it works. What made me think that problem is not because of selfcollide is during falling, when the mid link hit another mid link, it will bump back to the opposite direction rather than pass through.
+Comment by Oh233 on 2018-04-13:
+According to the pic I posted, nonconcentric problem still exists. Is that because the origin of the joint coordinate isn't along the joint axis?
+Comment by Oh233 on 2018-04-20:
+I think I am close to success now. I implemented controller and it works fine. The only problem right now is the passive behavior of gripper is still wired. And after adding controller, the gripper will not rotate as the command data. Do you know which parameter I can adjust to solve this problem?
+Comment by Oh233 on 2018-04-20:
+I add friction in the link element and gripper moves as I want.
+Comment by josephcoombe on 2018-04-20:
+Awesome! Also note that for more Gazebo-specific questions (physics parameters, etc.) you may have more luck via http://answers.gazebosim.org/questions/
+

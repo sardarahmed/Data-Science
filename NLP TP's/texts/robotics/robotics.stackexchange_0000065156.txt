@@ -1,0 +1,88 @@
+Q:
+
+Odometry with RGBDSLAM for mapping white walls
+
+Hi guys!
+I'm trying to map a room with some white walls spaces (no texture) with turtlebot + kinect, and the problem is that the number of keypoints on it makes the robot lost the reference everytime it moves a bit.
+I saw this question related to my problem but couldn't see any differences with ICP activated when mapping the wall.
+I was thinking if that's possible to "merge" two packages like RGBDSLAM and Robot_pose_ekf to build the map with the odometry information.
+If the information about the position from the robot induce the matching of point clouds in rgbdslam, i guess it could perfectly map the big white wall.
+Since i'm not an expert at ros packages and subscribed topics, i'd like some advice from who know or tried something like this before.
+Is there another method could i use to do this?
+EDIT:
+The loop problem was related to wrong parameters at robot_odometry.launch, specifically at odom_frame_name and base_frame_name.
+I'm able to create a map using the odometry information but there's still a problem, the floor contains so many "holes".
+.
+I'd like to know how can i capture the whole floor without raising the max_depth parameter (raising it would bring me some problems, because up to 3.8 meters at max_depth, the kinect captures ceiling). Is that related to ground_truth algorithm? How it works in rgbdslam?
+This is my robot_odometry.launch file:
+  <node pkg="rgbdslam" type="rgbdslam" name="rgbdslam" cwd="node" required="true" output="screen"> 
+<!-- Input data settings-->
+<param name="config/topic_image_mono"              value="/camera/rgb/image_mono"/> <!--could also be color -->
+<param name="config/topic_image_depth"             value="/camera/depth_registered/sw_registered/image_rect_raw"/>
+
+<param name="config/feature_extractor_type"        value="ORB"/><!-- also available: SIFT, SIFTGPU, SURF, SURF128 (extended SURF), ORB. -->
+<param name="config/feature_detector_type"         value="ORB"/><!-- also available: SIFT, SURF, GFTT (good features to track), ORB. -->
+<param name="config/detector_grid_resolution"      value="10"/><!-- detect on a 3x3 grid (to spread ORB keypoints and parallelize SIFT and SURF) -->
+<param name="config/max_keypoints"                 value="600"/><!-- Extract no more than this many keypoints -->
+<param name="config/max_matches"                   value="300"/><!-- Keep the best n matches (important for ORB to set lower than max_keypoints) -->
+
+<param name="config/min_sampled_candidates"        value="4"/><!-- Frame-to-frame comparisons to random frames (big loop closures) -->
+<param name="config/predecessor_candidates"        value="4"/><!-- Frame-to-frame comparisons to sequential frames-->
+<param name="config/neighbor_candidates"           value="4"/><!-- Frame-to-frame comparisons to graph neighbor frames-->
+<param name="config/ransac_iterations"             value="100"/>
+<param name="config/cloud_creation_skip_step"      value="5"/><!-- subsample the images' pixels (in both, width and height), when creating the cloud (and therefore reduce memory consumption) -->
+
+<param name="config/cloud_display_type"            value="POINTS"/><!-- Show pointclouds as points (as opposed to TRIANGLE_STRIP) -->
+<param name="config/pose_relative_to"              value="largest_loop"/><!-- optimize only a subset of the graph: "largest_loop" = Everything from the earliest matched frame to the current one. Use "first" to optimize the full graph, "inaffected" to optimize only the frames that were matched (not those inbetween for loops) -->
+<param name="config/backend_solver"                value="pcg"/><!-- pcg is faster and good for continuous online optimization, cholmod and csparse are better for offline optimization (without good initial guess)-->
+<param name="config/optimizer_skip_step"           value="1"/><!-- optimize only every n-th frame -->       
+
+<!-- ODOMETRY RELATED -->
+<param name="config/odometry_tpc"                  value="/odom"/><!-- should be of type nav_msgs/Odometry -->
+<param name="config/use_robot_odom"                value="true"/><!-- activate -->
+<param name="config/odom_frame_name"               value="odom_frame"/><!-- the fixed coordinate frame according to odometry -->
+<param name="config/base_frame_name"               value="base_frame"/><!-- the robot's position, era base_link padrao -->
+<param name="config/odometry_information_factor"   value="1"/><!-- weight for the odometry edges in the pose graph -->
+
+<param name="config/keep_all_nodes"                value="true"/><!-- assume zero motion if no motion could be found and continue -->
+
+<param name="config/fixed_camera"                  value="true"/> <!--is the kinect fixed with respect to base, or can it be moved (false makes sense only if transform betw. base_frame and openni_camera is sent via tf)-->
+
+<param name="matcher_type"                          value="BRUTEFORCE"/>
+<param name="use_odom_for_prediction"               value="true"/>
+<param name="config/maximum_depth"                 value="3.8"/>
+
+Originally posted by Phelipe on ROS Answers with karma: 74 on 2015-01-14
+Post score: 0
+
+Original comments
+Comment by Felix Endres on 2015-01-16:
+Hi, I could give you an experimental branch of rgbdslam v2 that has support for odometry. However, I currently don't have the time to support you properly if you run into problems. Would you like to try it out anyway?
+Comment by Phelipe on 2015-01-16:
+I'll appreciate if possible. This is exactly what i need to solve this problem. Related to the future issues, that's alright for me cause i just need an idea to start. Thanks!
+
+A:
+
+I added a new branch in the rgbdslam github repository. Feel free to try at your own risk.
+Start with this wheel-odometry related launchfile.
+I'd be interested in your feedback.
+
+Originally posted by Felix Endres with karma: 6468 on 2015-01-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Phelipe on 2015-01-26:
+Have you tested if the estimated position displayed in rgbdslam gui matches the one setted in "odometry_tpc"? Because i can't see any difference using /pose and /odom (which turtlebot provides) when mapping low features walls. It starts good but the program get the bad pos info after a while somehow
+Comment by Phelipe on 2015-01-26:
+I'm trying to map an aisle (white on both sides) and there's a loop happening in tf after the robot moves a bit ahead : ODOM Target Frame /camera_rgb_optical_frame /camera_rgb_optical_frame odom "Cannot transform between node 2". Because of that (i guess), it only maps 20cm, not further.
+Comment by sophye_turtlebot on 2015-03-27:
+HI,
+I had a question about RGB-D SLAM and i need your help
+I worked with turtlebot and kinect
+AT the first step i followed this link:http://felixendres.github.io/rgbdslam_v2/ to install rgbd slam
+Comment by sophye_turtlebot on 2015-03-27:
+but there is no image! but when i worked with only kinect i show the image, is there any parametrs that i should change in the launch file?
+Comment by Phelipe on 2015-03-27:
+Have you checked if your .launch file is configured to take the correct parameters from the kinects topic? Something like this  param name="config/topic_image_mono" value="/camera/rgb/image_color"  param name="config/topic_image_depth  value="/camera/depth_registered/sw_registered/image_rect_raw"
+

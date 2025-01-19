@@ -1,0 +1,114 @@
+Q:
+
+How to get the actual coordinate for all of the joint?
+
+Hi. I'm new to ROS Indigo. Is regarding the actual joint states, I have tried the rostopic echo /joint_states and /tf, but it seems like the joint_states and tf are keep on going non stop. May I know is it a way to only acquire one of joint's joint states instead of all of the joint and not in array form?
+Also, I have tried with rostopic echo /arm_1/arm_controller/position_command and rostopic echo /arm_1/gripper_controller/position_command, but it did not return any message back to me, the process is just empty.
+
+Originally posted by Shuu on ROS Answers with karma: 3 on 2019-05-13
+Post score: 0
+
+Original comments
+Comment by Reamees on 2019-05-13:
+rosrun tf view_frames - will generate a pdf of the tf tree and save where your terminal is currently
+rosrun rqt_tf_tree rqt_tf_tree - will show that same tree in a rqt plugin
+rosrun tf tf_echo /base_link /gripper - will print out the transforms between the two links if it is being published
+rostopic echo /joint_states -n 1 will print only 1 message  from the topic joint_state_publisher
+If you need any other info please provide more specific info on what you would like to achieve.
+Comment by Shuu on 2019-05-13:
+Thanks for your reply. but I would like to know the actual coordinate* of each of the joint instead of angle, because I will substitute the angles for each of the joint in forward kinematic, while want the feedback of each of the x,y,z coordinate of each of the joint.  Thanks
+Comment by Shuu on 2019-05-13:
+I wonder with the rosrun tf tf_echo /base_link /gripper, if gives out the transform between two links, but is it possible that i want the transform of one link only, in order to get their specific coordinate? Thanks in advance.
+
+A:
+
+is it possible that i want the transform of one link only, in order to get their specific coordinate?
+
+To get the coordinates of a joint you need a fixed frame (such as world or map) otherwise any joint could have any coordinates depending the frame you are reading the coordinates from.
+rosrun tf tf_echo /world /joint
+
+This command can give you the coordinates of a specific joint in the world (can be map or any other frame that is fixed in your world). You will be able to read those coordinates in the terminal but given what you said I assume you actually want to get those coordinates in your code to process them.
+You will achieve that using tf by checking the transformation between your reference frame and your desired joint. Here's an example using geometry_msgs::PoseStamped (to get x, y, z) to constantly get the coordinates of a joint :
+//Required includes
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
+
+tf2_ros::Buffer tf_; 
+geometry_msgs::PoseStamped joint_global_frame_pose_stamped;
+geometry_msgs::PoseStamped joint_pose_stamped;
+//Just an initialization
+tf2::toMsg(tf2::Transform::getIdentity(), joint_global_frame_pose_stamped.pose);
+tf2::toMsg(tf2::Transform::getIdentity(), joint_pose_stamped.pose);
+ros::Rate rate(10.0);
+while(ros::ok())
+{
+    //The frame you want to get the pose 
+    joint_pose_stamped.header.frame_id = "joint";
+    joint_pose_stamped.header.stamp = ros::Time();
+    //Catch exceptions
+    try
+    {
+        //3rd param = The global frame
+        tf_.transform(joint_pose_stamped, joint_global_frame_pose_stamped, "map");  
+    }
+    catch (tf2::LookupException& ex)
+    {
+        ROS_ERROR_THROTTLE(1.0, "No Transform available Error looking up joint pose: %s\n", ex.what());
+    }
+    catch (tf2::ConnectivityException& ex)
+    {
+        ROS_ERROR_THROTTLE(1.0, "Connectivity Error looking up joint pose: %s\n", ex.what());
+    }
+    catch (tf2::ExtrapolationException& ex)
+    {
+        ROS_ERROR_THROTTLE(1.0, "Extrapolation Error looking up joint pose: %s\n", ex.what());
+    }
+
+    ROS_INFO("The joint position is { %.2f; %.2f; %.2f}", 
+            joint_global_frame_pose_stamped.pose.postion.x,
+            joint_global_frame_pose_stamped.pose.postion.y,
+            joint_global_frame_pose_stamped.pose.postion.z);
+}
+
+Originally posted by Delb with karma: 3907 on 2019-05-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Shuu on 2019-05-15:
+Hi,  thanks for your reply. I have tried  with
+"rosrun tf tf_echo /arm_link_1 /arm_link_5", it works and I got the transformation from link 1 to link 5. Thanks.
+Comment by Shuu on 2019-05-15:
+Sorry, one more question. If i find rosrun tf tf_echo /arm_link_0 /arm_link_4, the coordinate or translation they give is not my joint 3 coordinate is it? If not, how do I find the joints coordinate?
+Comment by Delb on 2019-05-16:
+When you are referring to specific joints/links that could be useful to provide the urdf or tf tree so that we can understand what you are talking about ;)
+When you do a tf_echo frame_A frame_B you just get the transform to go from frame_A to frame_B.
+
+the coordinate or translation they give
+is not my joint 3 coordinate is it?
+
+As said previsously it's a translation and rotation so that you can use it to transform coordinates from a frame to another.
+If you want your joint coordinates, since the joint is the origin of the related frame then the translation from tf_echo is directly the coordinates of the joint.
+So if your joint3 has child_link to /arm_link4 and you want its coordinates in /arm_link_0 frame you just have to get the translation from rosrun tf tf_echo /arm_link0 /arm_link4. This will give you the coordinates of /arm_link4 frame (i.e. your joint3 coordinates) within /arm_link0 frame.
+Comment by Shuu on 2019-05-16:
+Thanks about that. I found out that actually my coding reference point and the ros's reference point is different. After do some calculation using trigonometry and deduction or addition, my x-axis coordinate is kind of similar to the actual x coordinate from the rosrun tf, just some +/-0.01 difference. However, my z-axis has the value that has a lot of different, compared with the actual z coordinate. Is it that I cannot apply trigonometry function to get the z-axis? Though I got the x-axis , which is almost similar.
+Comment by Delb on 2019-05-17:\
+
+my coding reference point and the ros's reference point is different
+
+What are they ?
+
+After do some calculation using trigonometry and deduction or addition
+
+What calculations ?
+You need to be more specific as we don't have access to your code/project, like maybe just show the code doing those calculations.
+Comment by Shuu on 2019-05-17:
+Coding reference point is at the joint 1 as shown in here coding, meanwhile the reference point from the ros is different since the transformation from base to joint 1 is not (0,0,0) instead (0,024,0.0.96). If the joint 1 and 0 is located at the same position as shown in the coding, the transformation of link 1 should be (0,0,0) right?
+The calculation I did it manually, but is based on the three set of thing, which are the coordinate I set for the tip of the end effector, coordinate of joint 3 and the coordinate for the object's center point, where the tip of the end effector and joint 3 are parallel in x axis.
+Comment by Delb on 2019-05-17:
+Can you give another picuture showing the real tfs in rviz ? Because I can't actually see where are base_link frame nor link_1 frame. (or I didn't understand your picture, the white circle represent the base_link frame and the frame on top of it is link_1 frame ?).
+
+the coordinate for the object's center point
+
+You are mixing things with #q323256. I feel this question doesn't need further comments since you managed to get the coordinate of your joint, other questions should be asked within  #q323256 or in a new one.
+

@@ -1,0 +1,67 @@
+Q:
+
+Using pointgrey camera in simulation environment
+
+Hello,
+I am using the jackal from Clearpath robotics.
+I have installed the required packages and drivers for the pointgrey camera.
+I wanted to be able to use the camera in simulation environment with gazebo.
+How do I launch the camera in the simulation environment.
+I followed the instructions at:
+http://www.clearpathrobotics.com/assets/guides/ros/ROS%20Navigation%20Basics.html#customization
+These speak of using the custom urdf file for camera specs. But when I do a roslaunch after that, I get the following error:
+Xacro conditional "$(optenv JACKAL_URDF_EXTRAS 0)" to: evaluated"/home/bru/dev/SensorFusionAndControl/BasicJackalNavigation/src/jackal/jackal_description/urdf/custom_example.urdf", which is not a boolean expression.
+
+when processing file:    
+/home/bru/dev/SensorFusionAndControl/BasicJackalNavigation/src/jackal/jackal_description/urdf/jackal.urdf.xacro
+
+while processing /home/bru/dev/SensorFusionAndControl/BasicJackalNavigation/src/jackal/jackal_description/launch/description.launch:
+Invalid <param> tag: Cannot load command parameter [robot_description]: command [/opt/ros/indigo/lib/jackal_description/env_run
+/home/bru/dev/SensorFusionAndControl/BasicJackalNavigation/src/jackal/jackal_description/urdf/configs/base /opt/ros/indigo/lib/xacro/xacro /home/bru/dev/SensorFusionAndControl/BasicJackalNavigation/src/jackal/jackal_description/urdf/jackal.urdf.xacro --inorder] returned with code [2].
+
+Param xml is:
+"param command="$(find jackal_description)/scripts/env_run $(find jackal_description)/urdf/configs/$(arg config) $(find xacro)/xacro $(find jackal_description)/urdf/jackal.urdf.xacro --inorder" name="robot_description"
+
+The traceback for the exception was written to the log file
+
+What am I not doing here?
+Please help and advise.
+Regards,
+rsmitha.
+
+Originally posted by rsmitha on ROS Answers with karma: 43 on 2017-08-13
+Post score: 0
+
+A:
+
+Seems that the script jackal_description/urdf/jackal.urdf.xacro is not using properly Xacro's conditional blocks
+You can see it by yourself looking at the code:
+  <!-- Optional custom includes. -->
+  <xacro:if value="$(optenv JACKAL_URDF_EXTRAS 0)">
+    <xacro:include filename="$(env JACKAL_URDF_EXTRAS)" />
+  </xacro:if>
+
+Xacros's conditional block (xacro:if) expects value to be 0, 1, true or false. When the environment variable JACKAL_URDF_EXTRAS is not set then $(optenv JACKAL_URDF_EXTRAS 0) evaluates to 0 (which is correct), but when you do export JACKAL_URDF_EXTRAS=~/somepath it evaluates to ~/somepath (which makes xacro:if fail)
+A possible solution would be:
+In addition to export JACKAL_URDF_EXTRAS=... (according to http://www.clearpathrobotics.com/assets/guides/ros/ROS%20Navigation%20Basics.html#customization) also do:
+export USE_JACKAL_URDF_EXTRAS=1
+
+And then change the code in jackal_description/urdf/jackal.urdf.xacro to:
+  <!-- Optional custom includes. -->
+  <xacro:if value="$(optenv USE_JACKAL_URDF_EXTRAS 0)">
+    <xacro:include filename="$(env JACKAL_URDF_EXTRAS)" />
+  </xacro:if>
+
+This will tell jackal_description/urdf/jackal.urdf.xacro to load  JACKAL_URDF_EXTRAS when USE_JACKAL_URDF_EXTRAS is set to 1 or true.
+I hope this helps
+
+Originally posted by Martin Peris with karma: 5625 on 2017-08-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rsmitha on 2017-08-14:
+Thanks, Martin. It works. I can see the topics related to camera information being published under /image_raw.
+Comment by Martin Peris on 2017-08-14:
+I am glad it worked, enjoy!
+

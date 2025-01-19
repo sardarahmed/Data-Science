@@ -1,0 +1,79 @@
+Q:
+
+Changing physics engine through URDF
+
+Hi everybody
+Would you please tell me that how can I change physics engine (eg. ODE, Bullet , ...) through launch file and URDF. I have created a package that contains one xacro file (which is used to model and inverted pendulum) and two launch file  that are as follow:
+///////////////// Inverted_pendulum_world.launch ////////////////
+<launch>
+
+  <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+
+  <!-- We resume the logic in empty_world.launch -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <!-- Load the URDF into the ROS Parameter Server -->
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find ip_cloned)/urdf/inverted_pendulum.xacro'" />
+
+  <!-- Run a python script to the send a service call to gazebo_ros to spawn a URDF robot -->
+   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+    args="-urdf -model inverted_pendulum -param robot_description"/>
+
+</launch>
+
+////////////////////Inverted_pendulum_gazebo_control.launch /////////////////
+<launch>
+  <!-- Launch Gazebo  -->
+  <include file="$(find ip_cloned)/launch/inverted_pendulum_world.launch" />   
+
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find ip_cloned)/config/inverted_pendulum_gazebo_control.yaml" command="load"/>
+
+  <!-- load the controllers -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="/inverted_pendulum" args="joint_state_controller
+                      joint1_position_controller"/>
+
+  <!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+    <remap from="/joint_states" to="/inverted_pendulum/joint_states" />
+  </node>
+
+</launch>
+
+I'm using gazebo 2.2 + Ubuntu 14.04 + ROS Indigo
+Thanks
+
+Originally posted by Masoud on Gazebo Answers with karma: 13 on 2016-09-10
+Post score: 0
+
+A:
+
+The easiest thing is to change the .world file you are launching. There you can specify the physics engine and the maximum_step_size. You can add the following code to your world file if you want to speed up simulation to the maximum:
+<physics type='ode'>
+  <max_step_size>0.01</max_step_size>
+  <real_time_factor>1</real_time_factor>
+  <real_time_update_rate>0</real_time_update_rate>
+  <gravity>0 0 -9.8</gravity>
+</physics>
+
+Originally posted by nzlz with karma: 90 on 2016-09-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Whyamihere on 2018-10-30:
+Does this work? has anyone tried?
+

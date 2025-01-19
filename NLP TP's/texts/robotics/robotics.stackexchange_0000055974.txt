@@ -1,0 +1,70 @@
+Q:
+
+Using subscriber/callback function inside of a class C++
+
+For the life of me I cannot seem to figure out why this code is not working and throws up a lot of errors:
+class Example {
+
+public:
+
+    Example(ros::NodeHandle n )
+    {
+        sub = n.subscribe("/camera/depth_registered/points", 1000, &this->callBack);
+
+    }
+
+    void callBack(const sensor_msgs::PointCloud2Ptr& msg)
+    {
+
+    }
+
+protected:
+
+    ros::Subscriber sub; 
+};
+
+I have initialised the ros::Subscriber sub inside of the class members but cannot seem to figure out why it's giving me an error.
+Any ideas?
+EDIT:
+Here are the error messages:
+error: no matching function for call to ‘ros::NodeHandle::subscribe(const char [32], int, <unresolved overloaded function type>)’ /src/talker.cpp:11:71: note: candidates are: /opt/ros/hydro/include/ros/node_handle.h:379:14: note: template<class M, class T> ros::Subscriber ros::NodeHandle::subscribe(const string&, uint32_t, void (T::*)(M), T*, const ros::TransportHints&) 
+
+Originally posted by Phorce on ROS Answers with karma: 97 on 2013-12-09
+Post score: 7
+
+Original comments
+Comment by dornhege on 2013-12-09:
+What exact errors? When are you getting them? During compile or when running? Initial guess: Try adding a this to the subscribe call an specify the classname instead of this-> for the subscribe.
+
+A:
+
+Callbacks with class member functions are a little tricky. "Regular" functions are merely a pointer to some code in memory. Class member functions have additional state information, namely the object instance they belong to, so you cannot just plug a member function into a regular function pointer and expect it to work.
+There are two easy ways to solve this. Firstly, the ROS developers anticipated this problem and provided a neat alternative subscribe method that accepts member functions and the corresponding object like this:
+sub = n.subscribe("/camera/depth_registered/points", 1000, &Example::callBack, this);
+The &Example::callBack is the function pointer to the member function, and this is the object instance for which you want to have the callback called.
+But even if they had forgotten, the second option is to use boost::bind(), a very powerful tool to bind arguments to arbitrary functions, which supports class member functions as well:
+sub = n.subscribe("/camera/depth_registered/points", 1000, boost::bind(&Example::callBack, this, _1));
+The syntax is slightly more complicated, but it is much more versatile (read the Boost documentation for details).
+
+Originally posted by roehling with karma: 1951 on 2013-12-09
+This answer was ACCEPTED on the original site
+Post score: 32
+
+Original comments
+Comment by westeast on 2017-05-13:
+I have the same problem , I used the boost::bind,but I have new error information
+the code:
+_sub_object = _nh.subscribe("/perception/object",1,boost::bind(&MotionCore::_callback_from_perception_obstacle,this));
+the error:
+In file included from /home/westeast/git/enmodel/src/trajectory/nodes/final
+Comment by roehling on 2018-05-04:
+You forgot the placeholder _1 for the argument that will be passed to your callback
+Comment by BryceWilley on 2018-08-24:
+If using boost::bind, the subscribe docs have a useful note not mentioned here: ...
+Comment by BryceWilley on 2018-08-24:\
+
+when using functor objects (like boost::bind, for example) you must explicitly specify the message type as a template argument, because the compiler cannot deduce it in this case.
+
+Comment by db on 2020-08-14:
+why was this so hard to find
+

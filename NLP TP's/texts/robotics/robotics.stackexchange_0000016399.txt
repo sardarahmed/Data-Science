@@ -1,0 +1,26 @@
+Q:
+
+How to deal with current spikes due to fast direction-switching motor commands?
+
+I'm trying to build a self-balancing two-wheeled segway-like robot.  I'm currently using two 12v DC motors that draw approximately 600milliamps of current each.  I've noticed that when my robot tries to switch directions, it often does weird things like not switch at all or completely stop rotating altogether.  I suspect that when the motor controller (L298N H-Bridge) switches direction, it may be drawing even more current on it and this current is somehow affecting my microcontroller. 
+If that is the case, what can I do about it?  How can I prevent this large spike in motor current draw from affecting my microcontroller?  
+
+A:
+
+As explained in my answer to What is stall current and free current of motors? when switching direction on a motor, you can end up drawing more than the maximum normal current rating. This can cause trips to be thrown, amplifier shutdown or voltage drops and loss of control.
+One option is to try to reduce the stress on the motor and amplifier. For instance instead of going from -100% to +100%, try going from -100% to 0% briefly, before going to +100%, or limiting the rate of change of the torque demand.
+What you specifically need to do will depend on the time constant of your mechanical system, the control loop update rate and the responsiveness/stability that you require. All of these factors should be balanced to keep you system within it's physical limits.
+
+A:
+
+I've experienced a similar problem before. For me, the root cause was insufficient battery power. When my motor tried to draw peak power it caused the battery supply bus to brown out. This led to supply voltage dropping below the minimum rated voltage for the motor controller. The master board was fine as the brownout voltage was still above that minimum.
+When the motor controller browned out it cleared its own enable bit and the motor stopped responding. Additionally, it required a certain "arming" sequence before it would respond to speed commands, and I had only programmed those to be sent on initial startup. Since the master board was never reset, the master continued sending valid speed commands to the motor controller, but the motor controller failed to respond because it hadn't been (re-)armed. 
+Potential solutions for you:
+
+Check that your existing battery is actually fully charged. 
+You can add more batteries (or battery packs, depending on your configuration) in parallel to boost your supply capacity. As with all batteries, they should all be fully charged before you connect them all together.
+If your issue is that your controller is getting reset, you could provide two different batteries. One larger battery to run the H-bridge chip and the motor and a (not necessarily) smaller battery to run your controller. You will need to ensure that the controller, H-bridge, and motor all share a common ground or the H-bridge may fail to respond to PWM signals. This is a less-desirable option, because the motor response will be limited by your supply power (they'll accelerate slowly), but it's a quick/cheap fix if your existing batteries are hard to source.
+You could try adding a capacitor as jdios said. I would argue it would be better to use a large capacitor on the battery-supply-side of the H-bridge than to put it next to the motor, but just because the motor is bidirectional. Large capacity electrolytic capacitors are pretty easy to come by, but they're polarized. As I mentioned in my comment in jdios' post, the capacitor does smooth voltage, and it provides a short-duration current surge during high-demand conditions by preventing the supply voltage from falling.
+
+Mark Booth's answer is also valid, and would probably be my go-to answer (it was how I solved my own problem), except for the fact that you're trying to do control. Adding a rate-limiting scheme as described there is effectively creating an actuator saturation limit, which then will cause more problems for your controller (control windup). 
+

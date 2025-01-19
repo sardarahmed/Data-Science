@@ -1,0 +1,63 @@
+Q:
+
+how do I install rclpy on an arm processor with ros2?
+
+I'm currently trying to get ros2 working on my pi zero w with an arch Linux os (still, for those who saw my last few posts). After following the instructions from the ROS2 on arm architecture git page below, I get a response that the system is missing rclpy. Since I can't get rclpy to install with ros2, I was thinking about installing it separately but I can't make the process work. Does anyone know how I can install rclpy on its own?
+Thanks!
+Here's a link to the page I followed so far:
+https://github.com/ros2-for-arm/ros2/wiki/ROS2-on-arm-architecture
+
+Originally posted by LiamNelson on ROS Answers with karma: 21 on 2018-08-07
+Post score: 1
+
+Original comments
+Comment by Dirk Thomas on 2018-08-10:
+The instructions you refer to explicitly ignore building rclpy. Therefore it isn't available afterwards. I am not sure why the instructions leave it out - probably it is much more "difficult", You might want to open a ticket on the repository providing the instructions asking for rclpy support.
+Comment by LiamNelson on 2018-08-10:
+If you check out our progress so far here https://github.com/austinstig/ros2-raspberry-pi-zero-w you'll see that we left python support in because we intend to use those capabilities when this bug is fixed.
+Comment by austinstig on 2018-08-10:
+I think this issue may be related to the python build not using the crosscompiler toolchain. It builds 64bit *.so files for rclpy instead of the 32bit that the crosscompiler should make. Not entirely sure where this change should be made to fix...
+Comment by pokitoz on 2018-08-14:
+Yes, the instructions does not specify how to build python related packages because it requires additional steps that are not currently described. It is harder to get a list of easy steps as it requires more dependencies that needs to be already cross-compiled. Feel free to open an issue.
+
+A:
+
+You can cross compile python packages you need the necessary libraries.
+You can either:
+
+Specify the libraries path to cmake to build this package. But you will have to cross compile them. Maybe by following https://github.com/Yadoms/yadoms/wiki/Cross-compile-for-raspberry-PI#python ?
+sshfs the filesystem of your OS running on the pi zero. Prior to that, get all the necessary libraries using apt-get. Specify CMAKE_SYSROOT variable and cross-compile ROS2.
+Mount your filesystem on your host, use qemu, use apt-get to have the necessary missing libs, specify the CMAKE_SYSROOT, cross-compile ROS2, install the filesystem on the pi zero. (https://unix.stackexchange.com/a/222981)
+
+I used 2. and 3. to install python packages.
+
+Originally posted by pokitoz with karma: 527 on 2018-08-07
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by LiamNelson on 2018-08-08:
+Thanks for the answer. We made good progress with the second option and have compiled all but 4 libraries before encountering a new problem. The compiler gives back an error related to a LONG_BIT which we believe is the result of trying to compile for a 32 bit device as a 64 bit system.
+Comment by LiamNelson on 2018-08-08:
+We are currently trying to use crosstools-ng with arm version 6 to fix this problem but if you have a different method that you believe would get us past this issue, that would be great. I was planning on making a new post for this but, when we get it all working, we plan on making a full post then.
+Comment by pokitoz on 2018-08-09:
+I never tried crosstools-ng. However it looks nice! I cannot see what your issue is. Could you add more details? But as you said, LONG_BIT errors seems like you are building for 64bit instead of 32bit.
+Comment by LiamNelson on 2018-08-10:
+if you check out this GitHub page you'll see the steps we took to reach this point: https://github.com/austinstig/ros2-raspberry-pi-zero-w
+Right now, we fixed the LONG_BIT error but the system won't recognize rclpy. (due to what we think is a linker error)
+Comment by Dirk Thomas on 2018-08-10:
+Maybe someone has an idea if you share the linker error.
+Comment by LiamNelson on 2018-08-10:
+The error we got looks like this:
+Failed to load entry point 'launch': No module named 'rclpy._rclpy'
+Failed to load entry point 'echo': No module named 'rclpy._rclpy'
+usage: ros2 [-h] Call ros2  -h for more detailed usage. ...
+Comment by LiamNelson on 2018-08-10:
+We ran strace as well, but the results weren't very helpful since they pointed to permission errors within the pycache
+Comment by Dirk Thomas on 2018-08-10:
+That is not a linker error. The shared library containing the C extension can't be loaded at runtime. You might want to check if the library was built and installed correctly and the env is setup correctly so that it can be found and loaded.
+Comment by austinstig on 2018-08-10:
+@dirk-thomas, I believe what is happening is related to the python build not using the correct crosscompiler toolchain (armv6-rpi-linux-gnueabi). It builds 64bit *.so files for rclpy instead of the 32bit that the crosscompiler should make. Not entirely sure where this change should be made to fix..
+Comment by austinstig on 2018-08-10:
+I'm unsure how to specify the compiler to use in the CMake files that compile the python modules written in C within the ROS2 codebase.
+

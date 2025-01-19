@@ -1,0 +1,150 @@
+Q:
+
+Python OpenCV namedWindow and imshow freeze
+
+Hi there,
+I try to view a subscribed image via cv2.imshow() like the following:
+#!/usr/bin/env python
+import sys, rospy, traceback, cv2
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+
+window_name = 'detection'
+
+class imShow():
+
+    def __init__(self):
+        self.bridge = CvBridge()
+        self.sub = rospy.Subscriber('/camera/rgb/image_raw', Image, self.callback)
+
+    def callback(self, data):
+        try:
+            cv_img = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        except CvBridgeError as exc:
+            print('###CVBridgeError###')
+            print(traceback.format_exc())
+            print(exc)
+        cv2.imshow(window_name, cv_img)
+        cv2.waitKey(1)
+
+def main(args):
+    cv2.namedWindow(window_name)
+    ims = imShow()
+    rospy.init_node('imshow', anonymous=True)
+
+    try:
+        rospy.spin()
+    except KeyboardInterrupt:
+         print('Shutting down...')
+    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main(sys.argv)
+
+But this way the namedWindows shows up at the first call and does'nt update any more and freezes.
+Because I want to add some trackbars to adjust values, which will be processed in the callback function, I want to declare and initialize the window and the trackbars outside of the class. I had it working with doing it inside of the callback function, but after a few seconds the node crashed with the error "Process finished with exit code 139". I thought the reason for this may have been a memory overflow because the window and the trackbars were created again and again with each call of the callback function.
+So does anybody have an idea how to handle this?
+Thanks and regards.
+
+Originally posted by UllusParvus on ROS Answers with karma: 56 on 2017-03-20
+Post score: 2
+
+Original comments
+Comment by jarvisschultz on 2017-03-20:
+You have some indentation issues in your try-except block, but maybe that is just a copy-paste error. Have you verified that an image is actually being published on the /camera/rgb/image_raw topic? If no images are published your callback will never run and you'll never see an image.
+
+A:
+
+The intendation issue was really just a copy-paste error, I corrected it.
+I've also verified that the image is actually being published on this topic. When I leave out the line with cv2.namedWindow(window_name), the image is properly shown in a OpenCV-Window, caused by the line cv2.imshow(window_name, cv_img).
+But like I said, I want to declare and initialize the namedWindow outside of the callback function to prevent the above mentioned error, which may be an overflow caused by the recursive call of the callback function.
+Updated Answer
+Here is how it works for me. I can now close the cv2 windows with the Escape-Button. I've also added trackbars to update image detection parameters during runtime, maybe that is also helpful for somebody.
+#!/usr/bin/env python
+import sys, rospy, traceback, math, cv2, numpy as np, std_msgs.msg
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+
+class objectDetection():
+    def __init__(self):
+        self.bridge = CvBridge()
+        self.sub = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.callback)
+        self.orig_img = None
+        self.params = None
+
+    def callback(self, data):
+        self.params = self.getTrackbarParams()
+        try:
+            cv_img = self.bridge.imgmsg_to_cv2(frame, "bgr8")
+        except CvBridgeError as exc:
+            print(traceback.format_exc())
+        if 'cv_img' in locals():
+            self.orig_img = cv_img
+
+    def getTrackbarParams(self):
+        return [cv2.getTrackbarPos('Param', 'Parameter-Trackbars')]
+
+def showImages(obj):
+    if obj.orig_img is not None:
+        cv2.imshow('Original', obj.orig_img)
+
+def handleTrackbarChanges(obj):
+    params = obj.getTrackbarParams()
+
+def trackbar_callback(x):
+    pass
+
+def createWindowsAndTrackbars():     
+    cv2.namedWindow('Parameter-Trackbars')
+    cv2.namedWindow('Original')
+
+    cv2.createTrackbar('Param', 'Parameter-Trackbars', 0, 179, trackbar_callback)
+    # some more stuff
+
+def main(args):
+    createWindowsAndTrackbars()
+    od = objectDetection()
+    rospy.init_node('objectdetection', anonymous=True)
+
+    while (1):
+        [...]
+        cv2.imshow('Parameter-Trackbars', cv2.cvtColor(trackbar_img, cv2.COLOR_HSV2BGR))
+        showImages(od)
+
+        k = cv2.waitKey(1) & 0xFF
+        if k == 27:
+            break
+        
+        handleTrackbarChanges(od)
+
+        try:
+            rospy.spin()
+        except KeyboardInterrupt:
+            print('Shutting down...')
+        cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main(sys.argv)
+
+Originally posted by UllusParvus with karma: 56 on 2017-03-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ahendrix on 2017-03-20:
+If this is just showing the first image and then freezing, maybe you should remove the cv2.waitKey() ?
+Comment by UllusParvus on 2017-03-21:
+I have to correct, it s not showing the first image, the window is freezing instantly after popping up with nothing in it.
+Thanks for the hint, but when removing the cv2.waitKey(), it also freezes and also does not work any more when removing the line cv2.namedWindow(window_name)
+Comment by UllusParvus on 2017-03-21:
+Got it, I'll post a shorted code snippet later
+Comment by sunbuny on 2017-07-13:
+I am facing the same problem now.Can you tell me how to fix the problem. Thank you
+Comment by Humpelstilzchen on 2017-10-09:
+Same problem. Unless I do the namedWindow() call in a ROS thread (Here callback of a subscriber) the whole program freezes.
+Comment by UllusParvus on 2017-10-09:
+Hi guys,
+sorry for let you waiting such a long time. See my updated answer above. Hope this will help you.
+Comment by lennonwoo on 2017-12-11:
++1 The ui update shoudn't be updated in non main thread. We could put the image processing logic in non main thread, then use Queue to store the processed image for main thrad's cv.imshow() or something else.
+

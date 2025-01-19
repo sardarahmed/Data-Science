@@ -1,0 +1,88 @@
+Q:
+
+how to write a uav teleop code?
+
+I'm currently working on a teleoperation code for crazyflie. I'm not using a joystick, but I'm using leapmotion and I'm trying to understand how they code for a joystick in order to implement the same idea in my code with leapmotion.
+I understand the general idea of what I'm supposed to be doing; 1) subscribing to the leapmotion data; 2) writing a transformation function and then 3) publishing the goal position to be sent to my controller. 
+Coding is not my forte and having to deal with ROS is adding to the fun of all of this. So I'm going to ask some questions regarding this code because I don't understand it well. 
+#!/usr/bin/env python
+
+import rospy
+import tf
+from geometry_msgs.msg import PoseStamped
+from sensor_msgs.msg import Joy
+from math import fabs
+
+lastData = None
+
+def joyChanged(data):
+    global lastData
+    lastData = data
+    # print(data)
+
+if __name__ == '__main__':
+    rospy.init_node('publish_pose', anonymous=True)
+    worldFrame = rospy.get_param("~worldFrame", "/world")
+    name = rospy.get_param("~name")
+    r = rospy.get_param("~rate")
+    joy_topic = rospy.get_param("~joy_topic", "joy")
+
+Why is it necessary to get the joy_topic param?
+Also, I'm not sure if this is correct but I believe that the x, y, z values are the position values for the joystick, so since this values are always the same they are probably using them as initial values for the position values. 
+    x = rospy.get_param("~x")
+    y = rospy.get_param("~y")
+    z = rospy.get_param("~z")
+
+    rate = rospy.Rate(r)
+
+    msg = PoseStamped()
+    msg.header.seq = 0
+    msg.header.stamp = rospy.Time.now()
+    msg.header.frame_id = worldFrame
+    msg.pose.position.x = x
+    msg.pose.position.y = y
+    msg.pose.position.z = z
+    yaw = 0
+    quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
+    msg.pose.orientation.x = quaternion[0]
+    msg.pose.orientation.y = quaternion[1]
+    msg.pose.orientation.z = quaternion[2]
+    msg.pose.orientation.w = quaternion[3]
+
+    pub = rospy.Publisher(name, PoseStamped, queue_size=1)
+    rospy.Subscriber(joy_topic, Joy, joyChanged)
+
+    while not rospy.is_shutdown():
+        global lastData
+        if lastData != None:
+            if fabs(lastData.axes[1]) > 0.1:
+                msg.pose.position.z += lastData.axes[1] / r / 2
+            if fabs(lastData.axes[4]) > 0.1:
+                msg.pose.position.x += lastData.axes[4] / r * 1
+            if fabs(lastData.axes[3]) > 0.1:
+                msg.pose.position.y += lastData.axes[3] / r * 1
+            if fabs(lastData.axes[0]) > 0.1:
+                yaw += lastData.axes[0] / r * 2
+
+Why is he dividing the values from the joystick with the rate?
+This is where I get lost because I don't know how I would translate this leapmotion yaw, pitch and roll values. I guess I could write an if statement saying if the pitch is within this values then hover at 1 meter.
+            quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
+            msg.pose.orientation.x = quaternion[0]
+            msg.pose.orientation.y = quaternion[1]
+            msg.pose.orientation.z = quaternion[2]
+            msg.pose.orientation.w = quaternion[3]
+            # print(pose)
+        msg.header.seq += 1
+        msg.header.stamp = rospy.Time.now()
+        pub.publish(msg)
+        rate.sleep()
+
+A:
+
+It would be clearer if you explain were you got the source code you use as an example and what it's suppose to do.
+Concerning the first question, the code is taking initialization parameters.
+See http://wiki.ros.org/rospy/Overview/Parameter%20Server
+The x,y,z do not come from the joypad but from an init file, the joy_topic parameter is the actual name of the topic you want to subscribe, also taken from init file (it is cleaner than hardcoded values in the code because if you change topic name you don't need to recompile)
+Concerning the second question, it seems unclear what you want to use as commands for your drone. In the given example, position and yaw is used which is a flat output for quadrotors. But  the leapmotion will give you access to, the orientation of your hand and to the angular rate of your hand, which could also be used to control the quadrotor. 
+Lastly note that from your input device motion (Joypad or leapmotion) you need as scaling factor for the real world displacement. For example value of a joypad between 0 and 1024 need to be converted to meter some how.
+

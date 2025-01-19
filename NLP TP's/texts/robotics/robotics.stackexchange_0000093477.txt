@@ -1,0 +1,103 @@
+Q:
+
+Installation failed, rodep: command not found
+
+I tried to install ros-kinetic-desktop-full  on a ubuntu 16.4.
+I run :
+  $ sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
+  $ sudo apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
+  $ sudo apt-get update
+ $ sudo apt-get install ros-kinetic-desktop-full
+
+the terminal shows like this (part of it ):
+Fetched 196 MB in 2h 12min 39s (24.7 kB/s)                                     
+Extracting templates from packages: 100%
+Preconfiguring packages ...
+Selecting previously unselected package libqt5scripttools5:amd64.
+(Reading database ... 345016 files and directories currently installed.)
+Preparing to unpack .../libqt5scripttools5_5.5.1+dfsg-2build1_amd64.deb ...
+Unpacking libqt5scripttools5:amd64 (5.5.1+dfsg-2build1) ...
+Selecting previously unselected package libqt5svg5-dev:amd64.
+Preparing to unpack .../libqt5svg5-dev_5.5.1-2build1_amd64.deb ...
+Processing triggers for gnome-menus (3.13.3-6ubuntu3.1) ...
+Processing triggers for desktop-file-utils (0.22-1ubuntu5.2) ...
+Processing triggers for bamfdaemon (0.5.3~bzr0+16.04.20180209-0ubuntu1) ...
+Rebuilding /usr/share/applications/bamf-2.index...
+Processing triggers for mime-support (3.59ubuntu1) ...
+Processing triggers for ureadahead (0.100.0-19.1) ...
+Processing triggers for systemd (229-4ubuntu21.22) ...
+Setting up libqt5scripttools5:amd64 (5.5.1+dfsg-2build1) ...
+Setting up libqt5svg5-dev:amd64 (5.5.1-2build1) ...
+Setting up libwayland-bin (1.12.0-1~ubuntu16.04.3) ...
+
+Setting up proj-bin (4.9.2-2) ...
+Setting up ros-kinetic-rqt-robot-plugins (0.5.7-0xenial-20190913-232816+0000) ...
+Setting up ros-kinetic-viz (1.3.2-0xenial-20190913-232918+0000) ...
+Setting up ros-kinetic-desktop (1.3.2-0xenial-20190913-233042+0000) ...
+Processing triggers for libc-bin (2.23-0ubuntu11) ...
+
+After the process is finished , I run:
+$ sudo rosdep init
+sudo: rodep: command not found
+
+It seems that ROS is not installed.
+I tried to install rosdep agan using pip. It seems work.
+I also tried to install rosdep using apt, the terminal shows:
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ python-roslaunch : Depends: python-roslib but it is not going to be installed
+E: Unable to correct problems, you have held broken packages.
+
+The output of
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/d281361b29a16f597da3f49c80156e32
+
+After apt-get install ros-kinetic-ros-base,  sudo rosdep init will cause rosdep import error. So
+I reinstall rosdep using pip  according to #206533.
+Thensudo rosdep init && rosdep update execute  can be executed normally.
+But  when $ roscore,  ImportError: No module named defusedxml.xmlrpc
+So according to #260377,  I reinstalled defusedxml.
+but nothing changed.  Still defusedxml.xmlrpc  import error.
+ $ /usr/bin/python
+Python 2.7.12 (default, Oct  5 2019, 14:28:07) 
+[GCC 5.4.0 20160609] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>>
+
+however,
+$ sudo /usr/bin/python /usr/bin/rosdep init
+Traceback (most recent call last):
+  File "/usr/bin/rosdep", line 3, in <module>
+    from rosdep2.main import rosdep_main
+ImportError: No module named rosdep2.main
+
+Originally posted by JohnBT on ROS Answers with karma: 30 on 2019-10-05
+Post score: 0
+
+A:
+
+It appears OP had multiple Python interpreters installed on his system, one of which located in /usr/local.
+As that took precedence over the system-provided Python (ie: 2.7 on Ubuntu Xenial), and apt-distributed python-* packages are only installed in the default locations, including the many ROS Python packages and dependencies, various import statements failed with "No module named X".
+Removing the interpreter from /usr/local was not sufficient, as there also seemed to be something wrong with the, still present, system Python 2.7 install.
+Reinstallation using sudo apt install --reinstall python-minimal python2.7-minimal python2.7 python-pip seemed to have restored the system-provided Python installation to a state where things seem to have normalised sufficiently for things like rosdep and roscore to start working again.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-10-10
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-10-10:
+(this is not directed at the OP)
+In the end this appears to be another example of users (inadvertently) using a different Python interpreter (whether another 2.7.x version, Anaconda or something else) and expecting everything to just work (perhaps a justified expectation).
+But as each interpreter has its own package/module search path, and apt distributed pkgs are only installed into whatever the Linux distribution maintainers consider the "default path", anything but the default Python interpreter will not be able to locate those packages, resulting in all sorts of problems such as experienced by the OP.
+A related discussion on ROS Discourse: Should we warn (new) users about difficulties with Python 3 and alternative Python interpreters?
+

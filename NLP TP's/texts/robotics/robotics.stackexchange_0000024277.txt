@@ -1,0 +1,85 @@
+Q:
+
+ROS ssh launch issue
+
+So I have a setup where I want to launch my ROS nodes via a launch file, which in turn will ssh into a udoo board and the launch the necessary files for hardware communication. The launch file works great normally when I do roslaunch, and I have set up a passwordless connection between the PC running ROS and udoo, using the ssh-rsa protocol.
+I wanted to launch this on the robot upstart so used the robot-upstart package to create a service for launching. This is where my errors start, as the service does not be able to establish a ssh connection between the PC running ROS and the udoo board.
+The error is as follows:
+ Jan 09 15:12:26 seven-robot-2 systemd[1]: Started "bringup test_ru_launch".
+    Jan 09 15:12:26 seven-robot-2 root[3298]: test_ru_launch: Using workspace setup file /home/seven-robot-2/Seven_ROS/devel/setup.bash
+    Jan 09 15:12:26 seven-robot-2 test_ru_launch-start[3297]: <14>Jan  9 15:12:26 root: test_ru_launch: Using workspace setup file /home/seven-robot-2/Seven_ROS/devel/setup.bash
+    Jan 09 15:12:27 seven-robot-2 test_ru_launch-start[3297]: <14>Jan  9 15:12:27 root: test_ru_launch: Launching ROS_HOSTNAME=seven-robot-2, ROS_IP=, ROS_MASTER_URI=http://sevenrobot2:11311/, ROS_HOME=/root/.ros, ROS_LOG_DIR=/tmp
+Jan 09 15:12:27 seven-robot-2 test_ru_launch-start[3297]: ls: cannot access '/etc/ros/melodic/test_ru_launch.d/*.xacro': No such file or directory
+    Jan 09 15:12:27 seven-robot-2 test_ru_launch-start[3297]: <14>Jan  9 15:12:27 root: test_ru_launch: Generated launchfile: /tmp/test_ru_launch.launch
+    Jan 09 15:12:27 seven-robot-2 root[3359]: test_ru_launch: Started roslaunch as background process, PID 3358, ROS_LOG_DIR=/tmp
+    Jan 09 15:12:27 seven-robot-2 test_ru_launch-start[3297]: <14>Jan  9 15:12:27 root: test_ru_launch: Started roslaunch as background process, PID 3358, ROS_LOG_DIR=/tmp
+    Jan 09 15:12:28 seven-robot-2 test_ru_launch-start[3297]: xacro: in-order processing became default in ROS Melodic. You can drop the option.
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: remote[192.168.2.23-0]: failed to launch on udooqdl:
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: Unable to establish ssh connection to [root@192.168.2.23:22]: Server u'192.168.2.23' not found in known_hosts
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: 
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: RLException: unable to start remote roslaunch child: 192.168.2.23-0
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: The traceback for the exception was written to the log file
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: ... logging to /tmp/edd14b60-9001-11ed-8c81-7c8334b0242e/roslaunch-seven-robot-2-3358.log
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: Checking log directory for disk usage. This may take a while.
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: Press Ctrl-C to interrupt
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: Done checking log file disk usage. Usage is <1GB.
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: [31B blob data]
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: started roslaunch server http://seven-robot-2:46315/
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: remote[192.168.2.23-0] starting roslaunch
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: remote[192.168.2.23-0]: creating ssh connection to 192.168.2.23:22, user[root]
+    Jan 09 15:12:29 seven-robot-2 test_ru_launch-start[3297]: [192.168.2.23-0] killing on exit
+    Jan 09 15:12:29 seven-robot-2 systemd[1]: test_ru_launch.service: Main process exited, code=exited, status=1/FAILURE
+    Jan 09 15:12:29 seven-robot-2 systemd[1]: test_ru_launch.service: Failed with result 'exit-code'.
+    Jan 09 15:12:29 seven-robot-2 systemd[1]: test_ru_launch.service: Service hold-off time over, scheduling restart.
+
+The service and launch file is as follows:
+Service file:
+# THIS IS A GENERATED FILE, NOT RECOMMENDED TO EDIT.
+
+[Unit]
+Description="bringup test_ru_launch"
+After=network.target
+Wants=network.target
+After=network-online.target
+Wants=network-online.target
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/test_ru_launch-start
+Restart=on-failure
+
+[Install]
+WantedBy=graphical.target
+
+roslaunch file (part where ssh is established):
+<group>
+        <machine name="udooqdl" address="192.168.2.23" user="root" env-loader="/home/root/Seven_ROS/env_loader_udooqdl.sh" default="true"/>
+      <rosparam file="$(find seven_robot_base)/params/robotParams.yaml" command="load" ns="$(arg uavcanNs)/uavcan_ros_bridge"/>
+      <rosparam file="$(find seven_robot_localization)/params/diff_drive.yaml" command="load" ns="$(arg uavcanNs)/uavcan_ros_bridge"/>
+      <include file="$(find uavcan_ros_bridge)/launch/uavcan_ros_bridge.launch">
+        <arg name="uavcanNs" value="$(arg uavcanNs)"/>
+        <arg name="laser_enabled" default="$(arg enable_Laser)"/>
+        <arg name="publishuavcanTf" default="$(arg publishcanTf)"/>
+        <arg name="enableMotors" default="$(arg motors_enabled)"/>
+      </include>
+    </group>
+
+Not sure what is causing the error, any help/suggestions is appreciated. Happy to provide more information if needed. I am running ROS melodic on Ubuntu 18.04.
+
+A:
+
+The core error in your text is: Server u'192.168.2.23' not found in known_hosts
+There are two steps to establishing an SSH connection. First you need to establish the connection and after that you present your credentials.
+To avoid the risk of a man-in-the-middle attack. It is standard for ssh clients to keep track of the cryptographic fingerprint of the remote server and refuse to connect if either there's not already a fingerprint for that server or it is different on the local machine.
+When doing this interactively you will typically prompt you to add a new key to the known_hosts file.
+This answer has an example of what it will look like
+The authenticity of host 'server-name (12.345.678.900)' can't be established.
+RSA key fingerprint is XXXXXXX.
+Are you sure you want to continue connecting (yes/no)?
+
+And the solution to your problem is to setup the known_hosts for target machine. Note that it's specific to the machine, the user, and I believe the specific protocol. (Aka roslaunch uses RSA by default which may not be the default for your command line ssh client anymore.
+Make sure to test add the user of the machine. That's a common mistake when debugging.
+There's also a very similar question here: A is not in your SSH known_hosts file. as a good reference.
+

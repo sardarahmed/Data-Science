@@ -1,0 +1,49 @@
+Q:
+
+How to merge two LaserScans to one LaserScan with different frame_ids
+
+Hello everbody,
+I have to implement a mobile robot which contains two lasers (sensor_1 and sensor_2).
+sensor_1 has the topic /scan_1 and sensor_2 has the topic /scan_2.
+The scans from my sensors should captured in an output topic "scan" which should reference to the specified frame_ids (sensor_1 and sensor_2).
+The problem on my mobile robot is that one sensor is placed in the front left and the other sensor is placed in the back right. Therefore, I cannot use the common frame base_link for both sensors, because a map is created from the base_link and not from the respective sensors.
+Is there maybe a solution for this?
+Thank you in advance! I appreciate your help!
+
+Originally posted by sincoy on ROS Answers with karma: 13 on 2021-12-08
+Post score: 0
+
+A:
+
+Why don't you create a launch file like the following?
+Connect sensor_1, sensor_2, and the merged scan frames with static_transform_publisher to see how they relate to base_link.
+  <node pkg="tf" type="static_transform_publisher" name="link0" args=" 0.000   0.000 0.000 0.000 0.00 0.00 base_link laser 100" />
+  <node pkg="tf" type="static_transform_publisher" name="link1" args=" 0.250  -0.267 0.000 0.000 0.00 0.00 base_link sensor_1 100" />
+  <node pkg="tf" type="static_transform_publisher" name="link2" args="-0.250   0.267 0.000 0.000 0.00 0.00 base_link sensor_2 100" />
+
+  <node name="LiDAR_front" pkg="urg_node" type="urg_node">
+    <param name="ip_address" value="192.168.0.1"/>
+    <param name="frame_id" value="sensor_1"/>
+    <remap from="scan" to="scan_1" />
+  </node>
+  <node name="LiDAR_back_left" pkg="urg_node" type="urg_node">
+    <param name="ip_address" value="192.168.0.2"/>
+    <param name="frame_id" value="sensor_2"/>
+    <remap from="scan" to="scan_2" />
+  </node>
+
+  <node pkg="ira_laser_tools" name="laserscan_multi_merger" type="laserscan_multi_merger">
+    <param name="destination_frame" value="laser"/>
+    <param name="scan_destination_topic" value="/scan"/>
+    <param name="laserscan_topics" value ="/scan_1 /scan_2" />
+  </node>
+
+Originally posted by miura with karma: 1908 on 2021-12-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sincoy on 2021-12-09:
+Thanks four your reply! I checked again the ira_laser_tools package and determined that the merged laserscan is published correctly. So it is only necessary to use the node of ira laser tools. The code considers the transformation.
+But now my problem is that the SLAM algorithm is mapping from the base_link. Do you have any idea for that? I will try to launch my slam with your mentioned transformation nodes.
+

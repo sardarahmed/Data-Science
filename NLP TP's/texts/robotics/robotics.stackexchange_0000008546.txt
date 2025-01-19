@@ -1,0 +1,114 @@
+Q:
+
+Modelling Point Clouds for Collision Detection in Gazebo
+
+I am currently applying path planning to my robotic arm (in Gazebo) and have chosen to use an RRT. In order to detect points of collision, I was thinking of getting a Point Cloud from a Kinect subscriber and feeding it to something like an Octomap to have a collision map I could import into Gazebo. However, there is no Gazebo plugin to import Octomap files and I do not have enough experience to write my own. The next idea would be to instead feed this point cloud to a mesh generator (like Meshlab) and turn that into a URDF, but before starting I'd rather get the input of somebody far more experienced. Is this the right way to go? Keep in mind the environment is static, and the only things moving are the arms. Thank you. Below is just a picture of an octomap.
+
+A:
+
+For the most part I was able to get this done. The only difference I chose was to use the Point Cloud library's triangular mesh generator instead of Meshlab's mesh generator mainly because Meshlab's generator is interactive. Below is the image of the Kinect (on top of the Baxter) taking a picture of the shelf, and a picture of the STL put together from the PointCloud the Kinect took.
+
+The code I used is as below:
+#include <ros/ros.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/surface/gp3.h>
+#include <pcl/io/vtk_io.h>
+#include <pcl/io/vtk_lib_io.h>
+#include <pcl/io/io.h>
+int n = 0;
+void 
+cloud_cb ()
+{
+ // Load input file into a PointCloud<T> with an appropriate type
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PCLPointCloud2 cloud_blob;
+  pcl::io::loadPCDFile ("mesh.pcd", cloud_blob);
+  pcl::fromPCLPointCloud2 (cloud_blob, *cloud);
+  //* the data should be available in cloud
+
+  // Normal estimation*
+  pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+  pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (cloud);
+  n.setInputCloud (cloud);
+  n.setSearchMethod (tree);
+  n.setKSearch (20);
+  n.compute (*normals);
+  //* normals should not contain the point normals + surface curvatures
+
+  // Concatenate the XYZ and normal fields*
+  pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals (new pcl::PointCloud<pcl::PointNormal>);
+  pcl::concatenateFields (*cloud, *normals, *cloud_with_normals);
+  //* cloud_with_normals = cloud + normals
+
+  // Create search tree*
+  pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);
+  tree2->setInputCloud (cloud_with_normals);
+
+  // Initialize objects
+  pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
+  pcl::PolygonMesh triangles;
+
+  // Set the maximum distance between connected points (maximum edge length)
+  gp3.setSearchRadius (0.025);
+
+  // Set typical values for the parameters
+  gp3.setMu (2.5);
+  gp3.setMaximumNearestNeighbors (100);
+  gp3.setMaximumSurfaceAngle(M_PI/4); // 45 degrees
+  gp3.setMinimumAngle(M_PI/18); // 10 degrees
+  gp3.setMaximumAngle(2*M_PI/3); // 120 degrees
+  gp3.setNormalConsistency(false);
+
+  // Get result
+  gp3.setInputCloud (cloud_with_normals);
+  gp3.setSearchMethod (tree2);
+  gp3.reconstruct (triangles);
+
+  // Additional vertex information
+  std::vector<int> parts = gp3.getPartIDs();
+  std::vector<int> states = gp3.getPointStates();
+pcl::io::savePolygonFileSTL("mesh.stl", triangles);
+}
+
+void saveFile(const sensor_msgs::PointCloud2::ConstPtr& input)
+{
+if(n <= 1)
+{
+ pcl::PCLPointCloud2::Ptr pcl_input_cloud(new pcl::PCLPointCloud2);
+     pcl_conversions::toPCL(*input, *pcl_input_cloud);
+    pcl::io::savePCDFile("mesh.pcd", *pcl_input_cloud);
+n++;
+    cloud_cb();
+    }
+
+    return; 
+}
+
+int
+main (int argc, char** argv)
+{
+  // Initialize ROS
+  ros::init (argc, argv, "my_pcl_tutorial");
+  ros::NodeHandle nh;
+    ros::Rate loop_late(1);
+  // Create a ROS subscriber for the input point cloud
+  ros::Subscriber sub = nh.subscribe("/cameras/kinect/depth/points", 1, saveFile);
+
+    while(n<=1)
+    {
+    ros::spinOnce();
+    loop_late.sleep();
+    }
+return 0;
+}
+
+Most of the code is copied exactly from http://pointclouds.org/documentation/tutorials/greedy_projection.php . I'll have to find a way to get a better 3D reconstruction of the shelf considering there are gaps in the levels.
+

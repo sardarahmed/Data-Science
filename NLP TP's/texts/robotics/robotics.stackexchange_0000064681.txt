@@ -1,0 +1,38 @@
+Q:
+
+Which is each frame?
+
+I have a frame tree in which I have /odom and /map frames.
+My EKF publishes in /odom frame.
+My AMCL algorithm (I think) creates a transformation between /odom and /map frames.
+Gazebo gives me the modelStates positions. The problem is that it doesn't specify a frame. By default, it is set to be world_frame. I want to check how good is my AMCL. Because of that I think I should transform my /odom position given by EKF to /map frame and there compare it to gazebo's measurements. However, I don't know where Gazebo is referencing the position.
+[QUESTION UPDATE]
+I have two issues that are explined below:
+
+Without any AMCL (and without having /map frame in the tree) I used the Gazebo ModelStates topic to check the EKF result assuming that both were published in /odom frame. Was it Ok?
+
+Now I have an AMCL running and because of it /map frame appears in the tree. I want to check how good is my AMCL algorithm comparing the pose shown in /amcl_pose (which is in /map frame) with /gazebo/ModelStates topic. How can I do that? I don't know which frame does gazebo use to reference the data in topic ModelStates.
+Thank you very much
+
+Originally posted by arenillas on ROS Answers with karma: 223 on 2014-12-16
+Post score: 2
+
+A:
+
+If you are just trying to compare your pose estimate to a Gazebo ground truth, I believe you should be able to directly compare your pose in the map frame with your Gazebo model state pose. In other words, don't worry about any transforms or your odom frame pose; I would just compare the output of amcl (the amcl_pose PoseWithCovarianceStamped message) with the Gazebo ground truth.
+EDIT in response to question edit:
+First, if you haven't yet, read over REP-105.
+map and odom are both "world" frames. For most applications, when you start running, your pose in both the map frame and the odom frame are (0, 0) with a heading of 0 (simplifying to 2D for this example). In other words, the frames are completely aligned. As you move through the world, your pose in odom frame will suffer from drift, owing to the fact that it doesn't (or shouldn't) have any global position corrections included in its estimate. However, it is accurate for short distances, so it's useful for local planning and path execution. The position in the map frame will not drift, and should be much more accurate over time, as you have absolute position corrections coming from things like GPS, or in the case of amcl, from measurements of the world itself through LIDAR. However, these corrections can cause your map frame position estimate to "jump," making it difficult to use for planning. Imagine if your robot was moving towards a goal, and then its position estimate suddenly shifted by one meter. It may have to suddenly change its direction for no apparent reason.
+In a perfect world, your position in the map frame would always be identical to your position in the odom frame.
+For Gazebo, there is no estimation going on, as Gazebo knows exactly where your robot is. They call their world frame world. As it is ground truth, it is more accurate than either your map or odom frames. However, you can ignore the names of the frames, as they are irrelevant for what you are trying to do. All you need to do is literally compare your poses in all three. In other words, all three frames (world, map, and odom) represent the same thing, but to varying degrees of accuracy. So:
+Open up a terminal and enter rostopic echo /model_states. Unfortunately, I think the model_states topic is going to report the pose of all models in the scene, so you'll have to find the one that refers to your model. Now open up a new terminal and enter rostopic echo /amcl_pose (assuming that's what your amcl instance is producing and you haven't remapped the topic). Now open up a third terminal and enter rostopic echo /odom (or whatever the name of your EKF output topic is). Now just look at the pose values for X, Y, and Z and the orientation. If they're close for a long time, then amcl is working for you.
+
+Originally posted by Tom Moore with karma: 13689 on 2014-12-17
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by arenillas on 2014-12-17:
+I didn't know about that topic. Thank you.
+I will update the question with my new doubts.
+

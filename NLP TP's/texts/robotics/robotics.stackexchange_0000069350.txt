@@ -1,0 +1,75 @@
+Q:
+
+Help using epos_hardware
+
+Hello everyone!
+I am trying to add 4 maxon motors controlled by 4 maxon drives (EPOS2 70/10) and I have been unsuccessful so far. I have communicated with the EPOS2 in Windows and have gone through the initial setup correctly. EDIT: I will summarize the post in order to make it easier to read.
+At first I had some USB permission problem which was solved by giving the device special permissions in udev/rules.d. I thought that was not enough and made this post but as ahendrix pointed out probably only by rebooting my computer did the permission change take effect.
+I am still trying to make the example work with my own EPOS2 + Motor and the following issue still puzzles me: I have edited the example.yaml file that came with the epos_hardware to fit my motor. Still when I run the example.launch file I get:
+[ERROR] [1440402458.067846767]: Could not find motor
+[ERROR] [1440402458.067882353]: Could not configure motor: my_joint_actuator
+[FATAL] [1440402458.067895978]: Failed to initialize motors
+
+I realized something trying to troubleshoot the problem. My device's serial number is:
+Serial Number: 0x662080006193
+
+The package documentation states:
+
+~/motor_name/serial_number (string)
+
+The serial number of the motor (in hex). This is used to locate the motor.
+
+So I have introduced: serial_number: '662080006193'. No problems so far but whenever I try to run the example and check rqt_console I get this ROS_INFO message:
+Initializing: 0x7461757463416e6f
+
+Which could be the cause of the problem since to my understanding it is trying to connect to a different device (correct me if I'm wrong). I have tried introducing the number in a variety of ways but I either got the same number (0x7461757463416e6f) or zero (0x0). Does anybody have any clues as to what's happening behind the curtain? Is the number being converted to hex twice? I have tried introducing the decimal equivalent but then I get zero in rqt_console...
+Now the latest update I have is I have tried running roswtf with epos_hardware's example.launch file and this is what I get:
+ERROR The following packages have rpath issues in manifest.xml:
+ * epos_hardware: found flag "-L/opt/ros/indigo/share/controller_manager/lib", but no matching "-Wl,-rpath,/opt/ros/indigo/share/controller_manager/lib"
+ * controller_manager: found flag "-L/opt/ros/indigo/share/controller_manager/lib", but no matching "-Wl,-rpath,/opt/ros/indigo/share/controller_manager/lib"
+
+Could this be the source of the problem or at least a part of it? How do I fix it? I have checked package.xml in both epos_hardware and controller_manager but I am not exactly sure about what to do. I have tried commenting the following line in controller_manager's package.xml but although roswtf gave me no errors I still get the same problem when I try to execute the example:
+  <export>
+    <cpp lflags="-L${prefix}/lib -lcontroller_manager" cflags="-I${prefix}/include"/>
+  </export>
+
+Originally posted by maztentropy on ROS Answers with karma: 35 on 2015-08-21
+Post score: 2
+
+A:
+
+I sort of made it work for now. As I initially suspected the problem was in the way the serial number is handled internally. I manually changed the file "epos.cpp" and recompiled and the issue was solved. This is the change I did in case anyone is interested:
+   if(!config_nh_.getParam("serial_number", serial_number_str)) {
+     ROS_ERROR("You must specify a serial number");
+     valid_ = false;
+  }
+  else {
+    
+    ROS_ASSERT(SerialNumberFromHex(serial_number_str, &serial_number_));
+  }
+
+I changed it to:
+config_nh_.getParam("serial_number", serial_number_str);
+ROS_ASSERT(SerialNumberFromHex(serial_number_str, &serial_number_));
+
+I think that serial_number_str was not being collected properly but I am no expert. How can I make it known to the author?
+
+Originally posted by maztentropy with karma: 35 on 2015-08-31
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2015-08-31:
+According to the docs the serial nr should be specified in hex, as you had found out. Have you tried setting the parameter to 0x662080006193 (if that is your serial nr in hex)?
+As to how to contact the author, use the issue tracker at https://github.com/RIVeR-Lab/epos_hardware.
+Comment by maztentropy on 2015-08-31:
+I did try that form also, but in the example provided in the package is was entered as '662080006193' that's why I have used it for the post. Thanks for your interest anyway.
+Comment by mitchell on 2015-09-02:
+The serial number you have is probably in decimal. Try converting it to hex with the 0x prefix and see if that works. Feel free to add a PR to support both formats of SN. Not sure about the controller_manager issue, but I would try filing a bug against controller_manager
+Comment by maztentropy on 2015-09-03:
+I used the serial number obtained from "list_devices" (which I think is already hex). I have anyway tried different ways of inputting the number and none of them worked. The ROS_INFO message which parses the device you're connecting to kept saying "0x7461757463416e6f" or "0x0".
+Comment by jdeleon on 2016-06-17:
+@maztentropy did you finally get the EPOS work? I'm having the same 3 errors as you.
+Comment by johnyang on 2017-09-13:
+I'm running into the same problem here now. However, the exact same code works on a computer running Ubuntu14.04 but failed on another machine running Ubuntu 14.02. If I removed ROS_ASSERT, then it works fine. Any explanation to his?
+

@@ -1,0 +1,136 @@
+Q:
+
+Nodelet crashes when using pcl::VoxelGrid, pcl::SACSegmentation
+
+Goal: Trying to detect and publish all the detected planes (coefficients) from a depth image.
+Using depth_image_proc to compute the point-cloud. Created a similar segmentation nodelet, attached below. Test script works fine, where I just publish the cloud height. But, when I include pcl::VoxelGrid<pcl::PointXYZ> vg, pcl::SACSegmentation<pcl::PointXYZ> seg Nodelet crashes at run time (compiles without issues) with the following error.
+[ERROR] [1597300025.991310390]: Failed to load nodelet [/pcl_segmentation] of type [using_image_pipeline/pcl_segmentation] even after refreshing the cache: MultiLibraryClassLoader: Could not create object of class type using_image_pipeline::PclSegmentationNodelet as no factory exists for it. Make sure that the library exists and was explicitly loaded through MultiLibraryClassLoader::loadLibrary()
+[ERROR] [1597300025.991394042]: The error before refreshing the cache was: Failed to load library /home/kotaru/catkin_ws/devel/lib//libusing_image_pipeline.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = /home/kotaru/catkin_ws/devel/lib//libusing_image_pipeline.so: undefined symbol: _ZN3pcl7PCLBaseINS_8PointXYZEE13setInputCloudERKN5boost10shared_ptrIKNS_10PointCloudIS1_EEEE)
+[FATAL] [1597300025.991807722]: Failed to load nodelet '/pcl_segmentation` of type `using_image_pipeline/pcl_segmentation` to manager `using_image_pipeline_nodelet'
+[pcl_segmentation-4] process has died [pid 12564, exit code 255, cmd /opt/ros/melodic/lib/nodelet/nodelet load using_image_pipeline/pcl_segmentation using_image_pipeline_nodelet __name:=pcl_segmentation __log:=/home/kotaru/.ros/log/00c8aa44-dd2e-11ea-aa9d-54bf64375ec6/pcl_segmentation-4.log].
+log file: /home/kotaru/.ros/log/00c8aa44-dd2e-11ea-aa9d-54bf64375ec6/pcl_segmentation-4*.log
+
+Can't seem to understand why that is happening, or if the implementation is wrong.
+
+Plane segmentation nodelet source code,
+#include <image_transport/image_transport.h>
+#include <nodelet/nodelet.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/filter.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
+
+#include <pcl/io/pcd_io.h>
+#include <pcl/kdtree/kdtree.h>
+#include <pcl/point_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
+#include <pcl_conversions/pcl_conversions.h>
+#include <ros/ros.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
+#include <std_msgs/Float32.h>
+#include <std_msgs/Float32MultiArray.h>
+
+#include <boost/thread.hpp>
+namespace using_image_pipeline {
+
+class PclSegmentationNodelet : public nodelet::Nodelet {
+public:
+  ros::NodeHandlePtr nh_ptr_;
+  boost::shared_ptr<sensor_msgs::PointCloud2> cloud_;
+  boost::mutex connect_mutex_;
+  boost::mutex mutex_;
+  
+  bool receivedAtLeastOnce = false;
+  ros::Subscriber sub_points_;
+  ros::Publisher pub_planes_;
+  ros::Publisher pub_point_height_;
+  std_msgs::Float32MultiArray msg_planes_;
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_raw, cloud, cloud_f;
+  float leaf_size = 0.01; // 10cm 
+  pcl::VoxelGrid<pcl::PointXYZ> vg;
+  // pcl::SACSegmentation<pcl::PointXYZ> seg;
+
+  PclSegmentationNodelet(/* args */) {
+    NODELET_INFO_STREAM("PclSegmentationNodelet constructor");
+  }
+  ~PclSegmentationNodelet() {}
+  virtual void onInit();
+  void pointCb(const sensor_msgs::PointCloud2ConstPtr &points_msg);
+  void connectCb();
+  void planarSegmentation();
+};
+
+void PclSegmentationNodelet::onInit() {
+  ros::NodeHandle &nh = getNodeHandle();
+  nh_ptr_.reset(new ros::NodeHandle(nh));
+  // cloud_.reset(new sensor_msgs::PointCloud2(nh));
+
+  NODELET_INFO_STREAM("Initialising nodelet... [PclSegmentationNodelet]");
+  ros::SubscriberStatusCallback connect_cb = boost::bind(&PclSegmentationNodelet::connectCb, this);
+  boost::lock_guard<boost::mutex> lock(connect_mutex_);
+  pub_planes_ = nh_ptr_->advertise<std_msgs::Float32MultiArray>("planes", 3, connect_cb, connect_cb);
+  pub_point_height_ = nh_ptr_->advertise<std_msgs::Float32>("test_msg", 3, connect_cb, connect_cb);
+
+  cloud_raw.reset(new pcl::PointCloud<pcl::PointXYZ>);
+  cloud.reset(new pcl::PointCloud<pcl::PointXYZ>);
+}
+
+void PclSegmentationNodelet::connectCb() {
+  boost::lock_guard<boost::mutex> lock(connect_mutex_);
+  sub_points_ = nh_ptr_->subscribe("points", 3, &PclSegmentationNodelet::pointCb, this);
+}
+
+void PclSegmentationNodelet::pointCb(const sensor_msgs::PointCloud2ConstPtr &points_msg) {
+  // boost::mutex::scoped_lock lock (mutex_);
+
+  NODELET_DEBUG("PointCloud2 height %f", (double)points_msg->height);
+  std::cout << points_msg->height << std::endl;
+
+  // convert points_msg to pcl point cloud
+  pcl::fromROSMsg(*points_msg, *cloud_raw);
+
+  std_msgs::Float32 tmp_msg;
+  tmp_msg.data = (float)cloud_raw->height;
+  pub_point_height_.publish(tmp_msg);
+
+  pub_planes_.publish(msg_planes_);
+}
+
+} // namespace using_image_pipeline
+
+// Register as nodelet
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(using_image_pipeline::PclSegmentationNodelet, nodelet::Nodelet);
+
+Originally posted by praskot on ROS Answers with karma: 257 on 2020-08-13
+Post score: 1
+
+Original comments
+Comment by praskot on 2020-08-13:
+After some googling, I see that the issue is with loading pcl.
+
+A:
+
+Issue was having dependency on PCL find_package(PCL 1.2 REQUIRED) in addition to pcl_ros.
+
+Originally posted by praskot with karma: 257 on 2020-08-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by wienans on 2021-02-19:
+Hey @praskot, i face the same problem. What did you actually change to fix it. I deleted the 'find_package(PCL REQUIRED)' in the CMakeLists.txt but it didn't helped with the issue. And i can't read more out of your answer.
+Comment by praskot on 2021-02-19:
+Yeah, I just removed the line find_package(PCL 1.2 REQUIRED) and it worked for me. Are you facing the exact same error? Can you post your CMakelist here?
+Comment by wienans on 2021-02-22:
+Yes, i had the same undefined symbol: _ZN3pcl7PCLBaseINS_8PointXYZEE13setInputCloudERKN5boost10shared_ptrIKNS_10PointCloudIS1_EEEE and this was only happening in the nodelet. A normal node compiled without any problem.
+But actually now i fixed it. For me i used the velodyne_pointcloud::PointXYZIR instead of pcl::PointXYZ for my code. After i changed it to pcl::PointXYZ the issue was fixed with and without deleting find_package(PCL 1.2 REQUIRED)
+But thanks for your help
+

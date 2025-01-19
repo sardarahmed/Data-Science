@@ -1,0 +1,261 @@
+Q:
+
+Clear obstacles of obstacle layer of costmap
+
+Hello everyone.
+I have a Realsense D435 camera on my application, and I use its depth_image to generate a laser scan topic with the package depthimage_to_laserscan. This works allright.
+The problem I want to solve is when I generate obstacles with this laser topic, it marks me the obstacle but when I move and the obstacle get closer it updates the position of the obstacle but it does not lcear the previus marks of the obstacle.
+Here you can see screenshots of the problems:
+
+In the image above the obstacle layer is just generating marks where the sensor sees an obstacle (green line). But in the image below the obstacle gets close and it generates the new marks, but the old marks are not being cleared.
+
+I think is an error of configuration parameters of local_costmap, so here it is the code:
+costmap_common_params.yaml
+footprint: [[-0.30 , 0.38], [0.70, 0.38], [0.70, -0.38], [-0.30, -0.38]]
+
+laser_layer: #Laser
+  #track_unknown_space: false
+  #footprint_clearing_enabled: true
+  #combination_method: 1
+  observation_sources:  laser
+  laser:
+    topic: /scan
+    sensor_frame: camera_depth_frame
+    #observation_persistance: 0.0
+    expected_update_rate: 0
+    data_type: LaserScan
+    clearing: true
+    marking: true
+    #max_obstacle_height: 2.0
+    #min_obstacle_height: 0.0
+    obstacle_range: 3.0
+    raytrace_range: 5.0
+    #inf_is_invalid: false
+
+pointcloud_layer: #Nube de puntos
+  #origin_z: 0.0
+  #z_resolution: 0.2
+  #z_voxels: 10
+  #unknown_threshold: pointcloud_layer/z_voxels
+  #mark_threshold: 0
+  #publish_voxel_map: false
+  #footprint_clearing_enabled: true
+  observation_sources: pointcloud
+  pointcloud:
+    topic: /camera/depth/color/points
+    sensor_frame: camera_depth_frame
+    #observation_persistance: 0.0
+    expected_update_rate: 0
+    data_type: PointCloud2
+    clearing: true
+    marking: true
+    #max_obstacle_height: 2.0
+    #min_obstacle_height: 0.0
+    obstacle_range: 3.0
+    raytrace_range: 5.0
+    #inf_is_invalid: false
+
+inflation_layer:
+  inflation_radius: 0.75
+  #cost_scaling_factor: 10.0
+
+local_costmap_params.yaml
+local_costmap:
+  plugins:
+    - {name: static_map,       type: "costmap_2d::StaticLayer"}
+    - {name: laser_layer, type: "costmap_2d::ObstacleLayer"} #Laser sensors
+    #- {name: pointcloud_layer, type: "costmap_2d::VoxelLayer"} #Pointcloud sensors
+    #- {name: ultrasonic,       type: "range_sensor_layer::RangeSensorLayer"}
+    - {name: inflation_layer,  type: "costmap_2d::InflationLayer"}
+
+  update_frequency: 2.0 #HIGH CPU usage with sensors
+  publish_frequency: 50.0 #Reducir para aligerar CPU
+
+  global_frame: "odom" #To inflate obstacles
+  robot_base_frame: "base_link"
+
+  #static_map: false
+  rolling_window: true
+  width: 6.0 #6
+  height: 6.0 #6
+  resolution: 0.05 #0.01
+
+  #always_send_full_costmap: true
+
+global_costmap_params.yaml
+global_costmap:
+
+  plugins:
+    - {name: static_map,       type: "costmap_2d::StaticLayer"}
+    #- {name: ultrasonic,   type: "range_sensor_layer::RangeSensorLayer"}
+    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+  global_frame: "map"
+  robot_base_frame: "base_link"
+
+  update_frequency: 2.0 #HIGH CPU usage with sensors
+  publish_frequency: 50.0 #Reducir para aligerar CPU
+
+  resolution: 0.5 #0.01 #The resolution of the map in meters/cell.
+  transform_tolerance: 0.2 #Specifies the delay in transform (tf) data that is tolerable in seconds
+  map_type: costmap
+
+  #always_send_full_costmap: true
+
+base_local_planner_params.yaml
+#recovery_behavior_enabled: false
+#clearing_rotation_allowed: false
+controller_frequency: 10 #Default 20 took many time
+
+TrajectoryPlannerROS:
+
+  max_vel_x: 0.4 #meters/sec #0.6
+  min_vel_x: -0.1
+  max_vel_y: 0.0  # zero for a differential drive robot
+  min_vel_y: 0.0  #radians/sec
+  max_vel_theta: 1.0 #3
+  min_vel_theta: -1.0
+  min_in_place_vel_theta: 0.1 #radians/sec, in-place rotations
+  escape_vel: -0.1 #0.1
+  acc_lim_x: 0.4 #meters/sec^2
+  acc_lim_y: 0.0  # zero for a differential drive robot
+  acc_lim_theta: 1.0 #radians/sec^2
+
+  holonomic_robot: false
+
+   #####Trajectory Scoring Parameters#####
+
+  meter_scoring: true #goal_distance and path_distance are expressed in units of meters or cells. Cells false.
+  #pdist_scale: 0.4 #The weighting for how much the controller should stay close to the path it was given
+  #gdist_scale: 0.8 #The weighting for how much the controller should attempt to reach its local goal, also controls speed
+
+  yaw_goal_tolerance: 0.5 # about 30 degrees, The tolerance in radians for the controller in yaw/rotation when achieving its goal
+  xy_goal_tolerance: 0.20  # 5 cm, The tolerance in meters for the controller in the x & y distance when achieving a goal
+   #latch_xy_goal_tolerance: false
+
+   #heading_lookahead: 0.325 #How far to look ahead in meters when scoring different in-place-rotation trajectories
+   #heading_scoring: false #Whether to score based on the robot's heading to the path or its distance from the path
+   #heading_scoring_timestep: 0.8 #How far to look ahead in time in seconds along the simulated trajectory when using heading scoring
+  occdist_scale: 0.07 #The weighting for how much the controller should attempt to avoid obstacles
+
+   #dwa: false
+
+   #####Oscillation Prevention Parameters######
+   #oscillation_reset_dist: 0.05 #How far the robot must travel in meters before oscillation flags are reset
+
+   ####Others#######
+   #publish_cost_grid_pc: false
+   #prune_plan: true
+   #simple_attractor: false
+
+  ####Forward Simulation Parameters####
+
+  sim_time: 3.0 #The amount of time to forward-simulate trajectories in seconds
+  sim_granularity: 0.05 #The step size, in meters, to take between points on a given trajectory
+  #angular_sim_granularity: 0.15 #The step size, in radians, to take between angular samples on a given trajectory
+  vx_samples: 10 #The number of samples to use when exploring the x velocity space
+  vy_samples: 0  # zero for a differential drive robot
+  vtheta_samples: 20.0
+
+If anyone know the configuration to mark just the obstacles that the laser is seeing I would be very thankfull.
+Best regrets.
+Alessandro
+P.S.: Sorry for my english, if you do not understand something just ask me :).
+EDIT
+Finally I solved it using other type of layer (Spatio Temporal Voxel Layer) and generating a mark layer with the LaserScan topic with a voxel decay of 0.75 seconds. The configuration of the layer is the following:
+laser_layer_temp:
+  enabled:               true
+  voxel_decay:           0.75     #seconds if linear, e^n if exponential
+  decay_model:           0      #0=linear, 1=exponential, -1=persistent
+  voxel_size:            0.05   #meters
+  track_unknown_space:   true   #default space is unknown
+  observation_persistence: 0.0  #seconds
+  max_obstacle_height:   2.0    #meters
+  unknown_threshold:     15     #voxel height
+  mark_threshold:        0      #voxel height
+  update_footprint_enabled: true
+  combination_method:    1      #1=max, 0=override
+  obstacle_range:        3.0    #meters
+  origin_z:              0.0    #meters
+  publish_voxel_map:     true   # default off
+  transform_tolerance:   0.2    # seconds
+  mapping_mode:          false  # default off, saves map not for navigation
+  map_save_duration:     60     #default 60s, how often to autosave
+  observation_sources:    rgbd1_mark
+  rgbd1_mark:
+    data_type: LaserScan
+    topic: /scan
+    marking: true
+    clearing: false
+    #min_obstacle_height: 0.3     #default 0, meters
+    #max_obstacle_height: 2.0     #defaule 3, meters
+    expected_update_rate: 0.0    #default 0, if not updating at this rate at least, remove from buffer
+    observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest
+    inf_is_valid: false          #default false, for laser scans
+    clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
+    voxel_filter: true           #default off, apply voxel filter to sensor, recommend on
+    voxel_min_points: 0          #default 0, minimum points per voxel for voxel filter
+
+Best regards.
+Alessandro
+
+Originally posted by Alessandro Melino on ROS Answers with karma: 113 on 2020-03-17
+Post score: 1
+
+Original comments
+Comment by stevemacenski on 2020-03-17:
+Please upload your images to the answer so they are retained.
+Comment by Alessandro Melino on 2020-03-18:
+The platform doesn't let me upload images because I am less than 5 points. Can't you see them using the links?
+Obstacle far
+Obstacle near
+Here you are another links to see the images.
+Thank you for your response.
+Comment by gvdhoorn on 2020-03-18:
+Please attach the images to your question now. I've given you sufficient karma.
+Comment by Alessandro Melino on 2020-03-18:
+Thank you! It's done.
+
+A:
+
+Finally I solved it using other type of layer (Spatio Temporal Voxel Layer) and generating a mark layer with the LaserScan topic with a voxel decay of 0.75 seconds. The configuration of the layer is the following:
+laser_layer_temp:
+  enabled:               true
+  voxel_decay:           0.75     #seconds if linear, e^n if exponential
+  decay_model:           0      #0=linear, 1=exponential, -1=persistent
+  voxel_size:            0.05   #meters
+  track_unknown_space:   true   #default space is unknown
+  observation_persistence: 0.0  #seconds
+  max_obstacle_height:   2.0    #meters
+  unknown_threshold:     15     #voxel height
+  mark_threshold:        0      #voxel height
+  update_footprint_enabled: true
+  combination_method:    1      #1=max, 0=override
+  obstacle_range:        3.0    #meters
+  origin_z:              0.0    #meters
+  publish_voxel_map:     true   # default off
+  transform_tolerance:   0.2    # seconds
+  mapping_mode:          false  # default off, saves map not for navigation
+  map_save_duration:     60     #default 60s, how often to autosave
+  observation_sources:    rgbd1_mark
+  rgbd1_mark:
+    data_type: LaserScan
+    topic: /scan
+    marking: true
+    clearing: false
+    #min_obstacle_height: 0.3     #default 0, meters
+    #max_obstacle_height: 2.0     #defaule 3, meters
+    expected_update_rate: 0.0    #default 0, if not updating at this rate at least, remove from buffer
+    observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest
+    inf_is_valid: false          #default false, for laser scans
+    clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
+    voxel_filter: true           #default off, apply voxel filter to sensor, recommend on
+    voxel_min_points: 0          #default 0, minimum points per voxel for voxel filter
+
+Best regards.
+Alessandro
+
+Originally posted by Alessandro Melino with karma: 113 on 2020-05-25
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,43 @@
+Q:
+
+fatal error: Eigen/Core: No such file or directory
+
+I use Ubuntu 12.04 and Fuerte and for some reason, I cannot include laser_geometry.h from my code. When I do so, laser_geometry.h includes <Eigen/Core>, which makes rosmake fail when compiling my package:
+  In file included from /home/robot/nifti_systems/bleeding-edge/stacks/nifti_ui/foo/src/foo.cpp:5:0:
+  /opt/ros/fuerte/stacks/laser_pipeline/laser_geometry/include/laser_geometry/laser_geometry.h:46:22: fatal error: Eigen/Core: No such file or directory
+  compilation terminated.
+  make[3]: *** [CMakeFiles/foo.dir/src/foo.o] Error 1
+
+Package foo has these dependencies in its manifest:
+<depend package="roscpp"/>
+<depend package="laser_geometry"/>
+
+And I also tried with this (which should be unnecessary since it is already in the manifest of package laser_geometry):
+<rosdep name="eigen"/>
+
+I called rosdep install before rosmake, and it says that all dependencies are installed. I tried removing ROS_NOBUILD from laser_geometry, and I can build that package without a problem.
+
+Originally posted by Benoit Larochelle on ROS Answers with karma: 867 on 2012-09-19
+Post score: 2
+
+A:
+
+This is a different solution than the one from tlinder, although it is related.
+The migration web page mentions that if your package exports headers that use Eigen, you must export the Eigen flag. This is currently not done by package laser_geometry. I tried it on my set-up, i.e. I changed
+<export>
+<cpp cflags="-I${prefix}/include" 
+     lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -llaser_geometry"/>
+</export>
+
+to
+<export>
+<cpp cflags="`pkg-config --cflags eigen3` -I${prefix}/include" 
+     lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -llaser_geometry"/>
+</export>
+
+and it solved the problem. If I'm not mistaken, it was just forgotten in laser_geometry. I filed a ticket for it: https://code.ros.org/trac/ros-pkg/ticket/5566.
+
+Originally posted by Benoit Larochelle with karma: 867 on 2012-09-19
+This answer was ACCEPTED on the original site
+Post score: 4
+

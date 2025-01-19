@@ -1,0 +1,106 @@
+Q:
+
+How to create AckermannDriveStamped messages in python
+
+I'm very, very new to ROS and i'm working on my own MIT RACECAR (for those who are unfamiliar http://fast.scripts.mit.edu/racecar/). I have a ROS network of nodes and topics to control an ackermann type vehicle platform.  There are built in topics that pass along AckermannDriveStamped messages to lower level nodes that do some math/filtering which actually make my car run, and i'm interested in creating my own series of ackermann message and publishing them just to see the car maybe run through a short series of directions autonomously.
+I'm wondering how to actually write python code in AckermannDriveStamped format. Here's what I have so far:
+import rospy
+
+import yaml
+
+from sensor_msgs.msg import Joy #i'm also trying to play around with Joy messages which is why this import is included
+
+import numpy as np
+
+import std_msgs.msg
+
+import ackermann_msgs.AckermannDriveStamped #this isn't correct, i'm not sure what to import here
+
+header = rospy.Header()
+       
+axes = {"axes:[-0.0, -0.0, 0.0, -0.0, -0.0, 0.0, 0.0, 0.0]"}
+       
+buttons = {"buttons":"[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"}
+      
+command = rospy.Header(),axes,buttons
+
+       print(header) 
+       print("-------------")
+       print(buttons) 
+       print("-------------")
+       print(command) 
+       print("----------------------------")
+           rospy.loginfo(command)
+           pub.publish(command)
+           rate.sleep()
+
+When i runs that ROS spits back :
+TypeError: Invalid number of arguments, args should be ['header', 'axes', 'buttons'] args are((seq: 0
+stamp: 
+  secs: 0
+  nsecs:         0
+frame_id: '', set(['axes:[-0.0, -0.0, 0.0, -0.0, -0.0, 0.0, 0.0, 0.0]']), {'buttons': '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'}),)
+
+It's obviously littered with syntax errors and i don't expect to be able to pass an actual array called "buttons", but i did expect there to be some sort of class like rospy.Header than i can use which ROS will understand.
+Can anyone provide me some source code for actually creating and publishing AckermannDriveStamped messages or help me out?
+PS I'm really sorry about the poor formatting of the code in this question.  I couldn't get it to work properly
+
+Originally posted by Ryan_F on ROS Answers with karma: 71 on 2017-07-06
+Post score: 1
+
+A:
+
+import rospy
+from sensor_msgs.msg import Joy
+from ackermann_msgs.msg import AckermannDriveStamped
+
+ack_publisher = None
+max_speed = 1 # m/s
+max_steering = 1.047198 # radians
+
+def joyCallback(msg):
+    for i in range(len(msg.buttons)):
+        if msg.buttons[i] == 1:
+            print 'WOW! You pressed the ' + str(i) + ' button!'
+
+    ack_msg = AckermannDriveStamped()
+    ack_msg.header.stamp = rospy.Time.now()
+    ack_msg.header.frame_id = 'your_frame_here'
+    ack_msg.drive.steering_angle = msg.axes[0] * max_steering
+    ack_msg.drive.speed = msg.axes[1] * max_speed
+    ack_publisher.publish(ack_msg)
+
+if __name__ == '__main__':
+    rospy.init_node('Ryan_F_example')
+    max_speed = rospy.get_param("~max_speed", 1)
+    max_steering = rospy.get_param("~max_steering", 1.047198)
+    rospy.Subscriber('joy', Joy, joyCallback)
+    ack_publisher = rospy.Publisher('your/topic/here', AckermannDriveStamped, queue_size=1)
+    while not rospy.is_shutdown():
+        rospy.spin()
+
+I have not tested the code, but it should work with some minor corrections. I don't see why you would want to publish joy messages, so in this example I have subscribed to the joy topic, and based on that I am publishing AckermannDriveStamped messages.
+A small explanation of the code:
+Starting from main, we first initialize our node, get two parameters for max_speed and max_steering, which are based on our robot and can be acquired from a yaml file that is fed to our code using a launch file. We then subscribe to the joy topic, and create a publisher for AckermannDriveStamped messages. The following while ensures that the node will trigger its callback(s) for as long as it is alive.
+Continuing with the joyCallback method, we first check if there are any buttons pressed and print a dummy message there. You can remove this code, or use it based on your needs and your robot's capabilities (e.g. X button used as horn and Y button as headlights!). After taking care of the buttons, we come to the interesting part: The axes! In this example I assume that you use the left analog stick to control the robot. axes[0] is left/right in a range of [-1,1] (with left being the positive) and axes[1] is forward/back in a range of [-1,1] (with forward being the positive). Regarding your Header question, you should NEVER touch the seq field of the header, because it is automatically generated. It is also a good practice to fill in the frame_id field.
+I think I have covered the basics. Hit me up if you have any more problems! Good luck!
+
+Originally posted by gstavrinos with karma: 641 on 2017-07-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Ryan_F on 2017-07-10:
+Thanks much! This was exactly what i needed! If i have any other questions i will let you know. Thanks a bunch for your help
+Comment by gvdhoorn on 2017-07-10:\
+
+you should NEVER touch the seq field of the header, because it is automatically generated.
+
+in reality: seq is actually deprecated, and not used (consistently) any more. So not using it is good advice, but the why is only partially true.
+Comment by gstavrinos on 2017-07-11:
+Can you please point me somewhere that I can see the seq deprecation?
+Comment by gvdhoorn on 2017-07-11:
+See my answer to #q261184.
+Comment by gstavrinos on 2017-07-11:
+Thank you!
+

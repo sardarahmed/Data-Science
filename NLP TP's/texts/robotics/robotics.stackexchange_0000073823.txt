@@ -1,0 +1,91 @@
+Q:
+
+Method does not return after subscription - EDIT : ROS shutdowns after ros::spinOnce()
+
+I am drawing waypoints on a map. I have a MapViewer class with the following constructor.
+// MapViewer default constructor
+MapViewer::MapViewer(std::queue<geometry_msgs::PointStamped::ConstPtr>* waypointQueue) {
+  this->waypointQueue = waypointQueue;
+  this->waypointColor = cv::Scalar(0,0,255);
+  this->pathColor = cv::Scalar(0,255,0);
+  this->mapFile = getenv("TURTLEBOT_NAVIGATION_MAP");
+  this->waypointFile = getenv("TURTLEBOT_WAYPOINT_FILE");
+  this->setMapMetaData();
+  ROS_INFO("4");
+  // TODO : Exception handling
+} 
+
+My setMapMetaData method looks like this
+// Get map meta data from /map_metadata topic (one time thing)
+void MapViewer::setMapMetaData() {
+  ros::NodeHandle n;
+  ROS_INFO("1");
+  ros::Subscriber sub = n.subscribe(
+    "/map_metadata",
+    100,
+    &MapViewer::mapMetaDataCb,
+    this
+  );
+  ROS_INFO("2");
+  ros::spinOnce();
+  ROS_INFO("3");
+  return; // I don't think this return is necessary
+}
+
+My subscriber callback looks like this.
+void MapViewer::mapMetaDataCb(const nav_msgs::MapMetaData::ConstPtr& mapMetaData) {
+  this->mapMetaData = *mapMetaData;
+  ROS_INFO("Map metadata set");
+}
+
+And when I run this, my output looks like this.
+[ INFO] [1462745271.217146294]: Initializing ROS...
+[ INFO] [1462745271.221878557]: 1
+[ INFO] [1462745271.228107221]: 2
+[ INFO] [1462745271.228156984]: 3
+
+The "Initializing ROS..." comes from the main method. The problem is even though "3" is logged, "4" never is!!!
+Maybe I am missing something obvious but I have no clue as to what it is. Obviously since "3" is printed, ros::spinOnce must have returned. But apparently setMapMetaData has not returned.
+Can someone help me figure out what I am missing?
+EDIT
+The method actually returns. Instead of ROS_INFO("4"), when I use std::cout << 4 << std::endl; it prints 4. The issue is (as a friend explained to me) that ROS is killed when I call spinOne() only once and stop calling it again.
+I solved the problem by changing the setMapMetaData method to
+// Get map meta data from /map_metadata topic (one time thing)
+void MapViewer::setMapMetaData() {
+  ROS_INFO("Subscribing to topic %s", MapViewer::MAP_METADATA_TOPIC.c_str());
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe(
+    MapViewer::MAP_METADATA_TOPIC,
+    1,
+    &MapViewer::mapMetaDataCb,
+    this
+  );
+  
+  while(!this->mapMetaDataSet) {
+    // Block until map metadata is set
+  }
+}
+
+And executed it in a separate thread after MapViewer instance was created.
+Because I subscribe to another topic in a different class (which calls ros::spin() ), the mapMetaDataCb() is also executed at that point.
+I am not accepting this as an answer because I need to figure out why ROS is killed when I don't call spinOnce() anymore and how to counter it. Appreciate if you could shed some light into this.
+
+Originally posted by janindu on ROS Answers with karma: 849 on 2016-05-08
+Post score: 0
+
+A:
+
+I figured the answer myself.
+Quoting roscpp wiki , "When the first ros::NodeHandle is created it will call ros::start(), and when the last ros::NodeHandle is destroyed, it will call ros::shutdown()."
+So in the first case, when the setMapMetaData() method returns, the NodeHandler n gets destroyed, because it's created within the scope of the method. Since there are no other NodeHandlers created at that moment, ros::shutdown() is called.
+In the second case, the method does not return until mapMetaDataSet = true which happens when the callback function is executed. The callback function executes when ros::spin() is called from another class. Then the method returns and the local NodeHandler n is destroyed BUT now there is another NodeHandler created for the same node. Hence ros::shutdown() is not called at that point.
+I guess my current implementation, even though it works, is not exactly the best way to get this done. Might do well to use a single NodeHandler that can be passed as an argument to subscribers / publishers etc.
+
+Originally posted by janindu with karma: 849 on 2016-05-08
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by ahendrix on 2016-05-09:
+Also keep in mind that the subscriber callbacks will stop when the ros::Subscriber object goes out of scope and is destructed.
+

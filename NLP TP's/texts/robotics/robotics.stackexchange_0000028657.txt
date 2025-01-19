@@ -1,0 +1,78 @@
+Q:
+
+Converting URDF to SDF:  not working
+
+I am trying to convert a robot specified in URDF into SDF by using the URDF parser from Gazebo (gz sdf -p in.urdf > out.sdf).
+By default, links connected by fixed joints in URDF get lumped together into single link, as SDF apparently didn't support fixed links in the past:[1]
+By adding the tag <disableFixedJointLumping> this lumping is deactivated, and a fixed joint in SDF is approximated by a revolute joint with minPos=maxPos=0. This however doesn't work for me as the joint still allows minimal oscillations.
+As I read here [2], a new tag <preserveFixedJoint> has supposedly been added that will make the SDF file have a true fixed joint. However, upon using the tag, the URDF parser throws the following warning:
+
+Warning [parser.cc:778] XML Element[preserveFixedJoint], child of element[joint] not defined in SDF. Ignoring[preserveFixedJoint]. You may have an incorrect SDF file, or an sdformat version that doesn't support this element.
+
+Is this tag not part of the final build yet, or can i somehow update my SDFormat to get access to it? I am using Gazebo 7.0.0
+[1] https://bitbucket.org/osrf/sdformat/issues/131/disabling-lumping-on-a-fixed-joint-in-a
+[2] https://bitbucket.org/osrf/sdformat/pull-requests/352/add-preservefixedjoint-option-to-the-urdf/diff
+Example URDF:
+<robot name="robot">
+
+<link name="base">
+  <inertial>
+    <mass value="1"/>
+    <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+  </inertial>
+</link>
+<joint name="base_to_link" type="fixed">
+  <parent link="base"/>
+  <child link="link"/>
+</joint>
+<link name="link">
+  <inertial>
+    <mass value="1"/>
+    <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+  </inertial>
+</link>
+<gazebo reference="base_to_link">
+  <disableFixedJointLumping>true</disableFixedJointLumping> 
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+
+</robot>
+
+Gets converted to:
+ ...
+ <joint name='base_to_link' type='revolute'>
+  <child>link</child>
+  <parent>base</parent>
+  <axis>
+    <limit>
+      <lower>0</lower>
+      <upper>0</upper>
+    </limit>
+  </axis>
+    ...
+ </joint>
+ ...
+
+Originally posted by FabianMene on Gazebo Answers with karma: 3 on 2018-11-19
+Post score: 0
+
+Original comments
+Comment by nkoenig on 2018-11-20:
+Can you post your URDF file? Also, did the resulting SDF output have fixed joints when using ?
+Comment by FabianMene on 2018-11-20:
+I edited the OP to include a simple example. In short, the tag is completely ignored. If I specify  alongside, I get a revolute joint with 0 range, otherwise I don't get a joint at all, but the two links are lumped into a single unit.
+
+A:
+
+The <preserveFixedJoint> tag was added in SDFormat 5.3.0 (2017-11-13) which came out after Gazebo 7.0.0 (2016-01-25). Your best bet would be to install the latest version of Gazebo. If you have to stay on Gazebo7, then use 7.13.1. Installation instructions can be found at http://gazebosim.org/tutorials?cat=install
+
+Originally posted by azeey with karma: 704 on 2018-11-21
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by FabianMene on 2018-11-21:
+Thank you, that clears it up. I tried building SDFormat 6.0.1 from source, which did not help with gazebo 7.0.0. Is there some kind of standalone tool that employs the SDFormat library to convert URDF to SDF besides using gazebo?
+Comment by azeey on 2018-11-26:
+Unfortunately, the only tool I know to do this is gz sdf. However, you might be able to extract the snippet of code that does the conversion from https://bitbucket.org/osrf/gazebo/src/f4e51e8f64001beda70615ab8982a7d5a4e65b18/tools/gz.cc?at=default&fileviewer=file-view-default#gz.cc-1050:1062
+

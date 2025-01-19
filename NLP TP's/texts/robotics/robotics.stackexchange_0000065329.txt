@@ -1,0 +1,70 @@
+Q:
+
+Publisher send rate drops with multiple clients in rospy
+
+We noticed this as part of testing the Applanix Driver, which is written entirely in Python. On some machines, the send rate of the /applanix/nav message drops from the normal 100 Hz to 40 or even < 10 Hz as soon as there are subscribers listening and using the topic.
+To test this out, I created the ros_py_tests [github] package. It's just a test harness with a rospy publisher set to publish Headers at 100 Hz, and rospy subscribers that listen check messages for time deltas and sequence numbers. I've copied the code below for reference, though do use the github version since I'll post updated code there.
+# pub.py exerpt
+pub = rospy.Publisher('test', Header, queue_size=10)
+rospy.init_node('sender', anonymous=True)
+rate = rospy.Rate(100)
+msg = Header()
+while not rospy.is_shutdown():
+    msg.stamp = rospy.Time.now()
+    msg.frame_id = "hello world %s" % msg.stamp
+    pub.publish(msg)
+    rate.sleep()
+
+Here's the listener.
+# sub.py excerpt
+def callback(data):
+    global last_seq
+    # check that we haven't missed any messages
+    if last_seq > 0 and data.seq != last_seq + 1:
+        rospy.logerror("Sequence number mismatch: expected " + str(last_seq + 1)
+            + " got " + data.seq)
+    last_seq = data.seq
+
+    # compare time stamps and print out
+    rospy.loginfo("Received message with time " + format_time_str(data.stamp) + 
+        ", delta " + format_time_str(rospy.Time.now() - data.stamp) + 
+        ", message: " + str(data.frame_id))
+
+rospy.init_node('listener', anonymous=True)
+rospy.Subscriber("test", Header, callback)
+rospy.spin()
+
+There's a launch file included the package on GitHub that makes it really easy to start this test. Basic procedure:
+
+Start the publisher
+Start 5 of the listeners
+rostopic hz /test
+
+Here's the strange part: it works perfectly well in virtual machines. On every Ubuntu host machine we've tried it on, the rate drops drastically once the listeners are running.
+What's going on here? Why does having listeners kill the rate of sending of the publisher?
+Update
+I've added a cpp version of the publisher and the subscriber. Here's the result of testing the combinations:
+           |    Subscriber   |
+Publisher  | Python |   C++  |
+Python     |  Fail  |  Fail  |
+C++        |  Pass  |  Pass  |
+
+Looks like it's pretty solidly something in the Python publisher, since the subscriber doesn't seem to matter.
+
+Originally posted by KareemShehata on ROS Answers with karma: 61 on 2015-01-22
+Post score: 4
+
+Original comments
+Comment by KareemShehata on 2015-01-22:
+I've now created ros_comm issue #557 for this.
+Comment by KareemShehata on 2015-01-23:
+To anyone looking, it seems like this might be fixed in the latest version of rospy. If you can reproduce the problem on your machine, please try updating the ROS core packages.
+
+A:
+
+Turns out this was a bug in rospy that has was fixed somewhere between rospy 1.10.2-0 and 1.10.11-0. We hadn't updated because of a package dependency problem. If you're seeing a problem like this in ROS hydro, make sure to update your packages, and do both an upgrade and a dist-upgrade!
+
+Originally posted by KareemShehata with karma: 61 on 2015-01-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

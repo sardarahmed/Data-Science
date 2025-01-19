@@ -1,0 +1,247 @@
+Q:
+
+depth aligned capture doesn't yield same number of rgb and depth frames -- cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is
+
+Steps for reproducing the problem with an Intel RealSense D435 camera using ROS Noetic inside a docker.
+In the first terminal:
+
+(base) mona@ada:~$ sudo docker run -it --privileged -v /dev:/dev -v /home/mona:/workspace -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=$DISPLAY --device /dev/bus/usb ros_noetic
+
+root@7a805700666e:/workspace# cd catkin_ws
+
+(base) mona@ada:~$ docker ps
+CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS         PORTS     NAMES
+7a805700666e   ros_noetic   "/ros_entrypoint.sh …"   4 seconds ago   Up 3 seconds             clever_feynman
+
+roslaunch realsense2_camera rs_camera.launch align_depth:=true
+
+After capture is done,
+5.
+root@7a805700666e:/workspace/catkin_ws# catkin_make
+Base path: /workspace/catkin_ws
+Source space: /workspace/catkin_ws/src
+Build space: /workspace/catkin_ws/build
+Devel space: /workspace/catkin_ws/devel
+Install space: /workspace/catkin_ws/install
+####
+#### Running command: "make cmake_check_build_system" in "/workspace/catkin_ws/build"
+####
+####
+#### Running command: "make -j32 -l32" in "/workspace/catkin_ws/build"
+####
+
+ root@ce71bcbb2d89:/workspace/catkin_ws# source devel/setup.bash 
+
+ root@ce71bcbb2d89:/workspace/catkin_ws# rosrun bag_converter convert.py
+
+other terminal
+
+$ xhost +local:docker
+
+docker exec -it -e DISPLAY=$DISPLAY  clever_feynman  bash
+run step 3 in this terminal after starting step 4 in the first terminal.
+
+root@7a805700666e:/workspace# rosbag record -a -O mona_noetic
+
+Here's the conversion script:
+(base) mona@ada:~$ cat catkin_ws/src/bag_converter/scripts/convert.py 
+#!/usr/bin/python3
+
+import os
+import sys
+import yaml
+from rosbag.bag import Bag
+import cv2
+
+import roslib;   #roslib.load_manifest(PKG)
+import rosbag
+import rospy
+import cv2
+import numpy as np
+import argparse
+import os
+
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+from cv_bridge import CvBridgeError
+
+class ImageCreator():
+    def __init__(self, bagfile, rgbpath, depthpath, rgbstamp, depthstamp):
+        self.bridge = CvBridge()
+        with rosbag.Bag(bagfile, 'r') as bag:
+            for topic,msg,t in bag.read_messages():
+                print(topic)
+                if topic == "/camera/color/image_raw":
+                    cv_image = self.bridge.imgmsg_to_cv2(msg,"bgr8")
+                    timestr = "%.6f" %  msg.header.stamp.to_sec()
+                    image_name = timestr+ ".png" 
+                    cv2.waitKey(1);
+                    cv2.imwrite(rgbpath + image_name, cv_image) 
+
+                elif topic == "/camera/aligned_depth_to_color/image_raw": 
+                    cv_image = self.bridge.imgmsg_to_cv2(msg,"16UC1")
+                    timestr = "%.6f" %  msg.header.stamp.to_sec()
+                    image_name = timestr+ ".png"
+                    
+                    cv2.imwrite(depthpath + image_name, (cv_image).astype(np.uint16))
+
+if __name__ == '__main__':
+    ImageCreator('/workspace/mona_noetic.bag', '/workspace/mona_noetic/rgb/', '/workspace/mona_noetic/depth/', 1, 1)
+
+However, from the capture, we see this unaligned number of depth aligned frames for rgb and depth:
+root@7a805700666e:/workspace# rosbag info mona_noetic.bag 
+path:        mona_noetic.bag
+version:     2.0
+duration:    18.2s
+start:       Nov 15 2023 16:04:52.73 (1700064292.73)
+end:         Nov 15 2023 16:05:10.93 (1700064310.93)
+size:        30.5 MB
+messages:    462
+compression: none [41/41 chunks]
+types:       bond/Status                           [eacc84bf5d65b6777d4c50f463dfb9c8]
+             diagnostic_msgs/DiagnosticArray       [60810da900de1dd6ddd437c3503511da]
+             dynamic_reconfigure/Config            [958f16a05573709014982821e6822580]
+             dynamic_reconfigure/ConfigDescription [757ce9d44ba8ddd801bb30bc456f946f]
+             realsense2_camera/Extrinsics          [3627b43073f4cd5dd6dc179a49eda2ad]
+             realsense2_camera/Metadata            [4966ca002be16ee67fe4dbfb2f354787]
+             rosgraph_msgs/Log                     [acffd30cd6b6de30f120938c17c593fb]
+             sensor_msgs/CameraInfo                [c9a58c1b0b154e0e6da7578cb991d214]
+             sensor_msgs/CompressedImage           [8f7a12909da2c9d3332d540a0977563f]
+             sensor_msgs/Image                     [060021388200f6f0f447d0fcd9c64743]
+             tf2_msgs/TFMessage                    [94810edda583a504dfda3829e70d7eec]
+             theora_image_transport/Packet         [33ac4e14a7cff32e7e0d65f18bb410f3]
+topics:      /camera/align_to_color/parameter_descriptions                                      1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/align_to_color/parameter_updates                                           1 msg     : dynamic_reconfigure/Config           
+             /camera/aligned_depth_to_color/image_raw                                           2 msgs    : sensor_msgs/Image                    
+             /camera/aligned_depth_to_color/image_raw/compressed/parameter_descriptions         1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/aligned_depth_to_color/image_raw/compressed/parameter_updates              1 msg     : dynamic_reconfigure/Config           
+             /camera/aligned_depth_to_color/image_raw/compressedDepth/parameter_descriptions    1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/aligned_depth_to_color/image_raw/compressedDepth/parameter_updates         1 msg     : dynamic_reconfigure/Config           
+             /camera/aligned_depth_to_color/image_raw/theora/parameter_descriptions             1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/aligned_depth_to_color/image_raw/theora/parameter_updates                  1 msg     : dynamic_reconfigure/Config           
+             /camera/color/camera_info                                                          2 msgs    : sensor_msgs/CameraInfo               
+             /camera/color/image_raw/compressed                                                 2 msgs    : sensor_msgs/CompressedImage          
+             /camera/color/image_raw/compressed/parameter_descriptions                          1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/color/image_raw/compressed/parameter_updates                               1 msg     : dynamic_reconfigure/Config           
+             /camera/color/image_raw/compressedDepth/parameter_descriptions                     1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/color/image_raw/compressedDepth/parameter_updates                          1 msg     : dynamic_reconfigure/Config           
+             /camera/color/image_raw/theora/parameter_descriptions                              1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/color/image_raw/theora/parameter_updates                                   1 msg     : dynamic_reconfigure/Config           
+             /camera/depth/camera_info                                                         39 msgs    : sensor_msgs/CameraInfo               
+             /camera/depth/image_rect_raw                                                      38 msgs    : sensor_msgs/Image                    
+             /camera/depth/image_rect_raw/compressed                                           38 msgs    : sensor_msgs/CompressedImage          
+             /camera/depth/image_rect_raw/compressed/parameter_descriptions                     1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/depth/image_rect_raw/compressed/parameter_updates                          1 msg     : dynamic_reconfigure/Config           
+             /camera/depth/image_rect_raw/compressedDepth                                      40 msgs    : sensor_msgs/CompressedImage          
+             /camera/depth/image_rect_raw/compressedDepth/parameter_descriptions                1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/depth/image_rect_raw/compressedDepth/parameter_updates                     1 msg     : dynamic_reconfigure/Config           
+             /camera/depth/image_rect_raw/theora                                                3 msgs    : theora_image_transport/Packet        
+             /camera/depth/image_rect_raw/theora/parameter_descriptions                         1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/depth/image_rect_raw/theora/parameter_updates                              1 msg     : dynamic_reconfigure/Config           
+             /camera/depth/metadata                                                            37 msgs    : realsense2_camera/Metadata           
+             /camera/extrinsics/depth_to_color                                                  1 msg     : realsense2_camera/Extrinsics         
+             /camera/realsense2_camera_manager/bond                                            37 msgs    : bond/Status                           (2 connections)
+             /camera/rgb_camera/auto_exposure_roi/parameter_descriptions                        1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/rgb_camera/auto_exposure_roi/parameter_updates                             1 msg     : dynamic_reconfigure/Config           
+             /camera/rgb_camera/parameter_descriptions                                          1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/rgb_camera/parameter_updates                                               1 msg     : dynamic_reconfigure/Config           
+             /camera/stereo_module/auto_exposure_roi/parameter_descriptions                     1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/stereo_module/auto_exposure_roi/parameter_updates                          1 msg     : dynamic_reconfigure/Config           
+             /camera/stereo_module/parameter_descriptions                                       1 msg     : dynamic_reconfigure/ConfigDescription
+             /camera/stereo_module/parameter_updates                                            1 msg     : dynamic_reconfigure/Config           
+             /diagnostics                                                                      68 msgs    : diagnostic_msgs/DiagnosticArray      
+             /rosout                                                                           88 msgs    : rosgraph_msgs/Log                     (2 connections)
+             /rosout_agg                                                                       38 msgs    : rosgraph_msgs/Log                    
+             /tf_static                                                                         1 msg     : tf2_msgs/TFMessage
+
+Further, I see this error when starting the depth align capture:
+[ INFO] [1700064224.344956163]: SELECTED BASE:Depth, 0
+[ INFO] [1700064224.355172954]: RealSense Node Is Up!
+ 15/11 16:03:44,482 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 300, error: Resource temporarily unavailable, number: b
+[ WARN] [1700064224.531686247]: 
+ 15/11 16:03:44,873 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:44,924 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,179 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,230 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,381 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,432 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,584 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,635 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,786 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,837 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:45,988 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:46,039 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:46,191 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+ 15/11 16:03:46,243 WARNING [140201123149568] (messenger-libusb.cpp:42) control_transfer returned error, index: 768, error: Resource temporarily unavailable, number: 11
+[ERROR] [1700064294.457665710]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+ 15/11 16:04:54,800 ERROR [140200416114432] (uvc-streamer.cpp:106) uvc streamer watchdog triggered on endpoint: 132
+[ERROR] [1700064294.983499621]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064295.496846075]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064296.010771429]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064296.478652416]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064296.895753832]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064297.321010419]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064297.747054477]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064298.173193296]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064298.601070803]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064299.022315621]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064299.448716345]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064299.868316530]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064300.287427109]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064300.702281242]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064301.118212082]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064301.540673572]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064301.961749822]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064302.381357661]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064302.799640022]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064303.226624059]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064303.655973210]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064304.081943511]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064304.509441908]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064304.939367902]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064305.369842480]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064305.800837626]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064306.233901531]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064306.662224030]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064307.088729246]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064307.503594745]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064307.920114882]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064308.346923624]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064308.779323394]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064309.224245296]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064309.664677204]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064310.094353804]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064310.524822175]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+[ERROR] [1700064310.940728063]: cv_bridge exception: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+^C[camera/realsense2_camera-3] killing on exit
+[camera/realsense2_camera_manager-2] killing on exit
+[rosout-1] killing on exit
+[master] killing on exit
+shutting down processing monitor...
+... shutting down processing monitor complete
+done
+
+A:
+
+Using
+rosbag record -O mona_noetic.bag -a -x "(.*)theora(.*)|(.*)compressed(.*)"
+instead of
+rosbag record -a -O mona_noetic
+fixed the problem.
+Also, if you exactly know what you want to capture, you can use a command like the following:
+root@77c9b6999e4b:/workspace# rosbag record -O mona_noetic.bag /camera/aligned_depth_to_color/image_raw /camera/color/image_raw /camera/depth/camera_info /camera/color/camera_info /camera/extrinsics/depth_to_color 
+[ INFO] [1700147750.161300211]: Subscribing to /camera/aligned_depth_to_color/image_raw
+[ INFO] [1700147750.164502682]: Subscribing to /camera/color/camera_info
+[ INFO] [1700147750.166064340]: Subscribing to /camera/color/image_raw
+[ INFO] [1700147750.166996966]: Subscribing to /camera/depth/camera_info
+[ INFO] [1700147750.167893184]: Subscribing to /camera/extrinsics/depth_to_color
+[ INFO] [1700147750.170980936]: Recording to 'mona_noetic.bag'.
+
+Please note, despite having depth aligned captures, it happens that we have 1-3 more depth images than color. And you can find and omit them by using ls *.png | sort > ../depth.txt and ls *.png | sort > ../rgb.txt and then vimdiff depth.txt rgb.txt.
+(base) mona@ada:~/mona_noetic$ ls rgb/*.png | wc -l
+538
+(base) mona@ada:~/mona_noetic$ ls depth/*.png | wc -l
+539
+
+Reference https://github.com/IntelRealSense/realsense-ros/issues/315#issuecomment-699030884
+

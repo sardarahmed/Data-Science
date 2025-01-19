@@ -1,0 +1,79 @@
+Q:
+
+ROS: Best practices?
+
+I'm going to build a small robot system, and it seems like that ROS serves a nice framework to control and program the system.
+However, I am wondering which is the best practice to manage the components of my robot.
+
+Does it make sense to put all the sensors in one node?
+Should I only put the sensors of the same type in one node or is it better to have one node for one sensor? 
+Is it a good practice to have some kind of handler node, which takes input from sensors and steers the corresponding actuators or should the actuator nodes and sensor nodes communicate directly?
+
+Fused sensor nodes and actuator nodes with handler
+
+Single sensor and actuator nodes with handler
+
+Direct communication
+
+For me, I guess the best is to have some kind of handler, which handles the communication between sensors and actuators and have one node for each element of the robot (like in figure 2), because the system is in this way loosely coupled and can be extended easily, but I want to know what your opinion is.
+
+A:
+
+Very short answer: 2
+
+Sensors
+Regarding whether reading from sensors all in one node or each separately, you should ask yourself this question:
+Are the sensors meaningless without the other?
+This question asks if the sensors are tightly coupled or not. For example, say you have a sensor that is sensitive to temperature (and you need to compensate for it). You add a temperature sensor primarily to fix the value of the other sensor. In this scenario, it makes sense to read both values at the same time, since they are tightly coupled. In fact, without the readings from the temperature sensor, the readings from the original sensor is useless.
+On the other hand, if the sensors are individually useful, by all means keep them in separate nodes. This has many benefits:
+
+The nodes can be run on separate processors
+The nodes can be reused in future robots
+Failure in communication with one node doesn't bring the whole system down
+Restart of acquisition from a faulty sensor board can be done separately from the others
+
+In fact, if you need any of the above benefits, you would have to go with separate nodes, even if the sensors are tightly coupled, but that usually doesn't happen.
+Actuators
+This is analogous.
+Are the actuators meaningless without the other?
+For example, if you are designing a wrist with robotic tendons where for each tendon (for whatever reason) two motors are responsible to simultaneously work to move a joint in one or the other direction, then having them served in the same node makes much more sense than separate.
+On the other hand, where actuators are independent (common case), it makes sense to have one node for each actuator. In that case, each could be put in a different node.  Besides the exact same benefits as with sensors, there is this added benefit:
+
+If an actuators is stalled (for whatever reason), the other actuators still function.  If there is redundant degrees of freedom, they could even completely compensate for it.
+
+This has one implication. If you need the actuators to work in harmony, then put them in the same node. This is not just because of failure in communication, but because different nodes means different delays; on a distributed system each node is on a different part of the network and hence the difference in delays, on a centralized system different delays happen on high CPU loads due to each process's luck in scheduling.
+Should There Be a Handler?
+Even though the answer is "it depends", there is a common approach with many advantages. Let's change the name and call it "controller". The approach is "yes, there should be a controller".
+The advantages of having a controller are (among many):
+
+Decoupled processing: each node is responsible for one thing which means:
+
+Simplicity: which implies
+
+Easier development
+Easier debugging
+Fewer errors
+Less chance of failure
+
+Reusability: because the same controller can be used with different sensor nodes if they have the same functionality (i.e. message and service formats).
+
+Execution on separate hardware: each node can be moved in the network. For example, sensor and actuator nodes may be moved to a dedicated microcontroller (Arduino for example (not that I recommend)) and the controller on a PC.
+Avoid extreme ugliness: if the sensors wanted to directly influence the actuators, the result is simply a mess. Assuming no controller, let's look at each case:
+
+One sensor node: basically this means the sensor node and the controller are put together in the same node. Not too bad, but very unnecessary.
+Many sensor nodes: this is the mess. This means the controller is distributed among the sensor nodes. Therefore all the sensor nodes have to talk with each other for each to know how to control its associated actuator(s). Imagine a failure in communication or various kinds of delays and you'll see how difficult it becomes. Given that this is utterly unnecessary, there is no reason for doing it!
+
+These said, there are disadvantages too. Having more nodes (any nodes, not just the controller) means:
+
+More wasted communication: the data have to move around in standard formats (so serialized and deserialized) through network or shared memory, ROS core has to look at them and decide who to deliver them to, etc. In short, some system resources are wasted in communication. If all nodes where in one, that cost could have been zero.
+Higher chance of failure: if for whatever reason a network link goes down, or a node dies, there is a failure in the system. If you are not prepared for it, it can take down the whole system. Now this is actually a good thing in general to be able to lose part of the system but not all of it (graceful degradation), but there also exist applications where this should be avoided as much as possible. Cutting the communication and putting all code in one node actually helps with system stability. The down side is of course, the system either works fine or suddenly dies completely.
+Chaotic timings: each node runs on its own. The time it takes for its messages to arrive at others is non-deterministic and varies run by run. Unless your nodes timestamp each message (as a side note: you need to have synchronized clocks to a good degree, which ROS doesn't) and unless each receiving node can take the delay into account and control accordingly (which is a very difficult task on its own) then having multiple nodes means high uncertainty about the age of the data. This is actually one of the reasons (among many) that most robots move so slow; their control loop has to be slow enough to make sure all data correspond to the current period. The larger the delays, the slower the control loop.
+
+In all above disadvantages, the solution is to reduce the number of nodes, preferably to a single node. Wait a minute, that's not using ROS anymore! Exactly.
+To summarize:
+
+Use ROS for non-realtime systems where delays could sporadically get high. In that case, feel free to have as many ROS nodes as you wish. In fact, it's very good practice to have each ROS node do one and only one thing. That way, they become very simple, and they become highly reusable.
+On the other hand, for realtime systems, by all means avoid ROS. For that there is orocos and technologies like EtherCAT and more often than not, ad-hoc solutions.
+
+As a final word, in practice ROS does fine. Not great, but fine. Very often the system is not critical and the chance of failure is so small that every now and then a restart is not a big deal. This is the Ostrich algorithm!
+

@@ -1,0 +1,36 @@
+Q:
+
+tf2, thread, setUsingDedicatedThread, timeout
+
+I'm migrating part of my code to tf2. Big chunk of my code is library that can run online or offline, so I pass at construction time a reference to a tf2_ros::Buffer object. It is then used to lookup transforms or transform some stamped data. The buffer is updated "manually" using setTransform.
+I get the tf2_ros::threading_error message.
+the stack is as follow:
+0   tf2_ros::Buffer::checkAndErrorDedicatedThreadPresent    buffer.cpp  158 0x7ffff711d487  
+1   tf2_ros::Buffer::canTransform   buffer.cpp  107 0x7ffff711cf12  
+2   tf2_ros::Buffer::lookupTransform    buffer.cpp  54  0x7ffff711cbf6  
+3   tf2_ros::BufferInterface::transform<geometry_msgs::PointStamped_<std::allocator<void>>> buffer_interface.h  116 0x7ffff79673f6  
+4   perception::SpinLoader::loadSpin    spin_loader.cpp 201 0x7ffff7965c40  
+5   main    offline_perception.cpp  132 0x42d62c    
+
+Note that in frame 4 I'm calling
+tf2_ros::Buffer::transform(const geometry_msgs::PointStamped &, geometry_msgs::PointStamped &, const std::string &)
+
+which does not have a timeout. But it calls tf2_ros::BufferInterface::transform with a timeout (of zero), which leads to my error...
+Even worst, canTransform in frame 1 returns false and it's ignored by lookupTransform in frame 2.
+Is this a design bug in tf2? Maybe BufferInterface should have functions with no timeout as well.
+regardless, what should I do? i.e. how to work with tf2 offline?
+
+Originally posted by brice rebsamen on ROS Answers with karma: 1001 on 2015-03-16
+Post score: 1
+
+A:
+
+As mentioned in the error message "If you have a seperate thread servicing tf messages, call setUsingDedicatedThread(true) on your Buffer instance." This will allow your queries to succeed.
+Since you are manually populating the data you should be setting usingDedicatedThread(true). This is a protection that allows tf to error instead of always timing out after the full timeout in a single threaded process.
+You are correct that here and here the return of canTransform is not used. This is because the only function there is to do the timeout, without generating any error messages (which is much less computationally intensive.) After the timeout has passed, lookupTransform will requery and either generate the result or produce the error message.
+It is possible to implement a fully parallel path for the non-timeout methods, but at the higher level to decrease code complexity the non-timeout methods simply call the timeout methods with zero timeout. The ability to do query without timeouts was never a design goal from a use case but was a requirement of separating the core library from the ROS interface which abstracts time.
+
+Originally posted by tfoote with karma: 58457 on 2015-03-16
+This answer was ACCEPTED on the original site
+Post score: 2
+

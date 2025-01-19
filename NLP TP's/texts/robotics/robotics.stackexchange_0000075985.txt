@@ -1,0 +1,48 @@
+Q:
+
+How can I use two velodyne(VLP16) together at the same time?
+
+Hello, I have a question about operating two velodyne laser sensors (VLP 16).
+I’m a ROS and Ubuntu beginner. So, even if my question is inexperienced, please understand me and answer as in detail as possible. Thank you in advance.
+I use Ubuntu 14.04 and ROS indigo. I’m trying to operate two velodyne laser sensors – VLP 16 simultaneously in one laptop. I designate IP of each sensors as 192.168.1.201 and 192.168.1.202. I fixed my laptop Ethernet IP as 192.168.1.77 to coincide bandwidth(?); I mean the third number of IP address like 192.168.”1”.77. I made two sensors connect to my laptop using hub. I use Velodyne package and modified “VLP16_points.launch” in velodyne_pointcloud folder and “nodelet manager.launch” in velodyne_drvier folder to operate at the same time.
+In nodelet_manager.launch of velodyne_driver folder, I attached <arg name=”device_ip” default=”” /> under the source code <arg name=”model” default=”VLP16” /> and <param name=”device_ip” value=”$(arg device_ip)” /> under the source code <arg name=”frame_id” default=”veldyne” />
+In VLP16_points.launch of velodyne_pointcloud folder, I made the source code as two group and tried to operate independently. First group is defined <group ns = “ns1”></group> and second group is defined <group ns = “ns2”></group>. The difference of two group’s source code is the only “device_ip”. I defined <arg name = “device_ip” value = “192.168.1.201”/> in first group and <arg name = “device_ip” value = “192.168.1.202”/> in second group. I thought because I designated the IPs differently it had to be implemented independently. But it was not.
+I ran VLP16_points.launch and rviz , and topic of Pointcloud2 in rviz was presented /ns1/velodyne_points, /ns2/velodyne_points. As I pick the topic: /ns1/velodyne_points, pointcloud of two VLP16s appear simultaneously with regardless of IP address. I tried changing sensors’ IP and “device_ip” of VLP16_points.launch and nodelet_manager.launch. But regardeless of these change, pointcloud in rviz was appeared at the same time in topic /ns1/velodyne_points which is the topic of first group in VLP16_points.launch. When I pick the topic as /ns2/velodyne_points, no pointcloud appears. The terminal presents “bind: Address already in use” The Notice was not showed when I run only one VLP16. I hope to use the pointcloud independently to apply tf to sensors independently.
+There were also other attempts in similar ways like operating two same launches which has “different device_ip”. But it also shows same result.
+Thank you for reading this long question.
+Have a nice day.
+
+Originally posted by Low Frequency on ROS Answers with karma: 11 on 2016-08-25
+Post score: 1
+
+Original comments
+Comment by JeongJae0815 on 2016-10-06:
+Hi, I'm trying to use two VLP16 at one computer. I have same problems with you. Did you solve this kind of a problem? If you do that, How did you solve it? Thank you in advance
+Comment by EricD on 2016-12-30:
+The Velodynes broadcast, so they are all spamming the same port unless you change it on each device.
+
+A:
+
+I think the problem is running the driver twice in a single velodyne_nodelet_manager process.
+We probably ought to incorporate the frame_id into the nodelet manager name name. Please open a github issue to get this resolved.
+EDIT: to provide more detail, this command in velodyne_driver/launch/nodelet_manager.launch should be changed:
+ <node pkg="nodelet" type="nodelet" name="driver_nodelet"
+       args="load velodyne_driver/DriverNodelet velodyne_nodelet_manager" >
+
+Instead of velodyne_nodelet_manager we should call it $(arg frame_id)_nodelet_manager, running the driver for each device in a separate process. Other nodelet loading to velodyne_nodelet_manager should similarly be changed. The node name may also need to be parameterized.
+EDIT 2: there was a bug in the provided launch files, now fixed in the master source. See ros-drivers/velodyne#108 for details.
+Note that you need to configure the two devices to have different tf frames, IP addresses and UDP port numbers.
+
+Originally posted by joq with karma: 25443 on 2016-08-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Low Frequency on 2016-08-29:
+[https://github.com/JohnJungHwanYoo/Multiple_Velodyne_ING/tree/master/Multiple_velodynes]
+As I told you before,only a few sources in nodelet_manager.launch and VLP16_points.launch are changed.In my github,VLP16_points.launch is the original launch file,my modified launch file is VLP16_points2.launch
+Comment by JeongJae0815 on 2016-10-06:
+Hi, I'm trying to use two VLP16 at one computer. I have same problems with you. Did you solve this kind of a problem? If you do that, How did you solve it? Thank you in advance
+Comment by Low Frequency on 2017-02-10:
+Thank you for your kind answers. As I follow your directions, the sensors work independently! Setting the UDP port numbers was the critical point. I didn't try applying the coordinate problem. But I think I can proceed well. Thank you again!
+

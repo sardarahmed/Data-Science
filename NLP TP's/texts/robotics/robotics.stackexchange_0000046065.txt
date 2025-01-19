@@ -1,0 +1,118 @@
+Q:
+
+Is there a tf:MessageFilter in the tf Python API?
+
+The tf::MessageFilter Tutorial shows the C++ API. Does this functionality exist in the Python API?
+Doing a quick search:
+grep -i -R --include=*.py messagefilter .
+
+from the tf folder doesn't yield any results.
+Best,
+damjan
+
+Originally posted by damjan on ROS Answers with karma: 446 on 2012-11-25
+Post score: 9
+
+A:
+
+I didn't find any either. I have written something similar. let me know if you find it useful.
+import rospy
+
+import Queue
+import tf 
+from message_filters import SimpleFilter
+
+class TfMessageFilter(SimpleFilter):
+    """Stores a message unless corresponding transforms is 
+    available
+    """
+    def __init__(self, input_filter, base_frame, target_frame,
+                 queue_size=500):
+        SimpleFilter.__init__(self)
+        self.connectInput(input_filter)
+        self.base_frame = base_frame
+        self.target_frame = target_frame
+        # TODO: Use a better data structure
+        self.message_queue = Queue.Queue(maxsize=queue_size)
+        self.listener = tf.TransformListener()
+        self.max_queue_size = queue_size
+        self._max_queue_size_so_far = 0
+
+    def connectInput(self, input_filter):
+        self.incoming_connection = \
+                input_filter.registerCallback(self.input_callback)
+
+    def poll_transforms(self, latest_msg_tstamp):
+        """
+        Poll transforms corresponding to all messages. If found throw older
+        messages than the timestamp of transform just found
+        and if not found keep all the messages.
+        """
+        # Check all the messages for transform availability
+        tmp_queue = Queue.Queue(self.max_queue_size)
+        first_iter = True
+        # Loop from old to new
+        while not self.message_queue.empty():
+            msg = self.message_queue.get()
+            tstamp = msg.header.stamp
+            if (first_iter and 
+                self.message_queue.qsize() > self._max_queue_size_so_far):
+                first_iter = False
+                self._max_queue_size_so_far = self.message_queue.qsize()
+                rospy.logdebug("Queue(%d) time range: %f - %f" %
+                              (self.message_queue.qsize(), 
+                               tstamp.secs, latest_msg_tstamp.secs))
+                rospy.loginfo("Maximum queue size used:%d" %
+                              self._max_queue_size_so_far)
+            if self.listener.canTransform(self.base_frame, self.target_frame,
+                                          tstamp):
+                (trans, quat) = self.listener.lookupTransform(self.base_frame,
+                                              self.target_frame, tstamp)
+                self.signalMessage(msg, (trans, quat))
+                # Note that we are deliberately throwing away the messages
+                # older than transform we just received
+                return
+            else:
+                # if we don't find any transform we will have to recycle all
+                # the messages
+                tmp_queue.put(msg)
+        self.message_queue = tmp_queue
+
+    def input_callback(self, msg):
+        """ Handles incoming message """
+        if self.message_queue.full():
+            # throw away the oldest message
+            rospy.logwarn("Queue too small. If you this message too often"
+                          + " consider increasing queue_size")
+            self.message_queue.get()
+
+        self.message_queue.put(msg)
+        # This can be part of another timer thread
+        # TODO: call this only when a new/changed transform
+        self.poll_transforms(msg.header.stamp)
+
+Suggested usage:
+import message_filters
+import rospy
+from sensor_msgs.msg import Image
+
+def callback(image, trans_rot):
+    print("Got image:%f" % image.header.stamp.secs)
+
+rospy.init_node('test_tf_sync_msgs', log_level=rospy.DEBUG)
+image_sub = message_filters.Subscriber('/camera/depth_registered/image_rect',
+                                       Image)
+
+ts = TfMessageFilter(image_sub, '/map', '/ar_viewer',
+                                queue_size=1000)
+ts.registerCallback(callback)
+rospy.spin()
+
+Originally posted by Vikas with karma: 106 on 2013-09-27
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by H.Ruthrash on 2020-01-17:
+This worked for me thanks a lot!
+

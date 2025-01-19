@@ -1,0 +1,61 @@
+Q:
+
+How to update a gui (python) each time the callback function is called in a subscriber node?
+
+Hello,
+I want to have several nodes send their position (x,y) to a 'visualizer' node which draws on some window/gui continuously as more data is published by the former nodes.
+What I have so far (considering 1 publisher node and 1 visualizer node):
+import sys
+import rospy
+from GITagent.msg import Position
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
+
+app = QApplication(sys.argv)
+w = QWidget()
+
+def callback(data):
+    rospy.loginfo(rospy.get_caller_id() + "I heard %d, %d", data.x_pos, data.y_pos)
+    qp = QtGui.QPainter()
+    qp.begin()
+    drawPoint(data.x_pos, data.y_pos, qp)
+    qp.end()
+
+def draw_xypoints(xp, yp, qp):
+    qp.setPen(QtCore.Qt.red)
+    qp.drawPoint(xp, yp)    
+
+def visualizer():
+    rospy.init_node('visualizer', anonymous=True)
+    
+    rospy.Subscriber('mypos_xytheta', Position, callback)
+
+    rospy.spin()
+
+if __name__ == '__main__':
+    w.resize(320,240)
+    w.setWindowTitle("1-2-3 Test")
+    w.show()
+    sys.exit(app.exec_())
+    visualizer()
+
+When I run, the window pops up, but nothing else happens. Also I there is no feedback from the rospy.loginfo(). Apparently I am missing something here. (Obviously, I am not either a python or ros expert, just know some basic stuff). Any help is appreciated:).
+
+Originally posted by highWaters on ROS Answers with karma: 176 on 2016-05-11
+Post score: 1
+
+A:
+
+Your immediate problem is that app.exec_() blocks your program until you close the window, which hinders the functioning of your ROS node.  Second, sys.exit() exits the program, so your ROS node will never get started anyway.
+You'll have to run your QApplication in its own thread and manage them accordingly in order to do what you want I think.  I would recommend creating a rqt_gui plugin instead:
+http://wiki.ros.org/rqt/Tutorials/Create%20your%20new%20rqt%20plugin
+A lot of things are done for you, and you can run your GUI within RQT.  Also, you can use Qt Designer to layout the GUI graphically, or you can spawn GUI components manually in code as well.
+
+Originally posted by robustify with karma: 956 on 2016-05-11
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by highWaters on 2016-05-12:
+I see. I'll try your suggestions. Thanks for your insights!!
+

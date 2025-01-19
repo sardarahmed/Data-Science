@@ -1,0 +1,104 @@
+Q:
+
+How to segment/extract a sphere using pcl_ros?
+
+UPDATE:
+After much trial and error, I have given up on trying to get this to work with a chain of nodelets. It is so much easier to do using the C++ examples from http://www.pointclouds.org so I will pursue that approach instead. To extract a sphere, I just modified the cylinder example found at http://www.pointclouds.org/documentation/tutorials/cylinder_segmentation.php#cylinder-segmentation
+[Original question now follows.]
+Hello,
+I am able to successfully extract planes from a Kinect depth image using Diamondback under Ubuntu 10.04 and using the following launch file:
+<launch>
+  <node pkg="nodelet" type="nodelet" name="pcl_manager" args="manager" output="screen" />
+
+  <!-- Run a Voxel Grid filter -->
+  <node pkg="nodelet" type="nodelet" name="voxel_grid" args="load pcl/VoxelGrid pcl_manager" output="screen">
+    <remap from="~input" to="/camera/depth/points" />
+    <rosparam>
+      filter_field_name: z
+      filter_limit_min: 0.5
+      filter_limit_max: 1.5
+      filter_limit_negative: False
+      leaf_size: 0.01
+    </rosparam>
+  </node>
+
+  <!-- Run a Planar Segmentation filter -->
+  <node pkg="nodelet" type="nodelet" name="sac_plane" args="load pcl/SACSegmentation pcl_manager" output="screen">
+    <remap from="~input" to="/voxel_grid/output" />
+    <rosparam>
+      model_type: 0
+      distance_threshold: 0.01
+    </rosparam>
+  </node>
+
+  <!-- Then Extract the Inlier Points -->
+  <node pkg="nodelet" type="nodelet" name="extract_plane" args="load pcl/ExtractIndices pcl_manager" output="screen">
+    <remap from="~input" to="/voxel_grid/output" />
+    <remap from="/extract_plane/indices" to="/sac_plane/inliers" />
+  </node>
+</launch>
+
+And now I would like to extract a sphere (a 6" ball sitting on a table about 1 meter away from the Kinect) using a similar technique.  I was hoping it would be as easy as changing the SAC model_type from 0 to 4 but the following launch file generates the error and warning:
+[ERROR] [1299428614.657650314]: [pcl::SampleConsensusModelSphere::optimizeModelCoefficients] Not enough inliers found to support a model (0)! Returning the same coefficients.
+[ WARN] [1299428614.657849802]: [/sac_sphere::input_indices_callback] No inliers found!
+
+Here is the launch file I tried for extracting a sphere:
+<launch>
+  <node pkg="nodelet" type="nodelet" name="pcl_manager" args="manager" output="screen" />
+
+  <!-- Run a Voxel Grid filter -->
+  <node pkg="nodelet" type="nodelet" name="voxel_grid" args="load pcl/VoxelGrid pcl_manager" output="screen">
+    <remap from="~input" to="/camera/depth/points" />
+    <rosparam>
+      filter_field_name: z
+      filter_limit_min: 0.5
+      filter_limit_max: 1.5
+      filter_limit_negative: False
+      leaf_size: 0.01
+    </rosparam>
+  </node>
+
+  <!-- Run a Sphere Segmentation filter -->
+  <node pkg="nodelet" type="nodelet" name="sac_sphere" args="load pcl/SACSegmentation pcl_manager" output="screen">
+    <remap from="~input" to="/voxel_grid/output" />
+    <rosparam>
+      model_type: 4
+      distance_threshold: 0.01
+    </rosparam>
+  </node>
+
+  <!-- Then Extract the Inlier Points -->
+  <node pkg="nodelet" type="nodelet" name="extract_sphere" args="load pcl/ExtractIndices pcl_manager" output="screen">
+    <remap from="~input" to="/voxel_grid/output" />
+    <remap from="/extract_sphere/indices" to="/sac_sphere/inliers" />
+  </node>
+  
+</launch>
+
+I am using VGA/30Hz resolution for both RGB and depth. The sphere is a 6" ball sitting on a table about 1 meter away from the Kinect. I have tried different leaf sizes from 0.01 to 0.0001 meters with the same result.  I have also tried different distance_thresholds from 1.0 to 0.0001 with the same result.  Both the raw depth image and voxel_grid image look very "sphere-like" in RViz.  However the point cloud on the /extract_sphere/output topic is always blank or only has a few points roughly in the location where the ball is.  Any pointers would be appreciated!
+--patrick
+UPDATE:
+After much trial and error, I have given up on trying to get this to work with a chain of nodelets. It is so much easier to do using the C++ examples from http://www.pointclouds.org so I will pursue that approach instead. To extract a sphere, I just modified the cylinder example found at http://www.pointclouds.org/documentation/tutorials/cylinder_segmentation.php#cylinder-segmentation
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2011-03-06
+Post score: 1
+
+Original comments
+Comment by kk on 2013-07-12:
+hi can you help me to detect planes ?? im struck ...
+
+A:
+
+Some of the SAC methods only work when a large percentage of the points are part of the target model. You might want to try using a different method, though I don't know enough to suggest a specific method. Examples are RANSAC, RRANSAC, MLESAC, MSAC, etc.
+Also, the number of iterations might be important. I'm unaware of what the default number is, but if it's low, pumping it up might help (but will slow things down).
+
+Originally posted by Asomerville with karma: 2743 on 2011-05-24
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Vincent Rabaud on 2011-06-17:
+Please edit the original question and post an update with your answer, or please add an answer and accept it.
+Comment by Pi Robot on 2011-05-29:
+After much trial and error, I have given up on trying to get this to work with a chain of nodelets.  It is so much easier to do using the C++ examples from http://www.pointclouds.org so I will pursue that approach instead.  To extract a sphere, I just modified the cylinder example found at http://www.pointclouds.org/documentation/tutorials/cylinder_segmentation.php#cylinder-segmentation.
+

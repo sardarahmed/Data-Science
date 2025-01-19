@@ -1,0 +1,61 @@
+Q:
+
+Gazebo vacuum gripper not rotating gripped model
+
+Hello all! I'm using the vacuum gripper plug in with the ur5 robot in a similar way to this. Although I can grip the part and move it around with no problems, I can't rotate it If I rotate just the end effector. You can see the same behavior in the gif of the simulation using the above link. It doesn't make sense if the plug in creates a rigid joint between the model and the end effector. Where could be the problem? TIA!
+
+Originally posted by pap-x on ROS Answers with karma: 11 on 2022-01-12
+Post score: 1
+
+A:
+
+HI @pap-x
+In the urdf: https://github.com/lihuang3/ur5_ROS-Gazebo/blob/master/src/ur_description/ur5.urdf.xacro
+Wrist3 is connected to EE with a fixed joint
+<joint name="${prefix}ee_fixed_joint" type="fixed">
+  <parent link="${prefix}wrist_3_link" />
+  <child link = "${prefix}ee_link" />
+  <origin xyz="0.0 ${wrist_3_length} 0.0" rpy="0.0 0.0 ${pi/2.0}" />
+</joint>
+
+Vacuum gripper is connected to EE with a revolute joint
+<joint name="gripper_joint" type="revolute">
+  <axis xyz="1 0 0" />
+  <parent link="ee_link" />
+  <child link="vacuum_gripper" />
+  <origin rpy="0 1.5708 0" xyz="0.01 0.0125 0" />
+  <limit effort="50" velocity="50" lower="0" upper="0" />
+  <dynamics damping="0.0" friction="10"/>
+</joint>
+
+The vacuum grippers are small cylinders attached to EE link.
+A crude sketch:
+
+EDIT:
+Disregard this: If you want to modify the behaviour, you will need to modify the URDF
+Looking at the plugin one can appreciate how the force for each link in contact:
+    ignition::math::Vector3d force = norm_force * diff.Pos().Normalize();
+    links[j]->AddForce(force);
+
+The force direction applied by the cylinders vacuum won’t change with the EE rotation.
+For more information, please check this thread discussion: https://github.com/ros-simulation/gazebo_ros_pkgs/pull/389#discussion_r61185741
+
+Originally posted by osilva with karma: 1650 on 2022-01-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pap-x on 2022-01-13:
+The problem has not to do with the robot itself since the end effector is rotating properly. The problem is between the gripped object and the cylinders (vacuum grippers) where the cylinders rotate but the object remains in the same orientation as before.
+Comment by osilva on 2022-01-13:
+Thank you for the clarification. I wasn’t very happy with the answer yesterday either. If you take a look at the plugin it may be modified to change this behaviour. I guess you will need to track orientation of every possible child at all times.
+Comment by osilva on 2022-01-13:
+Check this interesting thread on the discussion of the plugin: https://github.com/ros-simulation/gazebo_ros_pkgs/pull/389#discussion_r61185741
+You need to consider tracking direction of the forces. Not an easy problem to solve.
+Comment by osilva on 2022-01-13:
+The force direction applied by the cylinders vacuum won’t change with the EE rotation.
+Comment by pap-x on 2022-01-13:
+I'm afraid it falls outside the scope of my capabilities, but I have a much clearer understanding of the factors involved! Thanks for your help!
+Comment by osilva on 2022-01-13:
+I’ll edit my answer for future users and draw a sketch later today. I learned too. Initially I thought this shouldn’t be too hard but the more I think it’s not a trivial problem to solve.
+

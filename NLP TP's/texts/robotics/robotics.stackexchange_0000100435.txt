@@ -1,0 +1,45 @@
+Q:
+
+[buildfarm] dpkg-shlibdeps: error: cannot find library
+
+I'm trying to release paho.mqtt.cpp as a dependency of one of our packages.
+If fails on the error: dpkg-shlibdeps: error: cannot find library libpaho-mqtt3as.so.1 build output
+However this minimal docker works just fine:
+FROM ros:noetic
+
+RUN apt-get update -qq
+RUN apt-get install -qqy git fakeroot dpkg-dev debhelper
+RUN apt-get install -qqy ros-noetic-paho-mqtt-c
+RUN git clone -b debian/noetic/focal/paho-mqtt-cpp https://github.com/nobleo/paho.mqtt.cpp-release
+
+WORKDIR paho.mqtt.cpp-release
+RUN apt-get install -qqy apt-src
+RUN apt-src import ros-noetic-paho-mqtt-cpp --here --version 1.2.0-2
+RUN apt-src build ros-noetic-paho-mqtt-cpp
+RUN apt install ../ros-noetic-paho-mqtt-cpp_1.2.0-2focal_amd64.deb
+
+The file libpaho-mqtt3as.so.1 is also present in this dockerfile. And on my laptop upon installing ros-noetic-paho-mqtt-c.
+Where did the file go on the buildfarm?
+
+Originally posted by Timple86 on ROS Answers with karma: 80 on 2021-11-02
+Post score: 0
+
+A:
+
+This error can occur if the target library is being installed to a directory that dh_shlibdeps doesn't expect.
+I first encountered an issue like this one when producing the very first ROS 2 beta 2 debs shortly after joining Open Robotics (and I'm sad to say that in all this time I haven't taken the time to investigate the issue to my satisfaction. We ended up adding patches in the bloom-generated debian/rules.em templates which explicitly add the directory containing the "missing" library to the dh_shlibdeps search string.
+We used to add these patches to affected packages' bloom templates for each new rosdistro's bootstrap process but discovered that no patch is needed when building on/for Ubuntu 18.04. I'm sad to say that I assumed the change was a "bug fix" in the build pipeline and didn't follow up at all and so I was quite surprised to see the problem return in Ubuntu 20.04.
+I think a patch similar to the one above to the debian/rules.em template file in your bloom repository will resolve the issue but I don't have a deeper understanding of the problem to know if there's a "better" solution out there. If I ever dive into this mystery I will come back and update the answer.
+
+Originally posted by nuclearsandwich with karma: 906 on 2021-11-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Timple86 on 2021-11-08:
+This indeeds solved the issue.
+
+If I ever dive into this mystery I will come back and update the answer.
+
+Please do :)
+

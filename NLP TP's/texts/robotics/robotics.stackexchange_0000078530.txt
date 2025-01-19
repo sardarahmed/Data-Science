@@ -1,0 +1,77 @@
+Q:
+
+Calculate position using robot_localization
+
+Hi,
+I have a cart which has a base ( with four wheels) thats front wheel driven by two motors and fitted with encoder (one for each front wheel).
+I calculate the distance traveled by counting the ticks and with the help of the heading angle. Hence the distance covered and angle are in Global coordinate frame.
+I also calculate the instantaneous X velocity and angular rate which are in the kart co ordinate frame (forward and right is positive).
+I also have an IMU razor_imu which gives me the orientation, linear velocity and linear acceleration in the Kart frame (I think??).
+When I use the robot_localization package to calculate odom_comined using the following launch file robot_localization.png the orientation seems to be right but my position keeps on adding even when my cart is turned 180. The problem is the code is only accepting velocity values and not the position itself as input from odom message. So if the Cart turns 180, my instantaneously velocity is still positive.
+Can someone please suggest a solution?
+The measuremnt co variance of the imu is imu_covariance.png and for the encoders encoder_covariance.png
+Thanks
+Sriram
+
+Originally posted by b-sriram on ROS Answers with karma: 105 on 2017-01-23
+Post score: 0
+
+Original comments
+Comment by spmaniato on 2017-01-23:
+I see at least a few areas for improvement. I would start here: http://docs.ros.org/indigo/api/robot_localization/html/configuring_robot_localization.html
+Comment by b-sriram on 2017-01-23:
+I already read that. That's why I've set the initial co variances as follows and other params
+Comment by spmaniato on 2017-01-23:
+And also take a look at this example: https://github.com/cra-ros-pkg/robot_localization/blob/kinetic-devel/params/ekf_template.yaml
+Comment by b-sriram on 2017-01-23:
+Hi thanks for the help. but I have not posted the question here without trying all possible solution.
+Comment by spmaniato on 2017-01-23:
+The documentation I linked to suggests that (in most cases) you shouldn't be fusing both (x, y) and (vx, vy) from odometry. Rather, you should only fuse the linear velocities instead of the position. I would personally do the same for the orientation and angular velocity from odom.
+Comment by b-sriram on 2017-01-23:
+I tried exactly the same but it didn't help. So I tried with only (x, y) but the node for some reasoon doen't accept it. So I included both.
+Comment by spmaniato on 2017-01-23:
+OK. The other thing that jumped at me from your question is: "IMU ... gives me the orientation, linear velocity and linear acceleration in the Kart frame" The IMU is most likely reporting data in its own frame. Whether that happens to coincide with your vehicle's frame is a matter of placement.
+Comment by b-sriram on 2017-01-23:
+Ya what I meant was that was not in the global frame.
+I have a transform which tells me where the imu is located from the base
+Comment by spmaniato on 2017-01-23:
+OK. One last thing. You wrote: "So if the Cart turns 180, my instantaneously velocity is still positive." The velocity estimate is given in the robot's body frame. So it's positive if the robot is driving forward regardless of the robot's orientation. It'd be negative if the robot drove backwards.
+Comment by b-sriram on 2017-01-23:
+I think the problem lies in the instantaneous velocity. Its always positive for moving forward. So when my cart turns on 180 and starts moving the velocity is again positive and integrating it would then give me a positive displacement. This is where everything goes wrong
+Comment by b-sriram on 2017-01-23:
+yes if the robot drove backwards its always negative
+Comment by spmaniato on 2017-01-23:
+That's not a problem with the EKF though. It is correctly reporting the velocity estimate in the robot's frame. You shouldn't have to integrate the velocity yourself, the EKF does that! The pose estimate is reported on both a ROS topic and broadcasted as a TF transform.
+Comment by b-sriram on 2017-01-23:
+ya so why doesn't it recognize that my cart is rotated 180 and now basically it has to subtract instead of adding the distances? Does it have something to do with the IMU?
+Comment by spmaniato on 2017-01-23:
+I have on suggestion. See what just /odom reports when you rotate 180 and then drive forward. If that's reasonable, then focus on EKF parametrization. But if the same problem appears in your wheel odometry, then focus your attention on fixing that.
+Comment by b-sriram on 2017-01-23:
+the /odom topic gives me the correct values. The position x starts reducing when i turn 180 and move forward (i.e returning to starting point). That's why I wanted to fuse the actual position values instead of instantaneous velocity values.
+Comment by b-sriram on 2017-01-23:
+A completely different question? Should the wheel odometry be published in a frame id other than base_link?
+Comment by spmaniato on 2017-01-23:
+The wheel odometry messages should have a header.frame_id of odom (or whatever you call the odometric frame) and a child_frame_id of base_link (or similar, such as base_footprint)
+Comment by b-sriram on 2017-01-23:
+Thanks a lot for all the help. I'll try tuning the parameters then
+
+A:
+
+Started out as a comment, but will add a few things:
+
+Can you please post (a) your launch files and (b) some sample input messages (as text)?
+You said your coordinate frame has forward and right as positive, which is incorrect. REP-103 specifies +X as forward and +Y as left.
+Instantaneous velocity, if driving forward, will always be positive, no matter which way your robot is facing. This is correct. The filter converts velocities from the robot's body frame to the world frame internally. As far as the EKF output goes, the ROS nav_msgs/Odometry message specifies that the output pose data is in the world frame (header.frame_id in the message) and the velocities are in the body frame (child_frame_id in the message).
+Looking at your configuration image, you are fusing both your calculated pose and velocity from your wheel encoders, but those both come from the same source. You're effectively feeding the filter the same information twice. It doesn't hurt it necessarily, but I'd give it one or the other.
+You are fusing yaw from both your IMU and odometry. Those are going to diverge, so you'll have to turn one of them off.
+
+Originally posted by Tom Moore with karma: 13689 on 2017-01-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by b-sriram on 2017-02-12:
+Hi Tom,
+Sorry for the late response.
+Firstly thanks a ton. My co-ordinate system was defined wrong. I corrected it as you said (+X as forward and +Y as left) and now it seems much better. I'm working on the co-variance matrices to get a better result.
+

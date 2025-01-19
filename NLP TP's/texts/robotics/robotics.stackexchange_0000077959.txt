@@ -1,0 +1,300 @@
+Q:
+
+Unable to see Rviz movement from odometry
+
+How do you diagnose why Rviz isn't showing any movement from when your robot publishes odometry messages?
+I have a simple Python node collecting encoder counts and converting them to odometry messages, which I adapted from this example:
+class WheelTrackerNode(object):
+    
+    def __init__(self):
+        
+        self._PreviousLeftEncoderCounts = None
+        self._PreviousRightEncoderCounts = None
+        
+        self.x = 0.
+        self.y = 0.
+        self.th = 0.
+        
+        self.vx = 0.
+        self.vy = 0.
+        self.vth = 0.
+        
+        self.deltaLeft = 0
+        self.deltaRight = 0
+        
+        self.odom_pub = rospy.Publisher('odom', Odometry, queue_size=10)
+        
+        #self.odom_broadcaster = tf.TransformBroadcaster()
+        self.odom_broadcaster = tf2_ros.TransformBroadcaster()
+        
+        self.last_time = None
+        
+    def update_left(self, count):
+        """
+        Called when the left encoder generates a tick.
+        """
+        if self._PreviousLeftEncoderCounts is not None:
+            self.deltaLeft = count - self._PreviousLeftEncoderCounts
+            self.vx = self.deltaLeft * DistancePerCount
+            self.update()
+        self._PreviousLeftEncoderCounts = count
+        
+    def update_right(self, count):
+        """
+        Called when the right encoder generates a tick.
+        """
+        if self._PreviousRightEncoderCounts is not None:
+            self.deltaRight = count - self._PreviousRightEncoderCounts
+            self.vy = self.deltaRight * DistancePerCount
+            self.update()
+        self._PreviousRightEncoderCounts = count
+        
+    def update(self):
+        
+        self.current_time = rospy.Time.now()
+        if self.last_time is not None:
+            
+            # compute odometry in a typical way given the velocities of the robot
+            dt = (self.current_time - self.last_time).to_sec()
+            delta_x = (self.vx * cos(self.th) - self.vy * sin(self.th)) * dt
+            delta_y = (self.vx * sin(self.th) + self.vy * cos(self.th)) * dt
+            delta_th = self.vth * dt
+        
+            self.x += delta_x
+            self.y += delta_y
+            self.th += delta_th
+        
+            # since all odometry is 6DOF we'll need a quaternion created from yaw
+            #geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+            odom_quat = Quaternion(*tf.transformations.quaternion_from_euler(0, 0, self.th))
+        
+            # first, we'll publish the transform over tf
+            #geometry_msgs::TransformStamped odom_trans;
+            odom_trans = TransformStamped()
+            odom_trans.header.stamp = self.current_time
+            odom_trans.header.frame_id = "odom"
+            odom_trans.child_frame_id = "base_link"
+            odom_trans.transform.translation.x = self.x
+            odom_trans.transform.translation.y = self.y
+            odom_trans.transform.translation.z = 0.0
+            odom_trans.transform.rotation = odom_quat
+        
+            # send the transform
+            self.odom_broadcaster.sendTransform(odom_trans)
+        
+            # next, we'll publish the odometry message over ROS
+            #nav_msgs::Odometry odom
+            odom = Odometry()
+            odom.header.stamp = self.current_time
+            odom.header.frame_id = "odom"
+        
+            # set the position
+            odom.pose.pose.position.x = self.x
+            odom.pose.pose.position.y = self.y
+            odom.pose.pose.position.z = 0.0
+            odom.pose.pose.orientation = odom_quat
+        
+            # set the velocity
+            odom.child_frame_id = "base_link"
+            odom.twist.twist.linear.x = self.vx
+            odom.twist.twist.linear.y = self.vy
+            odom.twist.twist.angular.z = self.vth
+        
+            # publish the message
+            self.odom_pub.publish(odom)
+    
+        self.last_time = self.current_time
+
+I've confirmed this works by running rostopic echo /odom when my encoders are turning and seeing messages like:
+header: 
+  seq: 600
+  stamp: 
+    secs: 1481599927
+    nsecs: 382975101
+  frame_id: odom
+child_frame_id: base_link
+pose: 
+  pose: 
+    position: 
+      x: -345.517481299
+      y: -529.732867745
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist: 
+  twist: 
+    linear: 
+      x: 3.40801269352
+      y: 3.78668077058
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+However, when I view my robot in Rviz with:
+<launch>
+
+  <arg name="model" default="$(find mybot_description)/urdf/mybot.urdf.xacro"/>
+  <arg name="gui" default="true" />
+  <arg name="rvizconfig" default="$(find mybot_description)/rviz/urdf.rviz" />
+
+  <param name="robot_description" command="$(find xacro)/xacro --inorder $(arg model)" />
+  <param name="use_gui" value="$(arg gui)"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true" />
+
+</launch>
+
+the model stays fixed at the origin. My robot has a pan/tilt head, and if I move that, then that change is displayed, so I know Rviz is able to perceive TF messages. Why isn't Rviz perceiving TF messages involving the base_link?
+This is a screengrab of my Rviz setup:
+
+The only issue I see is that there's an error with base_footprint, "No transform from [base_footprint] to [base_link]". Would that be causing this problem? My URDF contains this link, so I'm unsure why I'm getting this error. How would I fix this error?
+My URDF:
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mybot">
+    <xacro:include filename="$(find mybot_description)/urdf/materials.urdf.xacro" />
+    <!-- dimensions in meters -->
+    <xacro:property name="torso_radius" value="0.075" /><!-- 150 mm diameter = 75 mm radius -->
+    <xacro:property name="torso_height" value="0.16" /><!-- 160 mm height -->
+    <xacro:property name="neck_height" value="0.015" />
+    <xacro:property name="camera_radius" value="0.008" />
+    <xacro:property name="camera_thickness" value="0.005" />
+    <xacro:property name="M_PI" value="3.141592653589793" />
+    
+    <link name="base_footprint">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <box size="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <inertial>
+            <mass value="0.0001" />
+            <origin xyz="0 0 0" />
+            <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001" />
+        </inertial>
+    </link>
+    
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <cylinder length="${torso_height}" radius="${torso_radius}" />
+            </geometry>
+            <origin xyz="0 0 ${torso_height/2}" rpy="0 0 0" />
+            <material name="red" />
+        </visual>
+    </link>
+    
+    <link name="neck">
+        <visual>
+            <geometry>
+                <cylinder length="${neck_height}" radius="${torso_radius}" />
+            </geometry>
+            <origin xyz="0 0 ${neck_height/2}" rpy="0 0 0" />
+            <material name="green" />
+        </visual>
+    </link>
+    
+    <link name="head">
+        <visual>
+            <geometry>
+                <sphere radius="${torso_radius}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="blue" />
+        </visual>
+    </link>
+    
+    <link name="camera">
+        <visual>
+            <geometry>
+                <cylinder length="${camera_thickness}" radius="${camera_radius}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 90 0" />
+            <material name="black" />
+        </visual>
+    </link>
+    
+    <joint name="footprint_to_base_link_joint" type="fixed">
+        <parent link="base_footprint" />
+        <child link="base_link" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+    </joint>
+    
+    <joint name="base_link_to_neck_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="neck" />
+        <origin xyz="0 0 ${torso_height+neck_height}" rpy="0 ${M_PI} 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+    
+    <joint name="neck_to_head_joint" type="revolute">
+        <parent link="neck" />
+        <child link="head" />
+        <origin xyz="0 0 ${-(torso_radius)}" rpy="${M_PI/2} 0 ${M_PI}" />
+        <axis xyz="1 0 0" />
+        <limit lower="${(90-65)*M_PI/180}" upper="${(90+65)*M_PI/180}" effort="50" velocity="1"/>
+    </joint>
+    
+    <joint name="head_to_camera_joint" type="fixed">
+        <parent link="head" />
+        <child link="camera" />
+        <origin xyz="0 ${torso_radius} 0" rpy="0 0 0" />
+    </joint>
+    
+</robot>
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2016-12-21
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-12-21:\
+
+position: 
+
+  x: -345.517481299
+  y: -529.732867745
+
+Not an answer, but just something to check: translations are always in meters in ROS, so this robot is over 300m away in X, and over half a kilometre in Y. Probably just test data, but perhaps check your scaling?
+
+A:
+
+Try odom as your fixed frame in rviz. It seems like it is set as base_link.
+
+Originally posted by Akif with karma: 3561 on 2016-12-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Cerin on 2016-12-25:
+This was the issue. After I switched it, I couldn't tell at first, since the line from odom to base_link wasn't showing due to an incorrect scale, but after I fixed the scaling, the base_link was in view, clearly showing the link change as odometry updated.
+Comment by arifle on 2020-02-14:
+@Cerin Hi, I have the same problem. What does the scale mean if I have values like this
+seq: 2084
+stamp:
+secs: 1581670360
+nsecs: 559353710
+frame_id: odom
+child_frame_id: base_link
+pose:
+pose:
+position:
+x: 0.00172806205228
+y: 7.86562370791e-09
+z: 0.0
+orientation:
+x: 0.0
+y: 0.0
+z: 0.0
+w: 1.0
+covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist:
+twist:
+

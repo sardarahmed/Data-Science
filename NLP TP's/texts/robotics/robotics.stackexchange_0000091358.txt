@@ -1,0 +1,166 @@
+Q:
+
+message header doesn't build
+
+I know this question has been asked a number of times, and I've gone through and followed the instructions on a number of those answers (for example- here and here), as well as in the documentation for building a custom message. Yet still my message header is not building.
+This is the error I get:
+/home/erinline/Documents/testsim/src/m-explore/explore/src/explore.cpp:39:10: fatal error: msg/util.h: No such file or directory
+
+#include <msg/util.h>
+          ^~~~~~~~~~~~
+compilation terminated.
+m-explore/explore/CMakeFiles/explore.dir/build.make:86: recipe for target 'm-explore/explore/CMakeFiles/explore.dir/src/explore.cpp.o' failed
+make[2]: *** [m-explore/explore/CMakeFiles/explore.dir/src/explore.cpp.o] Error 1
+CMakeFiles/Makefile2:23711: recipe for target 'm-explore/explore/CMakeFiles/explore.dir/all' failed
+make[1]: *** [m-explore/explore/CMakeFiles/explore.dir/all] Error 2
+Makefile:140: recipe for target 'all' failed
+make: *** [all] Error 2
+Invoking "make -j4 -l4" failed
+
+This is my CMakeLists.txt:
+cmake_minimum_required(VERSION 2.8.3)
+project(explore_lite)
+
+## Find catkin macros and libraries
+find_package(catkin REQUIRED COMPONENTS
+  actionlib
+  actionlib_msgs
+  costmap_2d
+  geometry_msgs
+  map_msgs
+  move_base_msgs
+  nav_msgs
+  roscpp
+  std_msgs
+  tf
+  visualization_msgs
+  message_generation
+)
+
+add_message_files(
+  FILES
+  util.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+###################################
+## catkin specific configuration ##
+###################################
+catkin_package(
+  CATKIN_DEPENDS
+    actionlib_msgs
+    geometry_msgs
+    map_msgs
+    move_base_msgs
+    nav_msgs
+    std_msgs
+    visualization_msgs
+    message_runtime
+)
+
+###########
+## Build ##
+###########
+# c++11 support required
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-std=c++11" COMPILER_SUPPORTS_CXX11)
+if(COMPILER_SUPPORTS_CXX11)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+else()
+  message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+endif()
+
+## Specify additional locations of header files
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  include
+)
+
+add_executable(explore
+  src/costmap_client.cpp
+  src/explore.cpp
+  src/frontier_search.cpp
+)
+#add_dependencies(explore ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+add_dependencies(explore explore_lite_generate_messages_cpp)
+target_link_libraries(explore ${catkin_LIBRARIES})
+
+#############
+## Install ##
+#############
+
+# install nodes
+install(TARGETS explore
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# install roslaunch files
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+)
+
+#############
+## Testing ##
+#############
+if(CATKIN_ENABLE_TESTING)
+  find_package(roslaunch REQUIRED)
+
+  # test all launch files
+  roslaunch_add_file_check(launch)
+endif()
+
+My message is called util.msg, it is in a file called msg within the package file called explore. I must be missing something, since those previous answers seem to work for some folks. Any advice on where I am going wrong would be greatly appreciated!
+
+Originally posted by kitkatme on ROS Answers with karma: 47 on 2019-04-13
+Post score: 0
+
+A:
+
+Your CMakeLists.txt shows:
+
+project(explore_lite)
+
+[..]
+
+add_message_files(
+  FILES
+  util.msg
+)
+
+The error output shows:
+
+/home/erinline/Documents/testsim/src/m-explore/explore/src/explore.cpp:39:10: fatal error: msg/util.h: No such file or directory
+
+#include <msg/util.h>
+
+You write:
+
+My message is called util.msg, it is in a file called msg within the package file called explore [..]
+
+There are a few discrepancies here:
+
+according to your build script, the package is actually called explore_lite, not explore
+the compiler output suggests it's in a directory called m-explore (or the package is actually called m-explore)
+
+As to why the include fails: message header #include lines follow the pattern: pkg_that_hosts_the_msg/MsgHeader.h.
+In your care this should probably be explore_lite/util.h, not msg/util.h.
+Two additional comments:
+
+it might be good to store messages in a separate package (it will make interfacing with your package much easier, as I don't have to build your node in order to use the messages)
+try to follow ROS naming guidelines: util as a name does not convey much semantics and message (file)names should start with an uppercase character
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-04-14
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by kitkatme on 2019-04-14:
+thanks so much!! your suggestion to change the include line to explore_lite/util.h solved the issue. also thanks for the notes on guidelines! will update my files later.
+

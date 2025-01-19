@@ -1,0 +1,67 @@
+Q:
+
+Strange results of a study: "for every unit increase the risk of PTSD increased", yet "at least four stressors needed to increase the risk of PTSD"
+
+I've been reading a news report on the results of a study in which previous stress experience was shown to increase the risk of both PTSD and major depression after a disaster (earthquake). It's hard for me to understand two points that seem to contradict each other:
+
+Further analyses showed that prior disaster exposure was not a significant predictor of postdisaster PTSD. Nevertheless, for every unit increase in prior nondisaster stressors, the odds of developing postdisaster PTSD increased (odds ratio [OR], 1.21; 95% confidence interval [CI], 1.08 – 1.37; P = .001).
+
+I take this to mean that for every unit measured using the List of Threatening Experiences, a questionnaire with a maximum score of 12, the risk of PTSD increases. If a person has a score of 1 his risk of PTSD is higher than if he has a score of 0, and so on, with the highest risk reached at score 12.
+But further on the text says that:
+
+As such, individuals who have experienced several stressors over the course of a lifetime are at higher risk of developing a psychiatric disorder. This was the case with PTSD, in which exposure to at least four previous manageable stressors was associated with greater odds of developing postdisaster PTSD. For MDD, on the other hand, there was a distinct dose-response relationship between the number of manageable predisaster stressors and the risk for postdisaster MDD.
+
+These two statements seem to contradict each other. Either the risk of PTSD increases for each unit of the LTE, or it increases only for persons who have more than 4 stressfull experiences in their life history.
+Here's the original publication (behind a paywall): Assessing the relationship between psychosocial stressors and psychiatric resilience among Chilean disaster survivors (Fernandez et al., 2020)
+Here's one figure from the publication:
+
+A:
+
+I generated some arbitrary data that might be a little similar to theirs (though I've only included x-values up to 4) to show how this might happen:
+
+R code to do this:
+library(tidyverse)
+
+N <- 10
+
+a <- data.frame(x=0,y=rnorm(N,mean=log(1),sd=.5))
+b <- data.frame(x=1,y=rnorm(N,mean=log(1.07),sd=.5))
+c <- data.frame(x=2,y=rnorm(N,mean=log(1.29),sd=.5))
+d <- data.frame(x=3,y=rnorm(N,mean=log(0.93),sd=.5))
+e <- data.frame(x=4,y=rnorm(N,mean=log(2.77),sd=.5))
+
+data <- rbind(a,b,c,d,e)
+
+ggplot(data=data, aes(x=x,y=y)) + geom_point()
+
+Given data like these, you could try a couple different analyses.
+
+You could treat the x-axis as continuous, and try to fit a line to these data. You would then decide there is a significant relationship if the line you fit has slope different from zero.
+
+You could treat the points on the x-axis as categories, and do something like an ANOVA (or use them as factors in a logistic regression, which is what the authors have done because their actual data are binary; the principle is the same, however). In this approach, you could compare each group individually to the reference (0) group.
+
+For approach (1), you can fit the model:
+m <- lm(y ~ x, data=data)
+summary(m)
+
+The fitted coefficients (for one particular random run of this script; you'll get slightly different results every time):
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept) -0.17603    0.13827  -1.273 0.209129    
+x            0.22858    0.05645   4.049 0.000186 ***
+
+The first row is the y-intercept; we don't care about it much here. The second row, however, shows that there is a significant linear relationship between x and y. If you took this approach, you could report the result as "For every unit increase in (x), there is a 0.23 increase in (y).
+For approach (2), you can run:
+m <- lm(y ~ as.factor(x), data=data)
+summary(m)
+
+And for coefficients I get:
+               Estimate Std. Error t value Pr(>|t|)    
+ (Intercept)    -0.1339     0.1562  -0.857    0.396    
+ as.factor(x)1   0.3337     0.2209   1.510    0.138    
+ as.factor(x)2   0.3676     0.2209   1.664    0.103    
+ as.factor(x)3   0.1280     0.2209   0.579    0.565    
+ as.factor(x)4   1.2458     0.2209   5.638 1.07e-06 ***
+
+So for the first 3 categories, they are not significant from the reference category (0), but the 4th one is significantly different (small p-value). If you took this approach, you could report the result as "If (x) is equal to 4, there is a larger value for (y) than when (x) is equal to 0", but you wouldn't say the same about (1), (2), or (3).
+The authors chose to use both approaches for the same data; it's possible that their result fitting a line (approach 1) is a bit misleading, but it can also just depend on uncertainty in the data. If they had a larger sample size they may be able to pick up differences seen after few than four events. In the data I've simulated, all the means are actually different so if you fit these models with 1000 points (you can try it in R if you change the N <- line) you would find they are all different from the reference category.
+

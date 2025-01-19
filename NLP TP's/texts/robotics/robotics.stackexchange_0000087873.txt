@@ -1,0 +1,75 @@
+Q:
+
+Subscribing to a topic whenever it publishes without affecting the execution of program
+
+Hello,
+I'm writing a project with C++ in ROS indigo installed in Ubuntu.
+In my project, I do some processes in one node and publish the result data and in an other node, want to subscribe to this data and use it in order to do further works.
+My problem is that, the first node currently works much more slower than the second node. The result is that the second node waits for the data publishing by the first one. I want to write the second node in a way that it continue working with the last data received and whenever a new data published, use the new one.
+I tried to use subscribe and callback method described in ROS tutorials, but the program waits for publishing the data from first node.
+Any idea to manage it?
+Thanks.
+
+Originally posted by Raha on ROS Answers with karma: 3 on 2018-07-11
+Post score: 0
+
+Original comments
+Comment by ashwath1993 on 2018-07-11:
+If the second node doesn't have any data from the first node, what work can it do?
+In any case, you can place the task to be done outside the callback method. That should allow a process to run independent of the subscription.
+The rate of that process can be controlled using ros spin
+Comment by Raha on 2018-07-13:
+Thanks for your answer. I think you mean the way that proposed by PeterBlackerThe3rd. As I commented there, it does not work.
+
+A:
+
+I think I understand what you're trying to do, but you might need to describe your project in more detail for me to be sure.
+Here is an example: Your first node publishes data once every 5 seconds, but you want your second node to run some code using the most recent data received 10 times per second. Using the publisher and subscriber example your second node only executes once every five seconds which is causing the problem. Is this an accurate interpretation of your problem?
+In this case you need to use a while loop in your main function to run a piece of code 10 times per second, and a subscriber and callback function which stores the data received in some global variables. The code layout should look something like this:
+int globalData1;
+float globalData2;
+bool globalDataReceived = false;
+
+void myCallback(package::msgTypeConstPtr& msg)
+{
+  globalDataReceived = true;
+
+  globalData1 = msg.data1;
+  globalData2 = msg.data2;
+}
+
+int main()
+{
+  ros::init("my_node");
+  ros::NodeHandle nh;
+
+  ros::Rate loopRate(10);
+
+  ros::Subscriber sub = nh.subscribe("/my_topic", 10, myCallback);
+
+  while (ros::ok())
+  {
+    if (globalDataReceived)
+    {
+      // Do something with the data 10 times per second
+    }
+
+    loopRate.sleep();
+  }
+}
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2018-07-11
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Raha on 2018-07-13:
+dear Peteblackerthe3rd,
+Thanks for your answer.
+You are right about my project. That is exactly what I wanted to explain. The only difference is that, the time between publishing from first node is not constant!
+I used your idea, but the code goes to the while loop and never receives the new data.
+Comment by Raha on 2018-07-13:
+I also tried to add the subscriber in the while loop, but it didn't help too
+Comment by Raha on 2018-07-13:
+OK, by adding ros::spinOnce(); in the while loop, it worked as I need. Thanks a lot.
+

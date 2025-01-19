@@ -1,0 +1,145 @@
+Q:
+
+Cannot load message class for .... Are your messages built?
+
+I have seen the other topics about the similar error (like here http://answers.ros.org/question/108976/rostopic-could-not-get-message-class-but-rosmsg-shows-msg/), but they don't seem to fit to my problem.
+I am using Ubuntu 12.04 and ROS Hydro.
+I have a robotino_node which is publishing several things. They show up if I use rostopic list. i also can use rostopic type and rostopic info, here the robotino_node is listed as a publisher.
+But if I use rostopic hz or rostopic echo the error form the topic line shows up, eg
+Cannot load message class for [robotino_msgs/PowerReadings]. Are your messages built?
+
+rosmsg show does also work, eg
+[robotino_msgs/PowerReadings]
+time stamp
+float current
+float voltage
+
+Now interestingly if I try rostopic echo with "bumper", which is the only std_msg published by the robotino_node it shows one time
+data: False
+---
+
+but that's it.
+I suspect that my cmake file for the messages is wrong, but I am not sure; it looks like this
+# CATKIN_MIGRATION: removed during catkin migration
+# cmake_minimum_required(VERSION 2.8.3)
+project(robotino_msgs)
+
+find_package(catkin REQUIRED COMPONENTS geometry_msgs std_msgs message_generation roscpp)
+
+include_directories(include
+ ${catkin_INCLUDE_DIRS}
+)
+
+add_message_files(
+FILES
+AnalogReadings.msg
+BHAReadings.msg
+DigitalReadings.msg
+EncoderReadings.msg
+GrapplerReadings.msg
+GripperState.msg
+MotorReadings.msg
+NorthStarReadings.msg
+PowerReadings.msg
+SetBHAPressures.msg
+SetBHAPressures.msg
+SetGrapplerAxes.msg
+SetGrapplerAxis.msg)
+
+add_service_files(
+FILES
+ResetOdometry.srv
+SetEncoderPosition.srv
+SetGripperState.srv)
+
+#add_dependencies(robotino_msgs geometry_msgs_generate_messages_cpp) #or yes?
+#target_link_libraries(robotino_msgs  ${catkin_LIBRARIES} ) # or yes
+## Generate added messages and services with any dependencies listed here
+generate_messages(
+   DEPENDENCIES geometry_msgs std_msgs
+)
+
+# catkin_package parameters: http://ros.org/doc/groovy/api/catkin/html/dev_guide/generated_cmake_api.html#catkin-package
+# TODO: fill in what other packages will need to use this package
+catkin_package(
+   DEPENDS roscpp geometry_msgs std_msgs
+   CATKIN_DEPENDS # TODO
+   INCLUDE_DIRS # TODO include
+   LIBRARIES # TODO
+)
+
+My launch file looks like this
+    <launch>
+      <arg name="hostname" default="172.26.1.1" />
+      
+        <node name="robotino_node" pkg="robotino_node" type="robotino_node" output="screen">
+            <param name="hostname" value="$(arg hostname)" />
+            <param name="max_linear_vel" value="0.5" />
+            <param name="min_linear_vel" value="0.05" />
+            <param name="max_angular_vel" value="3.0" />
+            <param name="min_angular_vel" value="0.1" />
+    <!--        <param name="downsample_kinect" value="true" />
+            <param name="leaf_size_kinect" value="0.04" />  entfernt da KinectNode nicht aktualisiert-->
+            <remap from="robotino_joint_states" to="joint_states" />
+            <!--remap from="image_raw" to="image"/-->
+        </node>
+    
+    <!--
+      <node name="robotino_odometry_node" pkg="robotino_node" type="robotino_odometry_node" output="screen">
+        <param name="hostname" value="$(arg hostname)" />
+      </node>
+    -->
+    <!--
+      <node name="robotino_laserrangefinder_node" pkg="robotino_node" type="robotino_laserrangefinder_node" output="screen">
+        <param name="hostname" value="$(arg hostname)" />
+        <param name="laserRangeFinderNumber" value="0" />
+      </node>
+    -->
+    
+    <!--
+      <node name="robotino_camera_node" pkg="robotino_node" type="robotino_camera_node" output="screen">
+        <param name="hostname" value="$(arg hostname)" />
+        <param name="cameraNumber" value="0" />
+      </node>
+    -->
+        
+        <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+            <param name="publish_frequency" type="double" value="20.0" />
+        </node>
+        
+    <!--
+      <node name="robotino_mapping_node" pkg="robotino_node" type="robotino_mapping_node" output="screen">
+        <param name="hostname" value="$(arg hostname)" />
+      </node>
+
+-->
+
+    <!--node pkg="tf" type="static_transform_publisher" name="laser_link_broadcaster" args="0.12 0 0.025 0 0 0 base_link laser_link 50" /-->
+    
+    <param name="robot_description" textfile="$(find robotino_description)/urdf/robotino.urdf" />
+</launch>
+
+So even if just the std_msgs work, shouldn't at least the bumper published with a frequency of 20 hz?
+I hope someone can helpt me out. Thanks.
+
+Originally posted by BenediktHeck on ROS Answers with karma: 151 on 2014-07-18
+Post score: 13
+
+A:
+
+I know this is very late, but I just encountered the exact same problem. My problem originated from not having the .msg file added in my CMake file when I built. Here is how I resolved it:
+First, ensure the file has been added to the CMakeLists.txt (yours already has)
+Second, clean your build by running "catkin_make clean" in the root of your workspace.
+Third, remake your project with "catkin_make"
+Lastly, resource the devel/setup.bash in your workspace.
+I know this is not a great answer, but I encountered the exact same problem where rosmsg could find my message, but rostopic could not, and these are the exact steps I took that resolved it.
+
+Originally posted by Carter12s with karma: 218 on 2014-08-19
+This answer was ACCEPTED on the original site
+Post score: 18
+
+Original comments
+Comment by BenediktHeck on 2014-08-20:
+Thank you. I believe that is the way I solved it, but I am not sure what exactly caused the error.
+For completeness I should also mention, that I figured out why the bumper published only once. It and most other topics only publish something in the case of an event, not constantly with x Hz.
+

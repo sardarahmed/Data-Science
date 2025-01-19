@@ -1,0 +1,107 @@
+Q:
+
+Publish Laser Scan
+
+Hello all,
+I have a node that generates a point cloud. How do I take the data and output a laser scan? The pointcloud_to_laserscan node isn't working for me... I guess I need to convert the data to polar and publish it. The math I can do, but could you help me with publishing the laser scan?
+Thanks,
+-Hunter A.
+Here is the launch file. The topic "scan" is not publishing when I use this launch file and start my node [If you guys could help start the node from this launch file, that would be cool too].
+<launch>
+   <!-- throttling -->
+  <node pkg="nodelet" type="nodelet" name="pointcloud_throttle" args="load pointcloud_to_laserscan/CloudThrottle openni_manager" respawn="true">
+    <param name="max_rate" value="20.0"/>
+    <remap from="cloud_in" to="/laser_ReadOut/cloud_pcl"/>
+    <remap from="cloud_out" to="cloud_throttled"/>
+  </node>
+
+  <!-- Fake Laser -->
+  <node pkg="nodelet" type="nodelet" name="laserOut" args="load pointcloud_to_laserscan/CloudToScan openni_manager" respawn="true">
+    <param name="output_frame_id" value="laser"/>
+    <!-- heights are in the (optical?) frame of the kinect -->
+    <param name="min_height" value="-0.15"/>
+    <param name="max_height" value="0.15"/>
+    <remap from="cloud" to="/cloud_throttled"/>
+  </node>
+
+  <!-- Fake Laser (narrow one, for localization -->
+  <node pkg="nodelet" type="nodelet" name="kinect_laser_narrow" args="load pointcloud_to_laserscan/CloudToScan openni_manager" respawn="true">
+    <param name="output_frame_id" value="/camera_depth_frame"/>
+    <!-- heights are in the (optical?) frame of the kinect -->
+    <param name="min_height" value="-0.025"/>
+    <param name="max_height" value="0.025"/>
+    <remap from="cloud" to="/cloud_throttled"/>
+    <remap from="scan" to="/narrow_scan"/>
+  </node>
+</launch>
+
+Here's an rxgraph:
+
+Originally posted by allenh1 on ROS Answers with karma: 3055 on 2012-06-04
+Post score: 1
+
+Original comments
+Comment by allenh1 on 2012-06-04:
+I see now (thank you @lindzey) that the topics are not connected. How do I connect them properly?
+Comment by karthik on 2012-06-04:
+I have edited my answer below.
+Comment by karthik on 2012-06-04:
+I have edited my answer below.
+Comment by allenh1 on 2012-06-05:
+I'm not sure what you want me to do with that answer.... Would you mind explaining it and how to apply it?
+Comment by allenh1 on 2012-06-05:
+Maybe it's not actually a node I'm creating... It's a binary that I execute with "rosrun". I don't have a launch file for it. Is this why I am having trouble with pointcloud_to_laserscan?
+Comment by allenh1 on 2012-06-05:
+Now (as usual), new problems are found. It is working, but only one beam is being projected...
+
+A:
+
+Hi,
+I have seen the kinect.launch file under turtlebot_bringup package doing the conversion of the pointcloud to laser scan and publishing it. Here is the part of the launch file which throttles the kinect cloud and converts it into Fake laser scan. May be this will give you some idea to go about the same. If you are using the kinect to get the pointcloud then may be you can directly use it. But this is just going to give the 2D laser scan of the z=0 plane which the kinect is viewing the scene.
+  <!-- throttling -->
+  <node pkg="nodelet" type="nodelet" name="pointcloud_throttle" args="load pointcloud_to_laserscan/CloudThrottle openni_manager" respawn="true">
+    <param name="max_rate" value="20.0"/>
+    <remap from="cloud_in" to="/camera/depth/points"/>
+    <remap from="cloud_out" to="cloud_throttled"/>
+  </node>
+
+  <!-- Fake Laser -->
+  <node pkg="nodelet" type="nodelet" name="kinect_laser" args="load pointcloud_to_laserscan/CloudToScan openni_manager" respawn="true">
+    <param name="output_frame_id" value="/camera_depth_frame"/>
+    <!-- heights are in the (optical?) frame of the kinect -->
+    <param name="min_height" value="-0.15"/>
+    <param name="max_height" value="0.15"/>
+    <remap from="cloud" to="/cloud_throttled"/>
+  </node>
+
+  <!-- Fake Laser (narrow one, for localization -->
+  <node pkg="nodelet" type="nodelet" name="kinect_laser_narrow" args="load pointcloud_to_laserscan/CloudToScan openni_manager" respawn="true">
+    <param name="output_frame_id" value="/camera_depth_frame"/>
+    <!-- heights are in the (optical?) frame of the kinect -->
+    <param name="min_height" value="-0.025"/>
+    <param name="max_height" value="0.025"/>
+    <remap from="cloud" to="/cloud_throttled"/>
+    <remap from="scan" to="/narrow_scan"/>
+  </node>
+
+You could probably check the entire launch file under turtlebot_bringup package.
+Hope it helps!!!
+Karthik
+
+When i was using i figured out a problem with the nodelet not being run by the launch file automatically. So i had to run it in order to correct the nodes.
+Please check my answer here which should solve your issue. Let me know if not.
+Hope it helps!!!
+Karthik
+
+Originally posted by karthik with karma: 2831 on 2012-06-04
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by allenh1 on 2012-06-04:
+Ok. I am having issues still. The name of the point cloud I am publishing is "\cloud_pcl". I can visualize it in RVIZ, so it is valid. That being said, I need to get laser data from it. What happens when you load the argument: args="load pointcloud_to_laserscan/CloudThrottle openni_manager" ?
+Comment by lindzey on 2012-06-04:
+If you've tried @karthik's launch file and it still doesn't work for you, I suspect that you're having issues with topic naming. My first guess would be that you need to change the line starting "<remap from="cloud_in" ...."
+Comment by lindzey on 2012-06-04:
+And, for debugging problems like that in general, look at "rostopic list" and "rxgraph" to make sure that nodes you expect to be connected actually are.
+

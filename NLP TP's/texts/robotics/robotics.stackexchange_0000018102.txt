@@ -1,0 +1,82 @@
+Q:
+
+What are the equations of a s-curve position path?
+
+I have a decoupled mechatronic system with two motors. I want for each motor to give a s-curve path as reference. You can see in the image below the position path, velocity and acceleration.
+
+All information that I have are extracted from these plots.
+The way I have designed the system, the position is given as the reference. So I need the equations for it. From what I saw, this is what is referred to as a "s-curve" path. The way I understand it, the equation is broken down in to 4 different parts:
+
+$0\le t\le 0.05$
+$0.05<t\le 0.2$
+$0.2<t\le 0.25$
+$t>0.25$
+
+This seems like a fairly standard equation but I have not  been able to find anything that works. I have tried to used the equations from Constant Jerk Equations For A Trajectory Generator1 but the results where not the same. I also found Mathematics of Motion Control Profiles, and maybe I don't understand it, but the equations found there do not seems to be enough for what I want.
+Can anybody provide the correct equations (preferably in a generalized form, so I can apply them else where in the future) or some other help?
+1 From ME EN 537 - Advanced Mechanisms/Robotics > Notes.
+
+A:
+
+The S-Curve profile can have several divisions along the time axis 
+
+7 divisions as per this image. This example has a constant positive jerk zone, a constant acceleration zone, a constant negative jerk zone, a zero acceleration zone and then the vice-versa. This is the S-Curve in its most general form 
+
+5 divisions if there exists no constant acceleration zones like t1-t2 and t5-t6 
+4 divisions if there exists no constant velocity (zero acceleration zone) like t3-t4
+
+There are more possible cases that depend upon initial and final desired conditions and constraints on the positions, velocities, accelerations and jerks.
+While the equations are pretty straight forward, mentioned in this paper Jeong, Soon Yong, et al. "Jerk limited velocity profile generation for high speed industrial robot trajectories." IFAC Proceedings Volumes 38.1 (2005): 595-600.
+for almost all possible test cases, there are issues with constant jerks and other constraints that limit the feasibility of an S-curve. 
+
+A:
+
+To come up with a mathematical expression of the position reference $x\left(t\right)$ as a function of time $t$, we can inspect the profile of the acceleration $a\left(t\right)$. It is piece-wise linear and defined as follows:
+$
+a\left(t\right)=\begin{cases} \Delta \cdot t, & t \in \left[0,0.025\right] \\
+                 2000 - \Delta \cdot \left(t-0.025\right), & t \in \left[0.025,0.05\right] \\
+                 0, & t \in \left[0.05,0.2\right] \\
+                 -\Delta \cdot \left(t-0.2\right), & t \in \left[0.2,0.225\right] \\
+                 -2000 + \Delta \cdot \left(t-0.225\right), & t \in \left[0.225,0.25\right] \\
+                \end{cases},
+$
+where $\Delta=\frac{2000}{0.025} \cdot \frac{\text{mm}}{\text{s}^3}$.
+If we now integrate $a\left(t\right)$ twice in $t$, we will get two expressions representing the velocity $v\left(t\right)$ and the position $x\left(t\right)$, respectively, that contain $10$ unknown constants in total. These unknowns can be easily retrieved if we guarantee that both $v\left(t\right)$ and $x\left(t\right)$ are continuous at the extrema of the time intervals given above.
+Alternatively, you may consider letting the machine do the integration for you, offline or in real-time, depending on your kind of application. Your code might look something like this:
+float get_acceleration(const float t) {
+    // put here the code implementing the above 
+    // definition of the acceleration profile
+
+    float delta = 2000.0f / 0.025f;
+    float a;
+    if (t <= 0.025f) {
+        a = delta * t;
+    }
+    else if (t <= 0.05f) {
+        a = 2000.0f - delta * (t - 0.025);
+    }
+    // ...
+    return a;
+}
+
+int main() {
+    float T = 0.001f;    // the integration time
+    float v = 0.0f;      // the starting velocity 
+    float x = 0.0f;      // the starting position
+    float t = 0.0f;      // the increasing time
+
+    while (t <= 0.25f) {      // the main control loop
+        float a = get_acceleration(t);
+        v += a * T;
+        x += v * T;
+        // use x to feed the motor controller
+        // (or store it for later usage)
+
+        // make sure that you wait T seconds
+        // to enforce the control rate (use e.g. a thread)
+        t += T;
+    }
+    return 0;
+}
+```
+

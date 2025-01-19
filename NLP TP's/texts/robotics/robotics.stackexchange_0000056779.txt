@@ -1,0 +1,72 @@
+Q:
+
+boost::bind errors in subscriber callback functions
+
+Hey,
+Kind of newbie in using boost, and this is driving me crazy. I wanted to pass on the topicname to the callback function of subscriber, so I followed the various questions already asked and wrote the following:
+My callback function:
+void write_enocean(const palgate_madynes_msg::EnOceanFrame& msg,std::string topic)
+
+Subscriber:
+sub[i] = nh.subscribe(Topiclist[i].name,1000,boost::bind(&write_enocean,_1,Topicname[i].name));
+
+If I do this, I get the following error:
+error: no matching function for call to ‘ros::NodeHandle::subscribe(std::string&, int, boost::_bi::bind_t<void, void (*)(const palgate_madynes_msg::EnOceanFrame_<std::allocator<void> >&, std::basic_string<char>), boost::_bi::list2<boost::arg<1>, boost::_bi::value<std::basic_string<char> > > >*)’
+
+followed by the various candidates, and then:
+node_handle.h:785:14: note:   candidate expects 1 argument, 3 provided
+
+On the other hand, if write the subscriber as such:
+ sub[i] = nh.subscribe<palgate_madynes_msg::EnOceanFrame>(Topiclist[i].name,1000,boost::bind(&write_enocean,_1,test));
+
+I get the error:
+/usr/include/boost/bind/bind.hpp:313:9: error: invalid initialization of reference of type ‘const palgate_madynes_msg::EnOceanFrame_<std::allocator<void> >&’ from expression of type ‘const boost::shared_ptr<const palgate_madynes_msg::EnOceanFrame_<std::allocator<void> > >’
+
+What am I doing wrong with boost? My CMakeLists.text already includes the rosbuild_add_boost_directories() but gives me an error if write rosbuild_link_boost(topic_listener bind) saying it could not locate bind.
+
+Originally posted by Mandar on ROS Answers with karma: 73 on 2014-01-23
+Post score: 3
+
+Original comments
+Comment by dornhege on 2014-01-24:
+It seems to have problems to pick the right overload. Does it help to move the bind into a boost::function.
+Comment by Mandar on 2014-01-24:
+I'm not sure I understand what you mean. Do I use it something like boost::function(bind, ...) or? I've not really used boost before, hence the confusion.
+Comment by dornhege on 2014-01-24:
+You can put the return of a bind in a boost::function and give that a specific function type. When playing around with bind and callbacks that helps to isolate the problem.
+Comment by luc on 2015-10-05:
+Might be missing a _1 as the third arg.
+
+A:
+
+I would not mess with boost::bind in this case and put the callback function in a class in order for passing the context to it. Example:
+class MySubscriber
+{
+  std::string po_topic_name;
+  ros::Subscriber po_sub;
+
+  void write_enocean( const palgate_madynes_msg::EnOceanFrame& msg )
+  {
+    // use po_topic_name as you like ...
+  }
+public:
+  
+  MySubscriber( ros::NodeHandle ao_nh, std::string ao_topic ) :
+    po_topic_name( ao_topic )
+  {
+    po_sub = ao_nh.subscribe( ao_topic,1000, &MySubscriber::write_enocean, this );
+  }
+};
+
+Now you just have to create an Instance of MySubscriber for each of your topics...
+
+Originally posted by Wolf with karma: 7555 on 2014-01-24
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Mandar on 2014-01-24:
+I'll try this out and report back in case of errors. Thanks!
+Comment by Mandar on 2014-01-24:
+I modified the example code you provided to follow the tutorial http://wiki.ros.org/roscpp_tutorials/Tutorials/UsingClassMethodsAsCallbacks more closely. This way, only the function write_enocean and the topic_name were in the class, while the subscriber was defined outside, rather than class method
+

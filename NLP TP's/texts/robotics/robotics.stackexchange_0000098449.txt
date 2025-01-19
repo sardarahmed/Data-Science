@@ -1,0 +1,65 @@
+Q:
+
+What does "ACCEPTED" and "CANCELING" states do in the ros2 action state machine?
+
+http://design.ros2.org/img/actions/goal_state_machine.png
+From the figure above, when exactly does the used-defined functions (handle_goal, handle_cancel, and handle_accepted) passed to the create_server function get called?
+What I understand from the document is that: once we return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE from the handle_goal (passed to  the create_server), then at some point, the handle_accepted function will get called and we can perform the task inside the handle_accepted function.
+But for cancelling the action, I am a little bit confused reading the document. From the document, it is written that:
+
+CANCELING - The client has requested that the goal be canceled and the action server has accepted the cancel request. This state is useful for any user-defined “clean up” that the action server may have to do.
+
+But once we return rclcpp_action::CancelResponse::ACCEPT in the function handle_cancel (passed to the create_server), what happen and what does the "CANCELING" state in the figure do? Where should we define the user-defined "clean up" function?
+
+Originally posted by wkpst on ROS Answers with karma: 3 on 2021-03-01
+Post score: 0
+
+Original comments
+Comment by kscottz on 2021-03-01:
+Just a note, please DO NOT cross post ROS answers questions to ROS Discourse.
+Comment by wkpst on 2021-03-01:
+@kscottz Sorry, I posted on ROS Discourse first and I realized I should post here. Will remove my post on ROS Discourse.
+
+A:
+
+With respect to the diagram:
+
+handle_goal is called when a goal is received (before ACCEPTED).
+
+If handle_goal returns "accept", then the goal state is set to ACCEPTED. The ACCEPTED state tells us (and the action client) that the goal is queued for execution. It's possible that the action server chooses to defer execution (e.g. queue the goal for later), hence we don't always jump straight to EXECUTING. The "ACCEPT_AND_EXECUTE" return code is a convenient shortcut if we want to skip straight to EXECUTING.
+
+handle_accepted is called after a goal enters the ACCEPTED state.
+
+This is a convenient way to let the code know that a particular goal handle could be executed. It is up to the action server to explicitly transition the goal to the EXECUTING state.
+CANCELING and CANCELED work in a similar way:
+
+handle_cancel is called when a cancel request is received (before CANCELING).
+
+If the cancel request is accepted, then the goal enters in to the CANCELING state.
+Note, however, this does not mean the goal has been completely canceled yet. There may be a time delay between entering CANCELING and transitioning to CANCELED. It is up to the action server to explicitly signal that the goal is canceled.
+
+Calling canceled() on the goal handle is the signal to transition the state to CANCELED.
+I.e. canceled() indicates that the action server is finished canceling the goal.
+
+Perhaps the demo code makes this more concrete:
+if (goal_handle->is_canceling()) {
+  result->sequence = sequence;
+  goal_handle->canceled(result);
+  RCLCPP_INFO(this->get_logger(), "Goal canceled");
+  return;
+}
+
+Above, the goal execution thread checks if a cancel request has been accepted (goal_handle->is_canceling()), and if so it immediately transitions the goal to CANCELED (goal_handle->canceled()). In practice, it's possible the code might do something more complex before calling goal_handle->canceled() (e.g. wait for a robot should put down an object it is grasping).
+
+Originally posted by jacobperron with karma: 1870 on 2021-03-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by wkpst on 2021-03-01:
+@jacobperron Thanks for your detailed explanation. Aha, so it seems the design is that: the user (server side) is responsible for checking if goal_handle->is_canceling() and handle the clean-up task here. Once finished, call goal_handle->canceled() in order to transition the goal_handle to the terminal state CANCELED.
+Comment by wkpst on 2021-03-02:
+@jacobperron I'm just curious if I understand correctly that the handle_cancel is also a blocking call as well as handle_accepted right? Because sometimes if handle_cancel (which takes some time before returning rclcpp_action::CancelResponse::ACCEPT) returns after handle_accepted has finished, I do get this error: what(): goal_handle attempted invalid transition from state SUCCEEDED with event CANCEL_GOAL.
+Comment by jacobperron on 2021-03-02:
+It's an implementation detail, but I believe both handle_cancel and handle_accepted are blocking in both rclcpp and rclpy. From the error message, it sounds like the action server is marking the goal as done (called goal_handle->succeeded()) and then a cancel request is accepted. I don't think you should be seeing this error; it could be a bug in rclcpp_action. Consider opening an issue on GitHub with a SSCCE.
+

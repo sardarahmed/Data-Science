@@ -1,0 +1,90 @@
+Q:
+
+To define dependency on a package or resource that's only needed after a process initialized
+
+Similar to #q264270  but different question. In Catkin (or any modern package manifest formats defined in ros.org), what is the appropriate way to define a dependency on a resource that is NOT required to start and complete initializing a node/process (e.g. dynamic linking. Import in Python), but IS required later during runtime? A good example in ROS (or any distributed system) is the package name of the publisher of a topic that your package subscribes to.
+What I described above doesn't sound like to be in the scope of exec_depend (rep-0140).
+I'm only using ROS1 but I assume this question is valid in ROS2 (not really sure though). To be more specific, this isn't even a ROS question. Ffrom ROS1 perspective, this is a Catkin package (which is technically ROS-agnostic) question.
+
+Update: Elaborating an example per request. An example in ROS (or any distributed system) is when a node/process in your package subscribes to a topic/message that the process of another package/software publish. What are good and/or systematic ways to describe such dependency?. My primary usecase is in private company's product development so it can be narrow-sighted though, I'm seeing not defining this type of dependency put people in confusion. The issue I'm raising shouldn't be specific to ROS/Catkin though, I haven't found a good answer.
+
+UPDATE2.
+@Mike Scheutzow Thanks for deepening the conversation!
+
+I think the user is abusing this dependency mechanism for the purpose they describe.
+
+I dis/agree.
+
+ros node A does not ordinarily declare a dependency on ros node B just because they have a pub/sub relationship.
+
+Is your statement based on ROS practice? Or is that based even on the general software architecture broader than ROS? If the former I see why you say so, but it's never claried, hence my question on this page. If the latter, I don't have a clear answer but I'd be surprised if there's no software framework that allows to define this sort of dependency.
+
+In general, there is no expectation that node B even runs on the same host as node A, so there should be no "requirement" that it be installed there.
+
+My question is irrelevant to the location of nodes to be installed.
+@gijs
+
+Personally, I feel the dependency is on a type of information, not on any specific node or package.
+
+Agreed. "Type of information" exactly (I used "resource" to mean that). That "information/resource" can be running nodes, publishers, or running processes (e.g. Docker engine), static files, etc. etc.
+I continue to be stuck with package name only because the framework I have an immediate need with, which is obviously Catkin, uses package name for dependency definition.
+My initial motivation to ask this was that I've seen issues so many times found during runtime that turned out to be due to missing dependent resource that should be available during runtime but somehow missed (by build, install, execution toolsets). In ROS toolkit, catkin, roslaunch-chk, roscompile are very helpful to capture missing deps, but even they can't catch the very type of dependency we're talking about.
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2021-08-17
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-08-17:
+It could help if you could give an example -- or describe what it is you actually want to do.
+
+A good example in ROS (or any distributed system) is the package name of the publisher of a topic that your package subscribes to.
+
+I'm not sure I understand this: publishers are bound by name, not by their location. What makes the package it is hosted by important in your system?
+"packages" don't subscribe, nodes do.
+Comment by 130s on 2021-08-18:
+I added an update to elaborate my specific need, hope that helps
+
+A:
+
+what is the appropriate way to define a dependency on a resource that is NOT required to start and complete initializing a node/process [..], but IS required later during runtime?
+
+that would still be an exec_depend afaict.
+From REP 140: Package Manifest Format Two Specification - Data Representation - <exec_depend> (multiple):
+
+Declares a rosdep key or ROS package name that this package needs at execution-time
+
+"execution-time" would be any time during execution.
+
+Edit:
+
+An example in ROS (or any distributed system) is when a node/process in your package subscribes to a topic/message that the process of another package/software publish. What are good and/or systematic ways to describe such dependency?.
+
+there is currently no way to model this dependency in vanilla ROS 1. But that's mostly because plain ROS 1 does not come with any tools to model systems at this level. Tools like ros-model try to fill that gap (but there are more, mostly as research projects in the EU).
+For ROS 2, this may improve somewhat. There is a (still open) PR (ros2/design#266) which adds something called the "Node Interface Definition Language" (sometimes coined NoDL), which allows a developer to describe the ROS API of a node in a more abstract way than reading source code, and to make it available offline (so no rosnode/rostopic/rosservice list needed) and machine readable.
+Having written that: the fact a node subscribes to a specific topic with a specific type already seems to imply it has a dependency on something. Personally, I feel the dependency is on a type of information, not on any specific node or package. For services and action clients, the dependency would be on certain behaviour of the server. That does go into the direction of what the capabilities system was supposed to model.
+In your latest edit, you still mention "package" and "software", so please clarify this: do you want to capture the requirement that specific software is present, or do you want to be able to express the requirement for certain topics, with certain types, to be available (ie: published)? Those are two different -- and in some way, disconnected -- things.
+
+Edit 2:
+
+My initial motivation to ask this was that I've seen issues so many times found during runtime that turned out to be due to missing dependent resource that should be available during runtime but somehow missed (by build, install, execution toolsets). In ROS toolkit, catkin, roslaunch-chk, roscompile are very helpful to capture missing deps, but even they can't catch the very type of dependency we're talking about.
+
+So that's more the direction of ros-model I believe. Although that's really focused on modelling ROS systems.
+Model driven engineering techniques, and Model Based system design would formally capture the kinds of requirements and constraints you seem to have in mind. They go much further than simple "this must be present" requirements though.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-08-17
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Mike Scheutzow on 2021-08-17:
+I think the user is abusing this dependency mechanism for the purpose they describe. ros node A does not ordinarily declare a dependency on ros node B just because they have a pub/sub relationship. In general, there is no expectation that node B even runs on the same host as node A, so there should be no "requirement" that it be installed there.
+Comment by gvdhoorn on 2021-08-18:
+Yes, I'm assuming something like this as well. I sort-of tried to say this with:
+
+publishers are bound by name, not by their location. What makes the package it is hosted by important in your system?
+
+It sounds like the capabilities system would be better suited for this kind of dependency, but that was never really used very much.
+Comment by 130s on 2021-08-18:
+This sort of discussion is what I wanted to see I think. Though I marked this as an Answer, I interpret "don't do that unless you're desperate in defining what's ought to be loosely coupled dependency"...Clearly for public, general purpose library package, that's a no.
+And, good call for Capabilities! I like that concept. Unfortunately utilizing that architecture would result in re-design of our apps so cannot be done easily though.
+

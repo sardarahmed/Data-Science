@@ -1,0 +1,69 @@
+Q:
+
+Pass parameters to a service handler in rospy
+
+In rospy, message callbacks can have additional parameters, which allows me to write only one callback for different subscribers. For example:
+def my_callback(msg, name):
+    rp.logwarn(name + "has received the message: " + msg)
+
+subscribers = [
+    rp.Subscriber(
+        name+'/my_topic',
+        MyMessageType,
+        my_callback,
+        callback_args=name)
+    for name in "Alice Bob Carl David".split()]
+
+works perfectly fine. However, the same is not possible for service handlers. For example:
+def my_hanlder(request, name):
+    rp.logwarn(name + "has received the request: " + request)
+
+providers = [
+    rp.Service(
+        name+'my_service',
+        MyServiceType,
+        my_handler,
+        handler_args=name)
+    for name in "Alice Bob Carl David".split()]
+
+raises an error, because handler_args is not a parameter of the constructor rp.Subscriber.
+How can I pass additional parameters to a service handler?
+
+Originally posted by antonio on ROS Answers with karma: 93 on 2016-11-08
+Post score: 2
+
+A:
+
+The rospy.Service docs show that there isn't a parameter to the service constructor that allows it to pass arguments to the callback.
+However, it's relatively easy to do this with a lambda:
+def my_hanlder(request, name):
+    rp.logwarn(name + "has received the request: " + request)
+
+providers = [
+    rp.Service(
+        name+'my_service',
+        MyServiceType,
+        lambda msg: my_handler(msg, name))
+    for name in "Alice Bob Carl David".split()]
+
+(my apologies if there's a small syntax error in there; I don't use lambda very often)
+
+Originally posted by ahendrix with karma: 47576 on 2016-11-08
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by antonio on 2016-11-23:
+Yes, this was also my solution; but it has some faint "workaround" feel about it :)
+Comment by mcmeat on 2022-10-18:
+Not sure if this is an issue due to newer python, but the lambdas are dynamically called on msg income.
+which means the last known 'name' is passed to all of them.
+so for me all the my_hanlder calls report Dave is the receiver
+to fix this :
+providers = [
+rp.Service(
+    name+'my_service',
+    MyServiceType,
+    lambda msg, name_=name: my_handler(msg, name_))
+for name in "Alice Bob Carl David".split()]
+

@@ -1,0 +1,143 @@
+Q:
+
+ROS MultiThreading example
+
+Hello,
+I'm currently working on a node that provides a service to other nodes but I noticed that being a server blocks the execution of the node until a Request. As my node needs to handle some callbacks, I read that a solution could be multithreading, and several good explanations on what's behind the hood, but I have trouble understanding how to use it.
+My case is the following : the nodes receives sensory information and publish a motor command. In most of the case, this is enough, but in certain conditions, another node will send a request for stopping. I thought a service would fit better than a topic, as it allows the requesting node to wait for the response before continuing.
+From my readings, I understand that I can declare a MultithreadSpinner or an AsyncSpinner, the second being non blocking.  How does that changes my usual node organisation (C++ pseudo code) :
+int main()
+{
+     ros::init(...);
+     ros::NodeHandle nh;
+     MyClassController controller(nh, ...);
+     controller.run();
+}
+
+MyClassController::run()
+{
+    while(nh_.oh())
+    {
+        // Process Callbacks
+         ros::spinOnce()
+    }
+}
+
+MyClassController::callback1(ros::Datatype msg){ myClassAttribute = msg }
+MyClassController::myService(mypackage::mypackageserv req, mypackage::mypackageserv res){}
+(...)
+
+Would it be something like :
+int main()
+{
+     ros::init(...);
+     ros::NodeHandle nh;
+     MyClassController controller(nh, ...);
+     controller.run();
+}
+
+MyClassController::run()
+{
+    // Process Callbacks
+    myclassAsyncSpinner.start();
+    myclassAsyncSpinner.waitForShutdown();
+}
+
+MyClassController::callback1(ros::Datatype msg){ myClassAttribute = msg }
+MyClassController::myService(mypackage::mypackageserv req, mypackage::mypackageserv res){}
+(...)
+
+In this case, how can I be sure the service will be processed separately from other callbacks  thus not block them?  I feel that I may be mixing multi threading and "multi callback queuing", and the second is more relevant to my problem.
+To sum things up : could you show me or point me to MWE (Minimal Working Example) of nodes that use Muilti-threading (let's say with AsyncSpinner) and (at least) two Callback queues, or more specifically, a MWE of a node that provide a service and process callback in parallel ?
+Thanks for reading,
+EDIT :
+From reading again the Different Queues explanations, I think I get it a bit better : should I declare 2 node handles in myClassController, with their queues, and then subscribe / advertise explicitly my service to one and my callbacks to the other ? Do I also need a multithread spinner and pass them the specific queue ?
+
+Originally posted by Erwan R. on ROS Answers with karma: 697 on 2014-07-07
+Post score: 3
+
+A:
+
+Hello !
+My solution is finally the following (any comment welcome) :
+In node class definition :
+class MyClass
+{
+    private :
+        ros::NodeHandle nhCall_;
+        ros::NodeHandle nhSrv_;
+        ros::CallbackQueue queueCall;
+        ros::CallbackQueue queueSrv;
+        ros::Subscriber first_sub;
+        ros::ServiceServer first_srv;
+        ros::Subscriber second_sub;
+        ros::Subscriber third_sub;
+        ros::Publisher first_pub;
+        (...)
+    public :
+        MyClass(ros::NodeHandle &nh1, ros::NodeHandle &nh2, ...);
+        ( ... Some Callbacks to handle message and service reception ...)
+        bool run();
+};
+
+Class implementation :
+#include "MyClass.h"
+
+MyClass::MyClass(ros::NodeHandle &nh1, ros::NodeHandle &nh2, ...)
+{
+    // ROS specific : topics, node handler
+    nhCall_ = nh1;
+    nhSrv_ = nh2;
+
+    // Subscriptions, Advertising
+    first_sub = nhCall_.subscribe("topicname1", 1, &MyClass::callback1, this);
+    first_srv = nhSrv_.advertiseService("servicename", &MyClass::servicecallback, this);
+    second_sub = nhCall_.subscribe("topicname2", 1, &MyClass::callback2, this);
+    third_sub = nhCall_.subscribe("topicname3", 1, &MyClass::callback3, this);
+
+    first_pub = nhCall_.advertise<my_msgs::message>("topicname4", 1);
+}
+
+// Callback Handling 
+void MyClass::callback1(my_msgs::message msg)
+{
+    // Do something
+}
+(...)
+
+bool MyClass::run()
+{
+
+    while(nhCall_.ok())  // We may check also for the other NodeHandle state
+    {
+        ros::spinOnce();
+    }
+
+    return true;
+}
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "mynode");
+    ros::NodeHandle nh_call;
+    ros::NodeHandle nh_srv;
+
+    MyClass mysupernode(nh_call, nh_srv, ...);
+    mysupernode.run();
+
+    return EXIT_SUCCESS;
+}
+
+As said, advice or comment are welcome ! Hope this answer may be useful for people that need to do Multithreading in ROS nodes !
+
+Originally posted by Erwan R. with karma: 697 on 2014-09-02
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by luffyfjx on 2016-12-02:
+Sorry, I am confused with the callbackqueue which you have defined as queueCall and queueSrv. But in the following codes you have not dealed with them, can each node recognize them?
+And why haven't you defined the spiner for these two threads?
+Comment by Erwan R. on 2016-12-21:
+Well, from quick digging into that old code, it appears that the Queues are not used at all. There is only one service provided by nhSrv and callbacks on nhCall. However the node is not used anymore, so don't rely too much on that example. It may not be up-to-date with latest distro (2 y old).
+

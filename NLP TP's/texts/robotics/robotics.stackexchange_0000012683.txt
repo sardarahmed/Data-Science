@@ -1,0 +1,141 @@
+Q:
+
+Why doesn't this kalmanfilter filter anything? Reduce disturbances and noises with LQG controller
+
+I have a state space model which look like this:
+$$
+\ \begin{bmatrix} \dot{x} \\ \\\dot{\tilde{x}} \end{bmatrix} =\begin{bmatrix} A - BL& BL \\ 0 & A-KC \end{bmatrix} \begin{bmatrix} x\\ \tilde{x} \end{bmatrix}+\begin{bmatrix} B & I & 0\\ 0 & 0 & K \end{bmatrix}\begin{bmatrix} r\\ d\\ n \end{bmatrix}\
+$$
+$$
+\begin{bmatrix} y\\ e \end{bmatrix} = \begin{bmatrix} C &0 \\ 0& C \end{bmatrix}\begin{bmatrix} x\\ \tilde{x} \end{bmatrix} + \begin{bmatrix} 0 & 0 &0 \\ 0 & 0 &1 \end{bmatrix}\begin{bmatrix} r\\ d\\ n \end{bmatrix} 
+$$
+This state space model represents this picture:
+
+If you still not understand how. Look at this video:
+https://youtu.be/H4_hFazBGxU?t=2m13s
+Notice the estimation error: $\tilde{x} = x - \hat{x}$
+So I've made som Octave code which are very similar to MATLAB code if you have the MATLAB control package installed. Octave have a free control package and symbolic package to use.
+clc
+clear
+
+% ladda bibliotek - Load GNU octave library - Free to download 
+pkg load symbolic
+pkg load control
+
+% Parametrar 
+m1 = 10; m2 = 7; M = 1000;
+Ap = 40; Am = 20; 
+Pp = 20; Pm = 10;
+b1 = 3000; b2 = 1000;
+L = 0.1; g = 9.82; mu = 0.3;
+
+% Tillstånd vid statiskt - When this model are a statical point 
+% the state are:
+x1 = 0.65;
+x2 = 0; 
+x3 = 0.2;
+x4 = 0;
+x5 = 5*pi/180;
+x6 = 0;
+
+% Symboliska variabler
+syms k1 k2 k3
+
+% Statisk beräkning - Statistical calculations using symbolic solve
+Equation1 = -k1/m1*x1 + k1/m1*x3 - b1/m1*x2 + b1/m1*x4 + Ap*10/m1*Pp - Pm*Am*10/m1*x2;
+Equation2 = k1/M*x1 - k1/M*x3 + b1/M*x2 - b1/M*x4 - g*mu*x4 - k2/M*x3 + k2*L/M*x5;
+Equation3 = 3*k2/(m2*L)*x3 - 3*k2/m2*x5 - 3*k3/(m2*L^2)*x5 - 3*b2/(m2*L^2)*x6 + 3*g/(2*L)*x5;
+
+[k1, k2, k3] = solve(Equation1 == 0, Equation2 == 0, Equation3 == 0, k1, k2, k3);
+k1 = double(k1);
+k2 = double(k2);
+k3 = double(k3);
+
+% Dynamisk beräkning - Dynamical calculations for the state space model
+A = [0 1 0 0 0 0;
+     -k1/m1 (-b1/m1-Pm*Am*10/m1) k1/m1 b1/m1 0 0;
+     0 0 0 1 0 0;
+     k1/M b1/M (-k1/M -k2/M) (-b1/M -g*mu) k2*L/M 0;
+     0 0 0 0 0 1;
+     0 0 3*k2/(m2*L) 0 (-3*k2/m2 -3*k3/(m2*L^2) + 3*g/(2*L)) -3*b2/(m2*L^2)];
+
+B = [0; Ap*10/m1; 0 ; 0; 0; 0]; % Input matrix
+C = [0 1 0 0 0 0]; % Output matrix
+I = [0; 1; 0 ; 0; 0; 0]; % Disturbance matrix. 
+
+% LQR
+Q = diag([0 0 0 40 0 0]);
+R = 0.1;
+L = lqr(A, B, Q, R); % The control law - LQR gain matrix
+
+% LQE
+Vd = diag([1 1 1 1 1 1]);
+Vn = 1;
+K = (lqr(A',C',Vd,Vn))'; % A way to use LQR command to compute the Kalman gain matrix
+
+% LQG
+a = [(A-B*L) B*L; zeros(6,6) (A-K*C)];
+b = [B I zeros(6,1); zeros(6,1) zeros(6,1) K];
+c = [C zeros(1,6); zeros(1,6) C];
+d = [0 0 0; 0 0 1];
+sysLQG = ss(a, b, c, d);
+
+% Simulate the LQG with disturbance and white gaussian noise
+t = linspace(0, 2, 1000);
+r = linspace(20, 20, 1000);
+d = 70*randn(size(t));
+n = 0.1*randn(size(t));
+x0 = zeros(12,1);
+lsim(sysLQG, [r' d' n'], t, x0)
+
+This will result if I got noise $0.1*randn(size(t))$ . $y1 = y$ and $y2 = e$
+
+But let say I got no noise at all! I got this: 
+
+That means that $\tilde{x}$ has no function at all! Something is wrong. I have tried diffrent values at the $C$ matrix, but have not get an estimation error to look at. 
+Question: $$ $$
+What is wrong with my model? I want to control this so the model and stand against the disturbance and noise. But now, the model just accepting the disturbance and noise. 
+Does the observer(kalmanfilter) need to have disturbance too? 
+EDIT: $$ $$
+If I simulate this new state space model with the same options and code I had before:
+$$
+\ \begin{bmatrix} \dot{x} \\ \\\dot{\tilde{x}} \end{bmatrix} =\begin{bmatrix} A - BL& BL \\ 0 & A-KC \end{bmatrix} \begin{bmatrix} x\\ \tilde{x} \end{bmatrix}+\begin{bmatrix} B & B & 0\\ 0 & B & K \end{bmatrix}\begin{bmatrix} r\\ d\\ n \end{bmatrix}\
+$$
+$$
+\begin{bmatrix} y\\ e \end{bmatrix} = \begin{bmatrix} C &0 \\ 0& C \end{bmatrix}\begin{bmatrix} x\\ \tilde{x} \end{bmatrix} + \begin{bmatrix} 0 & 0 &0 \\ 0 & 0 &1 \end{bmatrix}\begin{bmatrix} r\\ d\\ n \end{bmatrix} 
+$$
+I get this. All I did was to add disturbance to the kalmanfilter too. And insted of $I$ matrix, I replace it with $B$ matrix. 
+
+But the problem is that if I simulate an LQR with only state feedback, not the kalmanfilter (observer). I get this:
+
+There are both red and green color in this picture. You have to zoom in. The red color is the LQG simulation and the green color is the LQR simulation(the simulation wihout the kalmanfilter). You can se that the kalmanfilter does not filter anything. Why?
+Here is a short code sample:
+% LQG
+a = [(A-B*L) B*L; zeros(6,6) (A-K*C)];
+b = [B B zeros(6,1); zeros(6,1) B K];
+c = [C zeros(1,6); zeros(1,6) C];
+d = [0 0 0; 0 0 1];
+sysLQG = ss(a, b, c, d);
+
+% Simulate the LQG with disturbance and no white gaussian noise
+t = linspace(0, 2, 1000);
+r = linspace(20, 20, 1000);
+d = 2*randn(size(t));
+n = 0*randn(size(t));
+x0 = zeros(12,1);
+[yLQG, t, xLQG] = lsim(sysLQG, [r' d' n'], t, x0);
+
+% Simulera LQR med störning 
+sysLQR = ss(A-B*L, [B B], C, [0 0])
+x0 = zeros(6,1);
+[yLQR, t, xLQR] = lsim(sysLQR, [r' d'], t, x0);
+
+plot(t, yLQR, 'g', t, yLQG(:,1), 'r');
+
+A:
+
+I'm not sure if this answers the question but I think there is a mismatch between the block diagram and the state equations. 
+In the first block of the state transition matrix (top-left $A-BL$) you use the state $x$ to control your system, but that's what you're estimating with the Kalman filter, so you don't know $x$. My guess, that part should be $\dot{x}=Ax$. That means you've to change the sign of the top-right block to get $\dot{x}=Ax-BL\tilde{x}$.
+On the other hand, from the measurement equations, your Kalman filter does not get the sensor noise, so you probably need to change your matrices to get $y=Cx+n$.
+That's as far as I can get. Hope this helps.
+

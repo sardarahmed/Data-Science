@@ -1,0 +1,146 @@
+Q:
+
+Saving rviz plugin configuration
+
+Hello!
+I made an rviz panel for scaling the scene. I override save and load methods and expect saving and loading scale on saving and loading .rviz file. But it doesn't happen: .rviz file doesn't contains scale and scale is always has defualt value on startup. What is wrong?
+header:
+#pragma once
+
+#include <rviz/panel.h>
+
+class QLineEdit;
+
+namespace orbiterros {
+namespace rviz_plugin {
+
+class ScalePanel : public rviz::Panel {
+    Q_OBJECT
+
+    public:
+        ScalePanel(QWidget* parent = nullptr);
+
+        virtual void load(const rviz::Config& config);
+        virtual void save(rviz::Config config);
+
+        static const char panel_name[];
+
+    public Q_SLOTS:
+        void setWorldScale(const float& scale);
+
+    protected Q_SLOTS:
+        void updateWorldScale();
+
+    protected:
+        QLineEdit* world_scale_editor_;
+        float actual_scale_;
+
+        static const QString world_scale_property_name;
+};
+
+}
+}
+
+.cpp:
+#include "scale_panel.h"
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QValidator>
+#include <rviz/visualization_manager.h>
+#include <OGRE/OgreSceneManager.h>
+#include <QLocale>
+
+namespace orbiterros {
+namespace rviz_plugin {
+
+constexpr char ScalePanel::panel_name[] = "scale_panel";
+const QString ScalePanel::world_scale_property_name("World scale");
+
+ScalePanel::ScalePanel(QWidget* parent):
+        rviz::Panel(parent),
+        world_scale_editor_(new QLineEdit),
+        actual_scale_(1.0)
+{
+    QHBoxLayout* layout = new QHBoxLayout;
+    layout->addWidget(new QLabel(world_scale_property_name));
+    world_scale_editor_->setText(QVariant(actual_scale_).toString());
+    world_scale_editor_->setValidator(new QDoubleValidator(1e-15, 1e3, 7));
+    layout->addWidget(world_scale_editor_);
+    setLayout(layout);
+    bool success = connect(world_scale_editor_, SIGNAL(editingFinished()), this, SLOT(updateWorldScale()));
+    Q_ASSERT(success);
+}
+
+void ScalePanel::updateWorldScale() {
+    if (not world_scale_editor_->hasAcceptableInput()) {
+        ROS_DEBUG_NAMED(panel_name, "Invalid scale value (validator)");
+        return;
+    }
+
+    bool ok;
+    const float new_scale = QLocale(QLocale::German).toFloat(world_scale_editor_->text(), &ok);
+    if (not ok) {
+        ROS_DEBUG_NAMED(panel_name, "Invalid scale value (conversion)");
+        return;
+    }
+
+    setWorldScale(new_scale);
+}
+
+void ScalePanel::setWorldScale(const float& scale) {
+    if (scale < 1e-15 or scale > 1e3) {
+        ROS_DEBUG_NAMED(panel_name, "Invalid scale value (value)");
+        return;
+    }
+
+    this->vis_manager_->getSceneManager()->getRootSceneNode()->setScale(scale, scale, scale);
+    ROS_DEBUG_NAMED(panel_name, "Set world scale to %f", scale);
+
+    Q_EMIT configChanged();
+}
+
+void ScalePanel::save(rviz::Config config) {
+    rviz::Panel::save(config);
+    config.mapSetValue(world_scale_property_name, actual_scale_);
+}
+
+void ScalePanel::load(const rviz::Config& config) {
+    rviz::Panel::load(config);
+    QVariant scale;
+    if (config.mapGetValue(world_scale_property_name, &scale)) {
+        world_scale_editor_->setText(scale.toString());
+        updateWorldScale();
+    }
+}
+
+}
+}
+
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(orbiterros::rviz_plugin::ScalePanel, rviz::Panel)
+
+Code on Github
+
+Originally posted by standmit on ROS Answers with karma: 28 on 2021-02-16
+Post score: 0
+
+A:
+
+Your function signature is the following:
+virtual void save(rviz::Config config);
+
+Whereas the function signature you want to override is
+virtual void save(rviz::Config config) const;
+
+See also the docs page (you haven't specified which ROS distro you are using, but it is the same for at least noetic, melodic and kinetic).
+Thus, you are not overriding the function, but introduce a new one. You could safeguard against that by using the override keyword available in C++11.
+
+Originally posted by mgruhler with karma: 12390 on 2021-02-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by standmit on 2021-02-18:
+Thank you!
+

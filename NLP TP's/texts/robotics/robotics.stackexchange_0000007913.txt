@@ -1,0 +1,42 @@
+Q:
+
+Non linear control system?
+
+I have a dual (sequential) loop control system controlling the angle of a rotational joint on a robot using an absolute encoder. I have tuned the inner control loop (for the motor) and am now working on tuning the outer loop (for the joint).
+Example of a dual loop controller
+
+When I disturb the system the response isn't what I would expect.
+Kp = 0.4
+
+Kp = 0.1 Kd = 0.001
+
+I didn't add a Ki term because I don't have any steady state error.
+I'm confused by the fact that the second overshoot in the first plot is larger than the first one. No matter how I adjust the parameters I can't seem to get rid of the oscillation in the velocity of the joint (seen in the second plot). One limitation I have is if I increase both Kp and Kd too high the gearbox of the becomes very noisy because the noise in the encoder signal creates larger adjustments in the position of the motor. I'm working on adding a filter to the output using the method described here.
+The code I'm using for the outer loop is:
+static float e_prev = 0.0;
+
+e = joint_setpoint - joint_angle;
+e_i += e/0.001; // dt = 0.001s
+e_d = (e - e_prev)/0.001; // dt = 0.001s
+
+e_prev = e;
+
+motor_setpoint += k_p * e + k_i * e_i + k_d * e_d;
+
+I'm beginning to think that the system might not be able to be modeled by a first order equation, but would this change the implementation of the control loop at all? Any advice is appreciated!
+Ben
+
+A:
+
+If you see integral, think area. Derivative, think slope. Integral error is error times sample time (plus previous integral error), derivative error is the change in error divided by time. 
+Your derivative error term is correct, but your integral error term is not. This shouldn't be an issue because you aren't using an integral term (even though you should!)
+Where I would guess your problem lies is with your controller output - you have 
+motor_setpoint += k_p * e + k_i * e_i + k_d * e_d;
+Here you have the += operator, which indicates that motor_setpoint is accumulating the output of your controller. This is incorrect. The output of your PID controller alone is the input to your motor. 
+I would guess you might be thinking that you are adding the control signal to your reference, but remember that your reference was already taken into account when calculating the error! 
+This is, for me at least, the magical aspect of the PID controller. It doesn't care what is between the controller and the output, it just adjusts until there is zero error. 
+If error is accumulating quickly (integral error is high), the controller "opens up", but then if error starts to drop quickly (derivative error is high) it will "ease off" to minimize the overshoot. 
+If anything, I would suggest eliminating the derivative term and using only the PI controller - this is commonly done in industry because the derivative term is highly sensitive to noise. 
+Anyways, hopefully this fixes your issue, but if not please at least make the changes and then re-generate  and re-post your plots. If the base controller isn't right we can't divine anything from the plots.
+Also, check out Ziegler-Nichols tuning if you're looking for some professional PID tuning advice. 
+

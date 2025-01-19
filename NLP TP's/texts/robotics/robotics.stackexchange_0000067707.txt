@@ -1,0 +1,63 @@
+Q:
+
+navsat_transform_node has zero orientation output?
+
+I'm working with a robot with no wheel odometry measures,  and have IMU, GPS and motor commands to fuse.  Can anyone clarify how the setup should work for this?
+At the moment I have GPS, IMU and motor command odometry going into a navsat_transform_node, which outputs odometry messages.    I'm planning to fuse them with a second copy of the motor commands with an ekf_localization node.
+My problem is:   the odometry/gps messages coming out of the navsat_transform_node all contain zeros for all orientations.    I thought the IMU data was being used to set these (and I've check the incoming IMU messages are non-zero).
+Am I doing something wrong, or mis-interpreting what navsat_transform_node is doing?   Perhaps the IMU is used like the motor command odometry to set only the initial state, then ignored the rest of the time?  Even with that, it would be unlikely to have orientation exactly 0 at the start.    Do I still need to fuse the odometry/gps with IMU again to get the desired effect, and if so why?
+Thanks for any insights!
+Sample odometry/gps message below:
+position:
+  x: 0.806593844667
+  y: -4.15517381765
+  z: -0.674990490428
+orientation: 
+  x: 0.0
+  y: 0.0
+  z: 0.0
+  w: 1.0  
+
+covariance:
+[1.259293318748, 0.03294127204511593, 0.41883145581259457, 0.0, 0.0, 0.0, 0.03294127204511593, 1.232013681194764, 0.2798927172566257, 0.0, 0.0, 0.0, 0.41883145581259457, 0.2798927172566257, 4.768693000057238, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist:
+twist:
+linear:
+x: 0.0
+y: 0.0
+z: 0.0
+angular:
+x: 0.0
+y: 0.0
+z: 0.0
+covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+Originally posted by charles.fox on ROS Answers with karma: 120 on 2015-05-21
+Post score: 2
+
+Original comments
+Comment by yohtm on 2015-05-21:
+Can you post the configuration of your navsat_transform_node and ekf_localization nodes?
+
+A:
+
+The purpose of navsat_transform_node is to convert GPS coordinates into your robot's local coordinate frame. To do this, it needs three inputs:
+
+Navsat data. This is typically obtained from a GPS device.
+The robot's orientation in an earth-fixed frame. navsat_transform_node first converts lat/lon coordinates to UTM coordinates, and then transforms them into your robot's local frame. In order to do this, it needs to know what your heading is in the UTM frame. Conveniently, a magnetometer (such as the one in your IMU) provides this information.
+Your current odometry pose. This should include your robot's orientation, which does not have to necessarily correspond to the orientation from your IMU (though for most users, it will).
+
+The output is simply the lat/lon data converted to your local coordinate frame. The heading should not be used.
+To answer your final question, yes, you do need to fuse the output topic /odometry/gps with ekf_localization_node. ekf_localization_node (or ukf_localization_node) will fuse multiple input sources; navsat_transform_node serves a very specific purpose, which is to transform GPS data into your local coordinate frame so that you can fuse it.
+For some more information on configuring your ekf_localization_node instance(s), see section 3 of this page of the tutorials.
+
+Originally posted by Tom Moore with karma: 13689 on 2015-05-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by M@t on 2016-11-08:
+FYI, the link in this answer is broken because of the location shift for r_l documentation. I think this is the new location: Integrating GPS data
+Comment by Tom Moore on 2016-11-09:
+Like updated. Thanks @M@t.
+

@@ -1,0 +1,170 @@
+Q:
+
+publish an array of images
+
+Hi,
+I am trying to publish an array of images. Looking at ros wiki I couldn't find something relevant... I am attaching below my code... The publishing of the array should be at the "try" clause. Any help or hints would be appreciated.
+Thanks.
+#include "boost/filesystem.hpp"
+#include "sensor_msgs/Image.h"
+#include "image_transport/image_transport.h"
+#include "cv_bridge/CvBridge.h"
+#include "std_msgs/String.h"
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+#include <ros/ros.h>
+#include <signal.h>
+
+using namespace boost::filesystem;
+using namespace std;
+
+void ctrlc(int s)
+{
+    cout << "ctrl-c pressed" << endl;
+    ros::shutdown();
+    signal(SIGINT, SIG_DFL);
+}
+
+int main(int argc, char *argv[])
+{
+    ros::init(argc, argv, "Static_Image_Publisher");
+    ros::NodeHandle n;
+    image_transport::ImageTransport it_(n);
+    sensor_msgs::CvBridge bridge_;
+    image_transport::Publisher image_pub_;
+    image_pub_ = it_.advertise("/camera_sim/image_raw", 1);
+    int cvDelay = (argc == 2 ? atoi(argv[1]) : 500);
+    string p(argc == 3 ? argv[2] : ".");
+    vector<string> filenames;
+    IplImage *img = NULL;
+    vector<IplImage*> imgs;
+
+    if (is_directory(p))
+        for (directory_iterator itr(p); itr!=directory_iterator(); ++itr)
+            if (is_regular_file(itr->status())) {
+                string str(itr->path().file_string());
+                filenames.push_back(str);
+            }
+
+    sort(filenames.begin(), filenames.end());
+    signal(SIGINT, ctrlc);
+    for(;;) {
+        imgs.clear();
+        for (vector<string>::iterator itr = filenames.begin(); itr != filenames.end(); ++itr) {
+            img = cvLoadImage(itr->c_str());
+            imgs.push_back(img);
+        }
+        try {
+            cout << ".\n";
+            // publishes one image at a time, how would I publish the array of images
+            //image_pub_.publish(bridge_.cvToImgMsg(imgs[0], "bgr8"));
+        } catch (sensor_msgs::CvBridgeException error) {
+            ROS_ERROR("error");
+        }
+    }
+
+    ros::spin();
+    return 0;
+}
+
+Originally posted by Yianni on ROS Answers with karma: 123 on 2011-05-18
+Post score: 0
+
+Original comments
+Comment by dornhege on 2011-05-18:
+If you use while(ros::ok()) in your main loop, you don't need to signal handler yourself.
+
+A:
+
+The following publishes an array of images read from a directory.
+#include "boost/filesystem.hpp"
+#include "sensor_msgs/Image.h"
+#include "image_transport/image_transport.h"
+#include "cv_bridge/CvBridge.h"
+#include "std_msgs/String.h"
+#include "Static_Image_Publisher/ArrayImages.h"
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+#include <ros/ros.h>
+#include <signal.h>
+
+using namespace boost::filesystem;
+using namespace std;
+
+void ctrlc(int s)
+{
+    cout << "ctrl-c pressed" << endl;
+    ros::shutdown();
+    signal(SIGINT, SIG_DFL);
+}
+
+int main(int argc, char *argv[])
+{
+    ros::init(argc, argv, "static_image_publisher_publish_list");
+    ros::NodeHandle n;
+    ros::Publisher pub = n.advertise<Static_Image_Publisher::ArrayImages>("/list_of_rois", 1000, true);
+    sensor_msgs::CvBridge bridge_;
+    int cvDelay = (argc == 2 ? atoi(argv[1]) : 30000);
+    string p(argc == 3 ? argv[2] : ".");
+    vector<string> filenames;
+    vector<IplImage*> imgs;
+    Static_Image_Publisher::ArrayImages rosimgs;
+
+    if (is_directory(p))
+        for (directory_iterator itr(p); itr!=directory_iterator(); ++itr)
+            if (is_regular_file(itr->status())) {
+                string str(itr->path().file_string());
+                filenames.push_back(str);
+            }
+
+    sort(filenames.begin(), filenames.end());
+    signal(SIGINT, ctrlc);
+//  cvNamedWindow("main", CV_WINDOW_AUTOSIZE);
+//  cvMoveWindow("main", 600, 600);
+    for(;;) {
+        cout << ".\n";
+        for (uint i=0; i<imgs.size(); i++)
+            cvReleaseImage(&(imgs[i]));
+        imgs.clear();
+        for (vector<string>::iterator itr = filenames.begin(); itr != filenames.end(); ++itr) {
+            imgs.push_back(cvLoadImage(itr->c_str()));
+//          cvShowImage("main", imgs[imgs.size()-1]);
+//          cvWaitKey(1000);
+        }
+        rosimgs.data.clear();
+            // header of rosimgs ignored for now
+        for (uint i=0; i<imgs.size(); i++) {
+            try {
+                rosimgs.data.push_back(*(bridge_.cvToImgMsg(imgs[i], "bgr8")));
+            } catch (sensor_msgs::CvBridgeException error) {
+                ROS_ERROR("error");
+            }
+        }
+        pub.publish(rosimgs);
+        cvWaitKey(cvDelay);
+    }
+
+    ros::spin();
+    return 0;
+}
+
+Using the following simple message:
+ Header header
+ sensor_msgs/Image[] data
+
+Originally posted by Yianni with karma: 123 on 2011-05-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by dornhege on 2011-05-19:
+That should do it!
+

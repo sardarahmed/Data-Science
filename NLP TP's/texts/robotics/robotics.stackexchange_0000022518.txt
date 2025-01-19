@@ -1,0 +1,83 @@
+Q:
+
+Using Google Cartographer library standalone
+
+I am working on a project that requires the analysis of the results of different SLAM libraries with respect their accuracy on building a map. Right now, I am more interested in the development with these libraries, and one of the requirements is to NOT using ROS (we have our own framework)
+So far, I have implemented the code using Karto, and my next step is implementing it with Google Cartographer, so I first looked for the docs, tutorials or examples of using standalone Cartographer library without success.. Hence, here I am: do you know or can share a minimum project or guide to use Cartographer library?
+I have "translated" the ROS node, and reached a point in which I have a (not) working example: it creates an almost empty map :'(. I am using Odometry and Lidar data to fill in the trajectory, and the result is a map with some sparse gray pixels (I am using a PGM writer).
+
+My code is more or less like the following
+float resolution = 0.05;
+
+mapping::ProbabilityGridRangeDataInserter2D range_data_inserter(range_data_inserter_options);
+auto grid_map = io::CreateProbabilityGrid(resolution, &conversion_tables);
+auto map_builder = mapping::CreateMapBuilder(opts_map_builder);
+
+SensorId odom_sensor;
+odom_sensor.type = TrajectoryBuilderInterface::SensorId::SensorType::ODOMETRY;
+odom_sensor.id = "odom";
+
+SensorId lidar_sensor;
+lidar_sensor.type = TrajectoryBuilderInterface::SensorId::SensorType::RANGE;
+lidar_sensor.id = "lidar";
+
+auto trajectory_id = map_builder->AddTrajectoryBuilder({odom_sensor, lidar_sensor}, opts_trajectory, &LocalSLAMResultCb);
+
+auto trajectory_builder = map_builder->GetTrajectoryBuilder(trajectory_id);
+
+sub_odom.registerCallback(&OnOdometryMessage);
+sub_lidar.registerCallback(&OnLidarMessage);
+
+....
+
+map_builder->FinishTrajectory(trajectory_id);
+map_builder->pose_graph()->RunFinalOptimization();
+
+The callbacks for the odometry and lidar are the following:
+
+odometry:
+
+sensor::OdometryData data{FromProtoTimestamp(odom.stamp()),
+                                  transform::ToRigid3(protoOdom.odometry_data().pose())};
+trajectory_builder->AddSensorData(odom_sensor.id, data);
+
+lidar:
+
+sensor::TimedPointCloud ranges;
+auto points_batch = ::absl::make_unique<io::PointsBatch>();
+
+for (const auto &point : lidar.cloud()) {
+   sensor::TimedRangefinderPoint p;
+   p.position << cosf(point.angle()) * point.distance(), sinf(point.angle()) * point.distance(), 0.0f;
+   p.time = 0.0f;
+   points_batch->points.push_back({p.position});
+   ranges.push_back(std::move(p));
+}
+
+sensor::TimedPointCloudData point_cloud{
+   FromProtoTimestamp(lidar.stamp()),
+   {lidar.pose().x(), lidar.pose().y(), 0},
+   ranges
+};
+
+trajectory_builder->AddSensorData(sensor.id, point_cloud);
+points_batch->origin << lidar.pose().x(), lidar.pose().y(), 0;
+
+range_data_inserter->Insert({points_batch->origin, sensor::PointCloud(points_batch->points), {}}, grid);
+
+I feel that I am missing a transformation, or the data I am providing is not well transformed.
+When I use Karto, the result is something like this:
+
+Hope you can help me, or if you know or can share some examples would be great :)
+
+A:
+
+Ok, so to whoever wants to know or has a similar issue, the problem was, indeed, related to the transformation between the global frame and the point cloud frame.
+The lidar message I have contains only distance and angle, without intensities. So, when I create a TimedRangefinderPoint I transform the distance and angle into a point in the world reference frame. Hence:
+p.position << odom_x + cosf(point.angle()) * point.distance(), odom_y + sinf(point.angle()) * point.distance(), 0.0f;
+
+being odom_x and odom_y the odometry estimation in x and y.
+I will clean a bit the code, and I will post some kind of minimum tutorial to make this library to work.
+Edit
+Not a tutorial, but an example of usage of the standalone library: https://github.com/adiego73/cartographer If you think there are things wrong or can be changed for a better code, let me know! :)
+

@@ -1,0 +1,145 @@
+Q:
+
+Motoman_driver with dual Motoman Mh5
+
+Hello,
+I have two Motoman mh5 robot, and they are already connected to the same FS100 controller.
+I use ROS_Kinetic and MotoRosFS_182.out.
+But when I tried to launch motoman_driver, I got some error of it.
+I followed these steps:
+roscore
+rosparam load `rospack find motoman_mh5_support`/urdf/dual_motoman_mh5/dual_motoman_mh5.urdf robot_description
+rosparam set controller_joint_names "[r1_joint_s, r1_joint_l, r1_joint_u, r1_joint_r, r1_joint_b, r1_joint_t,  r2_joint_s, r2_joint_l, r2_joint_u, r2_joint_r, r2_joint_b, r2_joint_t]"
+roslaunch motoman_driver robot_multigroup_interface_streaming_fs100.launch robot_ip:=192.168.0.20
+
+In this step
+roslaunch motoman_driver robot_multigroup_interface_streaming_fs100.launch robot_ip:=192.168.0.20
+
+I get the errors below:
+cyc@cyc-X550JX:~$ roslaunch motoman_driver robot_multigroup_interface_streaming_fs100.launch robot_ip:=192.168.0.20
+... logging to /home/cyc/.ros/log/3e360c46-9658-11e9-aed2-9c5c8e1afee7/roslaunch-cyc-X550JX-22607.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+started roslaunch server http://cyc-X550JX:41411/
+
+SUMMARY
+========
+
+PARAMETERS
+ * /robot_ip_address: 192.168.0.20
+ * /rosdistro: kinetic
+ * /rosversion: 1.12.14
+
+NODES
+  /
+    joint_state (motoman_driver/robot_state_bswap)
+    joint_trajectory_action (motoman_driver/motoman_driver_joint_trajectory_action)
+    motion_streaming_interface (motoman_driver/motion_streaming_interface_bswap)
+
+ROS_MASTER_URI=http://localhost:11311
+
+process[joint_state-1]: started with pid [22624]
+process[motion_streaming_interface-2]: started with pid [22625]
+process[joint_trajectory_action-3]: started with pid [22632]
+[ERROR] [1561364152.222744438]: Failed to find topic_list parameter
+[ERROR] [1561364152.231102176]: Failed to find topic_list parameter
+[ERROR] [1561364152.235351392]: Failed to copy JointData.  Len (12) out of range (0 to 10)
+[ERROR] [1561364152.235397456]: Failed to parse position data from JointFeedbackMessage
+[ERROR] [1561364152.235424544]: Failed to convert SimpleMessage
+[ERROR] [1561364152.235485291]: Failed to copy JointData.  Len (12) out of range (0 to 10)
+[ERROR] [1561364152.235505005]: Failed to parse position data from JointFeedbackMessage
+[ERROR] [1561364152.235522137]: Failed to convert SimpleMessage
+[ERROR] [1561364152.235555953]: Message callback for message type: 2017, not executed
+[ERROR] [1561364152.240573440]: Failed to find topic_list parameter
+[ERROR] [1561364152.259931804]: Failed to copy JointData.  Len (12) out of range (0 to 10)
+[ERROR] [1561364152.259967959]: Failed to parse position data from JointFeedbackMessage
+[ERROR] [1561364152.259980652]: Failed to convert SimpleMessage
+[ERROR] [1561364152.260358610]: Failed to copy JointData.  Len (12) out of range (0 to 10)
+[ERROR] [1561364152.260385853]: Failed to parse position data from JointFeedbackMessage
+[ERROR] [1561364152.260411328]: Failed to convert SimpleMessage
+
+Does anyone know how to solve it?
+Hope you could help me this.
+
+Originally posted by A_YIng on ROS Answers with karma: 37 on 2019-06-24
+Post score: 0
+
+A:
+
+Have you seen the Creating a Dual-Arm System (Indigo+) page? It's not perfect, but it should show you how to setup a configuration file for a multi-group system.
+I would also recommend using a .launch file instead of starting things manually. That will be much more convenient.
+The specific errors you show are basically caused by the fact that the driver is unaware of the configuration of your controller.
+
+Edit: partial example (created from memory: I'm away from my computer so I can't test it):
+launch file:
+<?xml version="1.0"?>
+<launch>
+  <arg name="robot_ip" default="192.168.0.20" />
+  <arg name="controller" default="fs100" />
+
+  <param name="robot_description"
+    textfile="$(find motoman_mh5_support)/urdf/dual_motoman_mh5/dual_motoman_mh5.urdf"/>
+
+  <!-- the yaml file could obviously be anywhere -->
+  <rosparam command="load" file="$(find motoman_mh5_support)/config/motion_interface.yaml" />
+
+  <include file="$(find motoman_driver)/launch/robot_multigroup_interface_streaming_$(arg controller).launch">
+    <arg name="robot_ip" value="$(arg robot_ip)" />
+  </include>
+
+  <!-- if you already have one external to this launch file, then don't add this one -->
+  <node type="robot_state_publisher" pkg="robot_state_publisher" name="robot_state_publisher" />
+
+</launch>
+
+You may also need a joint_state_publisher to gather and merge all the joint_state topics that the driver publishes, but I can't check right now (and it also depends on your use-case(s)).
+the referenced motion_interface.yaml:
+topic_list:
+  - name: r1 # might have to be switched with the 'ns' key
+    ns: mh5
+    group: 0
+    joints: [r1_joint_s, r1_joint_l, r1_joint_u, r1_joint_r, r1_joint_b, r1_joint_t]
+  - name: r2 # might have to be switched with the 'ns' key
+    ns: mh5
+    group: 1
+    joints: [r2_joint_s, r2_joint_l, r2_joint_u, r2_joint_r, r2_joint_b, r2_joint_t]
+
+You'll obviously have to check whether the group: 0 and group: 1 are correct.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-06-24
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by A_YIng on 2019-06-24:
+Thank you! It works like a charm! Now I can enable my robot servos!
+I try to plan a motion with moveit rviz, but I got some error and it doesn't move.
+Here is my controllers.yaml file contents in the moveit_config folder:
+controller_list:
+  - name: ""
+    action_ns: joint_trajectory_action
+    type: FollowJointTrajectory
+    joints: [r1_joint_s, r1_joint_l, r1_joint_u, r1_joint_r, r1_joint_b, r1_joint_t,r2_joint_s, r2_joint_l, r2_joint_u, r2_joint_r, r2_joint_b, r2_joint_t]
+
+Is it wrong?
+Comment by gvdhoorn on 2019-06-24:
+Well, yes.
+The groups defined in the topic_list parameter must be matched by the configuration of MoveIt.
+The topic_lists I suggested does not have a single group with all joints. It has two groups, each with the joints of the respective robot. You'll have to update MoveIt's configuration to match.
+Comment by A_YIng on 2019-06-24:
+After I modified it, I got the same error.
+controller_list:
+  - name: mh5/r1
+    action_ns: joint_trajectory_action
+    type: FollowJointTrajectory
+    joints: [r1_joint_s, r1_joint_l, r1_joint_u, r1_joint_r, r1_joint_b, r1_joint_t]
+  - name: mh5/r2
+    action_ns: joint_trajectory_action
+    type: FollowJointTrajectory
+    joints: [r2_joint_s, r2_joint_l, r2_joint_u, r2_joint_r, r2_joint_b, r2_joint_t]
+
+I tried to surveyed some repos which like these on github, but still  can't find the similar one.
+By the way, should I open a new issue for this?
+

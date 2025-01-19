@@ -1,0 +1,159 @@
+Q:
+
+Issues with ament CmakeLists
+
+Hello All,
+I just started out with ROS 2.0. I have the latest build. I am unsure if I am doing something stupid or missing out something. However, I can’t build these simple files. If I should have posted somewhere else kindly let me know.
+The command used for building:
+ament build --symlink-install --only-package testpackage
+Error thrown:
+Process package 'testpackage' with context:
+--------------------------------------------------------------------------------
+ source_space => /home/artc/ros2_ws/src/ros2/testpackage
+  build_space => /home/artc/ros2_ws/build/testpackage
+install_space => /home/artc/ros2_ws/install
+   make_flags => -j4, -l4
+  build_tests => False
+--------------------------------------------------------------------------------
++++ Building 'testpackage'
+==> '. /home/artc/ros2_ws/build/testpackage/cmake__build.sh && /usr/bin/make cmake_check_build_system' in '/home/artc/ros2_ws/build/testpackage'
+==> '. /home/artc/ros2_ws/build/testpackage/cmake__build.sh && /usr/bin/make -j4 -l4' in '/home/artc/ros2_ws/build/testpackage'
+[ 50%] Built target test_lib
+[ 75%] Linking CXX executable test_node
+CMakeFiles/test_node.dir/src/test_node.cpp.o: In function `main':
+test_node.cpp:(.text+0x161): undefined reference to `testRos2::testRos2()'
+test_node.cpp:(.text+0x174): undefined reference to `testRos2::initialize(std::shared_ptr<rclcpp::node::Node>&)'
+test_node.cpp:(.text+0x1b0): undefined reference to `testRos2::~testRos2()'
+test_node.cpp:(.text+0x1ef): undefined reference to `testRos2::~testRos2()'
+collect2: error: ld returned 1 exit status
+CMakeFiles/test_node.dir/build.make:123: recipe for target 'test_node' failed
+make[2]: *** [test_node] Error 1
+CMakeFiles/Makefile2:136: recipe for target 'CMakeFiles/test_node.dir/all' failed
+make[1]: *** [CMakeFiles/test_node.dir/all] Error 2
+Makefile:127: recipe for target 'all' failed
+make: *** [all] Error 2
+
+<== Command '. /home/artc/ros2_ws/build/testpackage/cmake__build.sh && /usr/bin/make -j4 -l4' failed in '/home/artc/ros2_ws/build/testpackage' with exit code '2'
+<== Command '. /home/artc/ros2_ws/build/testpackage/cmake__build.sh && /usr/bin/make -j4 -l4' failed in '/home/artc/ros2_ws/build/testpackage' with exit code '2'
+
+This is my test_node.cpp
+#include <testpackage/testpackage.h>
+ int main(int argc, char * argv[]){
+ rclcpp::init(argc, argv);
+ auto node = rclcpp::node::Node::make_shared("test");
+ testRos2 test_object;
+ test_object.initialize(node);
+ rclcpp::spin(node);
+ return 0;
+}
+
+This is my test.cpp
+#include <testpackage/testpackage.h>
+ testRos2::testRos2(){    }
+ testRos2::~testRos2(){  }
+ void testRos2::initialize(std::shared_ptr<rclcpp::node::Node>& n){
+}
+
+This is my header:
+#pragma once
+#ifndef TESTPACKAGE
+#define TESTPACKAGE
+
+#include <iostream>
+#include <string>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+
+using namespace std;
+
+class testRos2{
+
+public:
+ testRos2();
+~testRos2();
+ void initialize(std::shared_ptr<rclcpp::node::Node>&);
+ };
+#endif
+
+CMakeLists:
+project(testpackage)
+
+if(NOT WIN32)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra")
+endif()
+
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+
+include_directories(include 
+            ${rclcpp_INCLUDE_DIRS}
+            ${rmw_implementation_INCLUDE_DIRS}
+            ${std_msgs_INCLUDE_DIRS})
+
+add_library(test_lib
+  src/test.cpp
+ )
+target_link_libraries(test_lib ${rclcpp_LIBRARIES} ${rmw_implementation_LIBRARIES} ${std_msgs})
+
+add_executable(test_node src/test_node.cpp)
+ament_target_dependencies(test_node test_lib rclcpp std_msgs)
+
+install(
+ DIRECTORY include/${PROJECT_NAME}/
+ DESTINATION include
+)
+
+ install(
+  TARGETS test_lib test_node 
+ ARCHIVE DESTINATION lib
+ LIBRARY DESTINATION lib
+ RUNTIME DESTINATION bin
+)
+
+ament_package()
+
+Originally posted by arunavanag on ROS Answers with karma: 277 on 2017-09-11
+Post score: 0
+
+Original comments
+Comment by William on 2017-09-11:
+Please do not post pictures of text. Please post the text. Also, please do not cross post questions. We see both sites in our notifications already. http://wiki.ros.org/Support
+Comment by William on 2017-09-11:
+Also, it's fine (for ROS 2.0) to post questions here, or on discourse.
+Comment by William on 2017-09-11:
+I don't see the error in your cmake, but it is a link error. I would suggest starting with our examples and going from there: https://github.com/ros2/examples/tree/master/rclcpp/minimal_publisher Also, you're using #pragma once and an include guard, which is redundant.
+Comment by arunavanag on 2017-09-11:
+@William I have made the changes, apologies for posting the picture and cross posting.
+Comment by RachelRen on 2018-05-24:
+@arunavanag
+Hi,arunavanag,
+I have a question to consult.How to achieve launch service or topic in ROS2 TEST?
+I'm writing TEST for the ROS2's project.I learned to launch service or topic via the .test file in ROS,but there is no .test file in ROS2 TEST.What do I need to do to achieve.
+Thanks!
+Comment by Dirk Thomas on 2018-05-24:
+@RachelRen your question is not related to this thread. Please create a separate question for it rather then commenting on this already long finished one.
+
+A:
+
+There are multiple problems from a first look at the CMake snippet:
+
+Your target_link_libraries() line contains ${std_msgs} but that should be ${std_msgs_LIBRARIES}.
+You can't pass a target name like test_lib to ament_target_dependencies(). You need `target_link_libraries(test_node test_lib) for that.
+The install rule for the headers is wrong. Either remove the trailing slash from the DIRECTORY argument or change the DESTINATION to include/${PROJECT_NAME}.
+
+Originally posted by Dirk Thomas with karma: 16276 on 2017-09-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by arunavanag on 2017-09-11:
+Thanks @Dirk Thomas
+This is where i got confused. Still learning ament.
+You can't pass a target name like test_lib to ament_target_dependencies(). You need `target_link_libraries(test_node test_lib) for that.
+Comment by Leo Richard on 2019-07-22:
+Is this answer still valid? Specifically regarding passing target name to ament_target_dependencies()? It seems like that is the way it is done in examples
+Comment by sloretz on 2019-07-23:
+The first argument is a target, and all arguments after must be names of packages that have been found. ament_target_dependencies(my_target pkg1 pkg2 ...). See the function documentation here: https://github.com/ament/ament_cmake/blob/e1ff1c1a0a1e08d43e939cdb943a88be601808bd/ament_cmake_target_dependencies/cmake/ament_target_dependencies.cmake#L16-L29
+

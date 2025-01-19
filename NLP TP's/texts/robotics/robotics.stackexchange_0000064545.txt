@@ -1,0 +1,60 @@
+Q:
+
+Transform from laser frame to odom frame using transformation matrix in ROS c++
+
+I am using a pioneer3AT with a Hykuoy laser finder. when I run the RosAria, I have 2 frames The odom frame ( fixed frame wich represent the start of the movement) and the baselink frame  which is attached to the body of the robot.
+Also, when I run the URG_node I get another frame which is the laser frame.
+I added the laser in the same direction of the base_link and I calculated the distance from the base_link frame to the laser frame is [0.206 0 0.16] in meters and I created a static tf transformation between the laser and the baselink as following.
+  <launch>
+  <node pkg="tf" type="static_transform_publisher" name="laser_frame" args="0.206 0 0.16 0 0 0 1 base_link laser 100" />
+ </launch>
+
+My TF tree is as follows: odom -> base_link -> laser
+now, in the code, I am reading the sensor_msgs/laserScan msgs as (r, theta) -->
+What I want is to do transformation these data from laser frame to odom frame ?? how can I do that in ROS (in c++)??
+
+Originally posted by RSA_kustar on ROS Answers with karma: 275 on 2014-12-10
+Post score: 1
+
+A:
+
+Get the required tf and transform the pose into the frame you wanted.
+check this using transform tutorial , it will be helpful.
+
+// Inside laser callback    
+
+tf::TransformListener listener;
+listener.waitForTransform("/laser_frame", "/odom", ros::Time(0), ros::Duration(10.0));
+
+for (int i = 0; i < laser_scan->ranges.size();i++)
+{
+    range = laser_scan->ranges[i];
+    angle  = laser_scan->angle_min +(i * laser_scan->angle_increment);
+    
+    geometry_msgs::PointStamped laser_point;
+    
+    laser_point.header.frame_id = "laser_frame";
+    laser_point.header.stamp = ros::Time();
+    laser_point.point.x = range*cos(angle) ;
+    laser_point.point.y = range*sin(angle) ;
+    laser_point.point.z = 0.0;
+    
+    geometry_msgs::PointStamped odom_point;
+    
+    try{
+        listener.transformPoint("odom", laser_point, odom_point);
+        
+    }
+    catch(tf::TransformException& ex){
+        ROS_ERROR("Received an exception trying to transform a point : %s", ex.what());
+    }
+    
+    
+    //Odom point x,y are in odom frame     
+    // Copy or do your stuff 
+}
+
+Originally posted by bvbdort with karma: 3034 on 2014-12-10
+This answer was ACCEPTED on the original site
+Post score: 5
+

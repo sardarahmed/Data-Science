@@ -1,0 +1,265 @@
+Q:
+
+Implementing ESKF
+
+I'm currently struggling with implementing the Multiplicative Kalman Filter or Error State Kalman Filter as described by Landis Markley in Attitude Error Representations for Kalman Filtering. Sadly there is two versions of almost the same paper online:
+
+at nasa.gov
+at ResearchGate
+
+First of all, I'm a little bit confused why eq. 45 in 1 is different from eq. 33 in 2. Which one is correct? Usually the covariance propagation is defined as $P = FPF^T + GQG^T$. What is the reason for using $P = FP + PF^T + GQG^T$?
+In the paper Markley just filters the attitude error and the gyro drift. I would also like to have the angular velocity and acceleration as part of the state. If I understand it right, Markley integrates gyro measurements in the predict step. At the moment I'm trying to figure out the correct way of having the angular velocity as part of the state and then performing a separate update step for the gyroscope.
+Currently I have the following code:
+import numpy as np
+
+class ESKF:
+    """This is an Error State Kalman Filter (ESKF) as described by Markley
+    see https://www.researchgate.net/publication/245432681_Attitude_Error_Representations_for_Kalman_Filtering
+
+    """
+
+    def __init__(self):
+        # 3 x attitude error, 3 x gyro bias, 3 x angular velocity
+        self.x = np.zeros(9)
+        # reference quaternion
+        self.qref = np.array([0.0, 0.0, 0.0, 1.0])
+        # state covariance
+        self.P = np.identity(9)
+        # process noise
+        self.Q = np.identity(9) * 0.01 # TODO should be determined by tests
+        # sensor noise
+        self.R_gyr = np.identity(3) * 0.01 # TODO should be determined for sensor
+        self.R_acc = np.identity(3) * 0.01 # TODO should be determined for sensor
+        self.R_mag = np.identity(3) * 0.01 # TODO should be determined for sensor
+
+    #TODO initialization
+
+    def predict(self, dt):
+        """The ESKF predict step
+
+        Parameters
+        ----------
+        dt : float
+             The time step in s
+
+        """
+        # eq. 23
+        self.qref += 0.5 * quat_mult(np.array([self.x[6], self.x[7], self.x[8], 0]), self.qref) * dt
+        # normalize to compensate numerical errors
+        self.qref /= np.linalg.norm(self.qref)
+
+        # eq. 38
+        F = np.zeros((9,9))
+        # df/da
+        F[0:3,0:3] = - vec_to_cross_matrix(self.x[6:9])
+        # df/db
+        F[0:3,3:6] = - np.identity(3)
+        # df/dw
+        F[0:3,6:9] = vec_to_cross_matrix(self.x[0:3])
+
+        #eq. 39
+        G = np.zeros((9,9))
+        G[0:3,0:3] = -np.identity(3)
+        G[3:6,3:6] = np.identity(3)
+        G[6:9,6:9] = np.identity(3)
+
+        # eq. 33
+        self.P = F @ self.P + self.P @ F.T + G @ self.Q @ G.T
+        #self.P = F @ self.P @ F.T + G @ self.Q @ G.T
+
+    def update_gyro(self, z):
+        """The ESKF update step for a gyrosope
+
+        Parameters
+        ----------
+        z : array, shape [3]
+            Sensor measurement with structure [x, y, z]
+
+        """
+        # Kalman Gain
+        # K = np.zeros((3,3))
+        H = np.zeros((3,6))
+        # expected measurement is angular velocity + gyro drift
+        H[0:3,0:3] = np.identity(3)
+        H[0:3,3:6] = np.identity(3)
+        # K = P * H' (H * P * H' + R)^-
+        K = self.P[3:9,3:9] @ H.T @ np.linalg.inv(H @ self.P[3:9,3:9] @ H.T + self.R_gyr)
+        # x = x + K * (z - H * x)
+        self.x[3:9] += K @ (z - H @ self.x[3:9])
+
+        # P = (I - KH)P
+        IKH = np.identity(6) - K @ H
+        self.P[3:9,3:9] = IKH @ self.P[3:9,3:9]
+
+    def update_acc(self, z):
+        """The ESKF update step for an accelerometer
+
+        Parameters
+        ----------
+        z : array, shape [3]
+            Sensor measurement with structure [x, y, z]
+
+        """
+        vi = np.array([0, 0, -9.81]) # TODO + acc
+        # eq. 42
+        vb_pred = rotvec_to_mat(self.x[0:3]) @ quat_to_mat(self.qref) @ vi
+
+        # h(v) = v
+        h = vb_pred
+        # Ha
+        # eq. 44
+        Ha = vec_to_cross_matrix(vb_pred)
+        #eq. 46
+        K = self.P[0:6,0:3] @ Ha.T @ np.linalg.inv(Ha @ self.P[0:3,0:3] @ Ha.T + self.R_acc)
+
+        # eq. 47
+        self.x[0:6] += K @ (z - h - Ha @ self.x[0:3])
+        # eq. 48
+        self.P[0:6,0:6] -= K @ Ha @ self.P[0:3,0:6]
+
+    def update_mag(self, z, B, incl, W, V):
+        """The ESKF update step for a magnetometer
+        see https://www.nxp.com/docs/en/application-note/AN4246.pdf
+
+        Parameters
+        ----------
+        z : array, shape [3]
+            Sensor measurement with structure [x, y, z]
+        B : float
+            The geomagnetic field strength in gauss
+        incl : float
+               The inclination angle in rad
+        W : array, shape [3,3]
+            The soft-iron distortion
+        V : array, shape [3]
+            The hard-iron distortion
+
+        """
+        vi = B * np.array([np.cos(incl), 0, -np.sin(incl)])
+        # eq. 42
+        vb_pred = rotvec_to_mat(self.x[0:3]) @ quat_to_mat(self.qref) @ vi
+
+        #h(v) = W * v + V 
+        h = W @ vb_pred + V
+        # Ha
+        # eq. 44
+        Ha = W @ vec_to_cross_matrix(vb_pred)
+        #eq. 46
+        K = self.P[0:6,0:3] @ Ha.T @ np.linalg.inv(Ha @ self.P[0:3,0:3] @ Ha.T + self.R_mag)
+
+        # eq. 47
+        self.x[0:6] += K @ (z - h - Ha @ self.x[0:3])
+        # eq. 48
+        self.P[0:6,0:6] -= K @ Ha @ self.P[0:3,0:6]
+
+    def reset(self):
+        """The ESKF reset step
+
+        """
+        # eq. 14
+        self.qref = quat_mult(gibbs_vec_to_quat(self.x[0:3]), self.qref)
+        self.x[0:3] = np.zeros(3)
+
+and some helpers defined the following:
+def quat_mult(a, b):
+    """Multiply 2 quaternions. They should have the structure [v1, v2, v3, w]
+
+    Parameters
+    ----------
+    a : array, shape [4]
+        Quaternion 1
+    b : array, shape [4]
+        Quaternion 2
+
+    Returns
+    -------
+    q : array, shape [4]
+        Quaternion product of a and b
+
+    """
+    # eq. 6
+    v = a[3] * b[0:3] + b[3] * a[0:3] - np.cross(a[0:3], b[0:3])
+    w = a[3] * b[3] - a[0:3].T @ b[0:3]
+    return np.array([ v[0], v[1], v[2], w ])
+
+def vec_to_cross_matrix(a):
+    """Constructs the skew symmetric cross product matrix of a
+
+    Parameters
+    ----------
+    a : array, shape [3]
+        Vector
+
+    Returns
+    -------
+    M : array, shape [3,3]
+        Cross product matrix of a
+
+    """
+    # eq. 5
+    return np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+
+def quat_to_mat(a):
+    """Converts a quaternion into a rotation matrix
+
+    Parameters
+    ----------
+    a : array, shape [4]
+        Quaternion 
+
+    Returns
+    -------
+    M : array, shape [3,3]
+        The rotation matrix of a
+
+    """
+    # eq. 4
+    return (a[3]**2 - a[0]**2 - a[1]**2 - a[2]**2) * np.identity(3) - 2 * a[3] * vec_to_cross_matrix(a[0:3]) + 2 * a[0:3] @ a[0:3].T
+
+def rotvec_to_mat(a):
+    """Converts a rotation vector into a rotation matrix
+
+    Parameters
+    ----------
+    a : array, shape [3]
+        Rotation vector
+
+    Returns
+    -------
+    M : array, shape [3,3]
+        The rotation matrix of a
+
+    """
+    # eq. 20
+    a_norm_sqr = a[0]**2 + a[1]**2 + a[2]**2
+    return np.identity(3) - vec_to_cross_matrix(a) - 0.5 * (a_norm_sqr * np.identity(3) - a @ a.T)
+
+def gibbs_vec_to_quat(a):
+    """Converts a gibbs vector into a quaternion
+
+    Parameters
+    ----------
+    a : array, shape [3]
+        Gibbs vector
+
+    Returns
+    -------
+    q : array, shape [4]
+        The quaternion of a with structure [v1, v2, v3, w]
+
+    """
+    # eq. 18b
+    a_norm_sqr = a[0]**2 + a[1]**2 + a[2]**2
+    return (1 / np.sqrt(4 + a_norm_sqr)) * np.concatenate((a, [2]))
+
+Obviously, the angular velocity and the gyro drift always have the same values. Is it worth to keep both in the state, or should I just abandon the gyro drift?
+I also miss one step in the derivation of eq. 43 in 2. Let $A(a) = \{ I_{3 \times 3} - [\mathbf{a} \times] - \frac{1}{2} ( a^2 I_{3 \times 3} - \mathbf{a}\mathbf{a}^T ) \}$. Then the Taylor expansion is $h(v_B) = h(\bar{v}_B) + \frac{\delta h}{\delta v} |_{\bar{v}_B} (A(a) - I_{3 \times 3}) \bar{v}_B$ since $v_B = A(a)A(q_{ref})v_I = A(a)\bar{v}_B$. But how is this collapsed too just $[\mathbf{a} \times] \bar{v}_B$?
+When I let $v_I = (\begin{smallmatrix} 0 & 0 & -9.81 \end{smallmatrix})^T + (\begin{smallmatrix} accx & accy & accz \end{smallmatrix})^T$ and $acc$ is part of my state, then I also have to include $\frac{\delta h}{\delta acc}$ to $H$ (eq. 45 in 2), right? Taking this derivative looks fairly complicated. Is there a smarter way doing it? EDIT: It's not, it's just $\frac{\delta h}{\delta v} A(a) A(q_{ref})$
+Thanks in advance,
+Martin
+
+A:
+
+After some work I got it working. You can find the C++ source code on github. Don't use the python code in the question. It has some flaws.
+In the end I just abandoned the gyro drift (I would argue that this is unobservable with just one gyro). Furthermore I used the classic covariance propagation $P_{k+1} = FP_kF^T + GQG^T$.
+

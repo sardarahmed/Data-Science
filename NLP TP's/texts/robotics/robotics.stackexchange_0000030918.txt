@@ -1,0 +1,64 @@
+Q:
+
+Test for when a rospy publisher become available
+
+I noticed that you must sleep for some amount of time before a rospy publisher actually starts to work.  I was wondering if there is any way to test for this?
+pub = rospy.Publisher('foo', bar)
+pub.publish(bar('a'))    # does not publish
+rospy.sleep(1)
+pub.publish(bar('b'))    # actually does publish
+
+Will publisher.get_num_connections() do this?
+pub = rospy.Publisher('foo', bar)
+print pub.get_num_connections() # prints 0
+rospy.sleep(1)
+print pub.get_num_connections() # prints 1
+
+In my case it goes from 0 to 1, but will this simply increment by 1 in the general case?  And if so, what if this node is started with several other nodes in a launch script?  Is this safe to do and will it give me the guarantee I am looking for?
+pub = rospy.Publisher('foo', bar)
+num = pub.get_num_connections()
+while not rospy.is_shutdown() and pub.get_num_connections() == num:
+    pass
+pub.publish(bar())
+
+Originally posted by baxelrod on ROS Answers with karma: 794 on 2011-04-06
+Post score: 9
+
+Original comments
+Comment by baxelrod on 2011-04-07:
+Interesting, I didn't know about that.  But I don't think it will suit my needs for this particular example.  Because I would have to spin a loop to publish messages, then also block on this test.  I can be done, but it would be really messy.
+Comment by Pi Robot on 2011-04-06:
+Would it be sufficient to know when messages have started appearing on the published topic?  If so, I have used             rospy.wait_for_message(topic, topic_type, timeout=None) to wait for a particular topic to become live before continuing in the script.  You can find its documentation at http://www.ros.org/doc/api/rospy/html/rospy.client-module.html#wait_for_message.
+
+A:
+
+Here is my standard response:
+There are two ways of communicating in ROS: publish/subscribe and services.
+ROS is a publish/subscribe system. Think of it like watching live TV.
+If you tune in 5 minutes late, you miss the five minutes.  There may
+be infinitely many subscribers, so a publisher can neither wait nor
+guarantee that every subscriber hears the message.  In your program,
+the subscriber doesn't hear the message because it tunes in after
+your publisher publishes its first message.
+In the ROS system, you are expect to either:
+a) keep publishing a message at a certain rate
+b) use 'latching', which, like a computer circuit, latches the value
+on the publisher until it publishes a new message.
+If you wish to guarantee a single message is delivered, you should
+be using services.  With services, the service client knows there is
+only a single service provider.  Thus, there is a contract that the
+service request message will be delivered, or an error will be
+provided.
+
+Originally posted by kwc with karma: 12244 on 2011-04-08
+This answer was ACCEPTED on the original site
+Post score: 10
+
+Original comments
+Comment by tfoote on 2011-04-14:
+They have subscribed, but the connection to the publisher can not be initialized until the publisher has been initialized, and then the subscriber contacts it and requests data.  Only when all of that is complete can it connect.
+Comment by baxelrod on 2011-04-14:
+Latching the publication seems to do the trick.  But I am slightly confused as to why.  I thought latching was for if you publish a message then someone subscribes sometime later, they will still get the message.  But in this case, someone is already subscribed, and I publish before my publisher is active.
+Comment by tfoote on 2011-04-08:
+Based on the comments above it sounds like a latched publisher would take care of your needs.
+

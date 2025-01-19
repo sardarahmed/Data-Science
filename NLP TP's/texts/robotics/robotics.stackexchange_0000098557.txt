@@ -1,0 +1,72 @@
+Q:
+
+ROS2 build farm expectations using bloom
+
+With bloom I know I can release ROS2 packages into the ROS2 build farm and CI. My question is where is it defined what is available in the build beyond what's specified in the CMakeLists.txt and package.xml? Is it expected to build with colcon? Where are the other available dependencies for the build specified like gcc, cmake, make, clang, pip installed python packages, etc? How can I add or modify those additional dependencies for the build?
+
+Originally posted by jeremya on ROS Answers with karma: 275 on 2021-03-15
+Post score: 0
+
+A:
+
+This is not necessarily ROS version specific I believe.
+
+With bloom I know I can release ROS2 packages into the ROS2 build farm and CI. My question is where is it defined what is available in the build beyond what's specified in the CMakeLists.txt and package.xml?
+
+Afaik nothing can be expected to "be available".
+All builds (in ROS 2) start from a clean ubuntu:focal (or debian:buster, debian:stretch, etc) Docker image which contains no build tools, no CMake, no compilers, etc (ROS 1 builds start from whichever Docker image contains the clean OS which they target). This is to make sure builds are not contaminated by anything which might happen to have been installed "before" -- as would be the case on your development machine for instance. This is similar to how Debian/Ubuntu builds its packages: in a clean environment with the absolute minimum of packages present.
+Build-depending on catkin, or ament_cmake or similar packages will pull in the required dependencies: dependencies for Catkin and dependencies for ament_cmake.
+
+Is it expected to build with colcon?
+
+Well, yes and no.
+In the case of CMake, the package is expected to build successfully when following the regular cmake workflow for builds (ie: mkdir build && cd build && cmake .. -DSOME_CMAKE_OPTION .. -DSOME_OTHER_OPTION or the more modern equivalent cmake --build ..).
+In the case of a plain Python setup.py (ie: setuptools), it should just build as you'd normally build a Python package (ie: with python setup.py install (or more modern equivalent)).
+In the case of "build system X", it should build successfully with "build system X".
+So: yes: your package should build successfully, but no, not necessarily "with colcon". It should build, period. The fact the buildfarm may use Colcon to drive the build should not really matter -- as long as Colcon can drive your build.
+Colcon is essentially (sorry @Dirk Thomas ) "nothing more" than a tool which invokes cmake in the right order in the right places with the right flags. Or Bazel, or plain setup.py, or build system X. This is valuable with workspaces, as they contain potentially many packages which need to be built in a specific order and with specific flags. That's what Colcon automates.
+The buildfarm does not actually use Colcon to build the binary .deb packages (in the case of release jobs for Debian/Ubuntu): it uses a regular dpkg-buildpackage pipeline, which for CMake-based projects will call plain CMake with the appropriate flags. All packages on which a job depends should already be available as .debs themselves, so there is no workspace, and Colcon is not needed to drive a build.
+
+Where are the other available dependencies for the build specified like gcc, cmake, make, clang, pip installed python packages, etc?
+
+There is nothing "available" by default. You need to declare all build and run (and test) dependencies explicitly in your package's manifest.
+
+How can I add or modify those additional dependencies for the build?
+
+By adding them to your package's manifest.
+See REP 149: Package Manifest Format Three Specification, section Dependency Tags and Catkin documentation - How to do common tasks - Package format 2: C++ system library dependencies (for the C++ side of things, the Python side has it's own article). Yes, the latter is about Catkin, but in a way, in ROS 2, everything is now treated as a system dependency, and what's written in that how-to is essentially what you'd do in ROS 2 as well (with the exception of calling catkin_package(..), you'll likely want to use modern CMake (ie: target_link_libraries(..) and friends) and you'd use ament_cmake or ament_python as build_types).
+A very terse mention of this can be found in the Create your own package section of the Using colcon to build packages tutorial.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-03-15
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-03-15:
+And btw: Bloom "only" takes care of the release process as far as creating the various branches in your release repository which contain the necessary files for (again, for Debian/Ubuntu) the source package. That source package is then created in the "source jobs" on the buildfarm and stored for use by the "release job" later, which creates the actual binary .deb.
+Bloom does not run any build process. It's a convenience tool which performs a highly automated form of the first steps of the Debian package release/creation process.
+Comment by jeremya on 2021-03-15:
+Using the package.xml manifests makes sense. I traced some to see that they do include some dependencies explicitly in dependent package.xml and other's somewhat implicitly from the package manager's own dependencies.
+
+So: yes: your package should build successfully, but no, not necessarily "with colcon".
+
+My assumption is that colcon would be used by default. How do I change the command (something other than colcon) to run to build a ROS2 package on the buildfarm?
+Comment by tfoote on 2021-03-15:
+Bloom and the rest of the release pipeline doesn't use colcon. Bloom uses your build type declared in the package.xml such as ament_python or ament_cmake
+The tutorial for how to create a package talks about this a bit.
+Comment by jeremya on 2021-03-15:
+I guess you wouldn't need colcon since you're building one package (or maybe one repo) at a time.
+I see REP-0134 for the build types but it doesn't mention these two which I assume are specified elsewhere fro ROS2.
+Comment by gvdhoorn on 2021-03-15:
+I'm confused as to why you are repeating things which are part of my answer.
+As to REP-134: no that hasn't been updated for ROS 2.
+I also believe this part of the build and release pipeline of ROS 1/2 is largely un(der)documented.
+Information on the various jobs and what they do is available though: ros-infrastructure/ros_buildfarm: Job Types
+
+I traced some to see that they do include some dependencies explicitly in dependent package.xml and other's somewhat implicitly from the package manager's own dependencies.
+
+well, that's how recursive dependency resolution works. It's common for packages to depend on their first-level dependencies only. It keeps dependency lists manageable.
+What would not be good would be transitively depending on something which is actually a first-level dependency (ie: you #include A but A is provided by a transitive dependency).
+Comment by jeremya on 2021-03-15:
+I'm not sure which parts that repeated but I'll accept the answer. (When I first read it I didn't notice the "more" at the bottom so maybe I missed it.) The part that wasn't clear to me in your answer is the way to specify exactly what is building the code in the on ROS2 build. I also hadn't followed several of links at the time of my last response. I was looking for some specification other than the dependencies for what actually runs. I see that now in the build_type in the package.xml
+

@@ -1,0 +1,56 @@
+Q:
+
+Can i use a predictive kalman filter to 'increase' my sample rate?
+
+I have a slam algorithm that outputs at around 30Hz, an implementation of ORBSLAM2.
+https://github.com/raulmur/ORB_SLAM2
+I am reading this into a renderer that expects 60+ Hz.
+Because my sample speed is low, I am getting 'shuddering' in the display, as the renderer adds linear 'steps' between the samples. 
+For example, I am seeing a result like:
+time   sample    result
+
+1         20          20
+2         n/a         20
+3         n/a         20
+4         22          22
+5         n/a         22
+6         n/a         22
+7         24          24
+8         n/a         24
+9         n/a         24
+
+What i need to do, is predict the next sample, and fill in the gaps, so to speak, so that I end up with something like:
+time   sample    result
+
+1         20          20
+2         n/a         20.66
+3         n/a         21.33
+4         22          22
+5         n/a         22.66
+6         n/a         23.66
+7         24          24
+8         n/a         24.33
+9         n/a         25.66
+
+I need to predict 6DOF, for which i have translation xyz, and a quaternion xyzw.
+But if I can find a way to predict even one axis, for a start, that would be great.
+I have the data outputting as xyz and xyzw, at around 30Hz. I also have an xsens IMU, which i am using to pass in an initial rotation value.
+Can i use a predictive filter for this purpose? Is a kalman suitable? 
+I am looking at:
+https://github.com/simondlevy/TinyEKF
+and a Bayes filter:
+http://bayesclasses.sourceforge.net/Bayes++.html
+But am a little out of my depth.
+Thank you, please ask if I have not made sense!
+
+A:
+
+In this situation, you probably shouldn't use a Kalman filter for "filling" in the gaps. Typically, you use a Kalman filter (or Bayes filter etc...) to fuse information from different sources.
+In your case, you have are using SLAM for localization. The SLAM algorithm is taking in data and estimating the pose of the camera as well as a sparse 3D reconstruction of the environment. Internally, this probably already performs some type of prediction/update for tracking etc...
+The problem you are having is that the algorithm is only running at 30Hz, and you need 60Hz of pose data if I understand correctly. If I were you, I would take the states (position and velocity) at each time step and propagate them forward (at 60Hz).
+To propagate them forward, I mean integrate your pose using your previous state estimates. For example, if your states were x position, y position, x velocity, and y velocity, then you can assume your velocity is constant and propagate your position using that velocity. 
+$$x_{k+1} = x_k + v_{x,k} \Delta t$$
+$$y_{k+1} = y_k + v_{y,k} \Delta t$$
+Note that you will need to write out the equations for your system. In the above equations, the $k$ is the previous time step, and $\Delta t$ is the change in time between the previous time step and the current time step. Once you receive another measurement from the SLAM algorithm, use that measurement instead of the propagated state, then repeat. You can keep the intermediate propagated states, but you don't want to perform an update because your propagated states are not based on sensor measurements. So, basically in between the measurements you get from ORBSLAM, you will have these intermediate measurements.
+Edit: Keep in mind that the question you asked is about how to fill in the gaps given low frequency data. I am assuming you do not have extra sensors such as IMU, GPS, encoders, etc... Regardless, if additional sensors are available, this still doesn't address how to obtain data at a higher frequency (although it is likely the IMU will operate above 50Hz). I am suggesting an approach to fill in missing data without adding complexity to your system. Assuming constant velocity is reasonable if the motion isn't highly dynamic. If you do have additional sensors you want to incorporate, I think you would want to reconsider your overall approach because you can use IMU and encoders to improve the feature tracking and reconstruction.
+

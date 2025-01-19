@@ -1,0 +1,92 @@
+Q:
+
+XV-11 gmapping map_server issues
+
+Below are the commands that I have previously been attempting to use to initialize gmapping with the Neato XV-11 lidar. The laser data is published to "/scan" . The issue I have been stumped by has been "[INFO] [1330801449.815455981]: Waiting for the map" So a map is never created. /odom is not on rxgraph as it is with many other gmapping tutorials so it may have something to do with that missing node. Also "rosbag record -O mylaserdata /scan /tf" tells me that no clock is received. I would like to know how to successfully use my XV-11 Lidar with gmapping for SLAM.
+
+Build a map
+
+cd ros
+. setup.sh
+rosmake gmapping
+roscore
+////////////////////////////////////////////////
+New Tab
+////////////////////////////////////////////////
+rosmake --rosdep-install xv_11_laser_driver
+
+////////////////////////////////////////////////
+Plug in USB to XV-11 Lidar
+////////////////////////////////////////////////
+rosrun xv_11_laser_driver neato_laser_publisher _port:=/dev/ttyUSB0
+
+////////////////////////////////////////////////
+New Tab
+////////////////////////////////////////////////
+rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link scan 100
+////////////////////////////////////////////////
+New Tab
+////////////////////////////////////////////////
+rosparam set use_sim_time true
+rosrun gmapping slam_gmapping scan:=scan
+
+Save map (New Tab)
+
+rosrun map_server map_saver -f my_lab_map
+(To check if data is being published:
+rostopic echo --noarr -n 1 map)
+
+Create own bag (New Tab)
+
+rosbag record -O mylaserdata /scan /tf
+(Ctrl+C to end capture)
+rosbag play mylaserdata.bag
+
+Watch mapping (New Tab)
+
+rosmake rviz
+rosrun rviz rviz /static_map:=/dynamic_map
+=======================================================================================
+Ok well I installed the scan_tools stack and proceeded to try the demo and I got this rxconsole error: "Node: /laser_scan_matcher_node
+Time: 1282836372.076217409
+Severity: Warn
+Location: /tmp/buildd/ros-electric-scan-tools-1.1.0/debian/ros-electric-scan-tools/opt/ros/electric/stacks/scan_tools/laser_scan_matcher/src/laser_scan_matcher.cpp:LaserScanMatcher::getBaseToLaserTf:620
+Published Topics: /rosout, /tf, /pose2D
+ScanMatcher: Could not get initial laser transform(Unable to lookup transform, cache is empty, when looking up transform from frame [/laser] to frame [/base_link])." So I changed /laser to /scan and now I receive "[ WARN] [1330810596.512410015, 1282836375.091389701]: ScanMatcher: Skipping scan
+[ WARN] [1330810597.521016044, 1282836376.099091865]: ScanMatcher: Could not get initial laser transform(Frame id /laser does not exist! Frames (3): Frame /scan exists with parent /base_link.
+Frame /base_link exists with parent NO_PARENT.)"
+I'm new to ROS so I'm absolutely sure I'm doing something wrong and it's not the laser_scan_matcher.
+
+Originally posted by Autrywk on ROS Answers with karma: 1 on 2012-03-03
+Post score: 0
+
+Original comments
+Comment by Ivan Dryanovski on 2012-03-03:
+Make sure you publish a static tf from base_link to laser, and set the publish_tf parameter of scan_matcher to true. Also please review the wiki pages of laser_scan_matcher and scan_gmapping, everything is documented there. Laser_scan_macther has an example launch file with bag data you can examine.
+Comment by Ivan Dryanovski on 2012-03-03:
+The topic of the laser data should be called /scan. The frame of the laser data should be called /laser.
+Comment by Eric Perko on 2012-03-03:
+The default frame_id for the XV11 is 'neato_laser', not 'laser', so you'll have to make sure to publish the correct tf's.
+Comment by Autrywk on 2012-03-03:
+When I initialize the tf as: "rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link neato_laser 100" I receive the same amount of errors. [ WARN] [1330815201.923587244, 1282836389.428243224]: TF_OLD_DATA ignoring data from the past for frame /base_link at time 1.28284e+09 according to authority
+Comment by Autrywk on 2012-03-03:
+/laser_scan_matcher_node
+
+A:
+
+slam_gmapping requires a source of odometry, in the form of a tf pusblished from odom to base_link
+Either of these can resolve your issue. In conjunction to slam_gmapping:
+
+Run robot_pose_ekf, in the case that you have an odometric sensors such as wheel encoders, and a driver for them that can publish an Odom message
+Run laser_scan_matcher if you have no odometric sensors
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2012-03-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Autrywk on 2012-03-03:
+Thank you for such a quick response. I will run laser_scan_matcher and post my results shortly.
+Comment by Autrywk on 2012-03-03:
+I've edited my initial post regarding the demo.launch
+

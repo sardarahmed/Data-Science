@@ -1,0 +1,71 @@
+Q:
+
+Behavior Tree Callback Not Running
+
+Hi,
+Currently, I am modifying one of the condition behavior tree inside nav2 which is the initial_pose_received condition.
+The code is running fine before I send any callback to update the blackboard inside the behaviour tree. Every tick is running good.
+But, for the first time, I sent the cmd of "ros2 topic pub -1 /is_recovered_bypass xxxx", the callback inside the behavior tree will be triggered, and gave me the correct result. Yet, when I sent the same cmd afterwards, none of the cmd can reach the callback sequence. Yet, the tick info logs are still showing, but with old data.
+Anyone has any idea on this?
+#include <string>
+
+#include "amr_behaviour_tree_plugins/condition/is_recovered_condition.hpp"
+
+namespace nav2_behavior_tree
+{
+
+IsRecoveredCondition::IsRecoveredCondition(
+  const std::string & condition_name,
+  const BT::NodeConfiguration & conf)
+: BT::ConditionNode(condition_name, conf),
+bypass_topic_("/is_recovered_bypass")
+{
+   getInput("bypass_topic", bypass_topic_);
+   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
+   recovered_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+      bypass_topic_,
+      rclcpp::SystemDefaultsQoS(),
+      std::bind(&IsRecoveredCondition::isRecoveredCallback, this, std::placeholders::_1));
+} 
+
+BT::NodeStatus IsRecoveredCondition::tick()
+{
+   auto initPoseReceived = config().blackboard->get<bool>("initial_pose_received");
+   RCLCPP_INFO(node_->get_logger(), "Received pose; %s", initPoseReceived? "true": "false");
+   if (initPoseReceived) {
+       return BT::NodeStatus::SUCCESS;
+   }
+   return BT::NodeStatus::FAILURE;
+}
+
+void IsRecoveredCondition::isRecoveredCallback(std_msgs::msg::Bool::SharedPtr msg)
+{
+     RCLCPP_INFO(node_->get_logger(), "Recover Callback: '%s'", msg->data? "true": "false");
+     config().blackboard->template set<bool>("initial_pose_received", true);
+}
+
+}  // namespace nav2_behavior_tree
+
+#include "behaviortree_cpp_v3/bt_factory.h"
+BT_REGISTER_NODES(factory)
+{
+      factory.registerNodeType<nav2_behavior_tree::IsRecoveredCondition>("InitialPoseReceived");
+}
+
+Originally posted by enyuin on ROS Answers with karma: 45 on 2022-01-12
+Post score: 0
+
+A:
+
+Is that part of the BT being reticked after you return the tick condition of success? Also, you're not spinning the node to process the callbacks.
+
+Originally posted by stevemacenski with karma: 8272 on 2022-01-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by enyuin on 2022-01-14:
+Hi steve, thanks for your comment. After I added the callback, it works as expected now. Thanks a lot.
+Comment by dcconner on 2022-05-18:
+Can you elaborate on your "added the callback" comment?  It seems your example code posted has the callback.  I found this post have having a similar issue where the callback is not getting called, and curious of your particular resolution.
+

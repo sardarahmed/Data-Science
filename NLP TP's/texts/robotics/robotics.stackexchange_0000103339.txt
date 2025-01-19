@@ -1,0 +1,106 @@
+Q:
+
+Compilation issues with PCL and message_filters: ; cannot bind non-const lvalue
+
+Compiler: gcc9.4.0
+Arch: Ubuntu20.04/AMD64
+PCL: 1.10
+ROS Galactic
+I've got two errors which I believe are hindering me from compiling my code here successfully.
+The first is affecting my attempt to calculate the 3D centroid using PCL:
+cannot bind non-const lvalue reference of type ‘Eigen::Matrix<int, 4, 1>&’ to an rvalue of type ‘Eigen::Matrix<int, 4, 1>’
+
+I've tried a few different type, including pointers/non-pointers, but I'm a bit stumped with this.
+The second is an issue with using message_filters effectively. I've tried to copy the approach used by image_pipeline for stereography, but it's throwing a number of errors:
+error: no matching function for call to ‘message_filters::MessageEvent<const vision_msgs::msg::Detection2D_<std::allocator<void> > >::MessageEvent(const message_filters::MessageEvent<const sensor_msgs::msg::PointCloud2_<std::allocator<void> > >&, bool)’
+error: no matching function for call to ‘message_filters::Signal9<vision_msgs::msg::Detection2D_<std::allocator<void> >, sensor_msgs::msg::PointCloud2_<std::allocator<void> >, message_filters::NullType, message_filters::NullType, message_filters::NullType, message_filters::NullType, message_filters::NullType, message_filters::NullType, message_filters::NullType>::addCallback<const M0ConstPtr&, const M1ConstPtr&, const M2ConstPtr&, const M3ConstPtr&, const M4ConstPtr&, const M5ConstPtr&, const M6ConstPtr&, const M7ConstPtr&, const M8ConstPtr&>(std::_Bind_helper<false, const std::_Bind<void (pose_eval::PoseEval::*(pose_eval::PoseEval*, std::_Placeholder<1>, std::_Placeholder<2>))(sensor_msgs::msg::PointCloud2_<std::allocator<void> >&, vision_msgs::msg::Detection2D_<std::allocator<void> >&)>&, const std::_Placeholder<1>&, const std::_Placeholder<2>&, const std::_Placeholder<3>&, const std::_Placeholder<4>&, const std::_Placeholder<5>&, const std::_Placeholder<6>&, const std::_Placeholder<7>&, const std::_Placeholder<8>&, const std::_Placeholder<9>&>::type)’
+[5.100s]   280 | ::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7, std::placeholders::_8, std::placeholders::_9));
+
+The latter error might be causing the former, but I'm not 100% on that.
+Full error log is not attached, so please find it at the bottom here.
+The relevant code is follows:
+PoseEval::PoseEval(rclcpp::NodeOptions options) : Node("pose_eval_cpp", options) {
+    rclcpp::QoS qos = rclcpp::SystemDefaultsQoS();
+    std::string ns = std::string(this->get_namespace());
+    this->detect_loc_pub_ = this->create_publisher<PointStamped>(ns + std::string("/detect_pos"), qos);
+
+    message_filters::Subscriber<PointCloud2> pc2_sub_(this, ns + "", qos.get_rmw_qos_profile());
+    message_filters::Subscriber<Detection2D> best_detect_sub_(this, ns + "", qos.get_rmw_qos_profile());
+
+    this->synch_subs_.reset(new ApproximateSync(ApproximatePolicy(20), pc2_sub_, best_detect_sub_));
+    this->synch_subs_->registerCallback(std::bind(&PoseEval::points_callback, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void PoseEval::points_callback(PointCloud2& points, Detection2D& best_match) {
+    RCLCPP_INFO(this->get_logger(), "Synching detection and cloud");
+
+    // Find best result
+    auto byScore = [&](const ObjectHypothesisWithPose& a, const ObjectHypothesisWithPose& b) {
+        return a.hypothesis.score < b.hypothesis.score;
+    };
+    auto best = std::max_element(best_match.results.begin(), best_match.results.end(), byScore);
+
+    auto best_class = best->hypothesis.class_id;
+    auto best_score = best->hypothesis.score;
+
+    // Get ROI points
+    auto box = best_match.bbox;
+    auto box_c = box.center;
+    auto top = box_c.y - box.size_y / 2, bottom = box_c.y + box.size_y / 2, left = box_c.x - box.size_x / 2, right = box_c.x + box.size_x / 2;
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGB>>();
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_subset = boost::make_shared<pcl::PointCloud<pcl::PointXYZRGB>>();
+
+    pcl::fromROSMsg(points, *cloud);
+
+    // Extract ROI
+    pcl::ExtractIndices<pcl::PointXYZRGB> filter(true);
+    filter.setInputCloud(cloud);
+    filter.setIndices(top, left, bottom - top, right - left);
+    filter.filter(*cloud_subset);
+
+    // Find Centroid
+    auto centroid = Eigen::Vector4f(0, 0, 0, 0);
+    auto n_pts_used = pcl::compute3DCentroid<pcl::PointXYZRGB, std::int32_t>(*cloud_subset, centroid);
+    RCLCPP_INFO(this->get_logger(), "Centroid found at %lf,%lf,%lf", centroid.x(), centroid.y(), centroid.z());
+
+    // Construct message
+    auto pt = Point();
+    pt.x = centroid.x();
+    pt.y = centroid.y();
+    pt.z = centroid.z();
+    auto pt_s = PointStamped();
+    pt_s.point = pt;
+    pt_s.header = Header(points.header);
+    this->detect_loc_pub_->publish(pt_s);
+}
+
+And error messages:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/dd081e35037ca8c8493772fc1f2bda24
+
+(Apologies for the verbosity, I cannot attach this log to the post).
+Thanks!
+
+Originally posted by Nilaos on ROS Answers with karma: 13 on 2023-06-09
+Post score: 0
+
+A:
+
+With c++, it is usually best to look at only the first error and ignore the enormous spew that follows. All the info you need is shown near the start:
+[4.770s] /home/USERNAME/repos/thesis/ros2_ws/src/ros2_yolo_cpp/src/pose_eval.cpp:55:105: error: no matching function for call to ‘compute3DCentroid<pcl::PointXYZRGB, int32_t>(pcl::PointCloud<pcl::PointXYZRGB>&, Eigen::Matrix<float, 4, 1>&)’
+...
+[4.771s] /usr/include/pcl-1.10/pcl/common/impl/centroid.hpp:50:1: note: candidate: ‘unsigned int pcl::compute3DCentroid(pcl::ConstCloudIterator<PointT>&, Eigen::Matrix<Scalar, 4, 1>&) [with PointT = pcl::PointXYZRGB; Scalar = int]’
+
+The compiler is telling you that you need to pass a pointcloud iterator, not the the pointcloud itself.
+
+Originally posted by Mike Scheutzow with karma: 4903 on 2023-06-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Nilaos on 2023-06-15:
+Thanks for the help - it turns out that while that was what the compiler wasn't a fan of, due to template matching it was actually the mismatch of passing in a float matrix while setting the second template type in that function call to be an int_32t that the compiler didn't like.
+While I would normally agree re error spew, the second error here that's followed is still proving a thorn in my side. I've tried changing the callback function inputs to be a const MsgTypeXYZ::ConstSharedPtr &msg but that hasn't really changed the error message at all. Do you have any ideas for that?
+

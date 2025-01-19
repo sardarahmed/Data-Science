@@ -1,0 +1,76 @@
+Q:
+
+RLException: Invalid  tag: Cannot load command parameter [robot_description]: command
+
+I use the ros melodic, when i launch my launch file, i have this error.
+My launch is it :
+<?xml version="1.0"?>
+<launch>
+
+<param name="robot_description" command="$(find xacro)/xacro --inorder '$(find robufast_base)/launch/robufast.urdf'" />
+
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+
+<!--<node name="rviz" pkg="rviz" type="rviz"/>-->
+
+<arg name="gui" default="true" />
+
+<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
+
+<param name="use_gui" value="$(arg gui)"/>
+
+</launch>
+
+Originally posted by merco.may-pay-afidu on ROS Answers with karma: 1 on 2020-02-28
+Post score: 0
+
+Original comments
+Comment by marguedas on 2020-02-28:
+robot_state_publisher needs a model of your robot (usually a urdf file) and it expects its content to be available on the robot_description parameter.
+You can see q267328 for an example of how to set the robot_description parameter.
+If your robot is described using Xacro files and not urdf you can use the following pattern instead:
+<param name="robot_description" command="$(find xacro)/xacro.py --inorder $(find pkg-name)/path/file.urdf.xacro" />
+
+Comment by gvdhoorn on 2020-02-28:
+I believe there is actually a robot_description parameter being loaded.
+It just wasn't visible due to incorrect formatting of the .launch file in the question text.
+Comment by marguedas on 2020-02-28:
+oh right, converting to comment then, thanks
+@mercomay-pay-afidu can you provide the full console output that gets printed when you launch your launchfile ?
+
+A:
+
+The error is that the <param> is in the top-level scope of the launch file. In ROS 2, <param> tags must be contained inside of <node> tags. Try changing your launch script to look more like this:
+<?xml version="1.0"?>
+<launch>
+
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher">
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find robufast_base)/launch/robufast.urdf'" />
+</node>
+
+<!--<node name="rviz" pkg="rviz" type="rviz"/>-->
+
+<arg name="gui" default="true" />
+
+<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
+
+<!-- You'll need to a figure what node is consuming this parameter and pass it directly to the node -->
+<!--param name="use_gui" value="$(arg gui)"/-->
+
+</launch>
+
+The robot_description parameter should be passed directly to robot_state_publisher.
+As my comment in the above code states, you'll also need to move the use_gui parameter inside of tags for the node that needs it.
+The above launch script will only work with the latest version of robot_state_publisher (ROS 2 Foxy or later).
+This is because it was changed to read the robot description from a parameter (like in ROS 1) in https://github.com/ros/robot_state_publisher/pull/126.
+For ROS 2 Eloquent, or older, you'll need to pass the robot description file as a command line argument. For example,
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"
+    args="$(find robufast_base)/launch/robufast.urdf'" />
+</node>
+
+With the caveat that robufast.urdf above has already been expanded by xacro.
+
+Originally posted by jacobperron with karma: 1870 on 2020-03-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

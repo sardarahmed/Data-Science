@@ -1,0 +1,57 @@
+Q:
+
+Find a mistake in transformation between different coordinate frames in the WIP-calibration pipeline
+
+I design the extrinsics calibration pipeline for the robotic agents, carrying onboard two sensors of different modalities.  I aim to calibrate one of them (S) without a calibration device.
+
+Some characteristics of the system follow:
+
+In writing transforms here, I use monogram notation.
+I have two (almost) identical agents, "train" and "test". The first one has i-subscripts in poses, while the second has j-subscripts. The second agent has an overscript "$\text{`}$" in its calibration transforms.
+Any agent has two sensors. The first sensor is aligned with an agent's body coordinate frame, (B on the figure). The coordinate frame of the second sensor is denoted S on the figure. For the sake of example, let's say, that sensor B is a lidar, sensor S is a camera.
+Both sensors are capable of full navigation, producing SE3 transformations.
+I want to find calibration ($X^B_{S'}$) by observing the constant term in the discrepancies of localizations, provided by two sensors.
+
+Prior to writing this text, I've verified several invariants, let's suppose the following:
+
+There is the one agent ("train"), which is already fully calibrated up to desired precision. We will use this agent to create localization maps.
+Using sensor B, we are able to create consistent localization map (in a coordinate frame "world", W, and localize agents in this map without a bias.
+Using sensor S, we are also able to create consistent localization map. It's in an another world coordinate system, V. These coordinate systems have a known relation. If we know the position of an agent in one "world", we can know its position in another:
+$X^V_S = (X^B_S)^{-1} \cdot X^W_B \cdot X^B_S$.
+The different sensors work at a different frequences, yet not radacally different. We have a reliable way to interpolate to the target timestamp in one sensor, from the temporally local transform trajectory in another sensor.
+When I say "fully calibrated", I mean the features of two sensors are aligned using the extrinsics $X^B_S$, and the features overlap to subpixel precision.
+
+Below, I outline the proposed pipeline:
+
+A fully calibrated train agent goes to observe location, and builds two localization maps, in coordinate frames W and V respectively.
+The test agent also has is't first sensor B calibrated, but the second sensor S has only rough approximation of real calibration. Or, that approximation is rather good, and we want to verify this by our method. So, the test agent observes the same location, and then builds two localization trajectories, using respective maps provided by train agent.
+I associate [and interpolate] transforms from the localization trajectories to build list of pairs, then compute the discrepancies by inverse-compose operation on each pair.
+Across the 6 axes of minimal transform representation, I construct an outlier-filtered, empirical distribution. In a case of a fully calibrated test agent, I expect this distribution to have a zero mean.
+
+Why I believe this should work? The second localization system (blue below) is oblivious of $X^B_S$ transform. The position of the camera in body gets "baked" into position of body in world. So, it could be factored out statistically, provided that we have an independent source of body positions in world from the first localization system (red below).
+
+Problem:
+The distribution, introduced above, has a non-zero mean, for a pair of fully calibrated agents.
+Watch out now, there is a suspicious formula below:
+Details:
+
+The test agent, at the timestamp j, gets two localizations:
+$X^W_{B_j}$ from the first sensor, $X^V_{S'_j}$ the second sensor. The first sensor is aligned with agents body, so nothing needs to be done here.
+Let's bring second transform to the same axis:
+$X^W_{B^\text{by second localization}_j} =  X^B_S \cdot X^V_{S'_j} \cdot X^{S'}_B$.
+What should be suspecious here is that we multiply by the train agent extrinsics on the left (because the "train" has sourced the map), but multiply by the test agent extrinsics on the right.
+
+It's suspicious, but I have sat long enough on it, and do not see the error.
+I also have spent a massive amount of time checking, re-cheking, debugging, and accumulating experimental data.
+When we use train agent both in train and in test, everything checks out. When the test agent differs from train - we cannot align these two trajectories.
+What I ask here: is to reason with me, point towards a red herring I fail to see in this problem.
+
+A:
+
+The question was about the constant error in the calibration pipeline.
+The question proposed, that the left multiplication of localization transforms by the $X^B_S$ (other agents extrinsics) is erroneous:
+$X^B_S \cdot X^V_{S'_j} \cdot X^{S'}_B$.
+What was found out: it is correct in fact, we must left-premultiply all agents localization transforms by the same transform ($X^B_S$), to have the final trajectories in the same coordinate system.
+Or, what's better, do not premultiply at all (which I've ended up doing). So, the calibration pipeline only has the $W$ world coordinate frame, and does without $V$.
+The constant error, mentioned in the question was due to intricacies of the second localization system, and is further discussed here.
+

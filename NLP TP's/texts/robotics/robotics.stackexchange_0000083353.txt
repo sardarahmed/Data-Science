@@ -1,0 +1,148 @@
+Q:
+
+tf2 Transform using FSD(NED like) frame return incorrect value
+
+I have a underwater robot that we would like to use Forward, Port, Down orientation. I thought I could just create a link with flipped vertices.
+The urdf below displays correctly in rviz
+When I create a tf2 listener and try to transform a point from "depth_sensor" to "body-fixed" frames I get the wrong answer.
+My script uses a Z of 10 in the depth_sensor frame and returns 5 in the body-fixed frame when I would expect it to return 15
+I am obviously missing something.
+
+test.urdf
+<robot name="robot">
+    <link name="map">
+    </link>
+
+    <joint name="base" type="floating">
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <parent link="map"/>
+        <child link="base"/>
+    </joint>
+
+    <link name="base">
+     </link>
+
+    <joint name="vehicle" type="fixed">
+        <origin rpy="3.14159265359 0 0" xyz="0 0 0"/>
+        <parent link="base"/>
+        <child link="vehicle"/>
+    </joint>
+
+    <link name="vehicle">
+    </link>
+
+    <joint name="depth_sensor" type="fixed">
+         <origin rpy="0 0 0" xyz="0 0 5"/>
+        <parent link="vehicle"/>
+        <child link="depth_sensor"/>
+    </joint>
+
+    <link name="depth_sensor">
+    </link>
+
+    <joint name="body-fixed" type="fixed">
+         <origin rpy="0 0 0" xyz="0 0 10"/>
+        <parent link="vehicle"/>
+        <child link="body-fixed"/>
+    </joint>
+
+    <link name="body-fixed">
+    </link>
+
+</robot>
+
+listener.py
+#!/usr/bin/env python  
+import rospy
+import math
+import tf2_ros
+import geometry_msgs.msg
+import tf2_geometry_msgs
+from geometry_msgs.msg import PointStamped
+if __name__ == '__main__':
+    rospy.init_node('listener')
+    tfBuffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(tfBuffer)
+    rate = rospy.Rate(1.0)
+    value = PointStamped()
+    value.header.frame_id = "depth_sensor"
+    value.point.x  = 0.0
+    value.point.y = 0.0
+    value.point.z = 10.0
+    rospy.loginfo(value)
+    
+    while not rospy.is_shutdown():
+        try:
+            trans = tfBuffer.lookup_transform("body-fixed", 'depth_sensor', rospy.Time())
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rospy.logerr("No transform")
+            rate.sleep()
+            continue
+    
+        rospy.loginfo(trans)
+  
+        value2 = tf2_geometry_msgs.do_transform_point(value, trans) 
+        rospy.loginfo(value2)
+        break
+
+rviz.launch
+<!-- rviz with 3rd person view -->
+<node name="rviz01" pkg="rviz" type="rviz" args="-d $(find viztools)/config/test.rviz" required="true" />
+
+<node pkg="tf" type="static_transform_publisher" name="map2vehicle" args="0.0, 0.0, 0.0, 0.00, 0.00, 0.00, 1 map base 50" />
+
+output
+[INFO] [1508248990.598399]: header: 
+  seq: 0
+  stamp: 
+    secs: 0
+    nsecs:         0
+  frame_id: depth_sensor
+point: 
+  x: 0.0
+  y: 0.0
+  z: 10.0
+[ERROR] [1508248990.599694]: No transform
+[INFO] [1508248991.598975]: header: 
+  seq: 0
+  stamp: 
+    secs: 0
+    nsecs:         0
+  frame_id: body-fixed
+child_frame_id: depth_sensor
+transform: 
+  translation: 
+    x: 0.0
+    y: 0.0
+    z: -5.0
+  rotation: 
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    w: 1.0
+[INFO] [1508248991.601145]: header: 
+  seq: 0
+  stamp: 
+    secs: 0
+    nsecs:         0
+  frame_id: body-fixed
+point: 
+  x: 0.0
+  y: 0.0
+  z: 5.0
+
+Originally posted by borgcons on ROS Answers with karma: 176 on 2017-10-17
+Post score: 0
+
+A:
+
+Forward Port, Down is left handed you will need to pick a right handed coordinate system to be able to leverage the transform libraries. The standard for vehicles is defined as X forward, Y left, Z up in REP 103 Otherwise you will need to define the non-homogeneous transforms into and out of your custom coordinate system and make sure to alway use those to go back and forth.
+
+Originally posted by tfoote with karma: 58457 on 2017-10-18
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by borgcons on 2017-10-18:
+I made a mistake its forward, starboard, down, so it is right-handed.
+

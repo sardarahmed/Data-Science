@@ -1,0 +1,70 @@
+Q:
+
+roslaunch nodes / launch files only available on remote machine?
+
+As pointed out in roslaunch/XML
+
+Substitution args are currently resolved on the local machine. In other words, environment variables and ROS package paths will be set to their values in your current environment, even for remotely launched processes
+
+Is there any way to use roslaunch to launch nodes or launch files that are only available on a remote machine?
+I've checked this solution but it doesn't seem to be working (nor is it supposed to work).
+
+Originally posted by Rufus on ROS Answers with karma: 1083 on 2021-02-10
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2021-02-10:
+I don't believe there is a supported way.
+I've seen some hacks with Docker images, dummy pkgs and launch-prefix, but it's not officially supported.
+
+A:
+
+Assuming host has ssh key access to remote, I accomplished this with the following:
+Host machine launch file:
+<launch>
+    <node pkg="local_pkg" type="remote_bringup.sh" name="remote_bringup"/>
+</launch>
+
+Host machine remote_bringup.sh
+#!/usr/bin/env bash
+
+trap 'ssh remote@remote "pkill roslaunch"' INT TERM
+ssh remote@remote "~/bringup.sh"
+wait
+
+Remote machine bringup.sh
+#!/bin/bash
+
+export ROS_MASTER_URI=http://host_machine:11311
+export ROS_IP=remote_machine
+nohup /opt/ros/install/env.sh roslaunch remote_pkg normal.launch &
+
+The script properly catches SIGINT, SIGTERM and forwards it to the remote machine's roslaunch
+
+Originally posted by Rufus with karma: 1083 on 2021-02-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2021-02-10:
+Yes, that's similar to one of the work-arounds I mentioned.
+
+Remote machine bringup.sh
+#!/bin/bash
+source /opt/ros/melodic/setup.bash
+source /opt/ros/install/setup.bash
+export ROS_MASTER_URI=http://host_machine:11311
+export ROS_IP=remote_machine
+nohup roslaunch remote_pkg normal.launch &
+
+Couldn't you use /opt/ros/install/env.sh as a prefix for roslaunch remote_pkg normal.launch?
+Seems much simpler.
+Comment by Rufus on 2021-02-10:
+@gvdhoorn TIL, thx for the tip :D
+Comment by billnava on 2022-04-16:
+@gvdhoorn Any workaround for windows host machine and ubuntu remote machine?
+Comment by gvdhoorn on 2022-04-16:
+Couldn't you still use SSH? There are clients for Windows (as well as servers).
+Comment by asaglam on 2023-06-15:
+How to accomplish this as at startup? Let's say, the host runs a script that starts the roslaunch file after the startup automatically. We need to make sure that the remote machine is up if we will execute ssh remote@remote "~/bringup.sh".  What would be the trick to catch this?
+

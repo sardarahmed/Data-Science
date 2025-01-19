@@ -1,0 +1,72 @@
+Q:
+
+How do I access the source of Mimick that mimick_vendor's cmake file references in order to edit Mimick's CMake file to give it arm7l compatability
+
+I am trying to get ROS2 to work on the raspberry pi 4 by building it from source, but this one library seems to be the ONLY thing that refuses to build when building from source for raspian. The ubuntu 20.04 pi image has horrible Pi compatiability and im not sure if it even works with peripherals. The only way ROS2 is going to work properly with all pi functionality in tack is with Raspian.
+EDIT: I've done a bit of debugging on this issue and have narrowed down the problem to the ROS2 version of Mimick(https://github.com/ros2/Mimick) being in built to throw an error on untested archs. According to https://github.com/Snaipe/Mimick/issues/17#issue-733092525 there is a workaround to allow Mimick to allow arm7l architectures but the ROS2 source does not seem to have a Mimick source folder I can locate, and the only references to its location are in mimick_vendor's CMake file:
+build_mimick()
+
+ament_export_libraries(mimick)
+ament_export_dependencies(mimick)
+
+How do I access the source of the mimick library that mimick_vendor uses during compile time so I can append it with a workaround to give it arm7l compatability?
+
+Originally posted by rydb on ROS Answers with karma: 125 on 2020-10-29
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-10-30:
+mimick_vendor brings in a dependency which is AFAIK only used during tests. If you don't care about tests, you could disable building them and you would probably not even need mimick_vendor.
+That's not really a solution of course, more of a work-around.
+Comment by rydb on 2020-10-30:
+The problem though is that not building it breaks rcutils and alot of important packages depend on rcutils.
+Comment by gvdhoorn on 2020-10-30:
+If you disable testing for rcutils (and other dependants) I would expect mimick_vendor to no longer be needed.
+Comment by rydb on 2020-10-30:
+How do I do that?
+Comment by gvdhoorn on 2020-10-31:
+See #q329930.
+Comment by rydb on 2020-11-01:
+Still breaks with the same error with the following command:
+colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
+Comment by sinceaway on 2023-03-23:
+I want to know if my file haven't  micick_vendor config.camke, how should I do?
+Comment by rydb on 2023-03-24:
+I only vaguely remember the problem I had, but if I remember correctly, the main thing is not checking for mimick vendor, its also deleting any rendering related packages before building ros2 from source. (rviz2, ogre, etc...) visualization of ros2 should be done off board and that is what I think was requiring mimick_vendor
+
+A:
+
+I solved the problem throughout the week. The problem of the Pi 4 not compiling for ros2 was actually two problems:
+-. Rviz is broken on the pi 4 and will probably not compile due to missing atomic functions. You will have to delete it from the src in order to compile ROS2. What ever Rviz functionality you need will need to be run on a different computer that can run it.
+-. The ros2/mimick library that mimick_vendor vendor was missing the ability to detect arm7l, the architecture the pi uses on the 32bit setting, and using a workaround on the snaipe issue's page, I added arm7l detection to the cmake file of ROS2 mimick and now it works. Until the pull request is accepted, replace the mimick_vendor CMakeLists.txt file with mine at https://github.com/rydb/Mimick/blob/ros2/CMakeLists.txt
+Edit: I built ros2 with the following command: colcon build --symlink-install --cmake-args "-DCMAKE_SHARED_LINKER_FLAGS='-latomic'" "-DCMAKE_EXE_LINKER_FLAGS='-latomic'"^C
+
+Originally posted by rydb with karma: 125 on 2020-11-06
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by anthares on 2020-11-23:
+hey! thanks for your answer. I tried to follow your steps. mimick_vendor builds with no issue on a BeagleBone Blue too. However, rcutils still throws an error:
+Starting >>> rcutils          
+
+--- stderr: rcutils
+CMake Error at CMakeLists.txt:185 (find_package):
+By not providing "Findmimick_vendor.cmake" in CMAKE_MODULE_PATH this
+project has asked CMake to find a package configuration file provided by
+"mimick_vendor", but CMake did not find one.
+Could not find a package configuration file provided by "mimick_vendor"
+with any of the following names:
+mimick_vendorConfig.cmake
+mimick_vendor-config.cmake
+
+Add the installation prefix of "mimick_vendor" to CMAKE_PREFIX_PATH or set
+"mimick_vendor_DIR" to a directory containing one of the above files.  If
+"mimick_vendor" provides a separate development package or SDK, be sure it
+has been installed.
+
+Failed   <<< rcutils [8.11s, exited with code 1]
+Any step missing?
+Comment by rydb on 2020-12-07:
+Sorry I didn't check ros forums for a while, im thinking your mimick_vendor installation build failed. Find out what architecutre your beagle bone is, and try adding its architecture to the list of accepted architectures, clone my mimick pull,  then edit that mimick's cmake to accept your beagle bone's architecture. Then, have mimick_vnedor vend your modified mimick instead of the ros2 one.
+

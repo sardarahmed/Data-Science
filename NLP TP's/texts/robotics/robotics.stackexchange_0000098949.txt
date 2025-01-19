@@ -1,0 +1,149 @@
+Q:
+
+ur_gazebo: changed controller configuration does not work
+
+Hello I'm using ros-melodic and I'm having trouble with controlling ur5 manipulator with gazebo
+
+I downloaded ur_gazebo package from https://github.com/ros-industrial/universal_robot.git
+Planning and execution with the moveit works well.
+What I trying to do is to execute position control of each joint from the optimization result.
+So, I modified the source code to watch how it works.
+What I wanted is to control shoulder_pan_joint by publishing data through rostopic
+I changed ur5.launch, and arm_controller_ur5.yaml like below
+
+ur5.launch
+<?xml version="1.0"?>
+<launch>
+  <arg name="limited" default="false"  doc="If true, limits joint range [-PI, PI] on all joints." />
+  <arg name="paused" default="false" doc="Starts gazebo in paused mode" />
+  <arg name="gui" default="true" doc="Starts gazebo gui" />
+  
+  <!-- startup simulated world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" default="worlds/empty.world"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
+
+  <!-- send robot urdf to param server -->
+  <include file="$(find ur_description)/launch/ur5_upload.launch">
+    <arg name="limited" value="$(arg limited)"/>
+  </include>
+
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <node name="spawn_gazebo_model" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model robot -z 0.1" respawn="false" output="screen" />
+
+  <include file="$(find ur_gazebo)/launch/controller_utils.launch"/>
+
+  <!-- start this controller -->
+  <rosparam file="$(find ur_gazebo)/controller/arm_controller_ur5.yaml" command="load"/>
+  <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller" respawn="false" output="screen"/>
+
+  <!-- load other controllers -->
+  <node name="ros_control_controller_manager" pkg="controller_manager" type="controller_manager" respawn="false" output="screen" args="load joint_group_position_controller" />
+
+  <node name="simple_controller" pkg="controller_manager" type="controller_manager" respawn="false" output="screen" args="load prac" />
+
+</launch>
+
+arm_controller.yaml
+prac:
+  type: position_controllers/JointPositionController
+  joint: shoulder_pan_joint
+  pid:
+    p: 100.0
+    d: 10.0
+
+arm_controller:
+  type: position_controllers/JointTrajectoryController
+  joints:
+     - shoulder_pan_joint
+     - shoulder_lift_joint
+     - elbow_joint
+     - wrist_1_joint
+     - wrist_2_joint
+     - wrist_3_joint
+  constraints:
+      goal_time: 0.6
+      stopped_velocity_tolerance: 0.05
+      shoulder_pan_joint: {trajectory: 0.1, goal: 0.1}
+      shoulder_lift_joint: {trajectory: 0.1, goal: 0.1}
+      elbow_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_1_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_2_joint: {trajectory: 0.1, goal: 0.1}
+      wrist_3_joint: {trajectory: 0.1, goal: 0.1}
+  stop_trajectory_duration: 0.5
+  state_publish_rate:  25
+  action_monitor_rate: 10
+joint_group_position_controller:
+  type: position_controllers/JointGroupPositionController
+  joints:
+     - shoulder_pan_joint
+     - shoulder_lift_joint
+     - elbow_joint
+     - wrist_1_joint
+     - wrist_2_joint
+     - wrist_3_joint
+
+In ur5.launch I added node named simple controller, and in yaml file I added the controller desctription
+ Then, I run the launch file
+roslaunch ur_gazebo ur5.launch
+
+and published desired position by
+rostopic pub /prac/command std_msgs/Float64 "data: 0.5"
+
+However, the robot doesn't seem to move.
+ Can anyone tell me what is wrong?
+
+Originally posted by ilkwon on ROS Answers with karma: 3 on 2021-04-29
+Post score: 0
+
+Original comments
+Comment by ilkwon on 2021-04-30:
+What I think is the cause of this problem is when I do the roslaunch ur_gazebo ur5.launch, I get these messages
+
+Loaded 'prac'
+Loaded 'joint_group_position_controller'
+Loaded 'joint_state_controller'
+Started ['joint_state_controller'] successfully
+Loaded 'arm_controller'
+Started ['arm_controller'] successfully
+
+It seems to prac(the single joint controller I added) is just loaded and not started.
+How can I deal with this problem?
+Comment by gvdhoorn on 2021-04-30:
+This doesn't seem like a problem with ur_gazebo, but with how you changed the provided files and the way you interact with the controllers.
+The title should reflect that.
+
+Edit: I've updated the title.
+
+A:
+
+You have this in the .launch file you edited:
+
+<!-- start this controller -->
+
+<rosparam file="$(find ur_gazebo)/controller/arm_controller_ur5.yaml" command="load"/>
+<node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller" respawn="false" output="screen"/>
+
+<!-- load other controllers -->
+<node name="ros_control_controller_manager" pkg="controller_manager" type="controller_manager" respawn="false" output="screen" args="load joint_group_position_controller" />
+
+<node name="simple_controller" pkg="controller_manager" type="controller_manager" respawn="false" output="screen" args="load prac" />
+
+The simple_controller node (which is essentially a controller_manager) only loads the controller settings with the name prac.
+You don't actually start the controller. For that, you'd need to run the controller_manager with the spawn argument.
+Note: with the current .launch file, the arm_controller is spawned.
+You cannot start two controllers for the same joint (resource really) at the same time. That would lead to conflicts, and is specifically prohibited.
+You'll have to stop the running controller and then start your prac controller. You could either do that in separate steps, or use the switch_controller service.
+Note also: because your prac controller controls only a single joint, I expect the rest of the robot to flail around in Gazebo.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-04-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ilkwon on 2021-05-01:
+Oh....
+This worked thanks!,!
+

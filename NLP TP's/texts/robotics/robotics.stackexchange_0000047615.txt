@@ -1,0 +1,77 @@
+Q:
+
+rospack depends geometry_msgs vs rosmsg packages Header
+
+Hi,
+I am using ROS Fuerte on Ubuntu 12.04 and I have some problem in understanding the consistency of the output of the following two commands:
+$rospack depends geometry_msgs:
+<nothing>
+
+$rosmsg packages Header
+...
+gazebo_msgs
+gazebo_plugins
+geometry_msgs <--
+hpPackage
+...
+
+So geometry_msgs is using the Header message from std_msgs, but geometry_msgs does not depend on std_msgs. One example of using the Header message is geometry_msgs/TwistStamped:
+$rosmsg show geometry_msgs/TwistStamped
+std_msgs/Header header <--
+  uint32 seq
+  time stamp
+  string frame_id
+geometry_msgs/Twist twist
+  geometry_msgs/Vector3 linear
+    float64 x
+    float64 y
+    float64 z
+  geometry_msgs/Vector3 angular
+    float64 x
+    float64 y
+    float64 z
+
+Isn't it a bug?
+Best Regards,
+Stephan
+
+Originally posted by Stopfer on ROS Answers with karma: 112 on 2013-01-24
+Post score: 4
+
+A:
+
+In ROS Fuerte, some of the core stacks/packages were converted to use a prototype version of the catkin buildsystem (docs here). In this version, the notions of "packages" and "stacks" were re-defined (all deps were pushed to the stack level and all manifest.xml files were made to just contain other metadata). Since common_msgs is one of these stacks that was catkinized, neither rospack nor rosstack in Fuerte can parse this xml file. In this case, std_msgs gets built and installed top /opt/ros/fuerte/include/std_msgs (the new FHS standard), so as long as /opt/ros/fuerte is in a given C++ package's include path, you will be able to include C++ headers from std_msgs (there's a similar setup for Python). You'll see that things like dependency specification are defined differently:
+ROS Diamondback (rosbuild)
+
+stack.xml: <depend stack="ros_comm" />
+manifest.xml: <depend package="rosbagmigration"/> (gives you std_msgs via this dep)
+
+ROS Fuerte (catkin prototype):
+
+stack.xml: <build_depends>std_msgs</build_depends>, <depends>std_msgs</depends>
+manifest.xml: No dependency information
+
+ROS Groovy (new catkin):
+
+stack.xml: Gone
+manifest.xml: Gone
+package.xml: <build_depend>std_msgs</build_depend>, <run_depend>std_msgs</run_depend>
+
+Originally posted by jbohren with karma: 5809 on 2013-01-25
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by 130s on 2013-01-25:
+This answers all. Whole response of mine is rather pointless now.
+Comment by jbohren on 2013-01-25:
+Well I did skip the version where there was such a thing as "stack.yaml" (:
+Comment by Stopfer on 2013-01-25:
+Sounds like the right answer. Thank you. Its somehow disapointing, because we are developing roscs (http://ros.org/wiki/roscs), which is a wrapper for ros in order to use c# under linux. We encounter problems, if someone wants to use geometry_msgs in his c# application.
+Comment by jbohren on 2013-01-25:
+@Stopfer, all is not lost. Are you using the rospack and rosstack shell scripts to get info about ROS packages? Instead, you could use the rospkg python library, which CAN parse all of these files. I'm not sure why rospack/rosstack don't, though. Maybe file a bug?
+Comment by Stopfer on 2013-01-27:
+Thx, we will try it that way. So the bug would state, that rospack and rosstack are not able to parse the stack.xml and manifest.xml, correctly?
+Comment by jbohren on 2013-01-27:
+Well, at this point, I'm not sure if it will be fixed, since the issue occurs with a now-outdated prototype version of catkin, but there's no harm in posting it. Make sure you post it here: https://github.com/ros/rospack/issues
+

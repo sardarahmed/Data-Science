@@ -1,0 +1,94 @@
+Q:
+
+teleop turtlebot ps3 joystick
+
+Hi!
+I am trying to control my turtlebot 2 with a ps3 controller under Ubuntu 12.04 and groovy. I tried to follow the ROS turtlebot teleop tutorial.
+The first command didn't worked: roscd ps3joy/bin as there is no ps3joy/bin directory in my installation. Then, I tried an other tutorial "PairingJoystickAndBluetoothDongle"  where the rosrun ps3joy ps3joy worked, and I could pair my controller with the computer.
+I checked the function of the joy with the following:
+$ sudo jstest /dev/input/js1
+
+It was working, but with js0 it didn't, it must be some other unknown device.
+Now I am trying to control the turtlebot with:
+roslaunch turtlebot_teleop ps3_teleop.launch
+
+Unfortunately, it generates some error written in red on the console saying the process has died:
+turtlebot@turtlebot-laptop:~$ roslaunch turtlebot_teleop ps3_teleop.launch 
+... logging to /home/turtlebot/.ros/log/2f70c202-8fb4-11e2-9551-00216a48015a/roslaunch-turtlebot-laptop-10508.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+started roslaunch server [deleted]
+
+SUMMARY
+========
+
+PARAMETERS
+ * /rosdistro
+ * /rosversion
+ * /teleop_velocity_smoother/accel_lim_v
+ * /teleop_velocity_smoother/accel_lim_w
+ * /teleop_velocity_smoother/decel_factor
+ * /teleop_velocity_smoother/frequency
+ * /teleop_velocity_smoother/speed_lim_v
+ * /teleop_velocity_smoother/speed_lim_w
+ * /turtlebot_teleop_joystick/axis_angular
+ * /turtlebot_teleop_joystick/axis_deadman
+ * /turtlebot_teleop_joystick/axis_linear
+ * /turtlebot_teleop_joystick/scale_angular
+ * /turtlebot_teleop_joystick/scale_linear
+
+NODES
+  /
+    joystick (joy/joy_node)
+    teleop_velocity_smoother (nodelet/nodelet)
+    turtlebot_teleop_joystick (turtlebot_teleop/turtlebot_teleop_joy)
+
+ROS_MASTER_URI=[deleted]
+
+core service [/rosout] found
+process[teleop_velocity_smoother-1]: started with pid [10549]
+process[turtlebot_teleop_joystick-2]: started with pid [10605]
+process[joystick-3]: started with pid [10629]
+[turtlebot_teleop_joystick-2] process has died [pid 10605, exit code -11, cmd /opt/ros/groovy/stacks/turtlebot_apps/turtlebot_teleop/bin/turtlebot_teleop_joy turtlebot_teleop_joystick/cmd_vel:=cmd_vel_mux/input/teleop_raw __name:=turtlebot_teleop_joystick __log:=/home/turtlebot/.ros/log/2f70c202-8fb4-11e2-9551-00216a48015a/turtlebot_teleop_joystick-2.log].
+log file: /home/turtlebot/.ros/log/2f70c202-8fb4-11e2-9551-00216a48015a/turtlebot_teleop_joystick-2*.log
+
+I am wondering, whether it is because of the joystick is on /dev/input/js1 instead of js0. Can it be? If yes, how could I swap js0 and js1?
+
+Originally posted by ZoltanS on ROS Answers with karma: 248 on 2013-03-15
+Post score: 1
+
+Original comments
+Comment by Jie Sky on 2014-11-25:
+Hi,nice to meet you!I have zhe same trouble.Do you know how to use a normal wire joystick to control a turtlebot based kobuki?I have some trouble with it .
+Comment by Jie Sky on 2014-11-25:
+I can see the correct output in the echo "rostopic echo /joy".I refer to this website:http://wiki.ros.org/turtlebot_teleop/Tutorials/hydro/Joys
+
+A:
+
+Ok, now I found the problem and the solution that works. The problem is caused by the accelerometer of the HP laptop that is mapped as /dev/input/js0. By disabling the accelerometer the issue is gone:
+
+lsmod|grep accel  --> this returns two lines in my case
+sudo modprobe -r hp_accel
+sudo modprobe -r lis3lv02d
+
+this is probably not the best solution, since it needs to be repeated after reboot. blacklisting the modules could be better, but I haven't tested it yet.
+The following steps are straightforward:
+
+install bluetooth usb key on the turtlebot laptop
+sudo bash
+in order to stop Ubuntu automatically popping up the Bluetooth pairing dialog {edit /etc/bluetooth/main.conf - add line "DisablePlugins = input"}
+"#rosrun ps3joy ps3joy.py"
+roslaunch turtlebot_teleop ps3_teleop.launch
+
+Previously I tried to change the joystick to /dev/input/js1 by using rosparam set ... command. It worked for the rostopic echo /joy, but the roslaunch turtlebot_teleop ps3_teleop.launch always produced error, it is somewhere hardcoded to use the js0 device.
+
+Originally posted by ZoltanS with karma: 248 on 2013-03-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by felix k on 2013-03-19:
+You should have put a  line to that launch file. You can see in the joy_node source that the dev param is observed.
+

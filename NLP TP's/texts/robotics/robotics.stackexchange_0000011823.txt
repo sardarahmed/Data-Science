@@ -1,0 +1,233 @@
+Q:
+
+Help with setting up Inverse Kinematics
+
+I'm working through the Inverse Kinematic example for the Unimation PUMA 560  from Introduction to Robotics by Craig. In it he specifies the IK equations like so:
+
+In my software program I have three sliders on the screen that will give me the rotation of the end point in x, y, z like so (this is in Unity):
+
+Each one of these sliders will control a float variable in the code (C#) and I can read these into my script (Using Unity 5). I am trying to replicate the inverse kinematic solution for this PUMA robot inside Unity, so that for a given position and rotation of the end effector the link rotations will update accordingly. I have already written out the IK equations that Craig specified in the example to calculate theta(i), but how do I "read" the slider values and "input" them to these equations? If I am not making any sense I apologize, I have been chipping away at this for some time and hit a mental blank wall. Any advice appreciated.
+Edit: So in my near-delirious state I have not posited my question properly. So far, these are the equations I have written so far in code:
+public class PUMA_IK : MonoBehaviour {
+GameObject J1, J2, J3, J4, J5, J6;
+
+public Vector3 J2J3_diff, J3J4_diff;
+
+public Slider px_Slider;    
+public Slider py_Slider;    
+public Slider pz_Slider;    
+public Slider rx_Slider;    
+public Slider ry_Slider;    
+public Slider rz_Slider;    
+
+public float Posx, Posy, Posz, Rotx, Roty, Rotz;
+
+float a1, a2, a3, a4, a5, a6;   //Joint twist
+float r1, r2, r3, r4, r5, r6;   //Mutual perpendicular length
+float d1, d2, d3, d4, d5, d6;   //Link offset
+public float t1, t2, t23, t3, t4, t5, t6;   //Joint angle of rotation
+
+public float J1Rot, J2Rot, J3Rot, J4Rot, J5Rot, J6Rot;
+
+float r11, r21, r31, r12, r22, r32, r13, r23, r33, c23, s23, Px, Py, Pz, phi, rho, K;
+
+int pose;   //1 - left hand, 2 = right hand
+
+// Use this for initialization
+void Start ()
+{
+    pose = 1;
+
+    J1 = GameObject.FindGameObjectWithTag("J1");
+    J2 = GameObject.FindGameObjectWithTag("J2");
+    J3 = GameObject.FindGameObjectWithTag("J3");
+    J4 = GameObject.FindGameObjectWithTag("J4");
+    J5 = GameObject.FindGameObjectWithTag("J5");
+    J6 = GameObject.FindGameObjectWithTag("J6");
+
+    J2J3_diff = J3.transform.position - J2.transform.position;
+    J3J4_diff = J4.transform.position - J3.transform.position;
+
+    //Init modified DH parameters
+
+    //Joint twist
+
+    a1 = 0;
+    a2 = -90;
+    a3 = 0;
+    a4 = -90;
+    a5 = 90;
+    a6 = -90;
+
+    //Link length
+
+    r1 = 0;
+    r2 = Mathf.Abs(J2J3_diff.x);
+    r3 = Mathf.Abs(J3J4_diff.x);
+    r4 = 0;
+    r5 = 0;
+    r6 = 0;
+
+    //Link offset
+
+    d1 = 0;
+    d2 = 0;
+    d3 = Mathf.Abs(J2J3_diff.z);
+    d4 = Vector3.Distance(J4.transform.position, J3.transform.position);
+    d5 = 0;
+    d6 = 0;
+
+}
+
+void Update ()
+{
+    Posx = px_Slider.value;
+    Posy = py_Slider.value;
+    Posz = pz_Slider.value;
+
+    Rotx = rx_Slider.value;
+    Roty = ry_Slider.value;
+    Rotz = rz_Slider.value;
+
+    Px = Posx;
+    Py = Posy;
+    Pz = Posz;
+
+    c23 = ((cos(t2)*cos(t3)) - (sin(t2)*sin(t3)));
+    s23 = ((cos(t2)*sin(t3)) + (sin(t2)*cos(t3)));
+
+    rho = Mathf.Sqrt(Mathf.Pow(Px, 2) + Mathf.Pow(Py, 2));
+    phi = Mathf.Atan2(Py, Px);
+
+    if (pose == 1)
+    {
+        t1 = Mathf.Atan2(Py, Px) - Mathf.Atan2(d3, Mathf.Sqrt(Mathf.Pow(Px, 2) + Mathf.Pow(Py, 2) - Mathf.Pow(d3, 2)));
+    }
+
+    if (pose == 2)
+    {
+        t1 = Mathf.Atan2(Py, Px) - Mathf.Atan2(d3, -Mathf.Sqrt(Mathf.Pow(Px, 2) + Mathf.Pow(Py, 2) - Mathf.Pow(d3, 2)));
+    }
+
+    K = (Mathf.Pow(Px, 2)+ Mathf.Pow(Py, 2) + Mathf.Pow(Px, 2) - Mathf.Pow(a2, 2) - Mathf.Pow(a3, 2) - Mathf.Pow(d3, 2) - Mathf.Pow(d4, 2)) / (2 * a2);
+
+    if (pose == 1)
+    {
+        t3 = Mathf.Atan2(a3, d4) - Mathf.Atan2(K, Mathf.Sqrt(Mathf.Pow(a2, 2) + Mathf.Pow(d4, 2) - Mathf.Pow(K, 2)));
+    }
+
+    if (pose == 2)
+    {
+        t3 = Mathf.Atan2(a3, d4) - Mathf.Atan2(K, -Mathf.Sqrt(Mathf.Pow(a2, 2) + Mathf.Pow(d4, 2) - Mathf.Pow(K, 2)));
+    }
+
+    t23 = Mathf.Atan2(((-a3 - (a2 * cos(t3))) * Pz) - ((cos(t1) * Px) + (sin(t1) * Py)) * (d4 - (a2 * sin(t3))), ((((a2 * sin(t3)) - a4) * Pz) - ((a3 + (a2 * cos(t3))) * ((cos(t1) * Px) + (sin(t1) * Py)))));
+
+    t2 = t23 - t3;
+
+    if (sin(t5) != 0)   //Joint 5 is at zero i.e. pointing straight out
+    {
+        t4 = Mathf.Atan2((-r13 * sin(t1)) + (r23 * cos(t1)), (-r13 * cos(t1) * c23) + (r33 * s23));
+    }
+
+    float t4_detection_window = 0.00001f;
+
+    if ((((-a3 - (a2 * cos(t3))) * Pz) - ((cos(t1) * Px) + (sin(t1) * Py)) < t4_detection_window) && (((-r13 * cos(t1) * c23) + (r33 * s23)) < t4_detection_window))
+    {
+        t4 = J4Rot;
+    }
+
+    float t5_s5, t5_c5; //Eqn 4.79
+
+    t5_s5 = -((r13 * ((cos(t1) * c23 * cos(t4)) + (sin(t1) * sin(t4)))) + (r23 * ((sin(t1) * c23 * cos(t4)) - (cos(t1) * sin(t4)))) - (r33 * (s23 * cos(t4))));
+
+    t5_c5 = (r13 * (-cos(t1) * s23)) + (r23 * (-sin(t1) * s23)) + (r33 * -c23);
+
+    t5 = Mathf.Atan2(t5_s5, t5_c5);
+
+    float t5_s6, t5_c6; //Eqn 4.82
+
+    t5_s6 = ((-r11 * ((cos(t1) * c23 * sin(t4)) - (sin(t1) * cos(t4)))) - (r21 * ((sin(t1) * c23 * sin(t4)) + (cos(t1) * cos(t4)))) + (r31 * (s23 * sin(t4))));
+
+    t5_c6 = (r11 * ((((cos(t1) * c23 * cos(t4)) + (sin(t1) * sin(t4))) * cos(t5)) - (cos(t1) * s23 * sin(t5)))) + (r21 * ((((sin(t1) * c23 * cos(t4)) + (cos(t1) * sin(t4))) * cos(t5)) - (sin(t1) * s23 * sin(t5)))) - (r31 * ((s23 * cos(t4) * cos(t5)) + (c23 * sin(t5))));
+
+    t6 = Mathf.Atan2(t5_s6, t5_c6);
+
+    //Update current joint angle for display
+
+    J1Rot = J1.transform.localRotation.eulerAngles.z;
+    J2Rot = J2.transform.localRotation.eulerAngles.y;
+    J3Rot = J3.transform.localRotation.eulerAngles.y;
+    J4Rot = J4.transform.localRotation.eulerAngles.z;
+    J5Rot = J5.transform.localRotation.eulerAngles.y;
+    J6Rot = J6.transform.localRotation.eulerAngles.z;
+
+}
+
+void p(object o)
+{
+    Debug.Log(o);
+}
+
+float sin(float angle)
+{
+    return Mathf.Rad2Deg * Mathf.Sin(angle);
+}
+float cos(float angle)
+{
+    return Mathf.Rad2Deg * Mathf.Cos(angle);
+}
+
+}
+The issue is not with the mathematics of what is going on per se, I am just confused at how I interface the three values of the X, Y, and Z rotation for the sliders (which represent the desired orientation) with these equations. For the translation component it is easy, the slider values are simply equal to Px, Py and Pz in the IK equation set. But in his equations he references r11, r23, etc, which are the orientation components. I am unsure how to replace these values (r11, r12, etc) with the slider values.
+Any ideas?
+Edit 2: I should also say that these sliders would be for positioning the tool center point. The XYZ sliders will give the translation and the others would give the orientation, relative to the base frame. I hope this all makes sense. The goal is to be able to use these sliders in a similar fashion to how one would jog a real robot in world mode (as opposed to joint mode). I then pass these calculated angle values to the transform.rotation component of each joint in Unity.
+So what I am really asking is given the three numbers that the rotation sliders produce (XRot, YRot and ZRot), how do I plug those three numbers into the IK equations?
+
+A:
+
+If I have correctly understood your question, you have those values (the angles that you want for the pose of the end-effector of the robot) but you don't actually know how to use them, since in the rotation matrix there are 9 parameters r i,j that look uncorrelated from the three angles.
+So, the first thing that probably you have seen in Craig's book is that a rotation matrix, even though it has 9 parameters, has actually only 3 dof in space. You can represent a rotation in space with only 3 angles: these are called Euler angles, or RPY angles, depending on your choice. Euler angles are three rotations around X,Y,Z angles (there are actually 12 combinations possible, like Y,Z,X, X,Y,X and so on), but they are made around moving axes: after you do your first rotation, your reference frame will rotate accordingly, and you execute the second rotation around your new axis (be it X,Y, or Z depending on your formalization). You can have a more accurate explanation on the textbook if you wish.
+Roll Pitch Yaw angles are similar, but they are around fixed angles, i.e. you do three rotations around X, Y and Z around the fixed axis from which you start. 
+You can search for visual examples on the web that will make you understand these concepts very clearly.
+So, all this introduction is to say that you first have to model your problem: do you want these three sliders to set angles around moving or fixed angles? After you have modeled your representation, you can compute the rotation matrix from these three simple rotations around a single axis. You will end up with three simple rotation matrices around one axis, and you just multiply those three. You will end up with a new 3x3 matrix, that is your complete rotation matrix, the same that you see in that example: from that, you can extract each value of r i,j and evaluate the inverse kinematic according to your algorithm.
+
+A:
+
+You need to turn each rotation angle (XRot, YRot, ZRot) into their own 3x3 rotation matrix. Once you have three 3x3 rotation matrices, you multiply them all together to get a singular "final" 3x3 rotation matrix that describes how the ending orientation is related to the starting orientation.
+How you define these rotation matrices (global frame or body frame) and how you apply them (x/y/z, z/y/x, y/z/x, etc.) determines the result you'll get. For me, I found that body-centric coordinates made the most intuitive sense. 
+Imagine a ship whose y-axis points forward, z-axis points up, and x-axis points right (starboard). If you define roll as about the y-axis, pitch about the x-axis, and yaw about the z-axis, then (to me at least) those terms make the most sense when you say that first you yaw, then you pitch, then you roll. 
+So, first you yaw, using $R_z(\theta_z)$:
+$$
+R_z(\theta_z) = \left[
+\begin{array}{ccc}
+\cos{\theta_z} & -\sin{\theta_z} & 0 \\
+\sin{\theta_z} & \cos{\theta_z} & 0 \\
+0 & 0 & 1
+\end{array} \right]
+$$
+Then you pitch, using $R_x(\theta_x)$
+$$
+R_x(\theta_x) = \left[
+\begin{array}{ccc}
+1 & 0 & 0 \\
+0 & \cos{\theta_x} & -\sin{\theta_x} \\
+0 & \sin{\theta_x} & \cos{\theta_x} \\
+\end{array} \right]
+$$
+Then you roll, using $R_y(\theta_y)$
+$$
+R_y(\theta_y) = \left[
+\begin{array}{ccc}
+\cos{\theta_y} & 0 & \sin{\theta_y} \\
+0 & 1 & 0 \\
+-\sin{\theta_y} & 0 & \cos{\theta_y} \\
+\end{array} \right]
+$$
+So, when you multiply them all together, you do matrix multiplication from right to left, you get
+$$
+R = R_y R_x R_z
+$$
+I used the y-axis as the "long" or longitudinal axis here because, at my company, that's how we set up our jobs: y-axis is generally the longer axis. I've seen online that typically the x-axis is the long axis, but it's all in how you define your axes. The $R_x$, $R_y$, and $R_z$ matrices I've given are the correct form to use for those axes, so if you redefine the axes for yourself to be something different just be sure to use the correct axis. 
+So, once you get your overall $R$ matrix, that's where you get your $r_11$, $r_21$, etc. values.
+

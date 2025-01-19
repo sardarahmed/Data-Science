@@ -1,0 +1,223 @@
+Q:
+
+Multiple robots simulation and navigation
+
+###How to launch multiple robots in gazebo simulator and how to setup navigation stacks for such a simulation?###
+There were already some questions and answers for the subject, like: here, and here, and here. This is my question and answer to summarize the discussion in one place.
+
+Originally posted by Jakub on ROS Answers with karma: 1821 on 2012-08-14
+Post score: 43
+
+Original comments
+Comment by PrasadNR on 2016-11-02:
+Hi @Jacub, thanks for this extraordinary contributions on forum. There is a similar problem (extended version) which can probably be solved only by you (given your expertise).( Multiple robots in ROS Gazebo SITL with separate MAVlink/MAVproxy codes )
+Comment by huang_y on 2017-05-16:
+Hi @Jacub,thank you for give us a so wonderful tutorial  about Multiple robots simulation and navigation, but I still have some trouble about this. I could do single-robot navigation in gazebo, but when i add the the namespace in the launch file,there may be a error in the amcl.
+
+List item
+
+Comment by jayess on 2017-07-26:
+@PrasadNR and @huang_y you should make your own questions because, although related, they appear to be different than this question.
+Comment by Anas Kanhouch on 2021-04-06:
+I was able to run multiple TB3 simulation and navigation on ROS Melodic. I noticed that the robots are not aware of each other and they collide with each other. What is needed to make the robots avoid collisions with each other?
+Comment by jayess on 2021-04-06:
+@Anas Kanhouch please don't use an answer to ask a question as this isn't a forum. Please create a new question and reference this one instead so that you get more visibility and have a better chance of getting your question answered (this question is almost 9 years old at this point).
+Comment by Anas Kanhouch on 2022-02-03:
+sure noted @jayess
+Comment by Arshad on 2023-05-21:
+Check out this article for multi robot in ROS2 with nav2 stack:
+https://medium.com/@arshad.mehmood/a-guide-to-multi-robot-navigation-utilizing-turtlebot3-and-nav2-cd24f96d19c6
+
+A:
+
+The answer is based on the turtlebot robot, but of course it can be used with any robot(s).
+For multiple robots the key point is to manage the namespaces and tf_prefixes. Although usually we will set them to the same value for each robot in this example I will you different for purpose.
+In setting up the navigation stack(s) each robot must operate in it's own namespace, but they do have to share the map (and usually robot_description). So the effect we want to achieve is:
+                                  /map
+       /robot1/robot_state_publisher    /robot2/robot_state_publisher
+       /robot1/robot_pose_ekf           /robot2/robot_pose_ekf
+       /robot1/amcl                     /robot2/amcl
+       /robot1/move_base                /robot2/move_base
+
+Simulation
+First of all we have to launch the simulation, in our case gazebo.
+To make things more readable I split launch files in few files.
+Launch file for one robot. We name it one_robot.launch:
+<launch>
+    <arg name="robot_name"/>
+    <arg name="init_pose"/>
+
+    <node name="spawn_minibot_model" pkg="gazebo" type="spawn_model"
+     args="$(arg init_pose) -urdf -param /robot_description -model $(arg robot_name)"
+     respawn="false" output="screen" />
+    
+    <node pkg="robot_state_publisher" type="state_publisher" 
+          name="robot_state_publisher" output="screen"/>
+
+    <!-- The odometry estimator, throttling, fake laser etc. go here -->
+    <!-- All the stuff as from usual robot launch file -->
+</launch>
+
+Two things to mention for above launch file:
+
+create two arguments to pass for robot initialization: name and position
+notice that -param /robot_description is with the slash i.e. fully-qualified, as it will be shared.
+
+Having the robot declaration we can now play with the namespaces. Your main launch file for
+multiple robots should look like (robots.launch):
+<launch>
+  <!-- No namespace here as we will share this description. 
+       Access with slash at the beginning -->
+  <param name="robot_description"
+    command="$(find xacro)/xacro.py $(find turtlebot_description)/urdf/turtlebot.urdf.xacro" />
+
+  <!-- BEGIN ROBOT 1-->
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <include file="$(find your_pkg)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x 1 -y 1 -z 0" />
+      <arg name="robot_name"  value="Robot1" />
+    </include>
+  </group>
+
+  <!-- BEGIN ROBOT 2-->
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2_tf" />
+    <include file="$(find your_pkg)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x -1 -y 1 -z 0" />
+      <arg name="robot_name"  value="Robot2" />
+    </include>
+  </group>
+</launch>
+
+Last thing of course is to include it in your simulation launch file:
+<launch>
+  <param name="/use_sim_time" value="true" />
+
+  <!-- start world -->
+  <node name="gazebo" pkg="gazebo" type="gazebo" 
+   args="$(find your_pkg)/worlds/your.world" respawn="false" output="screen" />
+
+  <!-- start gui -->
+  <node name="gazebo_gui" pkg="gazebo" type="gui" respawn="false" output="screen"/>
+
+  <!-- include our robots -->
+  <include file="$(find your_pkg)/launch/robots.launch"/>
+</launch>
+
+Navigation
+For setting up the navigation stack we follow the tutorial RobotSetup, but we have to add the namespace tricks for it.
+We use the same approach of splitting files. First the move_base.launch for one robot, as from tutorial:
+<launch>    
+  <!--- Run AMCL -->
+  <include file="$(find amcl)/examples/amcl_diff.launch" />
+  
+  <!-- Define your move_base node -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <rosparam file="$(find your_pkg)/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+    <rosparam file="$(find your_pkg)/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find your_pkg)/local_costmap_params.yaml"  command="load" />
+    <rosparam file="$(find your_pkg)/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find your_pkg)/base_local_planner_params.yaml" command="load" />
+
+    <remap from="map" to="/map" />
+  </node>
+</launch>
+
+The important note is to notice this remapping at the end. This file will be wrapped with
+namespace so we have to remove namespace from all appearances of map (there is only one map).
+Now we can launch our multiple navigation file:
+<launch>
+  <param name="/use_sim_time" value="true"/>
+
+  <!-- Run the map server -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find your_pkg)/map/map.yaml" >
+    <param name="frame_id" value="/map" />
+  </node>
+
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <param name="amcl/initial_pose_x" value="1" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="$(find your_pkg)/launch/move_base.launch" />
+  </group>
+
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2_tf" />
+    <param name="amcl/initial_pose_x" value="-1" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="$(find your_pkg)/launch/move_base.launch" />
+  </group>
+
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find your_pkg)/config/multi.vcg"
+   output="screen" />
+
+</launch>
+
+Two points to mention here.
+
+Notice the param frame_id in map_server node. By default frame_id is set to map,
+and as map is shared for all robots we need only one map and therefore we have to force
+the frame_id to fully-qualified name /map.
+Localization made by amcl need some help in providing the initial position on the map.
+For this purpose we introduce params carrying those values. Amcl node is in the robot namespace
+and those the whole path should be like /robot1/amcl/initial_pose_x, etc.
+
+Hacking
+Last thing to do is to correct some plugins for gazebo.
+
+gazebo_ros_laser.cpp in gazebo_plugins package - patch for tf_prefix resolving. Already done
+in fuerte, for electric see the ticket: https://code.ros.org/trac/ros-pkg/ticket/5511
+gazebo_ros_create.cpp in turtlebot_gazebo_plugins - two corrections needed
+
+remove initial slashes from topics: cmd_vel, odom,
+joint_states (staring from line 157),
+and replace line 36 to node_namespaceP_ = new ParamTstd::string("robotNamespace","",0);
+
+Visualization
+Now it's time to play around. We can send your messages to /robot1/move_base_simple/goal or via actionlib to /robot2/move_base/goal.
+In rviz we can add several Robot models, but we have to remember to put a correct tf_prefix for each robot_description:
+Robot Description: robot_description
+TF Prefix:         robot1_tf
+
+In rviz configuration file we have to modify the topic for actions connected to tool buttons (your local vcg file):
+Tool\ 2D\ Nav\ GoalTopic=/robot1/move_base_simple/goal
+Tool\ 2D\ Pose\ EstimateTopic=/robot1/initialpose
+
+If we want to control all robots from rviz we need to add more tool buttons as described here
+Have fun.
+
+Originally posted by Jakub with karma: 1821 on 2012-08-14
+This answer was ACCEPTED on the original site
+Post score: 62
+
+Original comments
+Comment by Brioche on 2012-08-20:
+Wonderful! exactly what I was looking for my simulation, but if I want to move the different joints of my robots, which topic should I use? because I run "rostopic echo /robot1/joint_states" I got "WARNING: no messages received and simulated time is active.Is /clock being published?" Thanks a lot
+Comment by Jakub on 2012-08-22:
+This tutorial is base on TurtleBot, for which joint_state_publisher is included in gazebo_ros_create pluging (see the Hacking section). For your robot of course you have add joint_state_publisher in one_robot.launch (definition of your robot).
+Comment by harsha on 2013-01-10:
+Thank you, @Jakub, for sharing this! :)
+Comment by Xittx on 2013-02-22:
+can this b useful in global mapping and global localization for multipl robots?
+Comment by Joao Luis on 2014-08-12:
+Very Cool, but I'm trying with ROS Hydro and I cannot achive to have separete nodes for camera plugins. What should I do? Thks
+Comment by AmateurHour on 2018-07-17:
+Now if only there was something like this for use in a real environment instead of Gazebo.
+Comment by raequin on 2018-07-27:
+Thanks for your explanation.  I'm going to refer to it for my project of using multiple robot arms with MoveIt! (my question on that).  Question: what do I do after hacking the cpp file? Rebuild?
+Comment by shubham-shahh on 2021-08-12:
+Hi, thanks for this solution but it's not working with ROS noetic, can someone post an updated answer?
+Comment by jayess on 2021-08-13:
+@shubham-shahh  you should create a new question and reference this one for greater visibility
+Comment by bashrc on 2021-08-16:
+Hi, I am having some problems with the implementation, I have posted the question here
+Comment by rbtcs1101 on 2021-09-01:
+Thanks for the answer and it works for me! But I would not suggest using the "init_pose" to change the robot position. Because it simply changes the robot position in Gazebo and doesn't actually change the transformation between robot frame and world frame in tf tree. Maybe passing a parameter from launch file to change the origin of the joint between the world frame and base frame in the urdf file could be a better solution.
+Comment by bashrc on 2021-09-02:
+@rbtcs1101, you are using ros noetic?
+Comment by rbtcs1101 on 2021-09-02:
+@bashrc, no I am using melodic.
+Comment by ThreeForElvenKings on 2023-05-24:
+How would this work, if I just want to use two instances of move_base, but just on the same robot. In this case, I presume they will share the amcl pose as well, but I'm not sure how I can set it up
+

@@ -1,0 +1,62 @@
+Q:
+
+Service buffer overrun only when service is persistent
+
+I'm using a rospy service call to a custom c++ gazebo library. Ever time this service is called, gazebo takes a certain number of simulation steps, and responds with the new sensor measurements. I'm running many trials, so I'd like to run this as quickly as possible, so I started using persistent connections.
+rospy.wait_for_service('step_service')
+self.step_service = rospy.ServiceProxy('step_service', ActionService, True)
+action = np.zeros((12,1))
+self.state = self.step_service(action)
+
+and my cpp service server is:
+step_service = rosnode->advertiseService("/step_service", &GazeboRosStepper::step_srv, this);
+
+bool GazeboRosStepper::step_srv(gazebo_ros_stepper::ActionService::Request  &req, gazebo_ros_stepper::ActionService::Response &res)
+{
+    step
+    fill response with joint angles, velocities (24 doubles)
+    return true
+}
+
+When the step_service in the python code is persistent, I get the errors:
+rospy.service.ServiceException: service [/step_service] responded with an error: b'Buffer Overrun'
+
+This is no matter the size of my response (I commented out most of the response, still errors) or the size of my request. It also happens during the first call.
+Everything works perfectly when things are not persistent. However, since I'm calling this as fast as possible, I'd like to remove the wasted computation for resetting the TCP connection every time.
+
+Originally posted by curranw on ROS Answers with karma: 211 on 2018-01-09
+Post score: 0
+
+Original comments
+Comment by mgruhler on 2018-01-09:
+How fast are you calling the service? Does the node have time to wait for a Service result and does it actually spin? Or are you, like, calling the Service in a single run of your script a hundred times without any spining?
+Comment by curranw on 2018-01-09:
+I do not call spin! This makes sense now. I'm surprised it worked without the persistent call.
+Also: Doesn't a service call block? So it would always wait for a response (I may have misunderstood you)
+Since rospy doesn't have a spinOnce function, how would you recommend I tackle this?
+Comment by mgruhler on 2018-01-10:
+Well, you are right, service calls are blocking. Also, I just found the following on the wiki
+
+Advanced users: you don't need to create a ROS node in order to make service calls with a rospy.ServiceProxy.
+
+So the spin in the calling node is not ...
+Comment by mgruhler on 2018-01-10:
+required. But in the service server, you still need it, IMO, but there spin is ok.
+It is strange though, that it seems to work without the persistent connection. But this could be a side-effect of re-creating the connection, and, in that course, delivering the message. But this is just a guess...
+
+A:
+
+In my case buffer overrun only occurs, when using Services with python3! So switching to python 2.7 would help (if possible).
+
+Originally posted by RGring with karma: 16 on 2019-05-23
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by curranw on 2019-05-23:
+Did you test this? If so, I'll accept it as an answer. I just turned off persistent, which is not ideal but worked.
+Comment by RGring on 2019-05-24:
+Yes I did. Problem is, that persistent service calls are quite time consuming.
+Comment by csherstan on 2020-03-06:
+I don't suppose anyone knows why this is a problem in python3? I'd really prefer not to switch back to 2.7.
+

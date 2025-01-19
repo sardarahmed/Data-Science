@@ -1,0 +1,97 @@
+Q:
+
+no match for call to ‘(ros::Publisher) (geometry_msgs::TransformStamped&)’
+
+Hello,
+I am getting this error:
+In function ‘int main(int, char**)’:
+/home/turtlebot/catkin_ws/src/turtlebot_formation/src/readTFframe.cpp:70:24: error: no match for call to ‘(ros::Publisher) (geometry_msgs::TransformStamped&)’
+I can clear see that the two types are compatible but for some reason cmake is telling me that no match all to (geometry_msgs::TransformStamped&) exists. If anyone can help me solve this issue it would be greatly appreciated.
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_broadcaster.h>
+
+using namespace std;
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "readTFframe");
+    ros::NodeHandle nh;
+        tf::Transform leader_base_link;
+    tf::Quaternion q;
+    tf::Vector3 v;  
+    tf::TransformListener listener;
+    geometry_msgs::TransformStamped transformConverter;
+
+    ros::Time current_time, last_time;
+        current_time = ros::Time::now();
+        last_time = ros::Time::now();
+
+    ros::Publisher pub = nh.advertise<geometry_msgs::TransformStamped>("/leader/tf", 1000); //error because of this
+
+    static tf::TransformBroadcaster br;
+    
+    double yaw; 
+
+ros::Rate loopRate(10);
+while(ros::ok()){
+    tf::StampedTransform transform;
+    current_time = ros::Time::now();
+    
+
+    try {
+                        listener.waitForTransform("base_link", "base_footprint", ros::Time(0), ros::Duration(10.0));
+            listener.lookupTransform("base_link", "base_footprint", ros::Time(0), transform);
+        }
+        catch (tf::TransformException &ex) {
+            ROS_ERROR("%s",ex.what());
+        }
+    yaw =   tf::getYaw(transform.getRotation()); 
+        v.setValue(transform.getOrigin().x() , transform.getOrigin().y() , transform.getOrigin().z());
+        
+    leader_base_link.setOrigin(v);
+    q.setRPY(0.0, 0.0, yaw);
+    leader_base_link.setRotation(q );
+    br.sendTransform(tf::StampedTransform(leader_base_link,     ros::Time::now(), "base_footprint", "leader_base_link"));
+    
+    double th = yaw;
+    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+    transformConverter.header.stamp = current_time; 
+    transformConverter.header.frame_id = "base_footprint";
+        transformConverter.child_frame_id = "base_link";
+    transformConverter.transform.translation.x = transform.getOrigin().x();
+    transformConverter.transform.translation.y = transform.getOrigin().y();
+    transformConverter.transform.translation.z = transform.getOrigin().z();
+    transformConverter.transform.rotation = odom_quat;
+    ROS_INFO_STREAM("X pose " <<  transformConverter.transform.translation.x );
+    ROS_INFO_STREAM("Y pose " << transformConverter.transform.translation.y);
+    ROS_INFO_STREAM("Z pose " << transformConverter.transform.translation.z );
+    ROS_INFO_STREAM("Yaw "<< yaw );
+    pub(transformConverter);  //error here
+    loopRate.sleep();
+}
+
+    return 0;
+}
+
+Originally posted by choog on ROS Answers with karma: 101 on 2014-09-26
+Post score: 0
+
+A:
+
+pub(transformConverter);  //error here
+
+It's looking for a publisher constructor that takes TransformStamped as a parameter. Correct API is
+
+pub.publish(transformConverter);
+
+Originally posted by paulbovbel with karma: 4518 on 2014-09-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by choog on 2014-09-26:
+Thank you!!
+

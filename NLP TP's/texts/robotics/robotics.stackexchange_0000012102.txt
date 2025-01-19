@@ -1,0 +1,31 @@
+Q:
+
+How path following works analytically for way points?
+
+First of all sorry for the confusing question title. I am also confused about the concept.
+I have implemented a quadcopter and its controller. Controller finds the rotor speeds based on the position and yaw angle references.
+The thing that I don't understand is, let's say I want the vehicle to climb 5m up and then 5m left. At this point, I think I need to create a vector containing the reference values. By the way, the model is discretized by some deltaT time interval so the reference vector. This does not coincide and well behave according to the dynamics of the vehicle. Let's say, the reference input for altitude is 5m until 5sec and 0 for [5,10]sec. But it is not guaranteed that the vehicle will reach to 5m altitude in 5sec. Thus, my intention is, that reference vector shouldn't rely on the time. Therefore, my perception is to use some if condition to check if the vehicle is reached for the first waypoint and then, register the next one.
+Which is a simple if-else statement? This makes me think what is the mathematical or analytical background in this. Is it just the following of the line between two waypoints by geometrical analysis like Line of Sight guidance law things.
+Can you give me some insight about the concept which makes me confused?
+
+A:
+
+Most people just create a queue of waypoints on the path and go through one at a time. There are more complex path execution schemes that are more continuous but your application I doubt this is required. If your interested in looking for more complex schemes you can use B-Splines(https://en.wikipedia.org/wiki/B-spline) between waypoints. You hit the nail on the head when you brought up that you might not be at the target location when you think you will be there. Usually people get around that by having a good controller and recomputing the path as needed.
+
+A:
+
+You have a waypoint, which is some $<x,y,z>_\mbox{waypoint}$ coordinate.
+You should have some internal position estimate, $<x,y,z>_\mbox{quadcopter}$. 
+If the waypoint coordinates are $x_w,y_w,z_w$, and the quadcopter coordinates are $x_q,y_q,z_q$, then you can calculate your distance to the waypoint as:
+$$
+r = \sqrt{(x_q-x_w)^2 + (y_q-y_w)^2 + (z_q-z_w)^2}\\
+$$
+Now you have a singular value that indicates how close you are to the waypoint. You can also check speeds by looking at the quadcopter's speed on each axis - 
+$$
+\dot{s} = \sqrt{\dot{x}_q^2 + \dot{y}_q^2 + \dot{z}_q^2} \\
+$$
+You can check now that you're at target along two criteria. For example, maybe your position tracking has some degree of overshoot, and you'd like to be sure that the quadcopter has stabilized at the waypoint before continuing on to the next point. Maybe the first waypoint is at the entrance to a duct or pipe, and the second waypoint is in the duct/pipe.
+So, then you'd want to make sure that your distance to the waypoint, $r$, is small, and that your vehicle speed $\dot{s}$ is also small. If your position error $r$ is big but your speed $\dot{s}$ is small, then maybe you're at the previous waypoint and about to start moving. 
+If your position error $r$ is small but your speed $\dot{s}$ is big, then you're close to your waypoint but you're moving quickly and are about to overshoot it. You might not care, or you might care a lot. It depends on the type of maneuver you're trying to complete and the allowable deviation from your waypoint-to-waypoint path is. If you overshoot the first waypoint by a lot and then immediately proceed to the second, then you're not actually taking the desired path to the second waypoint. 
+Last piece of advice I could offer is to make sure that your waypoint coordinates and quadcopter coordinates are in the same frame of reference. You wouldn't want a quadcopter in real GPS coordinates trying to track a relative waypoint coordinate - your quadcopter might autonomously take off for the intersection of the prime meridian and the equator. 
+

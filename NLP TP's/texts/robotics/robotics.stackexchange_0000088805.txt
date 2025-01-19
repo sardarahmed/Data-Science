@@ -1,0 +1,43 @@
+Q:
+
+what should the frame_id of topic "poseX" be, before use robot_localization package?
+
+Hello:
+According to r_l(robot_localization) wiki, coordinate-frames-and-transforming-sensor-data doc, it can transforms geometry_msgs/PoseWithCovarianceStamped, on topic "poseX",  in message header’s frame_id into the coordinate frame specified by the world_frame parameter (typically map or odom). I think this topic probably can be provided by a stereo VO, because mono VO cannot provide real scale info.
+when i see the "poseX" callback function, it then calls preparePose func, in this line RosFilterUtilities::lookupTransformSafe(), it lookuptransform from "finalTargetFrame"(if we set it as odom), to pose msg.frame_id, what should this frame_id on this topic be?  It looks like r_l thinks this frame is odom, the transform msg work should be done by users before use r_l, just like viso2_ros?
+Generally speaking, the frame_id of pose on this topic is a fixed frame, such as a camera_0 frame(in some moment, camea is launched by its driver ros node).  Only when we know what time stamp of camera is launched, we can get from odom frame to this camera_0 frame from tf tree, let we mark this as T_odom_to_camera0, and then we can transform msg on topic poseX to odom frame, T_odom_to_camera = T_odom_to_camera0 *  T(msg_on_poseX), T_odom_to_baselink = T_odom_to_camera  * T_camera_to_baselink., which  T_odom_to_baselink is from odom frame to baselink with camera pictures estimated, T_camera_to_baselink is a tf static transform.
+In other words, if robot base node and camera driver node are launched on the same time from start, T_odom_to_camera0 equals to T_baselink_to_camera ,we can get this TF directlly from tf tree. If they does not launched on the same time, we need to record time stamp of camera launched, because we need to record T_odom_to_camera0, anything wrong??
+Currentlly, my idea is:
+1: If we set world_frame is map,  r_l thinks the default meaning of pose on topic poseX is base_link frame in map frame. The reason is : if the pose on topic poseX is base_link in odom, although with odom topic, we have no sources measuring base_link in map, r_l can not calculate a TF from map--->odom.
+2: If we set world_frame is odom, r_l thinks the default meaning of pose on topic poseX is base_link frame in odom frame. r_l publishs a TF from odom--->base_link.
+Regardless of which above case, when the poseX topic is provided by camera VO, the transform work including recording the TF between camera0 pose and odom(map), should be done by user before using r_l.
+
+Originally posted by jxl on ROS Answers with karma: 252 on 2018-08-30
+Post score: 0
+
+Original comments
+Comment by fvd on 2018-09-02:
+I don't understand what "poseX" is supposed to be
+Comment by jxl on 2018-09-03:
+"poseX" is pose0, pose1,..., posen topic of type geometry_msgs::PoseWithCovarianceStamped , defined in pose topic callback
+
+A:
+
+I think specifying frame_id of the pose message published by camera_node to say camera_link and providing a static transform camera_link -> base_link should be sufficient (assuming you have set base_link_frame parameter to base_link and both world_frame and odom_frame to odom) if you only want fuse the camera pose data with some other sensor to generate an odometry.
+If the robot already publishes an odometry (i.e. the transform odom -> base_link is already available through other means), setting world_frame to map would allow to fuse the pose to generate a global pose with respect to this world_frame
+
+Originally posted by Namal Senarathne with karma: 246 on 2018-09-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by jxl on 2018-09-05:
+I don't agree that we should  set frame_id of poseX as camera or camera_link, because geometry_msgs::PoseWithCovarianceStamped type's header frame id is a global frame, such as nav_msgs::Odometry 's pose component.
+Comment by Namal Senarathne on 2018-09-05:
+Ah yes, you are correct. My mistake! I
+What I meant to say was to set frame_id to use the fixed frame id as you have suggested (to use camera0_frame) and providing a static transform between camera0_frame -> odom.
+Comment by Namal Senarathne on 2018-09-05:
+If you know that base_link starts at odom frame's origin each time, then camera0_frame -> odom is identical to the camera_link -> base_link transformation. Otherwise, you'd have to compute camera0_frame -> odom = base_link -> odom * camera_link -> base_link once at the start of pose node
+Comment by jxl on 2018-09-05:
+Agree with you ^-^
+

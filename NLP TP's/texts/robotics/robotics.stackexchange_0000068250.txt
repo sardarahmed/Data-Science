@@ -1,0 +1,50 @@
+Q:
+
+Speeding up pointcloud delivery to subscriber (kinect)
+
+Hi,
+I am using the Nvidia Jetson + ROS + Freenect_Launch to access data from the Kinect. I am running into an issue (that I don't run into on my intel-i7 laptop) where my node who is subscribing to the /camera/depth/points message, cannot 'receive' fast enough (for my purpose). I have played with different ways of configuring the call-back function (as well as using TransportHints().tcp_nodelay()), and the best I can do is about 7Hz.
+I am not doing any processing of the pointcloud in the callback, I just have the subscriber-callback publishing a basic sensor_msg so I can use rostopic hz /mynode/basicsensormsg to see how fast the callback is occuring (about 7Hz).
+Same exact node running on my laptop is full 30Hz. When I do a rostopic hz /camera/depth/points, this is also 30Hz.
+I believe the Jetson board is bottle-necking during the transferring of the pointcloud data from the launch-node to my written node. I'm wondering if there is a more 'efficient' way of subscribing to such a large portion of data, or if anyone has compiled the freenect_camera driver into their rosnode and could share their experience (I'm moving toward the idea that the pointcloud delivery through ros sensor_msgs is not the right approach, and would rather have a node directly receive from the driver, eliminating needless memory transfer steps).
+Any thoughts?
+Description of some code I tried:
+The callback: void cloud_cb(const sensor_msgs::PointCloud2::ConstPtr& point_cloud) was tried, and this callback defined this way did not have any bottle necks. However, I could not figure out how to use the cloud in a pcl::passthroughfilter() without using 'pcl::fromROSMsg()' first. The pcl::fromROSMsg() caused the 7Hz bottleneck once used in the callback function.
+The callback: void cloud_cb(const PointCloud::ConstPtr& point_cloud) was used, and this callback defined this way bottlenecks without any additional code. However, I can directly use the cloud 'point_cloud' in a pcl::passthrough filter, avoiding the need to use 'pcl::fromROSMsg();
+
+Originally posted by dwyer2bp on ROS Answers with karma: 3 on 2015-06-23
+Post score: 0
+
+Original comments
+Comment by dwyer2bp on 2015-06-29:
+https://github.com/johnnyonthespot/ros/blob/master/src/kinect_topdownview/kinect_topdownview.md
+My nodelet example code provided.
+
+A:
+
+Suggestion: avoid (de)serialisation altogether, and use nodelets.
+
+Edit:
+
+Do you have a suggestion on how one could do this, given the freenect_launch seems to be its own package? freenect_launch advertises the data I need, but I don't know how to go about acquiring the data in a nodelet fashion, [..].
+
+nodelets are a bit of an art. It helps to know that they are essentially plugins to a nodelet manager process. I'm not sure about freenect, but at least openni_* launches a manager, into which you can load your own nodelet. That would receive the pointclouds, exchanging pointers 'under the hood', but looking like regular message exchanges at the application (your node) level. Note that your nodelet can come from (so: be located) anywhere, as long as it is findable by pluginlib. freenect_launch being its own package does not matter.
+But, just as @duck-development says, if the Jetson is too slow for all of this, using nodelets won't help you, as the bottleneck is then not the message passing, but somewhere else.
+
+I don't even know where to start.
+
+I'd suggest you first do the nodelet tutorial(s). If required, find some more examples by looking at the packages that use the nodelet package (wiki/nodelet (I'd use the Indigo page, as more pkgs have been released there), Package Links, Used by). image_proc and velodyne_* could be good example material (note that freenect_camera and _launch and openni_* are also listed).
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-06-23
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by dwyer2bp on 2015-06-23:
+Do you have a suggestion on how one could do this, given the freenect_launch seems to be its own package? freenect_launch advertises the data I need, but I don't know how to go about acquiring the data in a nodelet fashion, since I don't even know where to start.
+Comment by dwyer2bp on 2015-06-24:
+Nodelets seem to be the solution from reading about 'why to use them'. I noticed the freenect launch uses nodelets. I will try to understand how I can create a node with the freenect 'nodelet' integrated. Meanwhile, if anyone has already done this I wouldn't mind checking out your code :0)
+Comment by dwyer2bp on 2015-06-26:
+This fixed my bottleneck! (and I learned a lot more about ROS). Wrote code for a nodelet, and loaded it into the nodelet manager which is started by freenect_launch. My callback now has a 30Hz response on the Jetson.
+Thanks!!!
+

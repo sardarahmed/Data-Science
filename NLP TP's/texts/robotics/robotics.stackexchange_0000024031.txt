@@ -1,0 +1,78 @@
+Q:
+
+Estimating angular velocity from position
+
+If you have two position estimates $P_{t_1}$ and $P_{t_2}$ and times $t_1$ and $t_2$ how do you extract the average angular velocity from them? The linear velocity is a simple difference but how do you compute angular velocity?
+
+A:
+
+Clarifying the question
+The question needs more clarity. For example, you need to explain the positions are of what, with respect to what, resolve in which frame.
+Let's assume the positions $P_{t_{1}}$ and $P_{t_{2}}$ are positions of some arbitrary point $b$ on the robot/body, with respect to an arbitrary point $a$ in the world (e.g., origin of the map). Furthermore, let's assume the positions are resolved in the world frame $\mathcal{F}_{w}$.
+The position of the robot/body $b$ with respect to the point $a$ at time $t$, resolved in the world frame $\mathcal{F}_{w}$ can then be described as $\mathbf{r}^{b_{t_1}a}_{w}$ and $\mathbf{r}^{b_{t_2}a}_{w}$.
+Angular velocity from a motion model
+The angular velocity describes the rate of change of frames, and not of points.
+Thus, asking for the angular velocity from two points is an ill-posed question.
+Perhaps what you meant to be asking is the angular velocity of a rigid body, which has a reference frame, given the rigid body's position.
+To compute the angular velocity of a rigid body given it's position requires using its motion model.
+The motion model is usually in the form
+$$
+\begin{align}
+\mathbf{x}_{k} &= \mathbf{f}(\mathbf{x}_{k-1}, \mathbf{u}_{k-1}),
+\end{align}
+$$
+where $\mathbf{x}_{k}$ is the state and $\mathbf{u}_{k}$ is the control input  at time $t_{k}$, which may include the angular velocity.
+Thus, computing the angular velocity would require computing $\mathbf{u}_{k-1}$ from $\mathbf{x}_{k-1}$ and $\mathbf{x}_{k}$.
+If $\mathbf{f}$ is invertible, then the control-input is computed using
+$$
+\mathbf{u}_{k-1}
+= \mathbf{f}^{-1}(\mathbf{x}_{k}, \mathbf{k-1}).
+$$
+Let's consider a 2D rigid body example, where the state is the robot's displacements $\mathbf{r}^{b_{k}a}_{w}$ and its heading $\theta_{k}$ at time $t_{k}$.
+This state can be "nicely" described using the special Euclidean group $SE(2)$ (check Sola - A Micro Lie Theory for more info on Lie groups for robotics):
+$$
+\begin{align}
+\mathbf{T} &=
+\begin{bmatrix}
+\cos(\theta) & -\sin(\theta) & x \\
+\sin(\theta) &  \cos(\theta) & y \\
+0 & 0 & 1
+\end{bmatrix}
+=
+\begin{bmatrix}
+\mathbf{C}(\theta) & \mathbf{r}^{ba}_{w} \\
+\mathbf{0} & 1
+\end{bmatrix}
+\in SE(2).
+\end{align}
+$$
+Let the control inputs be the linear velocity of the robot resolved in the body frame $\mathbf{v}^{b_{k}a}_{b_{k}}$ and the angular velocity $\omega^{b_{k}w}$.
+The motion model is then
+$$
+\mathbf{T}_{k}
+=
+\mathbf{T}_{k-1}
+\begin{bmatrix}
+\mathbf{C}(\Delta t_{k-1} \omega^{b_{k-1}w}) & \Delta t_{k-1} \mathbf{v}^{b_{k-1}a}_{b_{k-1}} \\
+\mathbf{0} & 1
+\end{bmatrix},
+$$
+where $\Delta t_{k-1} = t_{k} - t_{k-1}$ is the sampling period and $\mathbf{C}(\cdot)\in SO(2)$ is the rotation matrix constructed from $\Delta t \omega^{b_{k-1}w}$.
+Going back to the original question, if you have the full states at times $t_{k}$ and $t_{k-1}$, which include the displacements and headings, then the angular velocity can be computed using
+$$
+\begin{bmatrix}
+\mathbf{C}(\Delta t_{k-1} \omega^{b_{k-1}w}) & \Delta t_{k-1} \mathbf{v}^{b_{k-1}a}_{b_{k-1}} \\
+\mathbf{0} & 1
+\end{bmatrix}
+=
+\mathbf{T}_{k-1}^{-1}\mathbf{T}_{k}.
+$$
+Note on computing arbitrary points
+The kinematic motion model presented above may not be applicable for your application.
+For example, if the point $b$ is not exactly on top of the robot wheel (for the $SE(2)$ example above), then the kinematic equation would probably be slightly different, so you'll need to derive the kinematic equation for that model.
+Note on non-invertible motion models
+If the motion model is not invertible, then perhaps using (nonlinear) least squares is your best bet.
+Nonlinear least squares is the basis of some estimation algorithms such as the (extended) Kalman filter.
+For example, this approach would be applicable if you're trying to estimate the angular velocity using position estimates from a GPS.
+In such case, you need at least an initial guess of the heading. Otherwise, the problem would be non-observable.
+

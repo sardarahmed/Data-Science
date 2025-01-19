@@ -1,0 +1,119 @@
+Q:
+
+ROS2 Humble on Windows - "failed to create process."
+
+I am trying to install ROS2 "Humble Hawksbill" on Windows 10, but when done and trying to run ros2 I get the error:
+
+failed to create process.
+
+I get the same result when activating the ROS environment first with local_setup.
+I followed the instructions here: https://docs.ros.org/en/humble/Installation/Windows-Install-Binary.html#install-python
+The only difference is I have Python 3.8.10. Other system info:
+> systeminfo.exe
+
+Host Name:                 xxxx
+OS Name:                   Microsoft Windows 10 Pro
+OS Version:                10.0.19045 N/A Build 19045
+OS Manufacturer:           Microsoft Corporation
+OS Configuration:          Member Workstation
+OS Build Type:             Multiprocessor Free
+Registered Owner:          sa-install
+Registered Organization:   Demcon
+Product ID:                00330-80000-00000-AA932
+Original Install Date:     15-4-2022, 05:14:30
+System Boot Time:          12-9-2023, 10:41:29
+System Manufacturer:       HP
+System Model:              HP ZBook Fury 15.6 inch G8 Mobile Workstation PC
+System Type:               x64-based PC
+Processor(s):              1 Processor(s) Installed.
+                           [01]: Intel64 Family 6 Model 141 Stepping 1 GenuineIntel ~2304 Mhz
+BIOS Version:              HP T95 Ver. 01.08.20, 14-3-2022
+Windows Directory:         C:\windows
+System Directory:          C:\windows\system32
+Boot Device:               \Device\HarddiskVolume1
+System Locale:             en-gb;English (United Kingdom)
+Input Locale:              en-us;English (United States)
+Time Zone:                 (UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna
+Total Physical Memory:     16'048 MB
+Available Physical Memory: 6'033 MB
+Virtual Memory: Max Size:  28'336 MB
+Virtual Memory: Available: 11'376 MB
+Virtual Memory: In Use:    16'960 MB
+Page File Location(s):     C:\pagefile.sys
+Domain:                    xxxx
+Logon Server:              xxxx
+Hotfix(s):                 20 Hotfix(s) Installed.
+
+There are some similar questions already, but their accepted answers did not help me:
+
+Ros2 Galactic binary installation on Windows 10: failed to create process
+failed to create ROS2 process
+
+EDIT: I just realized that calling ROS2 from Python does work:
+> python Scripts\ros2-script.py
+usage: ros2 ...
+
+But running the .exe gives the error:
+> ros2.exe
+failed to create process.
+
+A:
+
+I think I more or less solved it. I redid my steps in Windows Sandbox, to test from a fresh system, and I found the following:
+
+Download ROS2 binaries without anything else. Unpacked into C:\dev\ros2_humble
+
+Running Scripts\ros2.exe now gives my infamous error "failed to create process."
+local_setup.ps1 now fails of course, as no Python is available.
+
+Install Python 3.8.3 with default settings, under C:\Program Files\Python38, without adding to path (to mimic my PC with multiple Python versions).
+
+Same results in the previous step.
+Running & "C:\Program Files\Python38\python.exe" Scripts\ros2-script.py gives errors about missing packages (of course).
+
+Install requirements: & "C:\Program Files\Python38\python.exe -m pip install ...
+
+& "C:\Program Files\Python38\python.exe" Scripts\ros2-script.py now seems to work fine, without errors!
+ros2.exe still gives "failed to create process.". But that I could understand, Python isn't available yet.
+
+Add system Python to PATH
+
+python Scripts\ros2-script.py now also works
+ros2.exe still fails with the same error
+
+Then either:
+
+Create a symbolic link: mklink /D "C:\Python38" "C:\Program  Files\Python38"
+
+Running ros2.exe now actually works! It seems it really relies on the hardcoded Python path.
+
+or
+
+Edit Scripts\ros2-script.py and replace the hash-bang path at the top C:\Python38\python.exe with C:\Program Files\Python38\python.exe
+
+Running ros2.exe now also works! I had no idea the .exe was actually relying on the hash-bang path.
+
+Finally I wanted to test with Python virtual environments. I rolled back to step #2 (with only Ros2 unpacked and a fresh Python install).
+
+Create venv, in C:\dev\ros2_humble\: & "C:\Program Files\Python38\python.exe" -m venv .venv
+Activate it: .\venv\Scripts\activate.ps1
+Check it and prepare it: python --version and python -m pip install ...
+Now also activate the ros2 environment: local_setup.ps1
+
+python Scripts\ros2-script.py now works!
+But ros2.exe still fails... It depends on the fixed paths.
+
+Edit *-script.py such that the line 1 path says #!C:\dev\ros2_humble\.venv\Scripts\python.exe
+
+And now finally ros2.exe just works, from an isolated environment!
+
+So in a nutshell:
+
+The hash-bang path from *-script.py must match with the intended Python executable
+local_setup.ps1 but be active, i.e. PYTHONPATH must include the site-packages from ros2 and the interpreter library path (either system or a venv)
+
+And the error
+failed to create process.
+
+was entirely due to the script hash-bang not being available.
+

@@ -1,0 +1,148 @@
+Q:
+
+Inverse Kinematics 5DOF - general approach - Wrong solution MATLAB
+
+Can anyone name a good source for a general approach (cookbook-like) for the inverse kinematics regarding a 5-DOF?
+The paper by De Xu et al. is aiming for a general approach, but it doesn't work for my code. Maybe you could check that one as well?!
+I am new to MATLAB, the code is no masterpiece:
+Parameter used: 
+a=[0 82 93 55 95 0];
+d=[47 0 0 0 0 10];
+alpha=[90 0 0 0 0 0];
+theta=[15 30 40 -90 -15 0];
+Result for Theta 1-5:
+
+5,080    
+38,029
+75,947  
+-90,247
+20,719
+EDIT: 
+The results 1-5 mentioned above are the one the code gave me. But those are wrong, because:
+
+Position of TCP (taken form the Forward Kinematics):
+px= -5.7853
+py=  5.7606
+pz=  25.908
+Position of TCP (using the calculating values for Theta 1-5):
+px=  47.0
+py= -151.0
+pz=  43.9430
+All values in degrees.
+I am using 5 servos by Dynamixel ax-12a.
+a=[0 82 93 55 95 0];
+d=[47 0 0 0 0 10];
+alpha=[90 0 0 0 0 0];
+theta=[15 30 -90 0 45 0];
+rad=57.295779513082;
+
+T01=[cos(theta(1)),-sin(theta(1))*cos(alpha(1)),sin(theta(1))*sin(alpha(1)),a(1)*cos(theta(1));
+    sin(theta(1)),cos(theta(1))*cos(alpha(1)),-cos(theta(1))*sin(alpha(1)),a(1)*sin(theta(1));
+    0,sin(alpha(1)),cos(alpha(1)),d(1);
+    0,0,0,1];
+T12=[cos(theta(2)),-sin(theta(2))*cos(alpha(2)),sin(theta(2))*sin(alpha(2)),a(2)*cos(theta(2));
+    sin(theta(2)),cos(theta(2))*cos(alpha(2)),-cos(theta(2))*sin(alpha(2)),a(2)*sin(theta(2));
+    0,sin(alpha(2)),cos(alpha(2)),d(2);
+    0,0,0,1];
+T23=[cos(theta(3)),-sin(theta(3))*cos(alpha(3)),sin(theta(3))*sin(alpha(3)),a(3)*cos(theta(3));
+    sin(theta(3)),cos(theta(3))*cos(alpha(3)),-cos(theta(3))*sin(alpha(3)),a(3)*sin(theta(3));
+    0,sin(alpha(3)),cos(alpha(3)),d(3);
+    0,0,0,1];
+T34=[cos(theta(4)),-sin(theta(4))*cos(alpha(4)),sin(theta(4))*sin(alpha(4)),a(4)*cos(theta(4));
+    sin(theta(4)),cos(theta(4))*cos(alpha(4)),-cos(theta(4))*sin(alpha(4)),a(4)*sin(theta(4));
+    0,sin(alpha(4)),cos(alpha(4)),d(4);
+    0,0,0,1];
+
+T45=[cos(theta(5)),-sin(theta(5))*cos(alpha(5)),sin(theta(5))*sin(alpha(5)),a(5)*cos(theta(5));
+    sin(theta(5)),cos(theta(5))*cos(alpha(5)),-cos(theta(5))*sin(alpha(5)),a(5)*sin(theta(5));
+    0,sin(alpha(5)),cos(alpha(5)),d(5);
+    0,0,0,1];
+
+T56=[cos(theta(6)),-sin(theta(6))*cos(alpha(6)),sin(theta(6))*sin(alpha(6)),a(6)*cos(theta(6));
+    sin(theta(6)),cos(theta(6))*cos(alpha(6)),-cos(theta(6))*sin(alpha(6)),a(6)*sin(theta(6));
+    0,sin(alpha(6)),cos(alpha(6)),d(6);
+    0,0,0,1];
+
+T06=T01*T12*T23*T34*T45*T56;        %transformation matrix
+inv_T01=inv(T01);
+inv_T12=inv(T12);
+inv_T23=inv(T23);
+inv_T56=inv(T56);
+T05=T06*inv_T56;
+%needed for theta4 and theta5
+Inverse=inv_T23*inv_T12*inv_T01*T06*inv_T56;
+T_4_5=T34*T45;
+
+N=T06(1:3,1);
+nx=N(1,1);
+ny=N(2,1);
+nz=N(3,1);
+O=T06(1:3,2);
+ox=O(1,1);
+oy=O(2,1);
+oz=O(3,1);
+A=T06(1:3,3);
+ax=A(1,1);
+ay=A(2,1);
+az=A(3,1);
+P=T06(1:3,4); %comapre to (17) in paper
+px=P(1,1);
+py=P(2,1);
+pz=P(3,1);
+px_2=T05(1,4);
+py_2=T05(2,4);
+
+%theta1
+help1=px_2;               %not sure
+help2=py_2;                 %not sure
+help3=(px_2*(-1));         %not sure
+help4=(py_2*(-1));         %not sure
+
+theta11=atan2(help2,help1);
+theta12=atan2(help4,help3);     %using this
+theta1=atan2(py,px);            %most common way
+
+%Theta2
+B1=(az*d(6)-pz+d(1));
+B2=(sqrt((-ax*d(6)+px).^2+(-ay*d(6)+py).^2))-a(1); %taking only positive value, alternative: [1 -1]*sqrt
+B3=((B1.^2+B2.^2+a(2).^2-d(4).^2));
+%auxiliary angle
+beta=(atan2(B2,B1));
+root=((a(2)*a(2))*sqrt(B1.^2+B2.^2));
+
+theta21=(asin(B3/root)-beta);%works best
+theta22=pi-theta21;
+
+%theta3
+
+theta3=atan2(B1-a(2)*sin(theta21),B2-a(2)*cos(theta21))-theta21; %using theta21 is close to determined angle BUT still far away from acceptable
+
+%theta4
+%auxiliary
+OX=(ox*cos(theta1).*sin(theta21+theta3));
+OY=(oy*sin(theta1).*sin(theta21+theta3));
+OZ=(oz*cos(theta21+theta3));
+theta4=atan2(-OX-OY-OZ,ox.*sin(theta1)*oy.*cos(theta1));%as in the case
+
+%theta5
+%auxiliary
+NX=(nx*cos(theta1).*cos(theta21+theta3));
+NY=(ny*sin(theta1).*cos(theta21+theta3));
+NZ=(nz*sin(theta21+theta3));
+AX=(ax*cos(theta1).*cos(theta21+theta3));
+AY=(ay*sin(theta1).*sin(theta21+theta3));
+
+theta5=atan2(NX+NY-NZ,-AX+AY-az*sin(theta21+theta3));%as in the case
+
+theta12*rad
+theta21*rad
+theta3*rad
+theta4*rad
+theta5*rad
+
+enter code here
+
+A:
+
+I never saw a conversion between degrees in radians in your code, so that would be the number one problem to fix. All of your transform matrices are using sin and cos terms, which only accept values in radians, and using them with values in degrees. I'm a bit busy at the moment but I'll go over the code in more detail later today. 
+

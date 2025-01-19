@@ -1,0 +1,76 @@
+Q:
+
+undefined reference to `urdf::Model::initFIle()'
+
+I am attempting to compile a cpp file that will read joint limits from a urdf. The lines of code at issue are:
+urdf::Model robotModel;
+robotModel.initFile("path/to/file");
+I get the following error:
+undefined reference to `urdf::Model::initFile(std::basic_string<char, std::char_traits, std::allocator > const&)'
+Commenting out 'robotModel.initFile(...)' eliminates the error, but defeats the purpose of the program.
+The error appears while linking. It appears that I am passing in the proper argument- it seems to match the documentation. In my CMakeLists, I have 'link_directories(/opt/ros/hydro/lib/)', which I have confirmed contains libkdl_parser.so and liburdfdom_model.so. The same type of error occurs if I use .initString().
+What am I missing?
+
+Originally posted by cyberguy42 on ROS Answers with karma: 188 on 2014-06-30
+Post score: 0
+
+Original comments
+Comment by BennyRe on 2014-07-01:
+Please post your CMakeLists.txt
+Comment by cyberguy42 on 2014-07-01:
+The problem was in my CMakeLists.txt. Thank you for your comment.
+Comment by Andromeda on 2014-08-28:
+Could you please post your CMakeLists?
+I have the same problem
+
+A:
+
+Updated Answer
+Though my original solution was accurate, my explanation that the problem was Swig-related was incorrect: all things Swig are handled elsewhere. The problem was that I did not include 'urdf' in the variable MY_ADDED_LIBS, which is used by target_link_libraries. Adding it resolved the linking issue and I can load joint limits from the urdf just fine.
+My corrected CMakeLists.txt is below:
+cmake_minimum_required(VERSION 2.8.3)
+project(base-kdl)
+
+set(BASE_FILE_NAME base-kinematics)
+
+include_directories(/usr/include/eigen3)
+include_directories(/usr/include/boost/)
+include_directories(/opt/ros/hydro/include/)
+include_directories(/opt/ros/hydro/include/kdl)
+
+FIND_PACKAGE(JNI)
+if (NOT JAVA_INCLUDE_PATH)
+  message(WARNING "JNI has not been found.")
+endif()
+
+include_directories(${JAVA_INCLUDE_PATH})
+include_directories(${JAVA_INCLUDE_PATH2})
+
+link_directories(/opt/ros/hydro/lib/)
+    
+set(CMAKE_CXX_FLAGS -Wl,-z,defs)
+
+set(MY_ADDED_LIBS orocos-kdl;kdl_parser;urdf)
+
+add_library(swig_kdl SHARED  base-kinematics_wrap.cpp base-kinematics.cpp)
+target_link_libraries(swig_kdl ${MY_ADDED_LIBS})
+
+Originally posted by cyberguy42 with karma: 188 on 2014-07-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ROSkinect on 2014-07-01:
+can you post what did you add exactly to your CMakeLists.txt !?
+Comment by ROSkinect on 2014-07-01:
+OK can you explain to me in the last line what is "swig_kdl" and "MY_ADDED_LIBS"
+because I need that too but I don't know what to put in swig_kdl and MY_ADDED_LIBS places ?
+Comment by cyberguy42 on 2014-07-01:
+swig_kdl is the name of the library I am building, just put in the name of yours. MY_ADDED_LIBS should contain the libraries you use. Hope that helps. If not, you may want to create your own question so you can ask the community for help with your specific question.
+Comment by ROSkinect on 2014-07-02:
+Thank you it works now: what I did is simply add that:
+rosbuild_add_library(${PROJECT_NAME} /lib)
+Comment by Andromeda on 2014-08-15:
+I still have the same problem. I put: set( MY_ADDED_LIBS kdl_parser;urdf ) and then target_link_libraries( state_publisher ${MY_ADDED_LIBS} ) but I get again: target_link_libraries( state_publisher ${MY_ADDED_LIBS} )
+Please could you post an example of a working CMakeLists.txt?
+

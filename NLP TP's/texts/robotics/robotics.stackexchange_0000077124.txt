@@ -1,0 +1,41 @@
+Q:
+
+Why is a global planner required for teb_local_planner?
+
+I have successfully implemented the global_planner and my own global planner plugin(RRTstar) for the teb_local_planner. I've found that the teb_local_planner is very efficient is avoiding obstacles. My doubt is, what is the role of the global planner in this? I do understand that the local planner is merely optimizing the trajectory provided by the global planner.  But, going by the analogy that the local planner is like an elastic band, why couldn't we merely have selected a straight line between the start and goal point and use teb_local_planner to weave its way through the obstacles since it is effectively doing that with a global planner as well.
+Also, am I wrong in understanding that the teb local planner works similar to the potential field planners? Do they suffer from the same drawbacks?
+Any help would be much appreciated!
+
+Originally posted by RohitM on ROS Answers with karma: 115 on 2016-11-03
+Post score: 1
+
+A:
+
+The main issue for not using a local planner respectively predictive controller like the Timed-Elastic-Band (TEB) for global planning is the computational burden.
+The underlying optimization algorithm of the teb_local_planner finds only local minima similar to potential field methods.
+It even tries to explore multiple local minima by exploring and optimizing multiple candidate trajectories in alternative topologies in parallel. However, since it is required to find and optimize those alternatives within the control rate of the robot, a sampling based exploration strategy is implemented which is not complete in finding all alternatives. So you cannot guarantee to always find the globally optimal solution.
+One could switch to an exploration strategy based on the Voronoi-diagram, which is complete, but it does not scale well with the number of obstacles and hence the computation time rapidly increases with the number of obstacles (note, I have lethal costmap cells as point-shaped obstacles in mind, no lines/polygons). Or generally, global optimization schemes are not fast enough (even for mid-size environments).
+If you initialize the teb_local_planner with a straight line between start and goal in -let's say- a slightly complex maze map, it will likely fail.
+Furthermore, if the goal is some meters away and you require a high resolution of the trajectory (e.g. in order to satisfy the robot's (kino-)dynamic constraints), than the computation will exceed your specified control sampling rate.
+In general, it's still reasonable to keep the hierarchical planner architecture (base controller + local planner + global planner) due to numerous reasons. E.g. local range finders and cameras (resp. proximity sensors) provide only a local limited view of the environment. Everything beyond this area is highly uncertain. Why spending lots of computational resources to create a perfect plan for the uncertain part w.r.t. all dynamic constraints of the robot and non-exact prediction models for the behavior of other agents?
+Even humans have only a coarse plan in mind if they travel to some far destination. For instance interactions with other cars (passing, overtaking, ...) happens within the field of view of the driver.
+
+Originally posted by croesmann with karma: 2531 on 2016-11-03
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by RohitM on 2016-11-03:
+Oh ya,I hadn't thought of the comp requirement of the local planner
+Regarding the straight line global planner,I understand that in something like a maze it might fail.But I'm working with a car,so assuming that the route to take is decided, would only teb be able to handle something like this?
+Comment by RohitM on 2016-11-03:
+Just for clarity, even the global planner plans only till the range of sensors right? (assuming that it doesn't know the environment beforehand)
+Comment by howardcochran on 2017-02-08:
+@RohitM, No, in ROS, the global planner plans a route all the way from the current position to the goal.  If the goal is in an unknown area, then the global planner will fail. So, it depends on having a map that is complete enough to find such a path.
+Comment by distro on 2022-01-11:
+@RohitM You seem to have been able to get the teb_local_planner to work. Even in following the Tutorials I still have issues. If you could please spare me your time please look at this question
+Comment by distro on 2022-01-11:
+@croesmann Please spare the time to answer this question also related to teb_local_planner
+Comment by distro on 2022-01-12:
+@croesmann I closed my question and made another that is more palatable to read,I updated the link in my previous comment above
+

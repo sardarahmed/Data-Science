@@ -1,0 +1,90 @@
+Q:
+
+Coloring of pcd-pointcloud in Rviz
+
+Hi!
+I am very new to ROS, so please take that into account when answering :)
+(Ubuntu 14.04 64bit in a VirtualBox with Windows Host, ROS Indigo)
+What I did:
+I used
+rosrun pcl_ros pcd_to_pointcloud myFilename.pcd 0.1 
+
+to publish a topic containing my pcl-pointcloud as a PointCloud2 message. The output of this call is:
+
+[ INFO] [1449049889.334492450]:
+Publishing data on topic /cloud_pcd
+with frame_id /base_link. [ INFO]
+[1449049889.438294770]: Loaded a point
+cloud with 307200 points (total size
+is 4915200) and the following
+channels: x y z rgba.
+
+As one can correctly see, the pointcloud also contains color information. I now tried to visualize the point cloud using Rviz. For this purpose I set the Fixed Frame to "/base_link" and added a "PointCloud2"-Display whose topic I set to "/cloud_pcd".
+Problem description:
+I was only able to see the point cloud when setting the color to something else than RGB8. Why? There should be color information and I'd like my point cloud nicely colored :) How can I fix this?
+
+Originally posted by Jay4Ros on ROS Answers with karma: 35 on 2015-12-03
+Post score: 0
+
+Original comments
+Comment by Jay4Ros on 2015-12-03:
+this seems to be related with the fact that my pointcloud contains rgba and not only rgb. Indeed, the latter case works. According to https://github.com/ros-visualization/rviz/issues/885 this is a known issue. Is there a way to resolve it by now?
+Comment by Jay4Ros on 2015-12-04:
+Looking again, the issue should have been resolved on 6th of Aug (I am not really familiar with the issue-tracking system of github). I tried to confirm that I have the fixed version by checking the "Modified" date of point_cloud_common.h in my ros-folder (which is 06.August.2015). Fix did not work?
+Comment by Jay4Ros on 2015-12-07:
+The only (rather unsatisfying way) I have found so far is to write an own pcd-file reader that puts the pointcloud into a pcl::PointCloudpcl::PointXYZRGB object. Still hoping for a better solution here!! ;-)
+
+A:
+
+I think ROS does not really implement rgb data publish in pcd_to_pointcloud package.
+This is an example to change the PointCloud type from PointXYZ to PointXYZRGB
+#include <iostream>
+#include <string>
+#include <ros/ros.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/io/pcd_io.h>
+    
+typedef pcl::PointXYZRGB PointT;
+typedef pcl::PointCloud<PointT> PointCloud;
+using namespace std;
+
+int main(int argc, char** argv)
+{
+    PointCloud::Ptr cloud(new PointCloud);
+    ros::init (argc, argv, "my_pcl_tutorial");
+    ros::NodeHandle nh;
+    ros::Publisher pub = nh.advertise<PointCloud> ("points", 1);
+    pcl::io::loadPCDFile<PointT> ("yourpcd.pcd", *cloud);
+
+    PointCloud::Ptr msg(new PointCloud);
+    msg->header.frame_id = "map";
+    msg->height = cloud->height;
+    msg->width = cloud->width;
+
+    PointT p;
+    for (size_t i = 0; i < cloud->size(); i++) {
+        p.x = cloud->points[i].x;
+        p.y = cloud->points[i].y;
+        p.z = cloud->points[i].z;
+        p.r = cloud->points[i].r;
+        p.g = cloud->points[i].g;
+        p.b = cloud->points[i].b;
+        msg->points.push_back(p);
+    }
+
+    ros::Rate loop_rate(4);
+
+    while (nh.ok())
+    {
+        pub.publish (msg);
+        ros::spinOnce ();
+        loop_rate.sleep ();
+    }
+}
+
+Originally posted by ierosodin with karma: 36 on 2018-08-01
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,106 @@
+Q:
+
+Dynamic reconfigure
+
+this is my client.py
+#!/usr/bin/env python
+
+PACKAGE = 'dynamic_tutorials'
+import roslib;roslib.load_manifest(PACKAGE)
+import rospy
+import dynamic_reconfigure.client
+
+from geometry_msgs.msg import Vector3, Twist
+
+def callback(config):
+    rospy.loginfo("Config set to {bool_param}".format(**config))
+
+if __name__ == "__main__":
+    rospy.init_node("dynamic_client")
+    pub = rospy.Publisher('/turtle1/cmd_vel', Twist)
+    rospy.wait_for_service("/dynamic_tutorials/set_parameters")
+    tw = Twist(Vector3(1,2,0), Vector3(0,0,1))
+    client = dynamic_reconfigure.client.Client("dynamic_tutorials", timeout=30, config_callback=callback)
+
+    r = rospy.Rate(1)
+    x = 0
+    b = True
+
+    while not rospy.is_shutdown():
+    
+        x = x+1
+        if x >5:  
+            pub.publish(tw) 
+            x=0   
+
+        client.update_configuration({"bool_param":b})
+        r.sleep()
+
+When i run my server.py and client.py and turtlesim_node and dynamic_reconfigure, the turtle in the turtlesim node goes in circle every 5 seconds(regardless if the bool_param in dynamic reconfigure is ticked or unticked). If i click the bool_param, it becomes unticked immediately.
+Intended action: When i click on a button(bool_param, in this case is ticked) in rqt_dynamic_reconfigure , it should publish the command and remain publishing the command untill i give further instructions.
+How can i implement this action? I need to control the turtle movement using dynamic_reconfigure.
+Thank you!
+
+Originally posted by Azhar on ROS Answers with karma: 100 on 2017-02-05
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-02-06:
+Can you clarify why you want to do this with dynamic_reconfigure?
+Comment by Azhar on 2017-02-06:
+Basically I want an on/off button in my dynamic_reconfigure, to publish my customized data. So if the button is "on", it would publish the data.
+Current problem  :
+
+the button in the dynamic configure does not have any effect on the turtle when turned "on" or "off".
+
+Comment by gvdhoorn on 2017-02-06:
+That sounds like a strange thing to do with dynamic_reconfigure. More something for a service. Why do you feel dynamic_reconfigure should be used for something like this?
+re: no effect: well, your callback doesn't do anything besides printing the config. It doesn't update anything.
+Comment by Azhar on 2017-02-06:
+i need dynamic_reconfigure to able to change between modes for an autonomous vehicle, which is the ultimate goal. I am using turtlesim to find out how it can be done first.
+Is it possible for you to guide me what i should have in my callback, to get the intended function? Any form of guide! :)
+Comment by gvdhoorn on 2017-02-06:
+I still think this is not something you'd want to do with dynamic_reconfigure, but see amcl/src/amcl_node.cpp for how AMCL uses dyn rcfg. Mimic that in Python.
+
+A:
+
+THANKS @gvdhoom!
+i managed to get what i want using the dynamic_reconfigure!
+General info: The config is a dictionary which stores the True/False value of the parameter. So by playing with it , you can control what you want to do!
+#!/usr/bin/env python
+PACKAGE = 'dynamic_tutorials'
+import roslib;roslib.load_manifest(PACKAGE)
+import rospy
+import dynamic_reconfigure.client
+
+from geometry_msgs.msg import Vector3, Twist
+
+def callback(config):
+    global pub,tw,cw,global_name, client
+    print config
+    global_name = config['bool_param']
+
+pub = rospy.Publisher('/turtle1/cmd_vel', Twist)    
+tw = Twist(Vector3(1,2,0), Vector3(0,0,1))
+cw = Twist(Vector3(1,2,0),Vector3(0,0,-1))
+
+if __name__ == "__main__":
+    rospy.init_node("dynamic_client")
+    rospy.wait_for_service("/dynamic_tutorials/set_parameters")
+
+    client = dynamic_reconfigure.client.Client("dynamic_tutorials", timeout=30, config_callback=callback)
+
+   r = rospy.Rate(1)
+   global_name = rospy.get_param("/dynamic_tutorials/bool_param")
+   while not rospy.is_shutdown():              
+   if global_name:
+        pub.publish(tw)
+    else:
+        pub.publish(cw)
+       
+    r.sleep()
+
+Originally posted by Azhar with karma: 100 on 2017-02-13
+This answer was ACCEPTED on the original site
+Post score: 0
+

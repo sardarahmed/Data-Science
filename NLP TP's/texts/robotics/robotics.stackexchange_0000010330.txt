@@ -1,0 +1,33 @@
+Q:
+
+Localising a robot placed at an unknown position in a known environment
+
+I am a third-year electrical engineering student and am working on an intelligent autonomous robot in my summer vacations.
+The robot I am trying to make is supposed to be used in rescue operations. The information I would know is the position of the person (the coordinates of the person in a JSON file) to be rescued from a building on fire. I would also know the rooms of the building from a map, but I don't know where the robot may be placed inside the building to start the rescue operation.
+That means I have to localise the robot placed at an unknown position in a known environment, and then the robot can plan its path to the person who has to be rescued. But, since this is not my domain I would like you to guide me on what is the best method for localising given that I can use an IMU ( or gyro, accelerometer, magnetometer) and ultrasonic sensors to do the localising job. I cannot use a GPS module or a camera for this purpose. 
+I, however, do know how to do path planning.
+As far as my research on the Internet is concerned I have found a method called "Kalman filtering" that maybe can do the localising job. But there are I think some other filtering methods as well. Which one should I use? Or is there any other simpler/better method out there of which I don't know yet?
+I am also attaching the map of the building which is known to me.
+
+Edit:
+The terrain is flat, and I would like to know where the robot is on the map like at coordinate 0,4 etc.
+
+A:
+
+The problem is that you can't apply path planning until you know where the robot is in the global coordinate frame. There are many localization techniques, and each has its pros/cons; I have used Particle Filtering for a very similar localization task. Extensive coverage of particle filtering is given by Sebastian Thrun in his book Probabilistic Robotics--see chapter 8. There are advantages of particle filtering over Kalman Filtering (and the other way around), but the nice thing about particle filtering is that you can use raw measurements directly, it accepts measurement noise with any distribution, it can be used for global localization, it doesn't rely on a discretization of the world (e.g. a grid), and it is relatively simple to implement. 
+The algorithm presented by Thrun is Monte Carlo Localization (MCL). Prerequisites for the algorithm are that you have a model for the motion of your robot (this could be noisy unicycle dynamics) and a measurement model of your sensor--in your case, the ultrasonic sensor is a noisy beam sensor. See my previous post about ultrasonic sensors and measurement models. For the particle filter, you won't really need the IMU data, but you can incorporate it to improve your localization results; I will assume that you won't do this. 
+The MCL algorithm is summarized but the following pseudo-code:
+
+$\bar{X}=X=\varnothing$
+For m=1 to M particles, do:
+i. $x_t^{[m]}$=sample_motion_model($u_t,x_{t-1}^{[m]}$)
+ii. $w_t^{[m]}$=sample_measurement_model($z_t,x_t^{[m]},m$)
+iii. $\bar{X_t}+=\langle x_t^{[m]}, w_t^{[m]}\rangle$
+For m=1 to M particles, do:
+i. sample particle $i$ with probability proportional to $w_t^[i]$
+ii. add $x_t^{[i]}$ to $X_t$
+Return $X_t$
+
+$X_t$ is the set of M particles $\{x_t^{[1]},x_t^{[2]},...,x_t^{[M]}\}.$ $u_t$ is the action taken at time $t$, $z_t$ is the measurement taken at time $t$, $x_t^{[m]}$ is a particle representing the state of the robot at time $t$, and $w_t^{[m]}$ is the weight of particle $m$ at time $t$. The bar notation indicates a belief prior to incorporating the measurement, just after executing the action.
+In words, particle filtering works like this: throw out a bunch of particles, see how good they are based on what the robot has just done and based on what the robot observes, then pick the best particles and repeat. For particle filtering, you need to use a sufficiently large number of particles, and there are numerous techniques that can be used to improve performance and accuracy. Also, you need to know some math to go through the proof, but it is straightforward. 
+

@@ -1,0 +1,113 @@
+Q:
+
+Is it possible to run multiple loops at the same time? (Arduino)
+
+I've got a code where I have a motor running back and forth and buttons connected to a scanner, when I press the buttons it causes the motor to stop  and over rides it. I would like them to run parallel to each other so the codes don't interrupt each other.
+Here is my code
+#include <AccelStepper.h>
+
+// Define some steppers and the pins they will use
+
+AccelStepper stepper1(AccelStepper::FULL2WIRE, 2, 3);
+
+const int buttonPin = 4;
+const int button2Pin = 14;
+const int pulseopto1 = 9;
+const int startScan = 11;
+
+int buttonState = 0;
+long previousMillis = 0;
+long interval = 5;
+
+void setup()
+{
+    pinMode(buttonPin, INPUT);
+    pinMode(button2Pin, INPUT);
+    pinMode(pulseopto1, OUTPUT);
+    pinMode(startScan, OUTPUT); 
+    stepper1.setMaxSpeed(40000.0);
+    stepper1.setAcceleration(100000.0);
+    stepper1.moveTo(25000);
+}
+
+void loop()
+{
+    buttonState = digitalRead(buttonPin);
+
+    if (buttonState == LOW)
+    {
+        digitalWrite(startScan, HIGH);
+    }
+    else (buttonState == HIGH);
+    {
+        digitalWrite(startScan, LOW);
+    }
+
+    {
+        buttonState = digitalRead(button2Pin);
+
+        if (buttonState == LOW)
+        {
+            // turn LED on:
+            digitalWrite(pulseopto1, HIGH);
+            delay(5);
+            digitalWrite(pulseopto1, LOW);
+            delay(5);
+        }
+        else
+        {
+            // turn LED off:
+            digitalWrite(pulseopto1, LOW);
+        }
+    }
+
+    // Change direction at the limits
+    if (stepper1.distanceToGo() == 0)
+    {
+        stepper1.moveTo(-stepper1.currentPosition());
+    }
+
+    stepper1.run();
+}
+
+A:
+
+The short answer is yes, but the long answer is that you're approaching the code the wrong way and will need to rewrite things a bit.
+It looks like you're attempting to read a button and have it flash some LEDs while at the same time having your stepper move back and forth.  The problem is your delay(5); commands, which pause the execution of your code.
+Instead, you'll have to make use of the millis(); function to read the current time at each iteration through the loop.  Both the stepper movement and the LED flashes are functions of time, so just write those functions and set them on every iteration.
+long stepperPosition(long t)
+{
+    // YOUR CODE GOES HERE, like a sine or triangular waveform
+    // it might also depend on stepper1.distanceToGo() == 0
+    return sine(t * TIME_SCALE_FACTOR) * MAGNITUDE;
+}
+
+bool ledState(long t)
+{
+    // return HIGH if we're in the first "interval" millis after pressing
+    // after that, return LOW to turn off the LED
+    return (t < buttonPressTime + interval) ? HIGH : LOW;
+}
+
+void loop()
+{
+    long now = millis();
+
+    // set the LED directly from the button state
+    digitalWrite(startScan, LOW == digitalRead(buttonPin));
+
+    // record the time of the button press for use in our function
+    if (digitalRead(button2Pin) == LOW) {
+        buttonPressTime = now;
+    }
+
+    // set LED based on time function
+    digitalWrite(pulseopto1, ledState(now));
+
+    // set stepper based on time function
+    stepper1.moveTo(stepperPosition(now));
+    stepper1.run();
+}
+
+In this code, both the LED and stepper are controlled "in parallel" -- they are both set during each iteration, with no conditional delays.
+

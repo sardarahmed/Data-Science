@@ -1,0 +1,79 @@
+Q:
+
+Compile error creating message_filter with std_msgs/String
+
+Hi,
+Based on https://wiki.ros.org/message_filters#Time_Synchronizer I am trying to subscribe a node on two topics. I made two of the talker nodes like in https://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28c%2B%2B%29. One talker publishes on chatter and other on chatter1. So below is the code for listenerMultiple.cpp :
+#include "ros/ros.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <std_msgs/String.h>
+
+using namespace message_filters;
+using namespace std_msgs;
+using namespace std;
+
+void chatterCallback(const std_msgs::String::ConstPtr& msg)
+{
+        ROS_INFO("I heard: [%s]", msg->data.c_str());
+}
+
+int main(int argc, char **argv)
+{
+
+        ros::init(argc, argv, "listenerMultipleTopics");
+        ros::NodeHandle n;
+
+        message_filters::Subscriber<std_msgs::String> camera_sub(n, "chatter",1);
+        message_filters::Subscriber<std_msgs::String> imu_sub(n, "chatter2",1);
+
+        typedef sync_policies::ApproximateTime<String, String> MySyncPolicy;
+        Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), camera_sub, imu_sub); // adding these lines create problem!!!
+        sync.registerCallback(boost::bind(&chatterCallback, _1, _2)); // adding these lines create problem!!!
+
+        ros::spin();
+        return 0;
+}
+
+edit
+gvdhorn explained this won't work because there is no header for the String messages. So how can I take the String from the two topics and concatenate them?
+This creates a super huge compilation error (how could I solve this?) :
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/e9b7cb1f53c1e51e53e2361ea474e535
+
+Originally posted by edamondo on ROS Answers with karma: 5 on 2018-02-08
+Post score: 0
+
+A:
+
+Just about all of the message_filter filters only work with messages with a Header field, as the filters need timestamps to work with.
+std_msgs/String doesn't have a header, so that's most likely why you get the compilation error.
+Search for header on the wiki/message_filters - Time Synchronizer page you linked.
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-02-08
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by edamondo on 2018-02-08:
+Hello gvdhoorn,
+So how can I use the messages received from the two talkers and stack them into a vector?
+Comment by gvdhoorn on 2018-02-09:
+If you have no requirements for a particular order, I suggest you write a callback that does something like:
+void callback(... msg)
+{
+    my_vector_.push_back(msg->data);
+}
+
+provided my_vector_ is a std::vector<std::string> and is in scope, that should work.
+Comment by edamondo on 2018-02-09:
+But my_vector_ would be defined in the main function, so how can it be in the scope of the callback?
+Sould I pass the my_vector_ by reference to the callback? But  then should I bind the callback or something?
+Comment by gvdhoorn on 2018-02-09:
+Either place variables in the global scope, or use a class.
+But this is more a C++ question, not a ROS issue.
+Comment by edamondo on 2018-02-09:
+okay, I am going for the class way. Thanks!
+

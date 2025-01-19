@@ -1,0 +1,116 @@
+Q:
+
+How to use a subscriber in a global planner plugin?
+
+I am trying to write a custom global planner using this tutorial. I am not computing my path in this global planner, all I want to do is make this global planner pass on a path that is computed by my other package to the move_base/local planner. How do I define a subscriber and its callback function in the plugin so that it takes in the published path? Trying to execute option 2 from this answer.
+
+Originally posted by hanks on ROS Answers with karma: 57 on 2021-03-19
+Post score: 1
+
+A:
+
+What you need is to implement a global planner plugin that has service client built-in. Then, in a different node you implement a service server which is responsible for calculating the path each time it gets a service request.
+ROS Services are explained Here
+This is how to add a service client to the code shown by the Writing A Global Path Planner As Plugin in ROS tutorial:
+Class Header
+ //  SOME OTHER INCLUDE STATEMENTS
+ #include "***YOUR MESSAGE TYPE HERE***"
+    
+ namespace global_planner {
+
+ class GlobalPlanner : public nav_core::BaseGlobalPlanner {
+      public:
+        //  SOME CODE TO DECLARE PUBLIC MEMBERS
+    
+      private :
+        //  SOME CODE TO DECLARE PRIVATE MEMBERS
+
+        // service client declaration
+        ros::ServiceClient service_;
+  };
+};
+
+Class Implementation
+ void GlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros){
+   //  OTHER INITIALIZATION CODE
+
+   // create a client for the path planning service
+  service_ = private_nh.serviceClient<***YOUR MESSAGE TYPE HERE***>("plan");
+
+  // wait for the service to be advertised and available
+  service_.waitForExistence();
+ }
+
+then send a service request from inside of the body of the function GlobalPlanner::makePlan(), like so:
+   bool GlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal,  std::vector<geometry_msgs::PoseStamped>& plan ){
+
+  // initialize a message of your custom message type
+  **YOUR MESSAGE TYPE** message_name;
+
+   // CODE TO FILL IN YOUR CUSTOM MESSAGE
+
+  // call the path planning service
+  service_.call(message_name);
+
+ // you must also process the service response (not shown here)
+}
+
+Don't forget to process the service response and store it to the variable name plan which is one of the parameters of the function  GlobalPlanner::makePlan().
+You will also have to modify your CMakeLists.txt file to include your custom message type. All about how to create a custom service message is explained here:  Creating a ROS msg and srv tutorial
+Note that this is not a cut-and-paste ready-to-go example.  You will have to additionally:
+
+define a custom message
+create a service server
+fill in the service request, and
+process the service response
+
+Hopefully this information is enough to get you started and that it also answers your question.
+
+Originally posted by Roberto Z. with karma: 500 on 2021-03-19
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by hanks on 2021-03-20:
+I did implement this exactly as you mentioned and it partly works. The solution is received from another node where the service server is implemented, but then the makePlan() function only outputs a part of the global plan received for some reason. Here is how I implemented the service response -
+bool HybridAStarPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan) {
+    hybrid_astar::GlobalPath p;
+    geometry_msgs::PoseStamped pose_stamped;
+
+    sc.call(p);
+
+    for (int i = 0; i < p.response.plan.poses.size(); ++i) {
+        pose_stamped.header.stamp = ros::Time::now();
+        pose_stamped.header.frame_id = "map";
+        pose_stamped.pose = p.response.plan.poses[i].pose;
+        plan.push_back(pose_stamped);
+    }
+
+    return true;
+}
+
+Only the beginning part of the global plan received is being displayed in rviz. The same happened when I used a subscriber instead of a service.
+Comment by Roberto Z. on 2021-03-22:
+Your code to process the response looks ok to me. Only thing I would add is a check to verify if the plan is empty or not.
+// process plan response
+  if (p.response.plan.size())
+  {
+
+  //  YOUR CODE TO PROCESS THE SERVICE RESPONSE
+
+   return true;
+  }
+  else
+  {
+    // empty response, no plan found
+    return false;
+  }
+
+Maybe the problem lies on the side of the server? Can you confirm that the number of waypoints received by the client is equal to the number of waypoints send by the server? For instance adding a debug statement on both sides?
+ROS_DEBUG("Number of points: %d", unsigned( p.response.plan.size()));
+
+Comment by hanks on 2021-03-22:
+The problem was with the path being passed, I've solved it now. Thanks!
+Comment by Roberto Z. on 2021-03-22:
+I'm glad you got it working!
+

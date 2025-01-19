@@ -1,0 +1,82 @@
+Q:
+
+Creating MAVLink commands from python
+
+I am struggling to find any clear documentation on how to create MAVlink commands using python.
+I am looking to create an autonomous glider and require some of the basic functions
+
+Retrieve GPS Data and store into a file
+Import GPS data in Python function
+Send waypoint lat, long, alt to the autopilot (APM)
+
+I am currently using MAVProxy as my GCS and the ErleBrain 3 as my autopilot hardware but the aim is to not require a GCS and just have a python script to automatically add and remove waypoints based on the received GPS data
+
+A:
+
+There are a couple libraries for doing what you want to to, the first is pyMAVlink and the second is dronekit-python it is going to be easiest to use dronekit as it handles a lot of the lower level stuff like processing incoming packets and connecting over your preferred interface for you automatically. I assume you want to  load waypoints from a file and have your UAV fly them? In that case you probably want to set your UAV into Guided mode (for a description of modes on Ardupilot see the docs here) this will tell Ardupilot that you are going to command it step by step what to do.
+Here is some example code form there wiki that does what you want to do you'll just have to load your files and transform the coordinates to lat lon points:
+def arm_and_takeoff(aTargetAltitude):
+    while not vehicle.is_armable:
+        print " Waiting for vehicle to initialise..."
+        time.sleep(1)
+    vehicle.mode = VehicleMode("GUIDED")
+    vehicle.armed = True
+
+    while not vehicle.armed:      
+        print " Waiting for arming..."
+        time.sleep(1)
+
+    print "Taking off!"
+    vehicle.simple_takeoff(aTargetAltitude)
+    # Wait for takeoff to finish
+    while True:
+        print " Altitude: ", vehicle.location.global_relative_frame.alt      
+        if vehicle.location.global_relative_frame.alt>=aTargetAltitude*0.95: #Trigger just below target alt.
+            print "Reached target altitude"
+            break
+        time.sleep(1)
+
+def get_distance_metres(aLocation1, aLocation2):
+    dlat = aLocation2.lat - aLocation1.lat
+    dlong = aLocation2.lon - aLocation1.lon
+    return math.sqrt((dlat*dlat) + (dlong*dlong)) * 1.113195e5
+
+# define connection method 
+# see all the methods at http://python.dronekit.io/guide/connecting_vehicle.html
+connection_string = "127.0.0.1:14550"
+
+# Connect
+vehicle = connect(connection_string, wait_ready=True)
+# arm and takeooff to 10m
+arm_and_takeoff(10)
+# set airspeed to 3 m/s
+vehicle.airspeed = 3
+
+point1 = LocationGlobalRelative(-35.361354, 149.165218, 20)
+vehicle.simple_goto(point1)
+
+while vehicle.mode.name=="GUIDED": #Stop action if we are no longer in guided mode.
+        remainingDistance=get_distance_metres(vehicle.location.global_frame, point1)
+        print "Distance to target: ", remainingDistance
+        if remainingDistance<=targetDistance*0.01: #Just below target, in case of undershoot.
+            print "Reached target"
+            break;
+        time.sleep(2)
+
+Per request I have some example pymavlink code, you can see some more examples here, sending messages is a pain, you need to identify what type of packet you need to send, and fill it's paramaters acording to the standard
+from pymavlink import mavutil
+
+data = mavutil.mavlink_connection('udp:localhost:14551', planner_format=False,
+                                  notimestamps=True,
+                                  robust_parsing=True)
+
+while True:
+    msg = data.recv_match();
+    #If we have a valid message
+    if msg is not None:
+        #print msg.get_type()
+        if msg.get_type() is "HEARTBEAT":
+            print msg.autopilot
+        elif msg.get_type() is "NAV_CONTROLLER_OUTPUT":
+            print msg
+

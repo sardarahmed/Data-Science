@@ -1,0 +1,172 @@
+Q:
+
+base_local_planner does not follow the global plan accurately
+
+Hi all,
+I have a mobile robot which is navigating around a room, I already have the map of the room. I am using rotary encoders for odometry. I am fusing the data from Rotary encoders and IMU using robot_pose_ekf. I am using amcl for localization and move_base for planning with default global planner (A*) and Trajectory Planner as the local planner. The global planner gives the correct path to the goal but the problem is that the local planner is not able to follow that path properly. It tries to follow the path but overshoots and then again tries to come back and overshoots and so on. I recorded the data in a bag file and here is the link to the video showing what exactly is the problem (the last case is really bad):
+https://www.youtube.com/watch?v=OSM-HQ5LSuo&feature=youtu.be
+base_local_planner_params.yaml
+TrajectoryPlannerROS:
+  #Set the acceleration limits of the robot
+  acc_lim_th: 3.2
+  acc_lim_x: 2.0
+  acc_lim_y: 0
+
+  #Set the velocity limits of the robot
+  max_vel_x: 1.0
+  min_vel_x: 0.1
+  max_vel_theta: 1.5
+  min_vel_theta: -1.5
+  min_in_place_vel_theta: 0.8
+
+  #The velocity the robot will command when trying to escape from a stuck situation
+  escape_vel: -0.1
+  
+  #For this example, we'll use a holonomic robot
+  holonomic_robot: false
+
+  #Set the tolerance on achieving a goal
+  xy_goal_tolerance: 0.15
+  yaw_goal_tolerance: 0.15
+  latch_xy_goal_tolerance: false
+
+  #We'll configure how long and with what granularity we'll forward simulate trajectories
+  sim_time: 1.5
+  sim_granularity: 0.025
+  angular_sim_granularity: 0.025
+  vx_samples: 5
+  vtheta_samples: 20
+
+  #Parameters for scoring trajectories
+  goal_distance_bias: 0.8
+  path_distance_bias: 1.0
+  gdist_scale: 0.8
+  pdist_scale: 1.0
+  occdist_scale: 0.01
+  heading_lookahead: 0.325
+
+ #We'll use the Trajectory Rollout to control instead of Dynamic Window Approach for this example
+ dwa: false
+
+  #How far the robot must travel before oscillation flags are reset
+  oscillation_reset_dist: 0.05
+
+  #Eat up the plan as the robot moves along it
+  prune_plan: false
+
+  # Global Frame id
+  global_frame_id: odom_combined
+
+local_costmap_params.yaml
+local_costmap:
+  
+  #Set the global and robot frames for the costmap
+  global_frame: odom_combined
+  robot_base_frame: base_link
+  #Set the update and publish frequency of the costmap
+  update_frequency: 5.0
+  publish_frequency: 2.0
+  #We'll configure this costmap to be a rolling window... meaning it is always
+  #centered at the robot
+  static_map: false
+  rolling_window: true
+  width: 3.0
+  height: 3.0
+  resolution: 0.025
+  origin_x: 0.0
+  origin_y: 0.0
+  plugins:
+  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+  - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+  #Configuration for the sensors that the costmap will use to update a map
+  obstacle_layer:
+    observation_sources: laser_scan_sensor
+    laser_scan_sensor: {data_type: LaserScan, sensor_frame: /laser, topic: /scan, expected_update_rate: 0.4,
+      observation_persistence: 0.0, marking: true, clearing: true, max_obstacle_height: 2.0, min_obstacle_height: 0.0, inf_is_valid: true}
+
+I reduced the size of the local costmap but that also did not improve results by much. I feel its a very common problem, so if anyone has faced similar issues before,  any help will be appreciated from them. Please let me know if you need more information from my side.
+Update:
+After modifying the parameters as suggested by @Martin, the robot is performing better but it is still far from desired. The modified file:
+base_local_planner_params.yaml
+TrajectoryPlannerROS:
+  #Set the acceleration limits of the robot
+  acc_lim_th: 3.2
+  acc_lim_x: 2.0
+  acc_lim_y: 0
+
+  #Set the velocity limits of the robot
+  max_vel_x: 0.5
+  min_vel_x: 0.1
+  max_vel_theta: 0.8
+  min_vel_theta: -0.8
+  min_in_place_rotational_vel: 0.8
+
+  #The velocity the robot will command when trying to escape from a stuck situation
+  escape_vel: -0.1
+  
+  #For this example, we'll use a holonomic robot
+  holonomic_robot: false
+
+  #Set the tolerance on achieving a goal
+  xy_goal_tolerance: 0.15
+  yaw_goal_tolerance: 0.15
+  latch_xy_goal_tolerance: false
+
+  #We'll configure how long and with what granularity we'll forward simulate trajectories
+  sim_time: 1.5
+  sim_granularity: 0.025
+  angular_sim_granularity: 0.025
+  vx_samples: 3
+  vtheta_samples: 20
+  controller_frequency: 10.0
+
+  #Parameters for scoring trajectories
+  goal_distance_bias: 0.8
+  path_distance_bias: 1.0
+  gdist_scale: 0.8
+  pdist_scale: 1.0
+  occdist_scale: 0.01
+  heading_lookahead: 0.325
+
+  #We'll use the Trajectory Rollout to control instead of Dynamic Window Approach for this example
+  dwa: false
+
+  #How far the robot must travel before oscillation flags are reset
+  oscillation_reset_dist: 0.05
+
+  #Eat up the plan as the robot moves along it
+  prune_plan: false
+
+  # Global Frame id
+  global_frame_id: odom_combined
+
+The link to the video using above parameters: https://www.youtube.com/watch?v=ooS1mBZWyAc&feature=youtu.be
+Is it possible that this is because of some problem with the odometry (I am using wheel encoders to generate odometry) ? Any suggestions on how can I make sure that local planner follows the global path as close as possible will be appreciated?
+Thanks in advance.
+Naman Kumar
+
+Originally posted by Naman on ROS Answers with karma: 1464 on 2015-05-15
+Post score: 2
+
+Original comments
+Comment by miguel on 2015-07-23:
+I see you uploaded a new video which seems to follow the plan much better, was it the sim_time that made the difference?
+
+A:
+
+I had a similar problem and the cause was slow hardware running the local planner. Slow hardware + high robot speed = disaster
+I had to relax the forward simulation constrains, specially the control_frequency parameter (in my case I set it to 10Hz instead of the default 20Hz) and reduce the max linear and angular speed of the robot.
+I hope this helps
+
+Originally posted by Martin Peris with karma: 5625 on 2015-05-17
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by Naman on 2015-05-18:
+Thanks @Martin, that helped but still it is not close to desired.. I have updated the original question with modified parameters and the new video..Do you have any more suggestions on how to further improve it or what parameters to change? Thanks in advance.
+Comment by Martin Peris on 2015-05-18:
+Hi @Naman, you can still reduce the forward sim_time from 1.5 to 1 second. Also, to confirm that your hardware is struggling executing the local planner, you can check how much CPU the move_base is taking during autonomous navigation. If it is close to 100% you are in trouble
+Comment by osmancns on 2015-09-16:
+how did you solve ? @Naman
+

@@ -1,0 +1,137 @@
+Q:
+
+Problem of using Turtlebot to process image
+
+Hi, everyone ! I'm doing image processing using turtlebot right now, and I have completed programming on VS Windows, it is going perfect, but when I transformed it to ROS, it just went wrong.
+I am new in this area so I don't know what to do it right, I followed the tutorials and some simple example, and I successfully generated the exe file, but when I rosrun my node, the terminal says 'segmentation fault '.
+Here is my program, it's pretty simple even though it looks long:
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+#include <opencv2/core/core.hpp> 
+#include <opencv2/highgui/highgui.hpp> 
+#include <opencv2/imgproc/imgproc.hpp> 
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+
+using namespace cv;
+using namespace std;
+
+int main(int argc, char** argv)
+{
+        ros::init(argc, argv, "environment_changes");
+        ros::NodeHandle ench;
+    //ParametersSetting
+    unsigned char t = 50;                                           //difference threashold
+    int w = 50;                                             //window for checking
+    int output = 0;                                         //output for whether there are changes
+    double  threashold = (2 * w - 1)*(2 * w - 1)*0.92;      //threashold for whether there are changes
+    double  r = 0.05;                                       //rate of elimated size
+    double  X = 0;                                          //x of the centre
+    double  Y = 0;                                          //y of the centre
+    int p = 0;                                              //number of the changed space
+    int i;                                                  //rows
+    int j;                                                  //cols
+
+    //LoadImage
+    IplImage * image_ref;
+    IplImage * image_trans;
+    image_ref = cvLoadImage("test1.jpg");
+    image_trans = cvLoadImage("test2.jpg");
+
+    //ChangeToGray
+    IplImage * image_ref_gray;
+    IplImage * image_trans_gray;
+    image_ref_gray = cvCreateImage(cvGetSize(image_ref), image_ref ->depth ,1);
+    image_trans_gray = cvCreateImage(cvGetSize(image_trans), image_trans -> depth ,1);
+    cvCvtColor(image_ref, image_ref_gray, CV_RGB2GRAY);
+    cvCvtColor(image_trans, image_trans_gray, CV_RGB2GRAY);
+
+    //ShowImage
+    cvNamedWindow("test1", 1);
+    cvNamedWindow("test2", 1);
+    cvShowImage("test1", image_ref_gray);
+    cvShowImage("test2", image_trans_gray);
+    waitKey(0);
+
+    //ComputeTheImage
+    IplImage * image_sub;
+    image_sub = cvCreateImage(cvGetSize(image_ref_gray), image_ref_gray->depth, 1);
+    Mat ref;
+    Mat trans;
+    Mat sub;
+    ref = Mat(image_ref_gray);
+    trans = Mat(image_trans_gray);
+    sub = Mat(image_sub);
+    absdiff(trans, ref, sub);
+        i = sub.rows;
+    j = sub.cols;
+    int m;
+    int n;
+    for (m = round(i*r); m <= round(i*(1 - r)); m++){
+        for (n = round(j*r); n <= round(j*(1 - r)); n++){
+            if (sub.at<uchar>(m, n) >= t){
+                sub.at<uchar>(m, n) = 255;
+                X = X + m;
+                Y = Y + n;
+                p = p + 1;
+            }
+        }
+    }
+    X = X / p;
+    Y = Y / p;
+    cout << X << " " << Y << endl;
+    * image_sub = IplImage(sub);
+    cvNamedWindow("test3", 1);
+    cvShowImage("test3", image_sub);
+    waitKey(0);
+
+    //ReleaseTheSpace
+    cvDestroyWindow("test3");
+    cvDestroyWindow("test2");
+    cvDestroyWindow("test1");
+    cvReleaseImage(&image_sub);
+    cvReleaseImage(&image_trans_gray);
+    cvReleaseImage(&image_ref_gray);
+    cvReleaseImage(&image_trans);
+    cvReleaseImage(&image_ref);
+
+    return 0;
+}
+
+right now I simply just do the image load and processing and then show it without dealing with Turtlebot. Can somebody tell me what to do plz!! Thank you guys sooooo much!
+
+Originally posted by Henschel.X on ROS Answers with karma: 62 on 2016-03-15
+Post score: 1
+
+Original comments
+Comment by Reza1984 on 2016-03-15:
+I haven't worked with opencv but I used ROS-PCL.
+There I get the point cloud using ROS messages then convert it to PCL data and process the data then covert it back to ROS message.
+I think for opencv also should work the same.
+btw you define a ros node and you never used it, is it correct way?
+Comment by Henschel.X on 2016-03-15:
+I don't know. I just guess it may need that. I plan to do as you said too, get image from ROS, convert it to Opencv Image, do the processing and change it back, I just don't know what else should I do.
+
+A:
+
+I used several ROS_INFO, and it came with this error, I don't know what it means.
+OpenCV Error: Assertion failed (scn == 3 || scn == 4) in cvtColor, file /tmp/buildd/ros-hydro-opencv2-2.4.9-2precise-20141231-1923/modules/imgproc/src/color.cpp, line 3737
+terminate called after throwing an instance of 'cv::Exception'
+what():  /tmp/buildd/ros-hydro-opencv2-2.4.9-2precise-20141231-1923/modules/imgproc/src/color.cpp:3737: error: (-215) scn == 3 || scn == 4 in function cvtColor
+
+Originally posted by Henschel.X with karma: 62 on 2016-03-15
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Mehdi. on 2016-03-15:
+You should be using the opencv 2 functions, all functions starting with cv are the old functions that probably need you to preallocate space for images. Use cv::Mat instead of IplImage as well.
+Comment by Henschel.X on 2016-03-15:
+I have to use the old function cvCvtColor to convert RGB image to gray scale image, but Mat won't work for this, but I figure it out the problem, I have to replace my file name with the path, otherwise it cannot find the image.
+Comment by Mehdi. on 2016-03-16:
+cv::Mat is totally fine to convert rgb images to gray scale, just use the function cvtColor and not cvCvtColor
+Comment by Henschel.X on 2016-03-16:
+oh OK, I didn't know that.... Thanks a lot!
+

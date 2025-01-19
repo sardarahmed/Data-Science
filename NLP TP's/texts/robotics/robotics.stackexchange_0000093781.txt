@@ -1,0 +1,61 @@
+Q:
+
+ros melodic tf to tf2 migration
+
+Currently running ros melodic/ubuntu 18.0 and compiling this global planner code (which was written for ros indigo) gives the error message:
+error: no matching function for call to ‘costmap_2d::Costmap2DROS::getRobotPose(tf::Stamped<tf::Transform>&)’
+       if(dynamic_costmap_->getStaticROSCostmap()->getRobotPose(robot_pose))
+
+Snippet of code as follows:
+ try
+  {
+    geometry_msgs::Twist prev_vel = current_plan_.velocities.at(i - 2);
+    if(prev_vel.linear.x == 0 && replanning_start_vel.linear.x == 0)
+    {
+      ROS_DEBUG("turn in place. update pose with amcl");
+      tf::Stamped<tf::Transform> robot_pose;
+      if(dynamic_costmap_->getStaticROSCostmap()->getRobotPose(robot_pose))
+      {
+        conti_pose.pose.position.x = robot_pose.getOrigin().getX();
+        conti_pose.pose.position.y = robot_pose.getOrigin().getY();
+      }
+   }
+  }
+
+i'm suspecting this is because of the migration from tf to tf2. However i am really new to ROS and coding in general. I have tried reading the tf ros wiki, but it's really complicated and seems like i have to get a full understanding behind the workings of tf.
+So i was wondering if there is any quick fix or how can i rewrite this  particular part of the code?
+
+Originally posted by marcs on ROS Answers with karma: 18 on 2019-11-11
+Post score: 0
+
+A:
+
+@gvdhoorn: ah yes this seemed to do the trick, along with the tweaking of other lines in the code
+Found out a method which was to compare 2 same codes from diff versions side by side (i compared goal_functions.cpp from Indigo and Melodic era) and simply played spot the difference
+this is the edited code which compiled:
+ geometry_msgs::PoseStamped robot_pose;
+      if(dynamic_costmap_->getStaticROSCostmap()->getRobotPose(robot_pose))
+      {
+        conti_pose.pose.position.x = robot_pose.pose.position.x;
+        conti_pose.pose.position.y = robot_pose.pose.position.y;
+
+also i added a few header files
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
+thanks for your help, it was greatly appreciated :)
+
+Originally posted by marcs with karma: 18 on 2019-11-12
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-11-12:\
+
+So i was wondering if there is any quick fix or how can i rewrite this particular part of the code?
+
+So in the end I would say: no, there is no "quick fix".
+If trying to get code from 5 years ago to compile against current versions of ROS packages, there is a very good chance you'll have to port the code and accommodate for chances that the new version(s) of your dependencies have gone through.
+This is not unique to ROS packages of course but something that applies to all software.
+

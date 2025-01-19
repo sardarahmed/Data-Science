@@ -1,0 +1,71 @@
+Q:
+
+How to synchronise multiple topic subscriptions
+
+Question: What is the efficient and equivalent implementation of OROCOS read in ROS, when subscribing to multiple (different rate) data sources?
+Problem definition: Consider a case when we have two data sources: 1) publishing at higher rate (e.g 250Hz); 2) publishing at lower rate (e.g 10Hz). I have been trying to compare ros and orocos outputs by recording higher rate data at lower rate. When recorded in rosbag, there are instances when the data is not recorded at the correct sample time (or missed by one sample). I believe that the problem lies in my in-efficient implementation in ROS. I acknowledge that there may be a mistake in my implementation. Please see the explanation below.
+Explanation: In orocos, assuming a sequential activity and the event port is set at the higher rate, the update is given by:
+     if (highRateInput.read(highRateData,false) == RTT::NewData) // If there is a new data @250Hz
+     {
+        if (lowRateInput.read(lowRateData,false) == RTT::NewData) // If there is a new data @10Hz
+           {
+            highRateOutput.write(highRateData); // write to the output port @10Hz
+           }
+      }
+
+In ROS, the same can be achieved as follows:
+void Node::HighRateCallback(const Node::HighRateConstPtr& highRateData) // Event at highRate callback
+{
+    // copy  high rate data
+    data::HighRate high;
+    high.timeStamp = highRateData->timeStamp;
+    high.x = highRateData->x;
+    high.y = highRateData->y;
+    high.z = highRateData->z;
+
+    data::LowRate low;
+    low = lastLowRateData; // copy low rate data 
+    Update(high, low); // call update hook 
+}
+
+void Node::LowRateCallback(const Node::LowRateConstPtr& lowRateData)
+{
+    data::LowRate res;
+    res.timeStamp = lowRateData->timeStamp;
+    res.x = lowRateData->x;
+    res.y = lowRateData->y;
+    res.z = lowRateData->z;
+    lastLowRateData = res;
+}
+
+void Node::Update(data::HighRate& highD, data::LowRate& lowD)
+{
+    currentTime = lowD.timeStamp; 
+    if (currentTime > lastTime)
+    {
+        highRateOutput.publish(highD);
+    }
+    lastTime = currentTime;
+}
+
+Originally posted by Roboticist on ROS Answers with karma: 1 on 2015-07-23
+Post score: 0
+
+A:
+
+If I understand you and the code snippet correctly, you are essentially looking for a way to process messages that arrive at different frequencies in a synchronised way. The Orocos code snippet shows a major difference between ROS and Orocos: ROS is purely callback based and there is no real support for something like polled topics, which is essentially what read(..) is giving you in Orocos (see REP-106 for a proposal for this functionality that didn't make it).
+Without knowing more about your use case (and thus constraints), an alternative to your manual implementation might be to use the message_filters package. Perhaps the Policy-Based Synchronizers could be used. That should result in a single callback for each synchronised <LowRate, HighRate> msg pair.
+The inverse (ie: re-publish LowRate at HighRate frequency), would be what you already have in Node::Update(..), but without checking for the delta T.
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-07-24
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Roboticist on 2015-07-24:
+Thank gvdhoorn. Yes, I am actually looking support for polled topics in ROS and the reason I am looking for this is to have low-level code within one package (without using rtt-ros). I think the suggestion of using  message_filters is really useful and I will going to look at it again. Regard
+Comment by gvdhoorn on 2015-07-24:
+No problem. Might I suggest changing your question title to something like "Polled topic support in ROS?" or "How to synchronise multiple topic subscriptions" to better reflect what you want to do?
+Comment by Roboticist on 2015-07-24:
+Good suggestion. Thanks.
+

@@ -1,0 +1,97 @@
+Q:
+
+Unable to move the second robot using nav2d exploration
+
+Hi,
+I am trying to explore an area autonomously using multiple robots. I have created a launch file which looks like below:
+<node name="R0_MapAlign" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 /map /robot_0/map 100"/>
+<node name="R1_MapAlign" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 /map /robot_1/map 100"/>
+
+<!-- Start the first robot -->
+<group ns="robot_0">
+    <param name="robot_id" value="1"/>
+    <param name="tf_prefix" type="string" value="robot_0"/>
+    <rosparam file="$(find test_package)/param/ros.yaml"/>
+
+    <!-- Start the Navigator to move the robot autonomously -->
+    <node name="Navigator" pkg="nav2d_navigator" type="navigator" output="screen">
+        <rosparam file="$(find test_package)/param/navigator.yaml"/>
+    </node>
+    
+    <node name="GetMap" pkg="nav2d_navigator" type="get_map_client"/>
+    <node name="Explore" pkg="nav2d_navigator" type="explore_client" output="screen"/>
+    <node name="SetGoal" pkg="nav2d_navigator" type="set_goal_client"/>
+
+    <!-- Start the Operator to control the simulated robot -->
+    <node name="Operator" pkg="nav2d_operator" type="operator">
+    <remap from="scan" to="base_scan"/>
+    <rosparam file="$(find test_package)/param/operator.yaml"/>
+        <rosparam file="$(find test_package)/param/costmap.yaml" ns="local_map"/>
+    </node>
+
+    <!-- Start Mapper to genreate map from laser scans -->
+    <node name="Mapper" pkg="nav2d_karto" type="mapper">
+    <remap from="scan" to="base_scan" />
+    <remap from="karto_in" to="/shared_scans_r2"/>
+    <remap from="karto_out" to="/shared_scans_r1"/>
+    <rosparam file="$(find test_package)/param/mapper.yaml"/>
+    </node>
+
+    <!-- Get URDF(Unified Robot Description Format), which is an XML format for representing a robot model for Pioneer3at-->
+    <include file="$(find p2os_urdf)/launch/upload_pioneer3at.xml"/>
+    <node pkg="robot_state_publisher" type="state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="30.0"/>
+    </node>
+    
+    <node pkg="p2os_urdf" type="p2os_publisher_3at" name="publisher"/>
+</group>
+
+<!-- Start the second robot-->
+<group ns="robot_1">
+    <param name="robot_id" value="2"/>
+    <param name="tf_prefix" type="string" value="robot_1"/>
+    <rosparam file="$(find test_package)/param/ros.yaml"/>
+    
+    <!-- Start the Navigator to move the robot autonomously -->
+    <node name="Navigator" pkg="nav2d_navigator" type="navigator" output="screen">
+        <rosparam file="$(find test_package)/param/navigator.yaml"/>
+    </node>
+
+    <node name="GetMap" pkg="nav2d_navigator" type="get_map_client"/>
+    <node name="Explore" pkg="nav2d_navigator" type="explore_client" output="screen"/>
+    <node name="SetGoal" pkg="nav2d_navigator" type="set_goal_client"/>
+
+     <!-- Start the Operator to control the simulated robot -->
+    <node name="Operator" pkg="nav2d_operator" type="operator">
+    <remap from="scan" to="base_scan"/>
+    <rosparam file="$(find test_package)/param/operator.yaml"/>
+        <rosparam file="$(find test_package)/param/costmap.yaml" ns="local_map"/>
+    </node>
+
+I am able to move the first robot for mapping and exploration, but the second robot does not moves. After I enter the command, nothing happens. For the first robot, it moves, but i get response:0 in the terminal.
+Can anyone please help me with what is wrong with my program?
+
+Originally posted by robo_explorer on ROS Answers with karma: 29 on 2015-10-26
+Post score: 0
+
+A:
+
+The second robot doesn't have a mapper in your launch file, so it won't be able to navigate. Have you tried to run tutorial4 from nav2d? This should already do what you are trying.
+"response: 0" means everything is okay for the service call.
+
+Originally posted by Sebastian Kasperski with karma: 1658 on 2015-10-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by robo_explorer on 2015-10-27:
+Thanks Sebastian for your quick reply. I just checked my launch file has a mapper for the second robot. It just got truncated here. I also saw your response here http://answers.ros.org/question/192445/nav2d-autonomous-multi-robot-exploration/ and I have realized that I facing the same issue.
+Comment by robo_explorer on 2015-10-27:
+Is there any way I can automate the localization of second robot? Thanks again
+Comment by Sebastian Kasperski on 2015-10-28:
+If you buildt nav2d from source, there should be a localize_client (similar to the 3 existing clients) in the navigator package. If you start it, you can use the "Localize" service to do the initial movement.
+Comment by Sebastian Kasperski on 2015-10-28:
+Check here to see what it does in detail. It simply moves straight until the navigator is initialized. It requires that the area around the robot is already mapped before calling this service.
+Comment by robo_explorer on 2015-10-28:
+Thank you so much for your help.
+

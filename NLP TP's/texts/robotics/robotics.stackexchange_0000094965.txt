@@ -1,0 +1,334 @@
+Q:
+
+Diff_drive_controller not subscribing to /cmd_vel
+
+Hi, my team is working on a differential drive robot and trying to decide if the diff_drive_controller is a good fit for our project. We have been borrowing and adapting code from projects like My_ROS_mobile_robot, ros_control_boilerplate, and the hardware_interface tutorial.
+Our problem right now is that when we launch all the nodes that we believe we need, there is no subscription to /cmd_vel as we would expect, given diff_drive_controller's documentation.
+I'll leave some snippets of our code below. Here is a link to our full repository, with relevant code to this problem located in the hw_interface and launch directories.
+Here is our relevant code:
+diff_drive.launch:
+<launch>
+<!-- Hardware Interface -->
+<node name='hardware_interface' type='hw_interface_node' pkg='hw_inter'/>
+<!-- URDF -->
+<arg name="urdf_file" default="$(find xacro)/xacro --inorder '$(find rover_4_core)/description/urdf/rover.urdf'" />
+<param name="robot_description" command="$(arg urdf_file)" />
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+<!-- Load controller config -->
+<rosparam command="load" 
+          file="$(find rover_4_core)/hw_interface/config/common.yaml"/>
+<rosparam command="load" 
+          file="$(find rover_4_core)/hw_interface/config/control.yaml"/>
+
+<node name="controller_spawner" 
+      pkg="controller_manager" 
+      type="spawner" 
+      output="screen" 
+      ns="/"
+      args="mobile_base_controller joint_state_controller leftWheel_effort_controller rightWheel_effort_controller"/>    
+</launch>
+
+control.yaml:
+my_robot:
+motor_commands:
+    pwm_update_frequency: 50.0
+    cmd_vel_topic:
+      left:  "/cmd_vel"
+      right: "/cmd_vel"
+  # Publish all joint states -----------------------------------
+  # Creates the /joint_states topic necessary in ROS
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50  
+
+  # Effort Controllers ---------------------------------------
+  leftWheel_effort_controller:
+    type: effort_controllers/JointEffortController
+    joint: lwheel_to_base
+    pid: {p: 100.0, i: 0.1, d: 10.0}
+    #pid: {p: 50.0, i: 0.1, d: 0.0}
+  rightWheel_effort_controller:
+    type: effort_controllers/JointEffortController
+    joint: rwheel_to_base
+    pid: {p: 100.0, i: 0.1, d: 10.0}
+    #pid: {p: 50.0, i: 0.1, d: 0.0}
+
+common.yaml:
+mobile_base_controller:
+  type        : "diff_drive_controller/DiffDriveController"
+  left_wheel  : 'left_wheel'
+  right_wheel : 'right_wheel'
+  publish_rate: 50.0  # default: 50
+  pose_covariance_diagonal : [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+  twist_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+
+  # Wheel separation and diameter. These are both optional.
+  # diff_drive_controller will attempt to read either one or both from the
+  # URDF if not specified as a parameter
+  wheel_separation : 0.026 # meters 
+  wheel_radius : 0.0045    # meters
+
+  # Wheel separation and radius multipliers
+  wheel_separation_multiplier: 1.0 # default: 1.0
+  wheel_radius_multiplier    : 1.0 # default: 1.0
+
+  # Velocity commands timeout [s], default 0.5
+  cmd_vel_timeout: 0.25
+
+  # Base frame_id
+  base_frame_id: base_link #default: base_link
+  # Velocity and acceleration limits
+  # Whenever a min_* is unspecified, default to -max_*
+  linear:
+    x:
+      has_velocity_limits    : true
+      max_velocity           : 1.15 #1.0  # m/s
+      min_velocity           : -1.15 #-0.5 # m/s
+      has_acceleration_limits: true
+      max_acceleration       : 5.0 #0.8  # m/s^2
+      min_acceleration       : -1.0 #-0.4 # m/s^2
+      has_jerk_limits        : true
+      max_jerk               : 5.0  # m/s^3
+  angular:
+    z:
+      has_velocity_limits    : true
+      max_velocity           : 50.0 #1.7  # rad/s
+      has_acceleration_limits: true
+      max_acceleration       : 1.5  # rad/s^2
+      has_jerk_limits        : true
+      max_jerk               : 2.5  # rad/s^3
+
+#Publish to TF directly or not
+enable_odom_tf: true
+
+#Name of frame to publish odometry in
+odom_frame_id: odom
+
+# Publish the velocity command to be executed. 
+# It is to monitor the effect of limiters on the controller input.
+publish_cmd: true
+
+Finally here's a link to our hardware interface node, because it's too long to include here. We appreciate your time and help!
+EDIT: console output of diff_drive.launch
+    $ roslaunch rover_4_core diff_drive.launch 
+... logging to /home/nate/.ros/log/4f103afa-5e62-11ea-8022-b827eb2d9e86/roslaunch-natebook-9951.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+xacro: in-order processing became default in ROS Melodic. You can drop the option.
+started roslaunch server http://172.20.171.238:38857/
+
+SUMMARY
+========
+
+PARAMETERS
+ * /enable_odom_tf: True
+ * /mobile_base_controller/angular/z/has_acceleration_limits: True
+ * /mobile_base_controller/angular/z/has_jerk_limits: True
+ * /mobile_base_controller/angular/z/has_velocity_limits: True
+ * /mobile_base_controller/angular/z/max_acceleration: 1.5
+ * /mobile_base_controller/angular/z/max_jerk: 2.5
+ * /mobile_base_controller/angular/z/max_velocity: 50.0
+ * /mobile_base_controller/base_frame_id: base_link
+ * /mobile_base_controller/cmd_vel_timeout: 0.25
+ * /mobile_base_controller/left_wheel: left_wheel
+ * /mobile_base_controller/linear/x/has_acceleration_limits: True
+ * /mobile_base_controller/linear/x/has_jerk_limits: True
+ * /mobile_base_controller/linear/x/has_velocity_limits: True
+ * /mobile_base_controller/linear/x/max_acceleration: 5.0
+ * /mobile_base_controller/linear/x/max_jerk: 5.0
+ * /mobile_base_controller/linear/x/max_velocity: 1.15
+ * /mobile_base_controller/linear/x/min_acceleration: -1.0
+ * /mobile_base_controller/linear/x/min_velocity: -1.15
+ * /mobile_base_controller/pose_covariance_diagonal: [0.001, 0.001, 10...
+ * /mobile_base_controller/publish_rate: 50.0
+ * /mobile_base_controller/right_wheel: right_wheel
+ * /mobile_base_controller/twist_covariance_diagonal: [0.001, 0.001, 10...
+ * /mobile_base_controller/type: diff_drive_contro...
+ * /mobile_base_controller/wheel_radius: 0.0045
+ * /mobile_base_controller/wheel_radius_multiplier: 1.0
+ * /mobile_base_controller/wheel_separation: 0.026
+ * /mobile_base_controller/wheel_separation_multiplier: 1.0
+ * /my_robot/joint_state_controller/publish_rate: 50
+ * /my_robot/joint_state_controller/type: joint_state_contr...
+ * /my_robot/leftWheel_effort_controller/joint: lwheel_to_base
+ * /my_robot/leftWheel_effort_controller/pid/d: 10.0
+ * /my_robot/leftWheel_effort_controller/pid/i: 0.1
+ * /my_robot/leftWheel_effort_controller/pid/p: 100.0
+ * /my_robot/leftWheel_effort_controller/type: effort_controller...
+ * /my_robot/motor_commands/cmd_vel_topic/left: /cmd_vel
+ * /my_robot/motor_commands/cmd_vel_topic/right: /cmd_vel
+ * /my_robot/motor_commands/pwm_update_frequency: 50.0
+ * /my_robot/rightWheel_effort_controller/joint: rwheel_to_base
+ * /my_robot/rightWheel_effort_controller/pid/d: 10.0
+ * /my_robot/rightWheel_effort_controller/pid/i: 0.1
+ * /my_robot/rightWheel_effort_controller/pid/p: 100.0
+ * /my_robot/rightWheel_effort_controller/type: effort_controller...
+ * /odom_frame_id: odom
+ * /publish_cmd: True
+ * /robot_description: <?xml version="1....
+ * /rosdistro: melodic
+ * /rosversion: 1.14.3
+
+NODES
+  /
+    controller_spawner (controller_manager/spawner)
+    hardware_interface (rover_4_core/hw_interface_node2)
+    robot_state_publisher (robot_state_publisher/robot_state_publisher)
+
+ROS_MASTER_URI=http://robot.dyn.brandeis.edu:11311
+
+process[hardware_interface-1]: started with pid [9965]
+process[robot_state_publisher-2]: started with pid [9966]
+process[controller_spawner-3]: started with pid [9967]
+[INFO] [1583358955.344833]: Controller Spawner: Waiting for service controller_manager/load_controller
+[INFO] [1583358955.386302]: Controller Spawner: Waiting for service controller_manager/switch_controller
+[INFO] [1583358955.419234]: Controller Spawner: Waiting for service controller_manager/unload_controller
+[INFO] [1583358955.452522]: Loading controller: mobile_base_controller
+
+EDIT 2: The output of rosnode info hardware_interface while everything is running is as follows:
+$ rosnode info hardware_interface
+    --------------------------------------------------------------------------------
+    Node [/hardware_interface]
+    Publications: 
+     * /left_wheel_vel [std_msgs/Float32]
+     * /right_wheel_vel [std_msgs/Float32]
+     * /rosout [rosgraph_msgs/Log]
+    
+    Subscriptions: 
+     * /encoder_left [std_msgs/Int64]
+     * /encoder_right [std_msgs/Int64]
+    
+    Services: 
+     * /controller_manager/list_controller_types
+     * /controller_manager/list_controllers
+     * /controller_manager/load_controller
+     * /controller_manager/reload_controller_libraries
+     * /controller_manager/switch_controller
+     * /controller_manager/unload_controller
+     * /hardware_interface/get_loggers
+     * /hardware_interface/set_logger_level
+    
+    
+
+    contacting node http://172.20.171.238:38647/ ...
+Pid: 6911
+Connections:
+ * topic: /rosout
+    * to: /rosout
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /left_wheel_vel
+    * to: /serial_node
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /right_wheel_vel
+    * to: /serial_node
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /encoder_left
+    * to: /serial_node (http://robot:41185/)
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /encoder_right
+    * to: /serial_node (http://robot:41185/)
+    * direction: inbound
+    * transport: TCPROS
+
+Originally posted by ndimick on ROS Answers with karma: 23 on 2020-03-04
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-03-04:
+Your .launch file suggests you are attempting to start all of these controllers together: mobile_base_controller joint_state_controller leftWheel_effort_controller rightWheel_effort_controller.
+That cannot work, as the effort controllers will try to claim the same resources as your mobile_base_controller.
+Can you show the output on the console after you roslaunch [..] diff_drive.launch?
+Comment by ndimick on 2020-03-04:
+Hi, @gvdhoorn, thanks for your help! I've edited the original question to include the console output at the bottom of the question.
+Comment by gvdhoorn on 2020-03-05:
+If that's all there is then I'm not sure everything is being started.
+Can you try launching using
+roslaunch --screen rover_4_core diff_drive.launch 
+
+Is this one machine btw? Because I see this in your output:
+ROS_MASTER_URI=http://robot.dyn.brandeis.edu:11311
+
+If this is multi-machine then please make sure DNS is working properly (in both ways, so forward and reverse lookup).
+Comment by ndimick on 2020-03-05:
+launching using
+roslaunch --screen rover_4_core diff_drive.launch 
+
+produced the same console output as before. No new or additional lines.
+Yes we are on a multi-machine setup, launching diff_drive.launch from a remote pc, running roscore on a raspberry pi attached to our hardware. We tested DNS lookups with dig and it is working properly both ways from both machines. Ros topics are also communicating between the two without issue.
+Comment by pitosalas on 2020-03-09:
+@gvdhoorn I am working with @ndimick. We're wondering if you (or anyone else) has further insight into the problem above and/or whether you need some more information? Thanks
+Comment by gvdhoorn on 2020-03-09:
+I find the console log you show suspicious. I'd expect a line mentioning something like "started controller .." there as well.
+Try listing the controllers loaded and ascertaining their status.
+Also: what is the output of rosnode info hardware_interface after you've started everything?
+Comment by ndimick on 2020-03-09:
+Should the controller start automatically after it is spawned or does it have to be manually started inside of a node?
+Comment by gvdhoorn on 2020-03-10:
+Please answer my other questions as well.
+Comment by ndimick on 2020-03-10:
+I've added the output of rosnode info hardware_interface to the original post. it is at the very bottom of the post.
+Additionally, rosservice call /controller_manager/list_controllers "{}" and rosrun controller_manager controller_manager list both produce no output. I hope that helps.
+Comment by gvdhoorn on 2020-03-10:
+According to your comment, no controllers are loaded into your hardware_interface. That would explain why you don't see the cmd_vel subscription.
+Comment by fjp on 2020-03-18:
+@ndimick, @pitosalas, @gvdhoorn why are the two JointEffortControllers required? Isn't DiffDriveController sufficient?
+
+A:
+
+This is the main(..) from the code you link in your question:
+int main(int argc, char **argv)
+{
+    /*
+    * Main loop of the hardware interface.
+    */
+    ros::init(argc, argv, "hw_interface");
+    MyRobot robot;
+    controller_manager::ControllerManager cm(&robot);
+    ros::Time time_now;
+    ros::Duration period_now;
+    ros::Rate sleep_rate(10);
+    
+
+    while (true)
+    {
+        time_now = robot.get_time();
+        period_now = robot.get_period(); 
+        robot.read(period_now);
+        cm.update(time_now, period_now);
+        robot.write();
+        sleep_rate.sleep();
+    }
+}
+
+There is one thing suspiciously missing here, and that would be somewhere for ROS to actually process events. The fact that the controller_manager services do not produce any output is indicative of this.
+Even a hardware_interface needs some time to process incoming and outgoing events, but you don't give it any.
+You'll either want to call ros::spinOnce() somewhere in your while loop, or instantiate a ros::AsyncSpinner and start it. The latter would actually be recommended. Something like this should do the trick:
+ros::AsyncSpinner spinner(2);
+spinner.start();
+
+A single thread is not enough, as there is a high potential for deadlocks.
+Note that this also done in the two examples that you link: PickNikRobotics/ros_control_boilerplate (here) and eborghi10/my_ROS_mobile_robot (here).
+
+Edit: just noticed you have this:
+while (true)
+{
+  [..]
+}
+
+This is not a good idea in a ROS node -- which a hardware_interface essentially is.
+You'll want to check for ros::ok() instead.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-03-10
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by ndimick on 2020-03-11:
+Thank you! adding the ros::AsyncSpinner did the trick. Again, thanks for your time, help and additional insights.
+

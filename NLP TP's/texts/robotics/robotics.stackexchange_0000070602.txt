@@ -1,0 +1,110 @@
+Q:
+
+Problem running rtabmap_ros against a bag file
+
+Hello,
+I have been playing with the most excellent rtabmap_ros package on my Kobuki (Turtlebot 2) under ROS Indigo and Ubuntu 14.04.  I recorded a bag file from my robot using the following command:
+$ rosbag record -b 512 -o ~/tmp/rtabmap /data_throttled_image/compressed /data_throttled_image_depth/compressedDepth/data_throttled_camera_info /tf /tf_static /scan /odom /joint_states
+
+where I have used the suggested data_throttle launch file listed at http://wiki.ros.org/rtabmap_ros/Tutorials/SetupOnYourRobot#rviz.
+I then try to run the rtabmap_ros/demo_robot_mapping.launch file against this bag file after changing the odom and scan topics in the launch file to match my robot's topics.  The demo_robot_mapping.launch file runs fine and the last INFO message during startup is:
+[ INFO] [1448512439.761234227]: rtabmap 0.10.10 started...
+
+But when I the play my bag file using the command:
+$ rosbag play --clock my_bag_file.bag
+
+I immediately get the following error in the rtabmap terminal:
+[FATAL] (2015-11-25 20:34:11.368) OdometryEvent.h:45::generateCovarianceMatrix() Condition (uIsFinite(transVariance) && transVariance>0) not met!
+
+*******
+FATAL message occurred! Application will now exit.
+
+*******
+[ WARN] (2015-11-25 20:34:11.369) MainWindow.cpp:797::processOdometry() Empty cloudOdom!
+[ERROR] (2015-11-25 20:34:11.369) CloudViewer.cpp:1127::setCloudVisibility() Cannot find actor named "cloudOdom".
+[ERROR] [1448512451.431228091, 1448512183.861893627]: Can't call "pause" service
+[rtabmap/rtabmap-1] process has died [pid 6798, exit code 1, cmd /opt/ros/indigo/lib/rtabmap_ros/rtabmap --delete_db_on_start odom:=/odom scan:=/scan rgb/image:=/data_throttled_image depth/image:= /data_throttled_image_depth rgb/camera_info:=/data_throttled_camera_info __name:=rtabmap __log:=/home/patrick/.ros/log/899bd3f6-93f4-11e5-941d-64006a04e0e0/rtabmap-rtabmap-1.log].
+log file: /home/patrick/.ros/log/899bd3f6-93f4-11e5-941d-64006a04e0e0/rtabmap-rtabmap-1*.log
+
+I don't see a topic named cloudOdom in my list of topics, nor is it in the demo_mapping.bag file used in the rtabmap demos.
+What am I missing?
+Thanks!
+UPDATE 1: After downloading and installing version 0.10.12, I still get the same error as above but with one more message as follows:
+rtabmap: /usr/include/boost/thread/pthread/recursive_mutex.hpp:101: boost::recursive_mutex::~recursive_mutex(): Assertion `!pthread_mutex_destroy(&m)' failed.
+
+UPDATE 2: Here is a link to the bag file that is causing the trouble.
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2015-11-26
+Post score: 0
+
+Original comments
+Comment by Pi Robot on 2015-11-26:
+The cause of the error was a left over running grid assembler node from a previous session.  Restarting roscore and starting from scratch solved the problem.
+Comment by matlabbe on 2015-11-26:
+I still updated the code for the variance error. I updated also the library for the "cloudOdom" error.
+Comment by matlabbe on 2015-11-26:
+The variance error would have been caused by infinity values in the odometry message. For the "cloudOdom", it was just that the rendered cloud in rtabmapviz could not be created (cloud was empty).
+Comment by Pi Robot on 2015-11-27:
+Thanks Mathieu!  However, I downloaded and compiled version 0.10.12 and I still get the same error, even after removing the Debian rtabmap and rtabma_ros packages just to be sure.  I do get one more error line that might help--I've posted an updated to my question above.
+
+A:
+
+Hi,
+The problem was caused by large covariance values (1.7976931348623157e+308) in the Odometry messages:
+$rostopic echo /odom
+...
+header: 
+  seq: 7062
+  stamp: 
+    secs: 1448550366
+    nsecs: 530036677
+  frame_id: odom
+child_frame_id: base_footprint
+pose: 
+  pose: 
+    position: 
+      x: 0.118375024097
+      y: -0.23544191425
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.305612214835
+      w: 0.952156066065
+  covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.7976931348623157e+308, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.7976931348623157e+308, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.7976931348623157e+308, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05]
+twist: 
+  twist: 
+    linear: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 0.00191986217719
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+...
+
+and there was a bug of double/float conversion in rtabmap node. This is now fixed in this commit.
+Your bag helped me to correct another issue about variance when the link is not refined because the robot is not moving (under RGBD/LinearUpdate and RGBD/AngularUpdate). Thx!
+I've taken demo_robot_mapping.launch to test your bag, I just did a little modification to increase the number of loop closures found by lowering the parameter LccIcp2/CorrespondenceRatio (default 0.3, which is used to accept an ICP transformation):
+<node pkg="rtabmap_ros" type="rtabmap" name="rtabmap">
+ [...]
+ <param name="LccIcp2/CorrespondenceRatio" type="string" value="0.2"/>
+</node>
+
+Here is the result (I also added cloud_ceiling_culling_height parameter to filter the ceiling for better view):
+
+cheers,
+Mathieu
+
+Originally posted by matlabbe with karma: 6409 on 2015-11-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Pi Robot on 2015-11-27:
+That did it--thanks Mathieu!  It seems the large covariance values may be deliberately published by the kobuki_node and may be used as "I don't know" values.  I see the same values in this other post.
+Comment by Pi Robot on 2015-11-27:
+Also, thanks for adding the cloud_ceiling_culling_height parameter--it's like you were reading my mind as I was just about to ask if that could be added so I could see the room layout better. :-)
+

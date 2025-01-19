@@ -1,0 +1,107 @@
+Q:
+
+Gazebo and MoveIt! MoveitSimpleControllerManager and sending joint trajectory messages
+
+Hi
+I've been working my way through the MoveIt! tutorials and have been having some problems with the Gazebo integration.
+I'm simply trying to plan and execute a command in MoveIt! and have it displayed on the Gazebo simulator, in this case using the Fanuc m10ia model.
+I have had to use the MoveItSimpleControllerManager instead of the Pr2controller, (also if any one else is using this I believe there is an error with the spelling, as it is listed as Simple_MoveIt_Controller_Manager and not MoveIt_Simple_Controller_Manager).
+Anyway, upon running roslaunch fanuc_m10ia_moveit_config moveit_planning_execution.launch I get any error saying:
+[ INFO] [1375734277.680123500, 1255.832000000]: MoveitSimpleControllerManager:     Waiting for moveit_simple_controller/follow_joint_trajectory to come up
+[ERROR] [1375734283.338320976, 1260.832000000]: MoveitSimpleControllerManager: Action client not connected: moveit_simple_controller/follow_joint_trajectory
+
+Is there some step I have missed, or some node / service I should have started that I am unaware of?
+Here is some additional information
+Controllers.yaml
+controller_manager_ns: moveit_simple_controller_manager
+controller_list:
+  - name: moveit_simple_controller
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+      - joint_6-tool0
+
+moveit_planning_execution.launch
+<launch>
+   # The planning and execution components of MoveIt! configured to 
+   # publish the current configuration of the robot (simulated or real)
+   # and the current state of the world as seen by the planner
+   <include file="$(find fanuc_m10ia_moveit_config)/launch/move_group.launch">
+      <arg name="publish_monitored_planning_scene" value="true" />
+   </include>
+   # The visualization component of MoveIt!
+   <include file="$(find fanuc_m10ia_moveit_config)/launch/moveit_rviz.launch"/>
+</launch>
+
+fanuc_m10ia_controller_manager.launch
+<launch>
+ <arg name="moveit_controller_manager" default="moveit_simple_controller_manager/MoveItSimpleControllerManager" />
+ <param name="moveit_controller_manager" value="$(arg moveit_controller_manager)"/>
+ <arg name="controller_manager_name" default="moveit_simple_controller_manager" />
+ <param name="controller_manager_name" value="$(arg controller_manager_name)" />
+ <arg name="use_controller_manager" default="true" />
+ <param name="use_controller_manager" value="$(arg use_controller_manager)" />
+ <rosparam file="$(find fanuc_m10ia_moveit_config)/config/controllers.yaml"/>
+</launch>
+
+Any help is appreciated. (Apologies for the cross post)
+Cdr
+
+Originally posted by cdrwolfe on ROS Answers with karma: 137 on 2013-08-07
+Post score: 1
+
+Original comments
+Comment by fergs on 2013-08-10:
+Where is the naming/spelling error? On the wiki? In the docs? Could you provide a link?
+Comment by cdrwolfe on 2013-08-11:
+Hmm, if I'm honest I can't quite remember, after failing to get the pr2_controller to work I managed to search out the simple_moveit_controller through google. I imagine it is linked to the Maxwell package though looking at it now it seems to not be the case. however you can see in this link where it was previously named differently. I Imagine I copied and experimented with this before remaining it to the correct title.
+https://github.com/ros-planning/moveit_commander/issues/3
+Comment by Jeremy Zoss on 2013-08-11:
+You'll probably need to post more details about your configuration to get further help.  Perhaps you can post your controller_manager.launch, moveit_planning_execution.launch, and controllers.yaml files?
+Comment by fergs on 2013-08-11:
+SimpleMoveit was before we moved this to the new moveit_plugins repository, back when it was in my personal repository.
+Comment by cdrwolfe on 2013-08-12:
+Updated to add more details
+Comment by yin on 2016-11-28:
+hello, I also encounter this problem, do you solve the problem?
+Comment by tudler88 on 2016-11-30:
+make sure you have all the packages installed. A good way to check is to cd into the src/'your_robot' directory and type "rosdep install -r --from-paths . "
+
+A:
+
+It's unclear from your launch files and topic listing, but it's worth checking to make sure:
+MoveIt requires that your robot-interface nodes provide a FollowJointTrajectory action.  Have you provided this action in one of your robot nodes?
+The controller manager files specify how to connect MoveIt to this action (which joints, what namespace/topic names, etc.), but a controller_manager does not provide the action itself.
+
+For the PR2 nodes, this action is provided by the arm controller nodes (see here).
+For ROS-Industrial nodes, this action is typically provided by the joint_trajectory_action node in the industrial_robot_client package.  See, for example, here and here.
+
+In your topic list, I see topics related to this action under both follow_joint_tractory/goal and /moveit_simple_controller/follow_joint_trajectory/*, so there may be some conflict there.
+Edit:
+As a side note: Is there any reason in particular that you need to use gazebo?  For many cases, the basic rviz visualization is adequate.  Have you looked at the ROS-Industrial set of packages?  These packages include a good framework already for working with faunc robots, including the m10ia.  These packages include the launch files necessary to bring up the joint_trajectory_action, but don't have any hooks into gazebo.
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-08-12
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by cdrwolfe on 2013-08-15:
+Hmm I don't believe I have provided some call up to FollowJointTrajectory action, and I'm not entirely sure how. I'm using the fanuc_experimental package and the fanuc_m10ia_fanuc_config within it. I've been trying to follow the quickstart tutorial in http://moveit.ros.org/wiki/PR2/Gazebo/Quick_Start.
+There was no mention of setting up a FollowJointTrajectory action within this.
+Would I somehow have to call this  in one of my launch files?
+Also the topic "follow_joint_tractory/goal" doesn't exist, it was an error i made when pasting in the topic details, sorry about that
+Comment by Jeremy Zoss on 2013-08-15:
+There's no mention of this in the PR2 tutorial, because it's handled by the PR2's arm_controller, as I mentioned above.  For the moveit_simple_controller, you'll need to provide your own.  Your launch-file suggestion is on-target, but you'll need to make sure that the moveit_simple_controller config file is set to look for your action in the correct namespace and topic names.
+Comment by cdrwolfe on 2013-08-15:
+Thanks Jeremy, that will teach me to mix two things together and jump to far ahead :)
+I think i'll go back over the PR2 controllers, get a better understanding of how they work and then look to get the moveit_simple_controller working later on and post what I can come up with
+Comment by cdrwolfe on 2013-08-15:
+In answer to EDIT* I eventually will need to have more than one robotic platform working with others in a collaborative way. The example I gave above was with some turtlebots working with the fanuc arm to do a simple task. Now i may be ignorant in this regard but I assumed this would require the more complex physics found within Gazebo, and the possibility of multiple robotic platforms working together, than would be available within Rviz, though I could be wrong
+

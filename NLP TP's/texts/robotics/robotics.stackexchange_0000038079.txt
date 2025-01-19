@@ -1,0 +1,56 @@
+Q:
+
+smach_ros.MonitorState callback receives empty userdata
+
+For our AMIGO robot, I'm building a very simple state machine in smach for asking questions and asking for confirmation of the answers.
+After posing the question via text-to-speech, the statemachine waits for the answer from speech-to-text with a MonitorState called WAIT_ANSWER. The callback for the MonitorState simply checks if there are any options given (Yes, the robot reads mentions them when asking the question), and then if the answer given is one of the options.
+Sounds simple, but somehow the userdata in the callback only contains an empty instance of smach.Remapper.
+The msg-parameter of the callback does get the correct value.
+When running, the state machine containing the state does have the userdata 'question_senstence' and 'options'. In Smach Viewer, it also looks fine.
+The fact that there are no tutorials on MonitorState doesn't help, so my implementation is based on my interpretation of the source code.
+Does anyone have any experience with MonitorStates?
+
+Originally posted by Loy on ROS Answers with karma: 141 on 2012-02-21
+Post score: 2
+
+A:
+
+Hi,
+I had the same problem. I use MonitorState in a Concurrence container and want to store some data in userdata.
+To get it working i had to do the following:
+In file monitor_state.py i changed line 29 from
+self._sub = rospy.Subscriber(self._topic, self._msg_type, self._cb, callback_args=[ud])
+
+to
+self._sub = rospy.Subscriber(self._topic, self._msg_type, self._cb, callback_args=ud) 
+
+and overloaded the smach_ros.MonitorState.__init__ function to accept my desired input and output keys.
+class MonitorState2(smach_ros.MonitorState):
+    def __init__(self, topic, msg_type, cond_cb, max_checks=-1):
+    smach.State.__init__(self,
+            outcomes=['nav_error', 'pose_reached'],
+            input_keys=['user_pose'],
+            output_keys=['user_pose', 'robot_current_pose'])
+
+    self._topic = topic 
+    self._msg_type = msg_type 
+    self._cond_cb = cond_cb 
+    self._max_checks = max_checks 
+    self._n_checks = 0 
+
+    self._trigger_cond = threading.Condition()
+
+Originally posted by bajo with karma: 206 on 2013-10-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Maya on 2014-06-18:
+I know it's an old thread but could you explain to me why you have to change the [ud] of the Subscriber and why it is not like this in the original implementation ? Thanks.
+Comment by bajo on 2014-06-22:
+Otherwise the userdata would not have passed to the next state. Nowadays I use the WaitForMsgState to retrieve data from a topic. You can find it on this page http://wiki.ros.org/executive_smach/AdditionalStateTypes
+Comment by jbohren on 2015-03-15:
+Yeah so apparently callback_args in rospy.Subscriber isn't an array of arguments, but just the single additional argument passed to subscriber callbacks. I.e. this is the correct usage: https://gist.github.com/jbohren/085c529c9063aed64386
+Comment by jbohren on 2015-03-15:
+Fixed in https://github.com/ros/executive_smach/commit/1a158b177430dd1e52b64e0157c8af65a0f318b8
+

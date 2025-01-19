@@ -1,0 +1,88 @@
+Q:
+
+tf::TransformListener::transformPose [exception] target_frame does not exist
+
+Hi,
+I am trying to transform geometry_msgs::PoseStamped in one frame to other. I am using tf::TransformListener::transformPose here is my code snippet.
+ tf::TransformListener listener;
+  geometry_msgs::PoseStamped pose_map;
+  try{
+  listener.transformPose("map",pose_world,pose_map); // pose_world is in world frame
+  }
+  catch( tf::TransformException ex)
+  {
+      ROS_ERROR("transfrom exception : %s",ex.what());
+  }
+
+i am getting below exception.
+[ERROR] [1410527449.677789054, 1410185755.142016150]: transfrom exception : "map" passed to lookupTransform argument target_frame does not exist.
+
+But i can see tf between /world and /map from rosrun tf view_frames and also from rosrun tf tf_echo  world map
+Edit:
+After adding wait for transform i am getting below exception. But /map to /world is publishing at 25hz from launch file. I am using bag file for tf data with --clock and use_sim_time true
+[ERROR] [1410539110.856303453, 1410185780.612246601]: transfrompose exception : Lookup would require extrapolation into the past. Requested time 1410185779.600078575 but the earliest data is at time 1410185779.862480216, when looking up transform from frame [world] to frame [map]
+
+Thank you.
+
+Originally posted by bvbdort on ROS Answers with karma: 3034 on 2014-09-12
+Post score: 6
+
+Original comments
+Comment by Tom Moore on 2014-09-13:
+You're running roscore first, then setting use_sim_time, then starting your launch file, then running rosbag play, correct?
+Comment by bvbdort on 2014-09-13:
+i put use_sim_time param in launch file as first line. First launch file then rosbag play
+Comment by Tom Moore on 2014-09-13:
+Can you post the relevant parts of your launch file?
+Comment by bvbdort on 2014-09-13:
+here is launch file
+Comment by Tom Moore on 2014-09-13:
+And you're certain that the original data (before you bagged it) didn't also have this problem? Try playing back the bag file very slowly (with -r) and watch the message time stamps. If the tf ones seem out of sync, then perhaps your original data (i.e., on the live robot) had this problem as well.
+Comment by bvbdort on 2014-09-13:
+I didnt try with live data so far, but in rosbag data I can see all the required tf from rostopic echo.
+Comment by Tom Moore on 2014-09-13:
+But the bag data came from somewhere. The question isn't whether the tranforms exist. It's whether they have the correct time stamps. If there was something wrong when you recorded the data, it won't get better when you replay it.
+Comment by tfoote on 2014-09-13:
+Does this error happen once or a few times at startup or does it continuously happen?
+Comment by bvbdort on 2014-09-14:
+@Tom Moore :  When i just do roscore + use_sim_time true +rosbag play --clock i can see all the tf
+@tfoote : it is happening continuously.
+Comment by Tom Moore on 2014-09-14:
+Can you share the bag somewhere?
+Comment by bvbdort on 2014-09-14:
+world to map tf is from launch file. here is bag file  zft_world and world in my description are same.
+
+A:
+
+Quick question: is the code you posted in your question inside a callback? If so, you need to not create the TransformListener object inside of it. Try making it a member variable if it's a class or a global variable otherwise and see if that helps.
+If it doesn't, then there might be one or two other issues (at least that I noticed). Here's what I did:
+
+Stripped your launch file down to just the static_transform_publisher
+Opened up a console and started a roscore
+Opened up another console and launched your file
+Opened up two more consoles and echoed your /pose and /odom topics.
+Opened up a final console and echoed the tf topic.
+Did rosbag play bagfile.bag --clock -r 0.01.
+I then waited for the pose message to get updated, paused the playback, and looked at your available transforms from the tf topic.
+
+Here's what I found:
+
+The time stamps between your pose, odom, and tf world->map transforms were all sufficiently small.
+Your /pose topic has no frame_id. Not sure how you're getting your pose_world object above, but you might want to check that.
+
+So, without running your whole system, my best guess is that something is blocking the processing of your incoming data, i.e., you get a pose message, but then a large amount of time passes before you attempt to transform it, at which point the transforms are too old. Try doing what I suggested above with your TransformListener (assuming this is in a callback) and also adding a frame_id to your /pose topic.
+
+Originally posted by Tom Moore with karma: 13689 on 2014-09-15
+This answer was ACCEPTED on the original site
+Post score: 16
+
+Original comments
+Comment by bvbdort on 2014-09-15:
+@thanks for answer, it was working but still showing exception sometimes(but very less ) i moved transformlistner to class variable from local variable inside timesynchronizer. Yes i am using this code inside timesynchronizer callback. /pose topic i am copying to pose_world and adding frame id.
+Comment by bvbdort on 2014-09-15:
+timesynchronizer is waiting for laser and pose messages which have same timestamps.
+Comment by Tom Moore on 2014-09-15:
+Ah, good. Yeah, there's some overhead when you first declare a TransformListener, and so you should re-use the same one.
+Comment by HaFred on 2021-12-09:
+Thank you, Tom. It still applies for nowadays TF2 tfBuffer.lookupTransform. Just making it a member variable if it's a class or a global variable otherwise out of the callback solve my issue.
+

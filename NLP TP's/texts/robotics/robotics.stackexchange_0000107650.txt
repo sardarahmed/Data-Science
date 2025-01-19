@@ -1,0 +1,53 @@
+Q:
+
+How to write a MoveIt Controller Allocator
+
+I wrote my own Joint Trajectory Controller to use with MoveIt instead of the standard velocity_controllers/JointTrajectoryController.
+The new controller is loaded and listed by the controller manager, which means that pluginlib is able to find it and load it.
+When MoveIt MoveGroup node is launched with Gazebo & RViz and I click Plan & Execute trajectory in RViz, MoveIt then complains it can't find a controller to actuate the joints.
+I debugged into Move Group node, and my custom controller is being listed as a "loaded controller", but it can't be used with MoveIt because any controller used with MoveIt needs an Allocator defined.
+I found this mentioned in MoveIt 1 documentation for plug-ins:
+https://moveit.ros.org/documentation/plugins/#controllerhandleallocator
+
+By implementing the ControllerHandle.h interface it is possible to offer allocations of handlers for action based controllers. The controller handler are based on the class MoveItControllerHandle. These handlers communicate with the controller in order to e.g. send trajectories.
+
+The interface is defined in ControllerHandle.h.
+
+An examplary implementation of this interface is the joint_trajectory_controller_plugin.cpp. This is also currently the only implementation available.
+
+However, after adding the following MoveIt 1 dependencies in package.xml and CMakeLists.txt, the headers it's talking about are not found:
+
+moveit_core
+moveit_ros_control_interface
+
+For instance, the following includes can't be found by the compiler (normally they would be in ${catkin_INCLUDE_DIRS} after telling CMake about a package dependency):
+#include <moveit/controller_manager/controller_manager.h>
+#include <moveit/moveit_plugins/moveit_ros_control_interface/controller_handle_allocator.h>
+#include <moveit/moveit_plugins/moveit_ros_control_interface/moveit_controller_handle.h>
+#include <moveit/moveit_plugins/moveit_ros_control_interface/follow_joint_trajectory_controller_handle.h>
+
+These headers I am trying to include can be seen here:
+https://github.com/ros-planning/moveit/tree/master/moveit_plugins
+What do I do next? Filed an issue in MoveIt repo here:
+https://github.com/ros-planning/moveit/issues/3555
+
+A:
+
+After including the ros_control_interface as a dependency in package.xml and CMakeLists, I decided to dump all header paths known by CMake by using this trick:
+How to Print Variable in CMake
+This revealed that bringing in ros_control_interface gave me access to just one MoveIt header I really needed:
+#include <moveit_ros_control_interface/ControllerHandle.h>
+
+Basically I just looked for any header paths known to CMake that contained the string "moveit_ros_control_interface", and then followed a pattern used by other headers which were included successfully to find out the #include did not start with moveit/, etc.
+This was of course not documented (but don't worry, I will update the docs when I have more time).
+Upon including this header, I gained access to the following namespaces and classes, which is all that was needed to implement a controller handle, and a controller handle allocator:
+
+controller_interface::Controller
+moveit_controller_manager::MoveItControllerHandle
+moveit_ros_control_interface::ControllerHandleAllocator
+
+With this, MoveIt finally recognized my custom trajectory controller as a controller it can use. You can see my implementation here:
+
+trajectoryController.h
+trajectoryController.cpp
+

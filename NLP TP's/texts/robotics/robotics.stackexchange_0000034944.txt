@@ -1,0 +1,106 @@
+Q:
+
+plot/print rpy from quaternion
+
+Hi
+I have topics that publish quaternions (e.g. Pose, Odometry, etc.). This is not very human-friendly, e.g. when doing a rostopic echo, or a rxplot.
+I am dealing with a car, and I can assume a 2D model most of the time, so yaw=2*acos(w). I know this can be done from the code, so what I'm doing for now is to publish in parallel a message that gives rpy, that I can use for debugging. But it would be nice if there was some kind of filter that could be applied on live or recorded data to do the transformation.
+
+Originally posted by brice rebsamen on ROS Answers with karma: 1001 on 2011-10-13
+Post score: 7
+
+A:
+
+Here is a Python node I wrote that subscribes to quaternions, converts quaternions to Euler angles, and then publish the Euler angles. The Euler angles are in a custom message, my_pkg/msg/Eulers.msg:
+Header header
+float64 roll
+float64 pitch
+float64 yaw
+
+Then create the file my_pkg/quat_to_euler.py:
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Start up ROS pieces.
+PKG = 'my_pkg'
+import roslib; roslib.load_manifest(PKG)
+import rospy
+import tf
+
+# ROS messages.
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
+from my_pkg.msg import Eulers
+
+class QuatToEuler():
+    def __init__(self):
+        self.got_new_msg = False
+        self.euler_msg = Eulers()
+
+        # Create subscribers and publishers.
+        sub_imu   = rospy.Subscriber("imu", Imu, self.imu_callback)
+        sub_odom  = rospy.Subscriber("odom", Odometry, self.odom_callback)
+        pub_euler = rospy.Publisher("euler", Eulers)
+
+        # Main while loop.
+        while not rospy.is_shutdown():
+            # Publish new data if we got a new message.
+            if self.got_new_msg:
+                pub_euler.publish(self.euler_msg)
+                self.got_new_msg = False
+
+    # Odometry callback function.
+    def odom_callback(self, msg):
+        # Convert quaternions to Euler angles.
+        (r, p, y) = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+        self.fill_euler_msg(msg, r, p, y)
+
+    # IMU callback function.
+    def imu_callback(self, msg):
+        # Convert quaternions to Euler angles.
+        (r, p, y) = tf.transformations.euler_from_quaternion([msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w])
+        self.fill_euler_msg(msg, r, p, y)
+
+    # Fill in Euler angle message.
+    def fill_euler_msg(self, msg, r, p, y):
+        self.got_new_msg = True
+        self.euler_msg.header.stamp = msg.header.stamp
+        self.euler_msg.roll  = r
+        self.euler_msg.pitch = p
+        self.euler_msg.yaw   = y
+
+# Main function.    
+if __name__ == '__main__':
+    # Initialize the node and name it.
+    rospy.init_node('quat_to_euler')
+    # Go to class functions that do all the heavy lifting. Do error checking.
+    try:
+        quat_to_euler = QuatToEuler()
+    except rospy.ROSInterruptException: pass
+
+In my launch file I start it with:
+<node pkg="my_pkg" type="quat_to_euler.py" name="imu_euler_angles">
+    <remap from="imu"   to="microstrain/data"/>
+    <remap from="euler" to="microstrain/euler"/>
+</node>
+
+<node pkg="my_pkg" type="quat_to_euler.py" name="kf_euler_angles">
+    <remap from="odom"  to="kf/odom"/>
+    <remap from="euler" to="kf/euler"/>
+</node>
+
+Then you can plot your IMU roll vs. your KF roll (for example):
+rxplot /microstrain/euler/roll:/kf/euler/roll
+
+Originally posted by Thomas D with karma: 4347 on 2011-10-13
+This answer was ACCEPTED on the original site
+Post score: 13
+
+Original comments
+Comment by nemesis on 2013-03-06:
+@Thomas D - could you guide me for the same w.r.t C++?? I am new to ROS and my programming isn't that good to understand the source code of the package that I am working on -> ros_vrpn_client. Will it be possible for you to check the source code and guide me a bit?
+Comment by jondo on 2015-06-22:
+Why are the euler_from_quaternion arguments in the order x-y-z-w? The axes argument defaults to 'sxyz'instead!
+Comment by b2256 on 2016-07-15:
+Since this post is somewhat dated, can I ask if it applies REP-103 using ENU? If so what needs to be changed to convert rpy back to NED coordinate frame convention?
+

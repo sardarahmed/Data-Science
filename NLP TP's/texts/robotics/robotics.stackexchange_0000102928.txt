@@ -1,0 +1,81 @@
+Q:
+
+AMCL + Robot_localization conflicts in TF with Gazebo
+
+I was trying to fuse AMCL pose with imu and odom in Gazebo for a classic mobile manipulator. The mobile manipulator has diff_drive_controller to publish odom topic (/robot_base_velocity_controller/odom)
+My mobile manipulator does not define base_footprint, so I use base_link instead.
+My knowledge to tf is that, map->odom->base_link->other links, AMCL will deal with map->odom part, and ekf_localization_node deal with the odom->base_link part, and robot_state_publisher deal with other links.
+But roswtf would give off below error:
+ERROR TF multiple authority contention:
+ * node [/base_to_odom_ekf] publishing transform [base_link] with parent [odom] already published by node [/gazebo]
+ * node [/gazebo] publishing transform [base_link] with parent [odom] already published by node [/base_to_odom_ekf]
+
+Is there a way to turn off robot_state_publisher for a certain tf? Or I configured the tf wrong.
+In main.launch file:
+<node name="robot_state_publisher" pkg="robot_state_publisher" 
+    type="robot_state_publisher" respawn="false" output="screen">
+<node pkg="robot_localization" type="ekf_localization_node" name="base_to_odom_ekf">
+    <remap from="odometry/filtered" to="odom" />
+    <rosparam command="load" file="$(find postoffice_sim)/config/ekf/base_to_odom.yaml" />
+</node>
+
+base_to_odom.yaml:
+frequency: 50
+two_d_mode: true
+odom0: /robot_base_velocity_controller/odom
+odom0_config: [false, false, false,
+               false, false, false,
+                true,  true, false,
+               false, false, true,
+               false, false, false]
+
+imu0: imu_data
+imu0_config: [false, false, false,
+              false, false, true,
+              false, false, false,
+              false, false,  true,
+              false, false, false]
+
+pose0: amcl_pose
+pose0_config: [true,  true,  true,
+               true,  true,  false,
+               false, false, false,
+               false, false, false,
+               false, false, false]
+publish_tf: true
+map_frame: map
+odom_frame: odom
+base_link_frame: base_link
+world_frame: odom
+
+Originally posted by Li-Wei Yang on ROS Answers with karma: 13 on 2023-01-17
+Post score: 1
+
+A:
+
+https://github.com/ros-controls/ros_controllers/blob/noetic-devel/diff_drive_controller/src/diff_drive_controller.cpp#L251
+Seems like setting enable_odom_tf to false in your URDF under the diff drive controller plugin.
+
+Originally posted by stevemacenski with karma: 8272 on 2023-01-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Li-Wei Yang on 2023-01-18:
+Thank you, this solves my problem.
+It turns out that in my launch file, I loaded .yaml for params
+  <rosparam command="load" file="$(find robot_description)/config/control.yaml" />
+  <node name="base_controller_spawner" pkg="controller_manager" type="spawner" args="robot_base_joint_publisher robot_base_velocity_controller" />
+
+So simply change URDF is not enough, for others' reference.
+Comment by ljaniec on 2023-01-19:
+@Li-Wei Yang Is your project open-sourced and/or available to check online?
+Comment by Li-Wei Yang on 2023-01-21:
+I just push it to GitHub.
+https://github.com/liver121888/postoffice_sim
+The manipulator is from chapter 5 of
+https://github.com/PacktPublishing/ROS-Robotics-Projects-SecondEdition
+I made a lot of changes, though, cuz the original code is a mess and uncomplete.
+Comment by ljaniec on 2023-01-22:
+@Li-Wei Yang Thank you
+

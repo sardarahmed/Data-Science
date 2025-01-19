@@ -1,0 +1,66 @@
+Q:
+
+Msg type for publishing JointCommands?
+
+Is there a commonly used msg type for sending JointCommands across topics?
+It has been bugging me for a while that I can't seem to find something like sensor_msgs/msg/JointState.msg, but for commanding positions for multiple joints to move immediately.
+I want to avoid writing a custom message if possible.
+
+Originally posted by ijnek on ROS Answers with karma: 460 on 2021-09-26
+Post score: 0
+
+A:
+
+I'm not aware of any standardised messages for this specifically.
+JointState is indeed for reporting state. Not for commanding it.
+For trajectory(-like) interfaces, we have JointTrajectory (and the related FollowJointTrajectory action).
+I've seen authors accept JointTrajectoryPoint, but the disadvantage of that message is that it does not contain a names field (or something similar), which obviously means you have no way of checking any semantics of the incoming data.
+Other nodes accept Float64MultiArray, but that's obviously less than ideal as well as it has almost no semantics whatsoever (except perhaps "here is a bunch of float numbers in a list). ros_control is a good example of a context where that message is used, but see ros2_controllers#157 where they recognise they need something else (similar to your question really).
+Yet another alternative: accept JointTrajectory instances, but limit them to a maximum length of two (or one). While somewhat strange, this solves the problem of not having access to the targetted joint names, while also using something which has been traditionally used for commanding new state. It's also a nice intermediary between trajectory-based control interfaces and position-streaming ones (with trajectory-replacement allowing for even more gradual changing between the two).
+On the Cartesian side, I've seen geometry_msgs/Pose (or PoseStamped of course) and even plain Point being used. It's slightly easier here, as the dimensionality of the message corresponds directly to the number of degrees of freedom of the mechanism being controlled (we only have 3 dimensions of space ..), so there is less need for a names field to help interprete the data.
+The FZI: Cartesian Interface in ROS project took that a bit further and designed a complete set of messages for Cartesian (position/velocity/etc) control of ROS robots, which resulted in cartesian_control_msgs. That's not in ROS 2 right now though (and doesn't directly address your need).
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-09-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ijnek on 2021-09-27:
+@gvdhoorn Thank you for your insight on this topic.
+I feel that it would have been more natural if the joint_names[] field of JointTrajectory.msg was inside JointTrajectoryPoint.msg, but I think that design decision comes from trying to avoid having the joint_names repeated for every point in time.
+Nonetheless, I think it makes sense to have a separate data type such as JointCommand.msg:
+string[] names
+float64[] positions
+float64[] velocities
+float64[] accelerations
+float64[] effort
+
+or even separate msgs for JointPositionCommand.msg JointVelocityCommand.msg JointAccelerationCommand.msg and JointEffortCommand.msg .
+I also think that such msgs should be part of std_msgs, rather than control_msgs if possible.
+Perhaps this should be moved to a Discourse discussion rather than a Q&A, what do you think?
+Comment by gvdhoorn on 2021-09-27:
+You can always post a topic on Discourse.
+re: in std_msgs: please refer to the linked ros2_control issue. std_msgs is deprecated. I would be very much surprised if any more additions to it would be accepted.
+I also don't agree with your assertion that "it should be in std_msgs". From a semantics point-of-view, control_msgs seems much more appropriate.
+Comment by ijnek on 2021-09-27:
+Oops, I meant common_interfaces, not std_msgs.
+Comment by gvdhoorn on 2021-09-27:
+I believe that wouldn't change my response. This is clearly a message which is intended to be used in situations where you want to control some mechanism / robot. What is your motivation for wanting to put it in common_interfaces?
+Comment by ijnek on 2021-09-27:
+For a motor that has a position controller onboard, there is no need to use the ros-control package. My thought process is "Well, I'm not using ros-control, why should I use msgs from ros-control?".
+My understanding of control_msgs is that it contains msgs used when communicating to the ros2_control package. That's the part where I may be wrong, perhaps control_msgs isn't tied to ros-control but is intended to be more general?
+Comment by gvdhoorn on 2021-09-28:
+control_msgs is not tied to ros_control at all. It's a stand-alone message package with quite some usage outside ros_control.
+And the context you describe would actually fit very well with ros_control. The fact your motor "has a position controller board" does not really change anything. ros_control is first and foremost a resource management framework.
+Comment by ijnek on 2021-09-30:\
+
+control_msgs is not tied to ros_control at all
+
+Great!
+
+ros_control is first and foremost a resource management framework.
+
+I thought ros_control was specifically for performing control calculations, good to clarify that that's not the case.
+Comment by gvdhoorn on 2021-10-01:
+You won't find many people describing ros_control the way I did/do. But once you get more familiar with it, I believe my description starts to make more sense.
+

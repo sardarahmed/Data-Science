@@ -1,0 +1,72 @@
+Q:
+
+how to publish sensor_msgs::CameraInfo messages?
+
+I am unable to publish the CameraInfo messages. I have the image data published from the camera using the image_transport::Publisher but the same is not publishing the camera info messages.
+I am writing a driver for the ueye camera. I need the camera info message for calibration of the camera. I am able to detect the corners in the chessboard but then the program hangs after completion may be because it could not find the camera info messages containing the camera model.
+
+Originally posted by abhinav on ROS Answers with karma: 141 on 2011-09-29
+Post score: 2
+
+Original comments
+Comment by Farid on 2018-11-02:
+I think this link might answer your question.
+
+A:
+
+The recommended method is to use image_transport and camera_info_manager.
+Here's how camera1394 does it:
+  /** Publish camera stream topics
+   *
+   *  @param image points to latest camera frame
+   */
+  void Camera1394Driver::publish(const sensor_msgs::ImagePtr &image)
+  {
+    image->header.frame_id = config_.frame_id;
+  
+    // get current CameraInfo data
+    sensor_msgs::CameraInfoPtr
+      ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
+
+    // check whether CameraInfo matches current video mode
+    if (!dev_->checkCameraInfo(*image, *ci))
+      {
+        // image size does not match: publish a matching uncalibrated
+        // CameraInfo instead
+        if (calibration_matches_)
+          {
+            // warn user once
+            calibration_matches_ = false;
+            ROS_WARN_STREAM("[" << camera_name_
+                            << "] calibration does not match video mode "
+                            << "(publishing uncalibrated data)");
+          }
+        ci.reset(new sensor_msgs::CameraInfo());
+        ci->height = image->height;
+        ci->width = image->width;
+      }
+    else if (!calibration_matches_)
+      {
+        // calibration OK now
+        calibration_matches_ = true;
+        ROS_WARN_STREAM("[" << camera_name_
+                        << "] calibration matches video mode now");
+      }
+
+    // fill in operational parameters
+    dev_->setOperationalParameters(*ci);
+
+    ci->header.frame_id = config_.frame_id;
+    ci->header.stamp = image->header.stamp;
+
+    // @todo log a warning if (filtered) time since last published
+    // image is not reasonably close to configured frame_rate
+  
+    // Publish via image_transport
+    image_pub_.publish(image, ci);
+  }
+
+Originally posted by joq with karma: 25443 on 2011-09-29
+This answer was ACCEPTED on the original site
+Post score: 3
+

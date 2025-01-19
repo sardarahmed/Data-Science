@@ -1,0 +1,46 @@
+Q:
+
+How to get pure end-effector translation through Jacobian?
+
+I have a 7 DOF arm that I am controlling with joint velocities computed from the Jacobian in the standard way.  For example:
+$$
+{\Large J} = \begin{bmatrix} J_P \\J_O
+\end{bmatrix}
+$$
+$$
+J^{\dagger} = J^T(JJ^T)^{-1}
+$$
+$$
+\dot{q}_{trans} = J^{\dagger}_P v_{e_{trans}}
+$$
+$$
+\dot{q}_{rot} = J^{\dagger}_O v_{e_{rot}}
+$$
+$$
+\dot{q} = \dot{q}_{trans} + \dot{q}_{rot}
+$$
+However, when specifying only translational velocities, the end-end effector also rotates.  I realized that I might be able to compute how much the end-effector would rotate from the instantaneous $\dot{q}$, then put this through the Jacobian and subtract out its joint velocities.  
+So I would do this instead of using the passed in $v_{e_{rot}}$:
+$$
+v_{e_{rot}} =  R(q) - R(q+\dot{q}_{trans})
+$$
+Where $R(q)$ computes the end-effector rotation for those joint angles.  
+Is this OK to do, or am I way off base?  Is there a simpler way?  
+I am aware that I could also just compute the IK for a point a small distance from the end-effector with no rotation, then pull the joint velocities from the delta joint angles.  And that this will be more exact.  However, I wanted to go the Jacobian route for now because I think it will fail more gracefully.
+A side question, how do I compute $R(q) - R(q+\dot{q}_{trans})$ to get global end-effector angular velocity?  My attempts at converting a delta rotation matrix to Euler angles yield wrong results.  I did some quick tests and implemented the above procedure to achieve pure end-effector rotation while maintaining global position.  (This is easier because $T(q) - T(q+\dot{q}_{rot})$ is vector subtraction.)  And it did kind of work.
+
+A:
+
+You don't need the positional IK to solve this problem. All that is required is, that your Jacobian is invertible, i.e. keep away from sinuglar joint configurations. Consider, how the end effector's velocity is formed:
+$$
+\begin{bmatrix}
+v_{trans} \\
+v_{rot}
+\end{bmatrix} = J(\boldsymbol{q})\cdot \boldsymbol{\dot{q}}
+$$
+So, if I understand correctly, you want to solve the above equation with $v_{rot} = 0$ for $\boldsymbol{\dot{q}}$:
+$$
+\boldsymbol{\dot{q}} = J(\boldsymbol{q})^{-1}\begin{bmatrix} v_{trans} \\ 0 \end{bmatrix}
+$$
+Keep in mind that -- in general -- you cannot nicely separate the joints in those joints which command translation and those which command rotation of the end effector. After all, how joints are mapped to the end effector's position and angle is determined by the mechanism's structure, which dictates the Jacobian's structure (and its singularites). For example, an arm with only rotational joints (like a typical industrial robot) needs to move all its motors in some kind of "compensating" way to produce pure end effector translation.
+

@@ -1,0 +1,101 @@
+Q:
+
+[ROS2] tf2 broadcaster
+
+Hello,
+I'm currently working on a differential drive robot with ROS2 and encountering some errors with a rclcpp transform broadcaster. I hope i can get some answers as to what I am doing wrong. I'm using ROS2 dashing on ubuntu 18.04.
+code:
+#include <memory>
+#include "rclcpp/rclcpp.hpp"
+#include <tf2_ros/transform_broadcaster.h>
+#include "nav_msgs/msg/odometry.hpp"
+#include <geometry_msgs/msg/transform_stamped.h>
+#include <tf2/LinearMath/Quaternion.h>
+
+std::shared_ptr<rclcpp::Node> node = nullptr;
+
+void topic_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
+       static tf2_ros::TransformBroadcaster br;
+       geometry_msgs::msg::TransformStamped transformStamped; 
+       transformStamped.header.stamp = rclcpp::Time();
+       transformStamped.header.frame_id = "odom";
+       transformStamped.child_frame_id = "base_link";
+       transformStamped.transform.translation.x = msg->pose.pose.position.x;
+       transformStamped.transform.translation.y = msg->pose.pose.position.y;
+       transformStamped.transform.translation.z = 0.0;
+       transformStamped.transform.rotation.x = 0.0;
+       transformStamped.transform.rotation.y = 0.0;
+       transformStamped.transform.rotation.z = msg->pose.pose.orientation.z;
+       transformStamped.transform.rotation.w = msg->pose.pose.orientation.w;
+           broadcaster.sendTransform(transformStamped);
+        }
+    
+    int main(int argc, char * argv[])
+    {
+      rclcpp::init(argc, argv);
+    
+      auto node = std::make_shared<rclcpp::Node>("tf_broadcaster");
+      auto subscriber = node->create_subscription<nav_msgs::msg::Odometry>("odom",10, &topic_callback); 
+      rclcpp::spin(node);
+      rclcpp::shutdown();
+      return 0;
+    }
+
+error message:
+/home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp: In function ‘void topic_callback(nav_msgs::msg::Odometry_<std::allocator<void> >::SharedPtr)’:
+/home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp:12:45: error: no matching function for call to ‘tf2_ros::TransformBroadcaster::TransformBroadcaster()’
+        static tf2_ros::TransformBroadcaster br;
+                                             ^~
+In file included from /home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp:4:0:
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:53:3: note: candidate: template<class NodeT, class AllocatorT> tf2_ros::TransformBroadcaster::TransformBroadcaster(NodeT&&, const rclcpp::QoS&, const rclcpp::PublisherOptionsWithAllocator<AllocatorT>&)
+   TransformBroadcaster(
+   ^~~~~~~~~~~~~~~~~~~~
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:53:3: note:   template argument deduction/substitution failed:
+/home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp:12:45: note:   candidate expects 3 arguments, 0 provided
+        static tf2_ros::TransformBroadcaster br;
+                                             ^~
+In file included from /home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp:4:0:
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:49:7: note: candidate: tf2_ros::TransformBroadcaster::TransformBroadcaster(const tf2_ros::TransformBroadcaster&)
+ class TransformBroadcaster{
+       ^~~~~~~~~~~~~~~~~~~~
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:49:7: note:   candidate expects 1 argument, 0 provided
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:49:7: note: candidate: tf2_ros::TransformBroadcaster::TransformBroadcaster(tf2_ros::TransformBroadcaster&&)
+/opt/ros/eloquent/include/tf2_ros/transform_broadcaster.h:49:7: note:   candidate expects 1 argument, 0 provided
+/home/frederik/ros2botpc/src/tfbroadcast/src/tfbroadcast.cpp:24:8: error: ‘broadcaster’ was not declared in this scope
+        broadcaster.sendTransform(transformStamped);
+
+Originally posted by Loekes on ROS Answers with karma: 23 on 2020-08-28
+Post score: 1
+
+Original comments
+Comment by surfertas on 2020-09-06:
+Was this resolved?
+
+A:
+
+Assuming that you have split declarations into a header file and definitions in the source file.
+
+You can declare the broadcaster in the header file.
+ private:
+    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+Then initialize somewhere in the constructor of the source file.
+ tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
+Finally, you can send a stamped transform message as so:
+ tf_broadcaster_->sendTransform(transform_stamped);
+
+A good place to check for implementations/best-practices is by reviewing the tests implemented by the maintainers of the respective package in particular when working with ROS 2 as documentation is trying to keep up. In this case review the geometry2 package, specifically test_transform_broadcaster.cpp. Finally, change the branch that you are viewing to the ROS 2 distro that you are using. (e.g. dashing in this case)
+
+Originally posted by surfertas with karma: 265 on 2020-08-29
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Loekes on 2020-09-06:
+Yes this is resolved! Thanks a lot for your answer, it helped me greatly! :)
+Comment by surfertas on 2020-09-07:
+No problem. Please mark the answers as correct in that case.
+Comment by Sourabh Misal on 2020-12-10:
+@Loekes could you put the corrected code snippet of tf2? I am stuck in the implementation of tf2 in ROS2 Dashing
+

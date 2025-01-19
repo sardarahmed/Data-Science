@@ -1,0 +1,52 @@
+Q:
+
+How can I control a fast (200Hz) realtime system with a slow (30Hz) system?
+
+We are currently designing a mobile robot + mounted arm with multiple controlled degrees of freedom and sensors. 
+I am considering an architecture in two parts:
+
+A set of realtime controllers (either Raspeberry Pis running an RTOS such as Xenomai or bare metal microcontrollers) to control the arm motors and encoders.  Let us call these machines RTx, with x=1,2,3… depending on the number of microcontrollers.  This control loop will run at 200Hz.
+A powerful vanilla linux machine running ROS to compute SLAM, mocap, and execute high-level logic (decide the robot’s task and compute the motors' desired position and speed).  This control loop will run at 30Hz.
+
+I know my framework needs to be scalable to account for more motors, more sensors, more PCs (eg. for external mocap). 
+My main problem is to decide how to have the different RTx communicate with PC1. I have looked at papers related to robots architecture (e.g. HRP2), most often they describe the high level control architecture but I have yet to find information on how to have the low level communicate with the high level and in a scalable way. Did I miss something?
+In order to connect the fast RT machines ensuring the motor control with PC1, I have considered TCP/IP, CAN and UART:
+
+TCP/IP: not deterministic but easy to put in place. Is non determinism a real issue (as it will only be used at at slow speed 30Hz anyways)?
+CAN: slow, very reliable, targeted to cars ( have seen there are some exemples using CAN with robots but it looked exotic)
+UART: if I had only had one RT machine for motor control I would have considered UART but I guess this port does not scale well with many RTx
+Is TCP/IP really a no go because of its non-deterministic characteristics? It is so easy to use…
+
+At the moment no solution really seems obvious to me. And as I can find no serious robot example using a specific reliable and scalable solution, I do not feel confident to make a choice. 
+Does anyone have a clear view on this point or literature to point to?  Are there typical or mainstream communication solutions used on robots?
+
+A:
+
+I think you've taken a good first step; you've divided the problem into a mobile platform (which has uncertainty of position and must navigate) and the arm (which has a fair certainty of position in real time, through encoders).  
+
+I have looked at papers related to robots architecture [...] but I have yet to find information on how to have the low level communicate with the high level and in a scalable way. Did I miss something?
+
+From your description, it sounds like you're trying to tie each RTx controller directly to PC1, which is running ROS.  What you've missed is that ROS is designed to handle a group of applications that may produce and consume data at different rates.  
+What your application needs is a communications bridge — a single interface between your 200Hz loop and your ROS environment.  In other words, instead of tying each RTx controller to PC1, tie all the RTx controllers together and connect that to PC1.  
+For example, use an I2C Bus to link the RTx systems together, and add another RTx controller to be the "Arm Master" (AM).  The AM's job would be to accept incoming commands in some PC1-friendly format and protocol, and convert those commands to I2C messages.  Then you'd write a ROS app to send commands to the AM.
+Another way to do it with I2C would be to put an I2C controller directly on PC1 and write all the arm controlling logic in a ROS app.  This may seem like a more streamlined way to accomplish your goal, but it can make debugging more difficult as you are removing the modularity of the system — you'll have to troubleshoot it as one big complex system instead of two easily testable components.
+
+A:
+
+I would say any application where a large number of communications nodes are required (sensors or actuators) would benefit from being implemented as a system bus (in contrast to point to point links such as UART or Ethernet), due to wiring complexity, determinism and modularity.
+Any control system requires a high degree of determinism, which high bandwidth channels (such as Ethernet) are usually poor at (especially when used with a general purpose OS which introduces large amounts of scheduling jitter, see the following link for a discussion on scheduling determinism). Application processors (such as the ARM11 of the Raspberry Pi) is also probably a poor fit for real-time systems (due to effects such as interrupt latency, and instruction pipe-lining). See the following digikey discussion comparing real-time behavior of a ARM application core vs a microcontroller.
+It's a shame the availability of integrated CAN isn't as widespread as UART (RS-485) or I2C (yet), because I think it really simplifies the problem of distributed sensing and actuation. And while the usual 1 Mbps may seem slow, it's usually more than enough after refresh rates of all bus members are calculated (and the transmission rate can always be increased, depending on bus length, impedance and whether your transceivers will allow it). There's also brilliant simulation software available, that basically guarantees worst case response times (for instance RealTime-at-work has a free CAN bus analyser called RTaW-Sim). And finally, it would seem the availability of MEMS sensors with integrated CAN is rather poor.
+Another example where actuators are configured as a bus (or ring), is Dynamixels AX and MX series, where each motor is daisy chained to the next via a UART link. This greatly simplifies system design if you have a large amount of actuators.
+But, to get back to the actual question, I think if you describe your system as real-time set points, instead of commands (eg rather continuously broadcast a motor angle than instructing a command such as goto angle), it simplifies the coupling between the 200 Hz and 30 Hz loop.
+
+A:
+
+You seem to have 2 separate (but related) problems you are trying to solve at once. Let's break down your conundrum into smaller pieces:
+
+How do I communicate commands from a slow system (30Hz) to a fast controller (200Hz), and how do I communicate data being received at 200Hz back to my 30Hz thinktank?
+How do I control what is happening at 200Hz, when I can only tell the robot what to do at 30Hz?
+
+Item 1 can be solved in hardware as your original question seems to point- you can queue up data at 200Hz and send the packet at 30Hz to your higher level system. You can do this with TCP/IP, or possibly CAN depending on how much data you want to send. Different hardware has different max data rates.  Adding an architecture level like ROS to act as communication bridge/arbiter as suggested in other posts may also help. 
+Item 2 is a control theory problem that can't be solved with hardware alone. The SLAM, position and speed determinations, and task determination that you want will need to be smarter since they send and receive information less often. You will probably want 2 control loops: 1 at 200Hz and 1 at 30Hz. 
+There's lots of other questions that cover feed-forward, feed-back, and PID control loops, but you specifically asked about scaleability- the way most giant systems scale is by layering control loops and logic so that the minimal necessary information goes across whatever hardware you end up with. For example, your top level controller might only give goal position points and an average goal speed to the lower level one, not change the speed 30 times a second.
+

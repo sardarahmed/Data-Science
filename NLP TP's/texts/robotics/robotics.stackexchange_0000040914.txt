@@ -1,0 +1,62 @@
+Q:
+
+How to debug nodelet (manager) crashes?
+
+Are there best practices regarding debugging crashes of nodelets and / or the manager? I'm trying to load ~30 nodelets into one manager and experience seemingly random crashes. Is there a(n implicit) limit to the number of nodelets?
+A sampling of output on the console:
+...
+[FATAL] [1338308399.389687172]: Service call failed!
+[FATAL] [1338308399.389832093]: Service call failed!
+[my_nodelet_mgr-2] process has died [pid 23322, exit code -11].
+log files: /home/user/.ros/log/1ebdc96e-a9aa-11e1-abdc-d8d385994de6/my_nodelet_mgr-2*.log
+[MyNode06-4] process has died [pid 23327, exit code 255].
+log files: /home/user/.ros/log/1ebdc96e-a9aa-11e1-abdc-d8d385994de6/MyNode06-4*.log
+[MyNode03-11] process has died [pid 23420, exit code 255].
+log files: /home/user/.ros/log/1ebdc96e-a9aa-11e1-abdc-d8d385994de6/MyNode03-11*.log
+...
+
+Sometimes only ~4 service calls 'fail', sometimes they all seem to fail (always exit code 255, except the manager, which gets a -11).
+The log mentioned for the nodelet manager does not exist, but master.log shows a lot of
+[Errno 111] Connection refused
+
+and
+Fault: <Fault -1: 'publisherUpdate: unknown method name'>
+
+lines.
+I must admit I'm rather new to nodelets and their infrastructure, so any guidance would be appreciated.
+
+Originally posted by ipso on ROS Answers with karma: 1416 on 2012-05-29
+Post score: 7
+
+A:
+
+That sounds challenging.
+
+One "best practice" suggestion is to write each nodelet as a separate class that can be instantiated as both a node and a nodelet. Then, test them thoroughly as nodes before tackling the more difficult nodelet environment. The 1394 camera driver may be more complex than your application, but demonstrates how most of the code can be common to the node and nodelet implementations.
+
+Once all that is working, you can try running the nodelet manager under gdb. That is messy, but should be possible. At least you can catch the exceptions.
+
+With 30 nodelets in one process, you may also want to increase the number of threads in the pool.
+
+Originally posted by joq with karma: 25443 on 2012-05-29
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by ipso on 2012-05-29:
+Thanks for your comment. In fact, I've used your driver as a template for all my nodelets, complete with 'nodelet node'. Those seem to run fine, that's why I asked here. I'll try running the whole thing in GDB (somehow I assumed all these crashes were 'caught' by the nodelet system).
+Comment by joq on 2012-05-29:
+I don't see any try {...} in nodelet.cpp. If a nodelet crashes the whole process terminates.
+Comment by ipso on 2012-05-29:
+I'll accept your answer as it was all sound advice. Apparently, callbacks for subscriptions were already being called before the ctor of my worker class was finished. This caused some SEGFAULTS due to unitialised pointers. Rearranging statements seems to have fixed that. GDB made this easy to ..
+Comment by ipso on 2012-05-29:
+.. spot. For future reference, the Roslaunch Nodes in Valgrind or GDB wiki page showed me how to get the nodelet manager into GDB. It would be nice if there was a way to express nodelet dependencies though.
+Comment by joq on 2012-05-30:
+If they are initializing pointers for each other, they are not really independent nodelets. The general ROS approach is for all nodes and nodelets to handle the coming and going of other components. That makes the system more robust.
+Comment by joq on 2012-05-30:
+Sorry I don't have any better answers. Maybe someone else will provide one.
+Comment by ipso on 2012-05-30:
+No the pointers were member variables of the worker class, which were being initialised after the subscriptions were, which caused the callback to use unitialised pointers. The nodelets do not initialise pointers in anything. Also, your answer helped, so thanks :)
+Comment by joq on 2012-05-30:
+I see. That is an easy mistake to make.
+

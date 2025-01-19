@@ -1,0 +1,158 @@
+Q:
+
+modifying android_tutorial_pubsub. able to connect master on pc but roswtf and rxgraph suggests error
+
+Hi ROS community,
+I'm trying to modify the android_tutorial_pubsub in hope that the roscore is started on my PC instead of on Android.
+I started roscore and set ROS_IP as well as ROS_MASTER_URI.
+All I did to the code was delete
+rosCore = RosCore.newPrivate();
+rosCore.start();
+try {
+  rosCore.awaitStart();
+} catch (Exception e) {
+  throw new RuntimeException(e);
+}
+talker = new Talker();
+
+nodeConfiguration.setMasterUri(rosCore.getUri());
+
+and add:
+nodeConfiguration.setMasterUri(URI.create("http://192.168.13.7:11311"));
+
+so the code looks like this
+/*
+ * Copyright (C) 2011 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
+package org.ros.android.tutorial.pubsub;
+
+import java.net.URI;
+
+import android.os.Bundle;
+//import org.ros.RosCore;
+import org.ros.android.MessageCallable;
+import org.ros.android.RosActivity;
+import org.ros.android.views.RosTextView;
+import org.ros.node.NodeConfiguration;
+import org.ros.node.NodeMainExecutor;
+import org.ros.tutorials.pubsub.R;
+import org.ros.tutorials.pubsub.Talker;
+
+    /**
+     * @author damonkohler@google.com (Damon Kohler)
+     */
+    public class MainActivity extends RosActivity {
+    
+    //  private RosCore rosCore;
+      private RosTextView<org.ros.message.std_msgs.String> rosTextView;
+      private Talker tal
+
+ker;
+  public MainActivity() {
+    super("Pubsub Tutorial", "Pubsub Tutorial");
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.main);
+    rosTextView = (RosTextView<org.ros.message.std_msgs.String>) findViewById(R.id.text);
+    rosTextView.setTopicName("/chatter");
+    rosTextView.setMessageType("std_msgs/String");
+    rosTextView
+        .setMessageToStringCallable(new MessageCallable<String, org.ros.message.std_msgs.String>() {
+          @Override
+          public String call(org.ros.message.std_msgs.String message) {
+            return message.data;
+          }
+        });
+  }
+
+  @Override
+  protected void init(NodeMainExecutor nodeMainExecutor) {
+//    rosCore = RosCore.newPrivate();
+//    rosCore.start();
+//    try {
+//      rosCore.awaitStart();
+//    } catch (Exception e) {
+//      throw new RuntimeException(e);
+//    }
+    talker = new Talker();
+    NodeConfiguration nodeConfiguration = NodeConfiguration.newPrivate();
+//    nodeConfiguration.setMasterUri(URI.create("http://192.168.13.7:11311"));
+    nodeMainExecutor.execute(talker, nodeConfiguration);
+    nodeMainExecutor.execute(rosTextView, nodeConfiguration);
+  }
+
+  @Override
+  protected void onDestroy() {
+    super.onDestroy();
+    // RosCore should be shut down last since running Nodes will attempt to
+    // unregister at shutdown.
+//    rosCore.shutdown();
+  }
+}
+
+when running, android is able to show Hello World n. so I assume android is then the two nodes talker and ros_text_view is able to connect the my master on PC.
+but as I called roswtf, i got the following error:
+Loaded plugin tf.tfwtf
+Package: beginner_tutorials
+================================================================================
+Static checks summary:
+
+No errors or warnings
+================================================================================
+Beginning tests of your ROS graph. These may take awhile...
+analyzing graph...
+... done analyzing graph
+running graph rules...
+connection to [/android_gingerbread/ros_text_view] timed out
+connection to [/rosjava_tutorial_pubsub/talker] timed out
+... done running graph rules
+
+Online checks summary:
+
+Found 2 error(s).
+
+ERROR Could not contact the following nodes:
+ * /android_gingerbread/ros_text_view
+ * /rosjava_tutorial_pubsub/talker
+
+ERROR The following nodes should be connected but aren't:
+ * /rosjava_tutorial_pubsub/talker->/android_gingerbread/ros_text_view (/chatter)
+
+Now I wonder whether the connection really succeeded, and what could possibly cause this conflict.
+btw why can't I use rostopic pub to publish here?I tried rostopic pub /chatter std_msg/String abc but abc didn't show on my AVD. Did I miss anything?
+
+Originally posted by rosdai on ROS Answers with karma: 61 on 2012-03-28
+Post score: 0
+
+Original comments
+Comment by amigo on 2012-04-06:
+Did you mean to comment out the line //    nodeConfiguration.setMasterUri(URI.create("http://192.168.13.7:11311"));?
+Comment by rosdai on 2012-04-11:
+sorry the code was wrong. In my own code this line wasn't commented out
+
+A:
+
+turned out this is a issue with AVD. If I use AVD, and need to forward port, which is very inconvenient.
+also NodeConfiguration nodeConfiguration = NodeConfiguration.newPrivate(); set Master default to itself. change it to NodeConfiguration nodeConfiguration = NodeConfiguration.newPublic() and then nodeConfiguration.setMasterUri(URI.create("http://192.168.13.7:11311"));
+
+Originally posted by rosdai with karma: 61 on 2012-04-11
+This answer was ACCEPTED on the original site
+Post score: 1
+

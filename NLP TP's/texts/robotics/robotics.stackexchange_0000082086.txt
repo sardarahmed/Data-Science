@@ -1,0 +1,153 @@
+Q:
+
+Problem with stereo outdoor mapping using rtabmap_ros
+
+Hi,
+I am new to rtabmap_ros. I have installed rtabmap_ros for indigo and was following steps mentioned in http://wiki.ros.org/rtabmap_ros/Tutorials/StereoOutdoorMapping to run the demo_stereo_outdoor.launch.
+Using the file stereo_outdoorB.bag the stereo outdoor mapping is done correctly as you can see in [0:00 -> 0:52]. However, if I use a my .bag file, stereo outdoor mapping is not done correctly as can be seen in [0:53 -> 1:23].
+The my .bag file has the same topics as stereo_outdoorB.bag (with the exception of /tf that is published through the .launch file). The used .launch file is in: https://codeshare.io/an4O03
+After run a few seconds the map is no longer updated and the following warning is displayed:
+[ WARN] [1501502173.552628407, 1487604089.579723953]: rtabmap: Could not get transform from odom to base_footprint after 0.200000 seconds (for stamp=1487604089.150464)!
+[ WARN] (2017-07-31 12:56:13.572) OdometryF2F.cpp:203::computeTransform() Registration failed: "Not enough inliers 0/10 (matches=225) between 0 and 0"
+
+You can find the rosbag file that I used in the video at: sev_2017-02-20-15-20-50.bag
+Topics have to be remapped according to the following:
+rosbag play --clock sev_2017-02-20-15-20-50.bag /stereo/left/image_raw/compressed:=/stereo_camera/left/image_raw_throttle/compressed /stereo/right/image_raw/compressed:=/stereo_camera/right/image_raw_throttle/compressed /stereo/left/camera_info:=/stereo_camera/left/camera_info_throttle /stereo/right/camera_info:=/stereo_camera/right/camera_info_throttle
+
+Can anyone help me out to solve this?
+Best regards,
+Jorge Mendes
+
+Edit: Thanks for the help Mathieu (@matlabbe), but unfortunately I could not get the same result as you. When I run the .launch file that you provided, the following errors and warning appear:
+[ERROR] [1504001352.895939351]: Skipping XML Document "/opt/ros/indigo/share/hector_pose_estimation/hector_pose_estimation_nodelets.xml" which had no Root Element.  This likely means the XML is malformed or missing.
+[ERROR] [1504001353.579416634, 1487604051.226342601]: Skipping XML Document "/opt/ros/indigo/share/hector_pose_estimation/hector_pose_estimation_nodelets.xml" which had no Root Element.  This likely means the XML is malformed or missing.
+[ERROR] [1504001353.621420049]: Skipping XML Document "/opt/ros/indigo/share/hector_pose_estimation/hector_pose_estimation_nodelets.xml" which had no Root Element.  This likely means the XML is malformed or missing.
+
+[ WARN] (2017-08-29 11:09:20.416) Features2d.cpp:425::create() SURF/SIFT features cannot be used because OpenCV was not built with nonfree module. ORB is used instead.
+
+You can see the result of the execution on my computer in the following video: RTAB-Map ROS stereo outdoor mapping problem
+When I play the .bag file continues to appear warnings of the type:
+[ WARN] [1504001428.405463965, 1487604078.162979112]: rtabmap: Could not get transform from odom to base_footprint after 0.200000 seconds (for stamp=1487604077.691293)!
+[ WARN] [1504001428.435126342, 1487604078.193218747]: rtabmapviz: Could not get transform from odom to base_footprint after 0,200000 seconds (for stamp=1487604077,491246)!
+[ WARN] [1504001428.606564760, 1487604078.364592901]: rtabmap: Could not get transform from odom to base_footprint after 0.200000 seconds (for stamp=1487604077.891221)!
+[ WARN] (2017-08-29 11:10:28.657) OdometryF2M.cpp:228::computeTransform() Registration failed: "Not enough inliers 0/10 (matches=93) between -1 and 0"
+
+and
+[ WARN] (2017-08-29 11:10:30.108) Stereo.cpp:159::computeCorrespondences() A large number (536/925) of stereo correspondences are rejected! Optical flow may have failed, images are not calibrated, the background is too far (no disparity between the images) or maximum disparity may be too small (64).
+
+Do you have any idea of which be the reason for not getting the same result as you? Did I do something wrong?
+Thanks,
+Jorge
+
+Originally posted by Jorge Mendes on ROS Answers with karma: 1 on 2017-07-31
+Post score: 0
+
+Original comments
+Comment by matlabbe on 2017-07-31:
+Do you have a sample rosbag to share?
+Comment by Jorge Mendes on 2017-08-01:
+Yes, I added this information in the question.
+Comment by gvdhoorn on 2017-08-29:
+@Jorge Mendes: please do not post answers unless you are answering your own question. To interact with other posters, use comments or edit your original question. For updates, also edit your question. I've merged your answer with your question text, but please keep it in mind next time.
+
+A:
+
+Thx for the bag. The rendering problem is that in rtabmap_ros/MapCloud RVIZ display, the default decimation is 4. Set it to 1 or 2. Set also maximum depth to 30 meters instead of default 4 meters. You may also notice points under the road caused by the reflection on the car.
+For the odometry lost problem, try this launch file based on yours (I included rtabmap.launch for convenience to avoid duplicating parameters between rtabmap and stereo_odometry nodes):
+<launch>
+   
+   <!--
+      Demo of outdoor stereo mapping. 
+      From bag: 
+      $ rosbag record 
+            /stereo_camera/left/image_raw_throttle/compressed 
+            /stereo_camera/right/image_raw_throttle/compressed 
+            /stereo_camera/left/camera_info_throttle 
+            /stereo_camera/right/camera_info_throttle 
+            /tf
+    
+      $ roslaunch rtabmap demo_stereo_outdoor.launch
+      $ rosbag play -.-clock stereo_oudoorA.bag
+   -->
+
+  <!-- Arguments -->
+  <arg name="camera" default="/stereo"/>
+  <arg name="frameid_robot" default="base_link"/>
+  <!--OR: base_footprint -->
+  <arg name="frameid_camera" default="stereo_camera"/>
+  
+  <!-- yaw, pitch, rooll -->
+  <!-- Transformada entre base_link e IMU -->
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_imu" args="0 0 0.3 0 0 0 base_link imu_frame 30"/>
+
+<node pkg="tf" type="static_transform_publisher" name="base_link_to_base" args="0 0 0 0 0 0 base_footprint base_link 30"/>
+  <!-- Transformada entre base_link e GPS-->
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_gps" args="0 0 0.5 0 0 0 base_link gps 30"/> 
+
+  <!-- TF: "base_link" to "camera_link" [Rotate the camera frame.] -->
+  <arg name="pi/2" value="1.5707963267948966"/>
+  <arg name="optical_rotate" value="0 0 0 -$(arg pi/2) 0.0 -$(arg pi/2)"/>
+  <node pkg="tf" type="static_transform_publisher" name="camera_to_gimbal" args="$(arg optical_rotate) stereo_camera_base $(arg frameid_camera) 30"/>
+
+  <!-- Tranformada entre o Gimbal e Base_link -->
+  <arg name="Gimbal_rotate" value="0 0 1.75 0 0.19 0"/>
+  <node pkg="tf" type="static_transform_publisher" name="Gimbal_baselink" args="$(arg Gimbal_rotate) $(arg frameid_robot) stereo_camera_base 30"/>
+
+  <!-- Tranformada entre o Camera Frame e Leftoptical -->
+  <node pkg="tf" type="static_transform_publisher" name="left_optical2stereo_camera" args="0 0 0 0 0 0 stereo_camera left_optical 30"/>
+
+    
+   <param name="use_sim_time" type="bool" value="True"/>
+   
+   <!-- Just to uncompress images for stereo_image_rect -->
+   <node name="republish_left"  type="republish" pkg="image_transport" args="compressed in:=/stereo_camera/left/image_raw_throttle raw out:=/stereo_camera/left/image_raw_throttle_relay" />
+   <node name="republish_right" type="republish" pkg="image_transport" args="compressed in:=/stereo_camera/right/image_raw_throttle raw out:=/stereo_camera/right/image_raw_throttle_relay" />
+
+   <!-- Run the ROS package stereo_image_proc for image rectification -->
+   <group ns="/stereo_camera" >
+      <node pkg="nodelet" type="nodelet" name="stereo_nodelet"  args="manager"/>
+   
+      <node pkg="stereo_image_proc" type="stereo_image_proc" name="stereo_image_proc">
+         <remap from="left/image_raw"    to="left/image_raw_throttle_relay"/>
+         <remap from="left/camera_info"  to="left/camera_info_throttle"/>
+         <remap from="right/image_raw"   to="right/image_raw_throttle_relay"/>
+         <remap from="right/camera_info" to="right/camera_info_throttle"/>
+         <param name="disparity_range" value="128"/>
+      </node>
+   </group>
+              
+   <include file="$(find rtabmap_ros)/launch/rtabmap.launch">
+    <arg name="frame_id" value="base_footprint"/>
+    <arg name="stereo" value="true"/>
+    <arg name="approx_sync" value="true"/>
+    <arg name="left_image_topic"        value="/stereo_camera/left/image_rect_color" />
+    <arg name="right_image_topic"       value="/stereo_camera/right/image_rect" /> 
+    <arg name="left_camera_info_topic"  value="/stereo_camera/left/camera_info_throttle" />
+    <arg name="right_camera_info_topic" value="/stereo_camera/right/camera_info_throttle" />
+    <arg name="rtabmap_args" value="--delete_db_on_start --Vis/EstimationType 1 --Vis/MaxDepth 0 --GFTT/QualityLevel 0.00001 --Stereo/MinDisparity 0 --Stereo/MaxDisparity 64 --Vis/RoiRatios '0 0 0 .2' --Kp/RoiRatios '0 0 0 .2' --Odom/GuessMotion true --Vis/MinInliers 10 --Vis/BundleAdjustment 1 --OdomF2M/BundleAdjustment 1 --Vis/CorNNDR 0.6 --Vis/CorGuessWinSize 20 --Vis/PnPFlags 0"/>
+
+    <arg name="rtabmapviz" value="true"/>
+    <arg name="rviz" value="false"/>
+   </include>
+
+</launch>
+
+The bundle adjustment parameters will only work if rtabmap is built with g2o support (results are better with bundle adjustment enabled). As the baseline between the cameras is very small, Stereo/MinDisparity should be set to 0. GFTT/QualityLevel should be low to extract features in image regions with lower contrast. Vis/EstimationType should be 1 (PnP Ransac) for stereo. The */RoiRatios parameters avoid extracting features on the hood of the car (bottom 20% of the image). Vis/MaxDepth should be 0 to use far features in odometry estimation.
+Commands used:
+$ roslaunch test.launch
+$ rosbag play --clock sev_2017-02-20-15-20-50.bag /stereo/left/image_raw/compressed:=/stereo_camera/left/image_raw_throttle/compressed /stereo/right/image_raw/compressed:=/stereo_camera/right/image_raw_throttle/compressed /stereo/left/camera_info:=/stereo_camera/left/camera_info_throttle /stereo/right/camera_info:=/stereo_camera/right/camera_info_throttle
+
+To get good stereo reconstruction in rtabmapviz, set these parameters (the roi ratios only work with latest code from source), Preferences->3D Rendering:
+
+Some results:
+
+Final notes: Increasing the baseline between the cameras could help to better triangulate far features, and thus better odometry. For example with the KITTI dataset, the baseline is 54 cm between the cameras. Also, I noticed that left and right images are not exactly synchronized (approx_sync needed to be true to work), which can add some disparity errors if some left and right images are poorly synchronized. When dealing with stereo images, the best is when they are exactly synchronized (having exactly the same time stamps) so that approx_sync can be set to false. Look at your camera driver to fix this.
+EDIT
+I updated the rtabmap parameters in the launch file above so that it can work on indigo binaries version (0.11.8). In recent versions, these parameters have these default values: --Vis/CorNNDR 0.6 --Vis/CorGuessWinSize 20 --Vis/PnPFlags 0. Did you use the launch file I created above? because normally you won't have the SURF/SIFT not available error message as Kp/DetectorStrategy is not set in my example. In 0.11.8, local bundle adjustment is not implemented, so odometry is drifting a lot more. To get best results, build latest rtabmap version from source. For the hector_mapping xml error, it is maybe ros parsing all packages xml files that is causing this error on launch (so it would be a problem with the hector xml files but hector is not used in this example, it could be ignored).
+cheers,
+Mathieu
+
+Originally posted by matlabbe with karma: 6409 on 2017-08-02
+This answer was ACCEPTED on the original site
+Post score: 4
+

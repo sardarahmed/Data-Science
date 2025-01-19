@@ -1,0 +1,92 @@
+Q:
+
+when i use “output.name[0]="Tjoint” there is a error Segmentation fault
+
+The code is as follows:
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include "sensor_msgs/JointState.h" 
+#include <sstream>
+
+class SubscribeAndPublish
+{
+public:
+    SubscribeAndPublish()
+        {
+            //topic you want to publish
+            pub_=n.advertise<sensor_msgs::JointState>("/arm/joint_states",1000);
+            //subscribe
+            sub_=n.subscribe("/joint_states",1000,&SubscribeAndPublish::callback,this);
+        }
+    
+    void callback(const sensor_msgs::JointState::ConstPtr& msg)
+        {
+            sensor_msgs::JointState output;
+            output.name=msg->name;  //  output.name[0]="Tjoint
+            output.position=msg->position;
+            output.header=msg->header;
+            pub_.publish(output);
+        }
+   
+private:
+    ros::NodeHandle n;
+    ros::Publisher pub_;
+    ros::Subscriber sub_;
+};
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "talker");
+    SubscribeAndPublish SAPobject;
+   
+    ros::spin();
+   
+    return 0;
+}
+
+Originally posted by buaawanggg on ROS Answers with karma: 1 on 2017-05-03
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-05-03:
+This is not a question.
+Please format your code properly (use the Preformatted text button) and explain what you are trying to do, what doesn't work and why you think that doesn't work.
+Comment by buaawanggg on 2017-05-03:
+thx for your advice ，i try to write a node to subscribe the topic “joint-states” ，  this topic have messages of 6 joints ，but what i need is only the message of “joint0” and publish the message of “joint0” to topic “arm/joint_states”
+Comment by buaawanggg on 2017-05-03:
+i want to use the  “void  callback“” to filter the message
+Comment by jarvisschultz on 2017-05-04:
+I've provided an answer to your question, and reformatted your original question. I was only able to do this because I had already answered your original question; so I knew what you were asking. As @gvdhoorn indicated, please put more effort into writing clear and nicely formatted questions
+
+A:
+
+You can't call output.name[0] without first allocating at least one entry in the std::vector<std::string> data that is the output.name field. You should likely use something like std::vector::push_back or std::vector::resize to allocate the memory. The same is true for the position field.
+Here's a quick rewrite of your callback as an example:
+void callback(const sensor_msgs::JointState::ConstPtr& msg)
+{
+    sensor_msgs::JointState output;
+    output.header = msg->header;
+    // create space for our single joint name and position:
+    output.name.resize(1);
+    output.position.resize(1);
+    // find correct joint and store in output:
+    std::vector<std::string>::const_iterator name_it = msg->name.begin();
+    std::vector<double>::const_iterator position_it = msg->position.begin();
+    for (; name_it != msg->name.end() && position_it != msg->position.end(); ++name_it, ++position_it)
+    {
+        if ( (*name_it).compare("joint1") == 0)
+        {
+            // then we've found the joint!
+            output.name[0] = *name_it;
+            output.position[0] = *position_it;
+            pub_.publish(output);
+            break;
+        }
+    }
+    return;
+}
+
+Originally posted by jarvisschultz with karma: 9031 on 2017-05-04
+This answer was ACCEPTED on the original site
+Post score: 0
+

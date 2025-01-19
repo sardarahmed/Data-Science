@@ -1,0 +1,66 @@
+Q:
+
+Collision checking for arbitrary poses using MoveIt! / PlanningSceneMonitor
+
+I am having trouble figuring out the best way to check a bunch of poses for collisions (e.g., I have a self-made trajectory that I want to validate using the robot_description in conjunction any attached geometries (e.g., picked item) attached via the PlanningSceneMonitor as outlined in the PR2 moveit tutorial
+My initial attempt used a planning scene pointer carried around inside of my planner class like I have seen in other code:
+aux_movegroup_ = new moveit::planning_interface::MoveGroupInterface("manipulator");
+aux_robot_model_ = aux_model_loader_.getModel();  // "robot_description"
+aux_robot_state_ = robot_state::RobotStatePtr(new robot_state::RobotState(aux_robot_model_));
+aux_planning_scene_ = planning_scene::PlanningScenePtr(new planning_scene::PlanningScene(aux_robot_model_));
+
+However, it seems the member scene doesn't update with the attached geometries until the NEXT planner instance (e.g., if cycling through a bunch of attached object geometries while replanning, my planning scene pointer somehow had the information of the previous attached object while the path I was testing was for the current...).
+After some head scratching and Googling I came across this approach:
+// get a fresh instance of the planning scene from move_group
+planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_ptr =
+    std::make_shared<planning_scene_monitor::PlanningSceneMonitor>("robot_description");
+planning_scene_monitor_ptr->requestPlanningSceneState();
+planning_scene_monitor::LockedPlanningSceneRO ps(planning_scene_monitor_ptr);
+for (ALL_WAYPOINTS)
+{
+  aux_robot_state_->setFromIK(aux_joint_model_group_, WAYPOINT_i);
+  collision_detection::CollisionResult::ContactMap contacts;
+  ps->getCollidingPairs(contacts, *aux_robot_state_);
+}
+
+But now my touch_links for the previously attached object are not carried over and the picked object shows to be in collision with the end effector for every waypoint...
+The merit of my approaches aside, I am curious to the best way to perform collision checking for arbitrary paths/poses with collision objects that have been attached to the planning scene via MoveIt!'s planning scene monitor.  How should I be doing this? Any help would be greatly appreciated.
+
+Originally posted by BrettHemes on ROS Answers with karma: 525 on 2017-05-16
+Post score: 1
+
+A:
+
+But now my touch_links for the previously attached object are not carried over and the picked object shows to be in collision with the end effector for every waypoint...
+
+The touch links are part of the robot state. If you initialize your aux_robot_state_ with the current state of the planning scene, I don't see why the touch_links should not be there.
+
+How should I be doing this?
+
+your second approach seems feasible to me.
+
+Originally posted by v4hn with karma: 2950 on 2017-05-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by BrettHemes on 2017-05-17:
+Allright, I have tried updating the state from the locked planning scene and still have the same issue.  In fact, if I collide the planning scene with itself (i.e., ps->getCollidingPairs(contacts)) I get the same result.
+Comment by BrettHemes on 2017-05-17:
+Inspecting the planning scene as a message from /get_planning_scene looks ok (touch_links are there).
+Do I need to modify the ACM for what I am trying to do?
+Comment by BrettHemes on 2017-05-19:
+OK, I decided to go ahead and modify the allowed collision matrix and now add entries for each attached object.  Everything seems to be working except that, when using an updated state from the planning scene monitor all of the attached objects collide with themselves.  Any idea why this might be?
+Comment by BrettHemes on 2017-05-19:
+I get a working copy of the robot_state like so:
+  const robot_state::RobotState scene_state = ps->getCurrentState();
+  robot_state::RobotState scene_state_cpy = scene_state;
+
+Is this correct?
+Comment by BrettHemes on 2017-05-23:
+OK, I figured out my problem...  I was carrying around a modified URDF/SRDF in the node's private namespace as a relic of a previous commit and it seems that (for reasons I can't fully explain) this description was making its way into MoveIt!'s planning_scene robot_state.
+Comment by BrettHemes on 2017-05-23:
+It so happened that my modified private robot_description had links with names colliding with my attached objects, thus resulting in the self-collisions for my attached objects.  There were also some intermittent  segfaults to boot....  Long story short, your answer is correct.
+Comment by BrettHemes on 2017-05-23:
+However, as an aside note:  attached objects with touch links that are touching will return collision-free results from any collision checks BUT the (min) distance between bodies will be zero.  If you want distances from "touching" attached objects you need to modify the ACM appropriately.
+

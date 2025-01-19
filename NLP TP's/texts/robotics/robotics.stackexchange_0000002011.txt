@@ -1,0 +1,48 @@
+Q:
+
+How to calculate the right and left speed for a tank-like rover?
+
+I am trying to control the Rover 5 robot using an Android app with a touch-based joystick control in the app UI. I want to calculate the speed of the left and right motors in the rover when joystick is moved.
+From the joystick, I get two values, pan and tilt. I convert them into the polar coordinate system with r and theta. Where r ranges from 0 to 100 and theta from 0 to 360. I want to derive an equation which can convert the (r, theta) to (left_speed, right_speed) for rover. The speed values also are in the [0;100] range.
+Now, here is what I have figured out till now. For any value of r, 
+If theta = 0 then left_speed = r, right_speed = -r (turning right on spot) 
+If theta = 90 then left_speed = r, right_speed = r (moving forward at speed r) 
+If theta = 180 then left_speed = -r, right_speed = r (turning left on spot) 
+If theta = 270 then left_speed = -r, right_speed = -r (moving backwards at speed r) 
+For other values, I want it moving and turning simultaneously. For example,
+If theta = 45 then left_speed = alpha*r, right_speed = beta*r (moving forward while turning right) 
+So, basically for any (r, theta), I can set speeds as,
+(left_speed, right_speed) = (alpha*r, beta*r)
+I need to formulate an equation where I can generalize all these cases by finding alpha and beta based on theta.
+How can I do this? Is there is any existing work I can refer to?
+
+A:
+
+You're trying to find a formula to convert a given $(r, \theta)$ to left and right thrust percentages, where $r$ represents your throttle percentage.  The naive implementation is to base your function on 100% throttle:
+
+At $0 ^{\circ}$, left and right thrust are equal to $r$
+At $\pm45 ^{\circ}$, one side's thrust equals $r$ and the other side's equals 0
+At $\pm 90 ^{\circ}$, one side's thrust equals $r$ and the other side's equals $-r$
+At $180 ^{\circ}$, left and right thrust are equal to $-r$
+
+This produces a function like the following:
+
+The problem with this implementation is that you are only providing the desired $r$ when $\theta$ is at an exact multiple of $90 ^{\circ}$.  At all other points, you sacrifice total speed for control.  You can see this in the graph: "Absolute Thrust", the amount of thrust being delivered by both motors, is not (and cannot be) constant in this regime.  Simply scaling this function is not optimal.
+The maximum absolute thrust that can be sustained over the entire range of $\theta$ occurs when $r=50\%$ -- this is what your function should be based on.  
+
+In this implementation, total thrust remains constant between $\pm45 ^{\circ}$, and absolute thrust is constant no matter what direction is chosen -- the motors trade off their thrust to maintain the desired $r$.  Above $r=50\%$, the range of angles where your total thrust can satisfy $r$ begins to shrink -- you begin to sacrifice control for speed.
+This produces a python function like the following:
+# assumes theta in degrees and r = 0 to 100 %
+# returns a tuple of percentages: (left_thrust, right_thrust)
+def throttle_angle_to_thrust(r, theta):
+    theta = ((theta + 180) % 360) - 180  # normalize value to [-180, 180)
+    r = min(max(0, r), 100)              # normalize value to [0, 100]
+    v_a = r * (45 - theta % 90) / 45          # falloff of main motor
+    v_b = min(100, 2 * r + v_a, 2 * r - v_a)  # compensation of other motor
+    if theta < -90: return -v_b, -v_a
+    if theta < 0:   return -v_a, v_b
+    if theta < 90:  return v_b, v_a
+    return v_a, -v_b
+
+The result is the following:
+

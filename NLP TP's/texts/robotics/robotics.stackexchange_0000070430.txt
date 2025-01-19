@@ -1,0 +1,139 @@
+Q:
+
+SetCameraInfo successfully called but no change in /camera_info topic
+
+Hello there,
+I am trying to write a little C++ package to apply custom made calibration files to my indigo system using the following code (inspired by this thread):
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/SetCameraInfo.h>
+#include <camera_calibration_parsers/parse.h>
+#include <cstdlib>
+#include <vector>
+using namespace std;
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "apply_camera_info");
+  if (argc != 3)
+  {
+    ROS_INFO("usage: apply_camera_info <camera topic> <calibration file>");
+    return 1;
+  }
+
+  ros::NodeHandle n;
+
+  std::ostringstream oss;
+  oss << argv[1] << "set_camera_info";
+  std::string s = oss.str();
+
+  ros::ServiceClient client = n.serviceClient<sensor_msgs::SetCameraInfo>(s);
+
+  std::string camera_name = argv[1];
+  std::string filename = argv[2];    
+  sensor_msgs::CameraInfo camera_info;
+
+  camera_calibration_parsers::readCalibration(filename, camera_name, camera_info);      
+  
+  sensor_msgs::SetCameraInfo srv;
+  srv.request.camera_info = camera_info;
+
+  if (client.call(srv))
+  {
+    std::ostringstream sss;
+    sss << srv.request.camera_info;
+    ROS_INFO("%s", sss.str().c_str());
+    ROS_INFO("Calibration successfully applied.");
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service <camera>/set_camera_info");
+    return 1;
+  }
+
+  return 0;
+}
+
+Actually the code seems to work fine. ROS_INFO returns the correct camera_info values after running the command.
+However, when I run rostopic echo /camera_info in another tab, I still get the old values. So no update is actually taking place.
+Would you have any suggestions for me?
+Btw: I am using a ueye camera.
+Thanks
+Ben
+
+Originally posted by pennjamin on ROS Answers with karma: 26 on 2015-11-17
+Post score: 0
+
+Original comments
+Comment by Dan Lazewatsky on 2015-11-17:
+What camera driver are you using this with? The service call will also return a SetCameraInfoResponse which has a status and status message which might be informative. Also make sure the service exists before calling it.
+
+A:
+
+Thank you Dan Lazewatsky for the useful hints,
+the srv.status_message returned "Error formatting camera_info for storage", so I checked the documentation of the ueye camera node.
+It turned out, that the calibration file I was using doesn't match the formatting standard of the camera node. After using a default calibration file it worked.
+For completeness I post the optimized code below:
+#include <ros/ros.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/SetCameraInfo.h>
+#include <camera_calibration_parsers/parse.h>
+using namespace std;
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "apply_camera_info");
+  if (argc != 3)
+  {
+    ROS_INFO("usage: apply_camera_info <camera topic> <calibration file>");
+    return 1;
+  }
+
+  ros::NodeHandle n;
+
+  std::ostringstream ossSet;
+  ossSet << argv[1] << "set_camera_info";
+  std::string s = ossSet.str();
+  ros::ServiceClient client = n.serviceClient<sensor_msgs::SetCameraInfo>(s);
+
+  std::string camera_name = argv[1];
+  std::string filename = argv[2];
+
+  sensor_msgs::CameraInfo camera_info;
+  camera_calibration_parsers::readCalibration(filename, camera_name, camera_info);
+
+  sensor_msgs::SetCameraInfo srv;
+  srv.request.camera_info = camera_info;
+
+  if (client.call(srv))
+  {
+    if(srv.response.success)
+    {
+      std::ostringstream ossInf;
+      ossInf << srv.request.camera_info;
+      ROS_INFO("%s", ossInf.str().c_str());
+      ROS_INFO("Calibration successfully applied.");
+    }
+    else
+    {
+      std::ostringstream ossStm;
+      ossStm << srv.response.status_message;
+      ROS_ERROR("%s", ossStm.str().c_str());
+      return 1;
+    }    
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service camera/set_camera_info");
+    return 1;
+  }
+
+  return 0;
+}
+
+Originally posted by pennjamin with karma: 26 on 2015-11-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

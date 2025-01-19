@@ -1,0 +1,136 @@
+Q:
+
+string to a float
+
+Hi, I will like to change the string message of one of my topics to a float
+
+Originally posted by chezzydc10 on ROS Answers with karma: 3 on 2016-07-25
+Post score: 0
+
+Original comments
+Comment by krishna43 on 2016-07-25:
+Does your topic output's numbers in string format?
+
+A:
+
+Not nice but the easiest is to just republish it I guess.
+import rospy
+from std_msgs.msg import String, Float64
+
+rospy.init_node("spam")
+p = rospy.Publisher("/topic_out", Float64)
+
+def callback(msg):
+    p.publish(float(msg.data))        
+
+rospy.Subscriber("/topic_in", String, callback)
+rospy.spin()
+
+EDIT: You can also write a script that reads from the bag and writes to a new one. Have a look at the rosbag API for that.
+EDIT 2:
+I am not entirely sure how you subscribe to what but here is how it works for me:
+Let's assume I have a node like this that produces the data:
+import rospy
+import numpy as np
+from std_msgs.msg import String
+
+rospy.init_node("data_node")
+
+p = rospy.Publisher("/string_topic", String, queue_size=1)
+
+Fs = 8000
+f = 5
+sample = 8000
+x = np.arange(sample)
+y = np.sin(2 * np.pi * f * x / Fs)
+
+r = rospy.Rate(10)
+for e in y:
+    p.publish(str(e))
+    r.sleep()
+
+which just produces a sine wave and then I save that to a rosbag rosbag record /string_topic which generates the following bag
+path:        2016-07-28-08-06-26.bag
+version:     2.0
+duration:    2:46s (166s)
+start:       Jul 28 2016 08:06:29.43 (1469689589.43)
+end:         Jul 28 2016 08:09:16.33 (1469689756.33)
+size:        129.3 KB
+messages:    1670
+compression: none [1/1 chunks]
+types:       std_msgs/String [992ce8a1687cec8c8bd883ec73ca41d1]
+topics:      /string_topic   1670 msgs    : std_msgs/String
+
+This I can then play rosbag play 2016-07-28-08-06-26.bag and use the script I posted above to subscribe to /string_topic:
+import rospy
+from std_msgs.msg import String, Float64
+
+rospy.init_node("spam")
+p = rospy.Publisher("/float_topic", Float64)
+
+def callback(msg):
+    p.publish(float(msg.data))        
+
+rospy.Subscriber("/string_topic", String, callback)
+rospy.spin()
+
+I can the connect /float_topic to rqt_plot and see my data. My connection graph looks likes this:
+
+Where on the left you have the rosbag and on the right the rqt_plot.
+Maybe your bag contains just the same number in all the messages? Can you upload it somewhere or post some of the example output of the topic you want to plot. Also, the output of rosbag info on your bag would be good.
+EDIT 3:
+To accommodate the data you got, we would need a different conversion node:
+import rospy
+from std_msgs.msg import String, Float64
+
+rospy.init_node("spam")
+publishers = []
+for i in range(6):
+    publishers.append(rospy.Publisher("/thermal_zone"+str(i), Float64))
+
+def callback(msg):
+    for s, p in zip(msg.data.split('\n'), publishers):
+        p.publish(float(s.split(':')[1]))        
+
+rospy.Subscriber("/string_topic", String, callback)
+rospy.spin()
+
+This is not tested as I do not have the data but it creates 6 publishers which are called thermal_zone0 to thermal_zone5 like in your data. In the callback it tries to split the incoming string based on the line break \n which I assume is in there but might be wrong. It then splits the string again based on the : and takes the right part of it which should be the number and then publishes it as a float on the specified topic. In rqt_plot you have to add all 6 topics and then you get your data.
+If it doesn't work, try to add a few print statements to the callback and have a look at s and the result of s.split(':').
+
+Originally posted by Chrissi with karma: 1642 on 2016-07-27
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by chezzydc10 on 2016-07-27:
+When i republished it as float, i was not getting the same data i had on my rosbag. I was getting the same number over and over again
+Comment by Chrissi on 2016-07-27:
+Python or cpp? Can't imagine how that could happen given above python script. In cpp it might because of a wrong string conversion.
+Comment by chezzydc10 on 2016-07-27:
+In python. From the sample code u wrote, you are subscribing to the node but im subscribing to the rosbag in mine. I already have some recorded data in rosbag which plays as string but i will like them to play as float
+Comment by Chrissi on 2016-07-28:
+See edit in answer
+Comment by chezzydc10 on 2016-07-28:
+I followed your first code but after playing the rosbag and running the python script, I got this error in the link below. The new node couldn't convert the string to float.
+http://www.directupload.net/file/d/4430/ke3wqra6_png.htm
+Comment by Chrissi on 2016-07-28:
+Your topic publishes a weird string like: "/sys/device/.../../:35000" and not just a number like "35000.0" so python of course doesn't know how to convert this to a float. You have to parse the string so you only have the number before doing float(). If you want help please edit your question
+Comment by Chrissi on 2016-07-28:
+... and post some example output of your topic. Also please post the output of rosbag info of your bag just to make sure it is really just publishing a string message. Looks like it is publishing a number of strings in the same message.
+Comment by chezzydc10 on 2016-07-28:
+This is the example of my topic when you echo it. The data has already been recorded so this is what i get when I play the rosbag. http://www.directupload.net/file/d/4430/7o9zftgp_png.htm
+Also this is what i have in my rosbag info http://www.directupload.net/file/d/4430/nxud8cgi_png.htm
+Comment by Chrissi on 2016-07-28:
+As you can see each string has several lines with the name of the sensor and the value that it produced. Which number of the 5 per message do you want to plot? Each --- marks a new message. Do you need different plots per sensor or all in just one plot? That makes it inherently more complex.
+Comment by chezzydc10 on 2016-07-28:
+I need all in one plot
+Comment by Chrissi on 2016-07-28:
+But I guess they should all be separate curves so you would need 6 topics one per thermal_zone? I'll edit my answer with something that might work for you.
+Comment by chezzydc10 on 2016-07-28:
+thanks bro. I appreciate, everything works fine now.
+Comment by Chrissi on 2016-07-28:
+Brilliant :)
+Comment by Chrissi on 2016-07-28:
+If you could please accept the answer as correct, I'd be a happy camper ;)
+

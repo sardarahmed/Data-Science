@@ -1,0 +1,119 @@
+Q:
+
+Alignment problem with template and pointcloud
+
+Hey all,
+I've been working with the PCL tutorials on the ROS website, specifically the "Aligning object templates to a point cloud", and I've written some code that subscribes to my Kinect sensor and publishes the alignment of a template pointcloud. The code works fine except for two issues, the alignment of the template seems to be off by few centimeters (see screenshot) and the code itself runs rather slow.
+I am going to try downsample the target pointcloud in hopes that it speeds up processing time but does anyone have any ideas to why the translation alignment is off? I assumed at first it would be because my reference frames were different but the input frame is same as the output frame!
+output.header.frame_id = input->header.frame_id; 
+
+Here is the callback and main code, it's mostly the Aligning object templates tutorial code with the required ROS code for subscription and publication.
+    void callback(const sensor_msgs::PointCloud2ConstPtr& input)
+{
+
+  // Change from type sensor_msgs::PointCloud2 to pcl::PointXYZ
+  pcl::fromROSMsg (*input, *cloud);
+  std::vector<FeatureCloud> object_templates;
+  
+  // Add the Template cloud to the list of clouds
+  object_templates.push_back (template_cloud);
+
+  // Preprocess the cloud by...
+  // ...removing distant points
+  const float depth_limit = 1.0;
+  pcl::PassThrough<pcl::PointXYZ> pass;
+  pass.setInputCloud (cloud);
+  pass.setFilterFieldName ("z");
+  pass.setFilterLimits (0, depth_limit);
+  pass.filter (*cloud);
+
+  // ... and downsampling the point cloud
+  const float voxel_grid_size = 0.005f;
+  pcl::VoxelGrid<pcl::PointXYZ> vox_grid;
+  vox_grid.setInputCloud (cloud);
+  vox_grid.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud (new pcl::PointCloud<pcl::PointXYZ>); 
+  vox_grid.filter (*tempCloud);
+  cloud = tempCloud; 
+
+  // Assign to the target FeatureCloud
+  FeatureCloud target_cloud;
+  target_cloud.setInputCloud (cloud);
+
+  // Set the TemplateAlignment inputs
+  TemplateAlignment template_align;
+  template_align.addTemplateCloud (template_cloud);
+  template_align.setTargetCloud (target_cloud);
+
+  // Find the best template alignment
+  TemplateAlignment::Result best_alignment;
+  int best_index = template_align.findBestAlignment (best_alignment);
+  const FeatureCloud &best_template = object_templates[best_index];
+
+  // Print the alignment fitness score (values less than 0.00002 are good)
+  printf ("Best fitness score: %f\n", best_alignment.fitness_score);
+
+  // Print the rotation matrix and translation vector
+  Eigen::Matrix3f rotation = best_alignment.final_transformation.block<3,3>(0, 0);
+  Eigen::Vector3f translation = best_alignment.final_transformation.block<3,1>(0, 3);
+
+  printf ("\n");
+  printf ("    | %6.3f %6.3f %6.3f | \n", rotation (0,0), rotation (0,1), rotation (0,2));
+  printf ("R = | %6.3f %6.3f %6.3f | \n", rotation (1,0), rotation (1,1), rotation (1,2));
+  printf ("    | %6.3f %6.3f %6.3f | \n", rotation (2,0), rotation (2,1), rotation (2,2));
+  printf ("\n");
+  printf ("t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), translation (2));
+
+ printf ("Publishing and Saving \n");
+
+// Publish the results & save the aligned template for visualization
+ 
+  pcl::PointCloud<pcl::PointXYZ> transformed_cloud;
+  pcl::transformPointCloud (*best_template.getPointCloud(), transformed_cloud, best_alignment.final_transformation);
+  pcl::io::savePCDFileBinary ("alignment.pcd", transformed_cloud);
+
+  pcl::toROSMsg (transformed_cloud, output);
+  output.header.frame_id = input->header.frame_id;
+  pub.publish(output);
+
+}
+
+int
+main (int argc, char **argv)
+{
+
+ // INITIALIZE ROS
+  ros::init (argc, argv, "face");
+
+  template_cloud.loadInputCloud ("template.pcd");
+
+  ros::NodeHandle nh;
+  ros::Subscriber sub = nh.subscribe("/camera/depth_registered/points", 1, callback);
+  
+
+  pub = nh.advertise<sensor_msgs::PointCloud2> ("face", 1);
+
+  ros::spin();
+
+  return (0);
+}
+
+Thanks in advance, this forum has been a really great help with my research!
+Regards,
+Martin
+
+Originally posted by MartinW on ROS Answers with karma: 464 on 2012-07-31
+Post score: 1
+
+Original comments
+Comment by TFinleyosu on 2014-08-04:
+Did you ever work this out?
+
+A:
+
+People over at the pcl-users mailing list might be able to answer this question better. Additionally you may also want to look at the pcl_ros bridge. It may speed up your code a bit (or just help clean up a few lines).
+
+Originally posted by piyushk with karma: 2871 on 2012-08-01
+This answer was ACCEPTED on the original site
+Post score: 1
+

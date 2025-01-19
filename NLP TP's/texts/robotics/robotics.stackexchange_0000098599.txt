@@ -1,0 +1,164 @@
+Q:
+
+Install colcon via 'rosdep install'
+
+I'm still on ROS1K (about to EoL). Only occasionally trying newer stuff.
+If I want to reference colcon as a dependency in rosdep-sphere, what's the right way to do assuming doing so is NOT out of the range of ROS2 and/or colcon framework?
+A bit of motivation for me is to allow developers to specify build-tool/system and use package.xml for that so that you don't need to specify required/preferred build-tool/system separately (hope I'm interpreting the intent of buildtool_depend right).
+Trying to find existing references,
+
+in rclcpp (that appeared at the top on github.com/ros2 org at the time I went there, so I assumed it's up-to-date to the status of ROS2 framework) it still? uses ament in buildtool_depend. I couldn't find any pkg that refers to colcon in buildtool_depend.
+docs.ros.org/en/foxy/Tutorials/Creating-Your-First-ROS2-Package shows ament for buildtool_depend.
+
+So far I've tried:
+
+Add ros.org to apt source.
+Add python3-colcon-common-extensions (took it from installation section in colcon.readthedocs.io) and a few others in <buildtool_depend>.
+
+If it's simply that rosdep keys for colcon-related packages are missing, that's easy. But I'm just not sure if that's the plan.
+$ docker run -it ros:melodic-ros-base
+
+# cat src/tester_colcon_dep/package.xml
+<?xml version="1.0"?>
+<package format="3">
+  <name>tester_colcon_dep</name>
+  <version>0.0.0</version>
+  <description>The tester package</description>
+  <maintainer email="root@todo.todo">root</maintainer>
+  <license>TODO</license>
+<!--  <buildtool_depend>colcon</buildtool_depend> -->
+<!--  <buildtool_depend>colcon-ros</buildtool_depend> -->
+  <buildtool_depend>python3-colcon-common-extensions</buildtool_depend>
+<!--  <buildtool_depend>python3-colcon</buildtool_depend> -->
+</package>
+
+# rosdep install -y --from-paths src --ignore-src
+:
+tester_colcon_dep: Cannot locate rosdep definition for [colcon]
+
+root@46d1b53edc16:/cws# rosdep install -y --from-paths src --ignore-src
+:
+tester_colcon_dep: Cannot locate rosdep definition for [python3-colcon-common-extensions]
+
+# apt install python3-colcon-common-extensions
+:
+The following additional packages will be installed:
+  javascript-common libjs-jquery libjs-jquery-hotkeys libjs-jquery-isonscreen libjs-jquery-metadata libjs-jquery-tablesorter    libjs-jquery-throttle-debounce libwebpdemux2 libwebpmux3 notification-daemon python3-argcomplete python3-attr python3-catkin-pkg-modules      python3-colcon-argcomplete python3-colcon-bash python3-colcon-cd python3-colcon-cmake python3-colcon-core python3-colcon-defaults      python3-colcon-devtools python3-colcon-library-path python3-colcon-metadata python3-colcon-notification python3-colcon-output
+:
+(Manually terminated)
+
+root@46d1b53edc16:/cws# more /etc/apt/sources.list.d/ros1-latest.list 
+deb http://packages.ros.org/ros/ubuntu bionic main
+
+# apt-cache policy python3-colcon-* | ack -A 1 -i installed
+  Installed: (none)
+  Candidate: 0.2.5-1
+--                  
+  Installed: (none)
+  Candidate: 0.2.1-1
+--                  
+  Installed: (none)     
+  Candidate: 0.1.0-1
+--
+  Installed: (none)
+  Candidate: 0.2.10-1
+--
+  Installed: (none)
+  Candidate: 0.0.8-1
+--
+  Installed: (none)
+  Candidate: 0.1.1-1
+--
+  Installed: (none)
+  Candidate: 0.1.2-1
+--
+  Installed: (none)
+  Candidate: 0.2.26-1
+--
+  Installed: (none)
+  Candidate: 0.2.7-1
+--
+  Installed: (none)
+  Candidate: 0.5.0-1
+--
+  Installed: (none)
+  Candidate: 0.2.4-1
+--
+  Installed: (none)
+  Candidate: 0.2.13-1
+--
+  Installed: (none)
+  Candidate: 0.2.12-1
+--
+  Installed: (none)
+  Candidate: 0.3.8-1
+--
+  Installed: (none)
+  Candidate: 0.2.1-1
+--
+  Installed: (none)
+  Candidate: 0.2.1-1
+--
+  Installed: (none)
+  Candidate: 0.3.21-1
+--
+  Installed: (none)
+  Candidate: 0.3.3-1
+--
+  Installed: (none)
+  Candidate: 0.3.6-1
+--
+  Installed: (none)
+  Candidate: 0.2.0-1
+--
+  Installed: (none)
+  Candidate: 0.1.0-1
+--
+  Installed: (none)
+  Candidate: 0.4.2-1
+--
+  Installed: (none)
+  Candidate: 0.6.1-1
+--
+  Installed: (none)
+  Candidate: 0.2.2-1
+
+--
+  Installed: (none)
+  Candidate: 0.4.0-1
+--
+  Installed: (none)
+  Candidate: 0.2.5-1
+--
+  Installed: (none)
+  Candidate: 0.3.3-1
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2021-03-21
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-03-21:\
+
+If it's simply that rosdep keys for colcon-related packages are missing, that's easy
+
+There are indeed no rules for Colcon currently.
+As to why you don't see colcon as a buildtool_depend: afaik, Ament is the replacement / successor to Catkin -- the CMake side to it, that is.
+Colcon is the successor to Catkin -- the build tool, that is.
+The two Catkins are related, but not identical.
+Compare how "Catkin packages" can be built using plain CMake (mkdir build && cd build && cmake ..), catkin_make, catkin_make_isolated and catkin_tools (and Colcon).
+Comment by 130s on 2021-03-22:
+Never thought about those 2 aspects! In ros1, buildtool_depend is catkin, with which I should've noticed it is about CMake aspect (though this is very tricky to decode). Anyways, now that I've started thinking using buildtool_depend to specify build tool (in the sense documented in http://design.ros2.org/articles/build_tool.html) like colcon might be not appropriate?
+
+A:
+
+No idea how this will go, but I suggested a rosdep key for colcon rosdistro!28923.
+The rosdep key for colcon is "python3-colcon-common-extensions".
+
+Originally posted by 130s with karma: 10937 on 2021-03-31
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by 130s on 2021-04-16:
+https://github.com/ros/rosdistro/pull/28923 is accepted, so I guess that was it.
+

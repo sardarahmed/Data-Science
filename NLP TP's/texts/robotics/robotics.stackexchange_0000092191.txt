@@ -1,0 +1,50 @@
+Q:
+
+ROS2 messages stop 90s after network drops
+
+I'm running ROS2 Dashing with Fast-RTPS on a single-board computer running Ubuntu 18.04 server. It's mounted inside a waterproof enclosure. When the enclosure is in the air I can talk to it via wifi, and when it goes underwater the wifi connection drops. All ROS message traffic stops ~90 seconds after the network connection is lost.
+I can easily reproduce this on my desktop (Ubuntu 18.04 desktop):
+
+in the 1st terminal run ros2 run demo_nodes_cpp talker
+in the 2nd terminal run ros2 run demo_nodes_cpp listener -- starts reporting
+unplug the Ethernet cable, after ~90 seconds the listener stops reporting
+plug in the Ethernet cable, after a few seconds the listener starts back up
+
+I've tried DHCP and static IP & DNS, but the behavior is the same. I don't see anything surprising in journalctl -f.
+Interestingly, if I start sending messages while the network is down, it appears to ignore the state of the network:
+
+unplug the Ethernet cable
+in the 1st terminal run ros2 run demo_nodes_cpp talker
+in the 2nd terminal run ros2 run demo_nodes_cpp listener -- starts reporting
+plug in the Ethernet cable, no change
+unplug the Ethernet cable, no change
+
+Any ideas?
+Thanks.
+
+Originally posted by clyde on ROS Answers with karma: 1247 on 2019-06-25
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-06-26:
+Related: #q325872.
+
+A:
+
+It sounds like the loopback interface might not be configured to allow multicast traffic. Here's a SO post about configuring this. You might find more information in ros2/rmw_fastrtps#228.
+
+Originally posted by sloretz with karma: 3061 on 2019-06-25
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by clyde on 2019-06-26:
+Thx... I'm investigating this now
+Comment by clyde on 2019-06-27:
+You were right, loopback was not configured for multicast. I configured it using route add -net 224.0.0.0 netmask 240.0.0.0 dev lo and ifconfig lo multicast. This works great if I boot up with no network, enable multicast on loopback, then run the talker and listener. I can plug / unplug the Ethernet and it continues to work.
+But if I boot up with the Ethernet plugged in, enable multicast on loopback, then start the talker and listener, it still stops 90 seconds after I unplug the Ethernet. The only way to restart communications is to kill all ROS nodes then restart them in the network-starved situation.
+Comment by sloretz on 2019-06-27:
+This might be a bug. Would you mind opening an issue on https://github.com/ros2/rmw_fastrtps/issues ?
+Comment by clyde on 2019-06-27:
+Opened: https://github.com/ros2/rmw_fastrtps/issues/297
+

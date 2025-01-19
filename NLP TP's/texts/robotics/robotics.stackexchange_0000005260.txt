@@ -1,0 +1,30 @@
+Q:
+
+The aerial refueling problem: sketch of a feedback controller
+
+At first happy new 2015!!!
+I'm looking for my next simulator development: a Tanker is flying at constant speed (350 Knots) (no acceleration, no change of altitude or direction). The Tanker is approached from behind by a UAV which needs to refuel or transfer data through a wire. The UAV knows the direction, the speed and relative position from the tanker in order to approach it smoothly. It knows that at about 5 m from the tanker is the contact successful.
+Here a picture I found on internet but it is clear more than thousand words:
+
+To achieve the task I thought to implement a "simple" PID which controls the position and the velocity, but for this I have in my mind two different designs approaches:
+
+Solution one: the motion equation of my system provide the position $x,y,z$ and velocity $Vx, Vy, Vz$ of the UAV (to simplify things I will consider just $x$ but of course $y,z$ must be eventually considered too). Those are feedback with the desired position (5m) and velocity (350 Knots) of the tanker. The feedback line is separated for each state and PIDs are working quite indipendently as in the following picture:
+
+please note that to simplify things I never considered the acceleration.
+
+Solution two: this is the most tricky one and I was yesterday thinking about it all the time. In this case only one state vector is going to be feedback to the desired setpoints. In this case I would feedback only the velocity then integrate it and feed the result into the second PID. Maybe the following picture is clearer:
+
+But here I'm not really sure if the second idea is conceptually wrong or could be affordable. I'm pretty sure that the first one is working and leads to good result, but I was wondering if the second one is affordable or is not recommended for a control design.
+Regards
+
+A:
+
+Both the solutions you proposed do suffer from unwanted interaction among the two PIDs. You're basically trying to assign two simultaneous goals - i.e. final relative position along with terminal non null speed - when the system has only one input variable, let's say the "thrust" driving the UAV dynamics.
+The correct scheme should be the one depicted below:
+
+There exists only one PID providing the driving force to the system, which is fed by the error between the modeled dynamics of the Tanker (plus the relative offset) and the current UAV position.
+A typical outcome is plotted here for the plant $m\ddot{x}=-d\dot{x}+u$, where $m=10$, $d=0.1$ $x(0)=(0,0)'$, and the controller's parameters are $P=22.608$, $I=0.874$, $D=51.891$, $N=10.413$ (PID in parallel form).
+
+As it is visible in the graph, the unique goal of the UAV is to catch up the increasing position of the flying Tanker; the fact that eventually also the terminal speed turns to be equal to the desired one comes out exclusively as positive consequence of the good position tracking performance. When you track a position very well, then you also track how it changes over time (i.e. its velocity).
+Take-home message about hierarchical control loops: when the designer opts for a combination of inner and outer loops with two nested PIDs, he can only assign as set-point the final position for the outer loop, whereas the inner PID is tuned to have some given performance of dynamic behavior but not to get any steady-state velocity.
+

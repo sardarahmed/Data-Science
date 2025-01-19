@@ -1,0 +1,123 @@
+Q:
+
+How does on include the PCL library to an existing ros package code?
+
+I am trying to convert my code from using a vector of particles to a proper point cloud implementation. I want to use the octree module of PCL for radius based searches. However, when compiling the code, I get undefined references to Octree library functions.
+I am using Ubuntu 18.04.3 LTS with ROS-melodic. I tried including PCL-1.8 under /usr/include in my CMakeLists.txt file as well as downloading and adding PCL-1.9.1 under my ros package (which crashes my PC during compilation). I am also not able to find_package() the pcl library.
+Any help would be greatly appreciated.
+cmake_minimum_required(VERSION 2.8.3)
+project(points_reader)
+
+add_compile_options(-std=c++17)
+
+set(${PROJECT_NAME}_DEPS
+  dynamic_reconfigure
+  message_runtime
+  roscpp
+  rospy
+  toposens_pointcloud
+  toposens_driver
+  toposens_msgs
+  tf
+  # pcl
+  pcl_conversions
+  pcl_ros
+  sensor_msgs
+)
+
+find_package(
+  catkin REQUIRED
+  COMPONENTS ${${PROJECT_NAME}_DEPS}
+)
+
+############
+## Config ##
+############
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}
+  CATKIN_DEPENDS ${${PROJECT_NAME}_DEPS}
+)
+
+################
+## Executable ##
+################
+
+add_subdirectory(external/pcl)
+
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
+include_directories(
+  include 
+  external
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(
+  ${PROJECT_NAME}
+  src/line.cpp
+  src/fitness_evaluator.cpp
+  src/points_reader.cpp
+  src/points_mapper.cpp
+  src/bounding_box.cpp
+  src/points_publisher.cpp
+)
+
+add_dependencies(
+  ${PROJECT_NAME}
+  # ${PROJECT_NAME}_gencfg
+  ${catkin_EXPORTED_TARGETS}
+)
+
+add_executable(
+  ${PROJECT_NAME}_node
+  src/points_reader_node.cpp
+)
+
+target_link_libraries(
+  ${PROJECT_NAME}_node
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+install(
+  TARGETS ${PROJECT_NAME}_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  COMPONENT main
+)
+
+##########
+## Test ##
+##########
+
+if(CATKIN_ENABLE_TESTING)
+  add_subdirectory(tests)
+endif()
+
+Originally posted by Inshal240 on ROS Answers with karma: 16 on 2019-10-04
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-10-04:
+You should not need the link_directories(..). I would also suggest to remove everything related to your "external PCL" from your CMakeLists.txt.
+If PCL 1.8 is sufficient (in Melodic), depending on pcl_ros should import all required dependencies (including PCL itself).
+Comment by LeoE on 2019-10-04:
+And I'm a bit confused, you stated, you are using Ubuntu 16.04 with ROS melodic, I shouldn't it either be kinetic or Ubuntu 18.04?
+Comment by Inshal240 on 2019-10-04:
+I will double-check on the Ubuntu version. I believe you may be right about it being 18.04
+EDIT: It was. I updated the question.
+
+A:
+
+I found out the cause of the issue. I was getting the undefined reference issue because the PointT template argument I was using for OctreePointCloudSearch was included after the octree's header file. So it tried to instantiate the template using a class that didn't exist. Hence the reference errors.
+I removed all the external pcl references from my header file and stuck to what the tutorial showed and it still compiles.
+Thank you everyone for your help and time!
+
+Originally posted by Inshal240 with karma: 16 on 2019-10-04
+This answer was ACCEPTED on the original site
+Post score: 0
+

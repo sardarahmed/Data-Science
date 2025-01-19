@@ -1,0 +1,125 @@
+Q:
+
+Segmentation fault while visualizing own PointCloud2 Message
+
+Hi everyone,
+I wrote a python class which should convert an 2D-Array with intensities to a Pointcloud an publish it.
+Unfortunately RViz crashes, as soon as it should show something.
+The error is the following:
+Segmentation fault (Memory image written) (Translation is hand done and may be vague)
+Is there any tutorial how to correctly generate a PointCloud2 message in Python?
+If not, is somebody able to give me a simple short code block how to do it? I feel like I missed something....
+This is the class description:
+sensor_msgs/PointCloud2
+Python conversion to bits
+This is the python class:
+#!/usr/bin/env python
+import sensor_msgs.msg as smsgs
+import std_msgs.msg as stdmsgs
+import math as m
+import tf
+
+POINTCLOUD_TOPIC = 'sonar'
+NODE_NAME = 'adapter'
+
+class Adapter():
+    def receive(self):
+        self.sonarToPointfield()
+
+    def sonarToPointfield(self):
+        
+        #  Create Header
+        msg_header = stdmsgs.Header()
+        msg_header.seq = 1
+        msg_header.frame_id = "/map"
+        msg_header.stamp = rospy.Time.now()
+
+        #  Create 4 PointFields as channel description
+        msg_pf1 = smsgs.PointField()
+        msg_pf1.name = 'x'
+        msg_pf1.offset = 0
+        msg_pf1.datatype = 7
+        msg_pf1.count = 1
+        
+        msg_pf2 = smsgs.PointField()
+        msg_pf2.name = 'y'
+        msg_pf2.offset = 4
+        msg_pf2.datatype = 7
+        msg_pf2.count = 1
+         
+        msg_pf3 = smsgs.PointField()
+        msg_pf3.name = 'z'
+        msg_pf3.offset = 8
+        msg_pf3.datatype = 7
+        msg_pf3.count = 1
+         
+        msg_pf4 = smsgs.PointField()
+        msg_pf4.name = 'intensity'
+        msg_pf4.offset = 12
+        msg_pf4.datatype = 2
+        msg_pf4.count = 1
+        
+        resultList = [2.0, 3.0, 4.0, 1, 5.0, 6.0, 7.0, 2]
+        resultList = [0, 0, 0, 200]
+        
+        #  len(resultList) / 4 is the number of points, since every point consists of 4 elements
+        #  one point representation (x=FLOAT32, y=FLOAT32, z=FLOAT32, intensity=UINT8) is 13 bytes long
+        resultList2 = []
+        resultArray = np.zeros((len(resultList) / 4) * 13, dtype=np.ubyte)
+        print "len(resultArray): ", len(resultArray)
+        for x in range(0, len(resultList)-1, 4):
+            tmpArr = np.zeros(13, np.ubyte)
+            print "Coords: " + str(resultList[x+0]) + ", " + str(resultList[x+1]) + ", " + str(resultList[x+2]) + ", " + str(resultList[x+3])
+            struct.pack_into('fffB', tmpArr, 0, resultList[x+0], resultList[x+1], resultList[x+2], resultList[x+3])
+            print "tmpArr: ", tmpArr
+            for i in range(len(tmpArr)):
+                resultList2.append(tmpArr[i])
+                resultArray[((x/4)*13)+i] = tmpArr[i]
+
+        #  Create PointCloud2 instance
+        msg_pointcloud2 = smsgs.PointCloud2()
+        
+        #  Fill message
+        msg_pointcloud2.header = msg_header
+        msg_pointcloud2.fields = [msg_pf1, msg_pf2, msg_pf3, msg_pf4]
+        msg_pointcloud2.data = resultList2
+        msg_pointcloud2.width = len(resultList2)
+        msg_pointcloud2.height = 1
+        msg_pointcloud2.point_step = 13
+        msg_pointcloud2.row_step = 1560
+        msg_pointcloud2.is_dense = False
+        msg_pointcloud2.is_bigendian = True
+        
+        self.publishPointCloud2(msg_pointcloud2)
+
+    def publishPointCloud2(self, msg_pointcloud2):
+        self.pub.publish(msg_pointcloud2)
+        self.publishWorldFrame()
+        
+    def publishWorldFrame(self):
+        br = tf.TransformBroadcaster()
+        br.sendTransform((0, 0, 0), (1, 1, 1, 1), rospy.Time.now(), "/sonar_pointcloud", "/map")
+        
+    def init(self):
+        self.pub = rospy.Publisher('sonar_pointcloud', smsgs.PointCloud2)
+        rospy.init_node('pcl_adapter')
+        self.receive()
+    
+if __name__ == '__main__':
+    adapter = Adapter()
+    adapter.init()
+
+Thank you in advance,
+Josch
+
+Originally posted by Josch on ROS Answers with karma: 230 on 2013-06-19
+Post score: 0
+
+A:
+
+The row step was calculated wrong, since I only tested on a simulated input. Using a dynamic row_step worked for me.
+
+Originally posted by Josch with karma: 230 on 2013-07-17
+This answer was ACCEPTED on the original site
+Post score: 0
+

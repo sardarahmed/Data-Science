@@ -1,0 +1,92 @@
+Q:
+
+Attempt to trigger a ROS2 Service from within an ROS2 Action server
+
+Test Env: ROS2 Galactic ; Ubuntu 20.04
+Target:
+I am attempting to trigger a ROS2 Service from within an ROS2 Action server callback.
+A single ROS2 Action goal shall trigger multiple ROS2 service calls in a sequence. Currently, I am facing errors as shown below when I execute a ROS Action goal.
+
+ERROR:  terminate called after throwing an instance of
+'std::runtime_error'   what():  Node
+has already been added to an executor.
+
+Can any one suggest a solution to this issue?
+// Code structure below
+class MoveActionServer : public rclcpp::Node{
+
+    public:
+// Instantiate an action server
+...
+
+private:
+... 
+
+// Action Server Callback
+void execute_cb(){
+
+    // Create a ROS2 Service Client 
+    service_client_ = this->create_client<action_interfaces::srv::Move>("move");
+     
+            // While loop to calls the Service multiple times
+    while(rclcpp::ok() && count < target_count){        
+        // Calling the Move ROS2 Service 
+        req.x = val1;
+        req.y = val2; 
+
+        // Wait for ROS2 Service 
+        while(!service_client_ -> wait_for_service(1s)){
+        ...
+        }
+
+        // Send Request to ROS2 Service
+        auto res = service_client_ -> async_send_request(req);
+
+        // Wait for response from ROS2 Service 
+        // *CAUSE FOR ERROR*
+        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), poseError) == 
+                    rclcpp::FutureReturnCode::SUCCESS) {
+                RCLCPP_INFO(get_logger(), "Response: %d", poseError.get()->error);
+                } 
+                else {
+                RCLCPP_INFO(get_logger(), "Failed to call Move Service");
+                }
+    count ++; 
+    }
+}
+};
+
+int main(int argc, char *argv[]) {
+
+    rclcpp::init(argc, argv);
+
+    auto node = std::make_shared<MoveActionServer>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+
+    return 0;
+}
+
+Originally posted by audupi on ROS Answers with karma: 36 on 2022-06-14
+Post score: 1
+
+A:
+
+I have managed to solve this issue.
+ROS2 has defined new concepts called callback_groups to enable calling of a service/action from within a ROS2 callback.
+I have created a callback_group of type Reentrant as shown below
+
+my_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
+and then link the service_client to the above defined callback group
+
+service_client_ = this->create_client<std_srvs::srv::Empty>("test_service", rmw_qos_profile_services_default,
+my_callback_group_);
+
+https://docs.ros.org/en/foxy/How-To-Guides/Using-callback-groups.html
+The link above provides a detailed explanation as to how this implementation can be achieved! I hope this helps.
+
+Originally posted by audupi with karma: 36 on 2022-06-30
+This answer was ACCEPTED on the original site
+Post score: 1
+

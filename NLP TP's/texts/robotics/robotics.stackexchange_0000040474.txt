@@ -1,0 +1,102 @@
+Q:
+
+Need some basic information regarding costmap_2D
+
+Hi,
+I have some problems understanding the behaviour of the costmap_2D class.
+First, I don't get how this class is started.
+Right now I have a launch file, like in the navigation stack tutorial.
+<launch>
+  <node pkg="robot_mover" type="robot_mover" respawn="false" name="robot_mover" output="screen">
+    <rosparam file="$(find robot_mover)/cfg/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find robot_mover)/cfg/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find robot_mover)/cfg/global_costmap_params.yaml" command="load" />
+  </node>
+</launch>  
+
+where robot_mover is my package which shall be similar to the move_base package in the end.
+And in my robot_mover package I have this code:
+tf::TransformListener tf(ros::Duration(10));
+costmap_2d::Costmap2DROS costmap("my_costmap", tf);
+
+When I launch this either with
+roslaunch robot_mover robot_mover.launch
+
+or with
+rosrun robot_mover robot_mover
+
+I always get this warning:
+
+You have set map parameters, but also requested to use the static map. Your parameters will be overwritten by those given by the map server
+
+Where do I request a static map here?
+And why do I get this warning when I use rosrun?
+I only set parameters in the yaml files which are called in the launch file, don't I?
+I also start gmapping:
+rosrun gmapping slam_gmapping scan:=base_scan
+
+Does ROS mean the map from gmapping with this warning?
+Don't know how else I could start this costmap.
+I just wanna build a simple exploration algorithm that detects obstacles in front of my robot and therefore I wanted to use the grid with included obstacles.
+Or shall I just ignore this warning?
+Is it possible to get relevant data for obstacles out of the costmap variable of my class to compute the grid myself?
+Hard to find anything in the ROS Wiki for this specific problem.
+My yaml files look like that:
+common:
+obstacle_range: 2.5
+raytrace_range: 3.0
+footprint: [[-0.200, -0.350], [-0.200, 0.350], [0.200, 0.350], [0.200, -0.350]]
+#robot_radius: ir_of_robot
+inflation_radius: 0.55
+
+observation_sources: laser_scan_sensor 
+
+laser_scan_sensor: {sensor_frame: /base_laser_link, data_type: LaserScan, topic:  base_scan, marking: true, clearing: true}
+
+global:
+global_costmap:
+   global_frame: odom
+   robot_base_frame: base_link
+   update_frequency: 5.0
+   static_map: false
+
+local:
+local_costmap:
+   global_frame: odom
+   robot_base_frame: base_link
+   update_frequency: 5.0
+   publish_frequency: 2.0
+   static_map: false
+   rolling_window: true
+   width: 6.0
+   height: 6.0
+   resolution: 0.05
+
+A bit much, but hopefully someone can help me!
+
+Originally posted by madmax on ROS Answers with karma: 496 on 2012-05-14
+Post score: 2
+
+A:
+
+First, I believe this warning is due to the fact that in your global_costmap_params.yaml, you set static_map to false, but do not set rolling_window to true, and it defaults to false. You're essentially telling the costmap that it does not have a map or that it does not exist.
+Second, this might just be an artifact of ROS Answers, but your parameters should be indented under the namespaces:
+local_costmap:
+    global_frame: odom
+
+I'm assuming this is done, because I don't know if it would even run otherwise, but I just wanted to check.
+
+Originally posted by DimitriProsser with karma: 11163 on 2012-05-14
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by madmax on 2012-05-14:
+Oh, thanks! I will try that.  And yes, in my file it is indented.
+Comment by madmax on 2012-05-15:
+Tried it now, and it doesn't help... Is there a rolling window option in the global costmap ?
+Comment by DimitriProsser on 2012-05-15:
+The same rolling_window options exist for both costmaps (they're both costmap_2d, you just give each different parameters)
+Comment by mkoval on 2012-05-27:
+In the navigation documentation, I only see that static_map must be false if rolling_window is true. Is it also true that rolling_window must be true if static_map is false? If so, that might explain some of my problems (I was assuming that it initialize an empty map).
+

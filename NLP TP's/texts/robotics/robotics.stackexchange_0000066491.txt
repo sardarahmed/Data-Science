@@ -1,0 +1,71 @@
+Q:
+
+tf error: Lookup would require extrapolation into the past
+
+Hi, all. I want to convert a pose from "odom" to "map", I am using codes as follows.
+  void PeopleAgent::TransformPos(const people_msgs::PoseArrayWeighted &msg) 
+   {
+        boost::mutex::scoped_lock lock(agent_mutex_);
+    
+        pose_array_weighted_.clear();
+        geometry_msgs::PoseStamped in;
+        in.header = msg.header;
+        for (int i = 0; i< (int)msg.poses.size(); i++)
+        {
+            in.pose = msg.poses[i];
+            geometry_msgs::PoseStamped result;
+            try
+            {
+                tf_->waitForTransform("odom", "base_link", in.header.stamp, ros::Duration(0.2));
+                tf_->transformPose("base_link", in, result);
+                pose_array_weighted_.push_back(std::make_pair(msg.weights[i], result));
+            }
+            catch (tf::TransformException ex)
+            {
+                ROS_ERROR("%s",ex.what());
+                ROS_ERROR("point transform failed");
+            };
+        } 
+}
+
+The above code works fine in my project, However, when the "base_link" is changed to be " map", then errors come up as follows:
+ [ERROR] [1426895120.908823306, 1422676721.758969255]: Lookup would require extrapolation into the past.  Requested time 1422676720.347031633 but the earliest data is at time 1422676720.654202231, when looking up transform from frame [odom] to frame [map]
+    [ERROR] [1426895120.908922891, 1422676721.758969255]: point transform failed
+
+I also have tried to use
+tf_->waitForTransform("odom", "map", ros::Time(0), ros::Duration(0.2));
+
+or
+tf_->waitForTransform("odom", "map", ros::Time::now(), ros::Duration(0.2));
+
+but all failed.
+Please tell me the reason why above errors come up  and how to modify the code. Thank you
+EDIT: Just now, I found that the above code with "base_link" worked fine only for rosbag files.
+When it was run in a real robot( turtlebot), same errors with "from frame [odom] to frame [base_link]" came up too.
+I am very confused and don't know what I should do next.
+
+Originally posted by scopus on ROS Answers with karma: 279 on 2015-03-20
+Post score: 1
+
+Original comments
+Comment by bvbdort on 2015-03-21:
+try increasing ros::Duration(0.2) upto maximum of 10 seconds.
+Comment by ShareIQ on 2015-03-21:
+I agree with your suggestion，maybe ros::Duration(1) is enough ！
+Comment by scopus on 2015-03-21:
+Thank you for your attention. I have modified the duration. It didn't help. Increasing the duration also lead to slowing the process because of  boost::mutex::scoped_lock lock(agent_mutex_);
+
+A:
+
+The error is telling you that your asking for a transform from a time before which you have tf data.
+Most tf datasources report data in monotonic increasing order which means that no matter long you wait you will not receive older data.
+You will either need to initialize the transform listener earlier and allow the buffer to fill up, or pass a few of these errors on startup. It's a common race condition whether the data or tf data arrives first.
+
+Originally posted by tfoote with karma: 58457 on 2015-03-22
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by scopus on 2015-03-24:
+Thank you ! As your suggestion, I have tried to wait for a while to see if the red errors (i. e. Lookup would require extrapolation into the past....）disapeared. But the running node collapsed. I still don't know why.
+

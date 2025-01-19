@@ -1,0 +1,70 @@
+Q:
+
+Fuerte VS Hydro: 3D mapping algorithm runs very slow after Hydro migration?
+
+Hello,
+I have recently installed ROS Hydro mainly due to PCL 1.7. I had a 3D registration algorithm that I developed on ROS Fuerte and ported it to ROS Hydro. I am using the same laptop and everything is identical. However, the algorithm runs extremely slow on ROS Hydro (less than a frame per second), while it was running at over 10 fps on ROS Fuerte. I haven't changed anything in the code except for the parts that are depreciated and needed to be updated to PCL 1.7. Is there any idea why this extreme slowing down might be caused by?
+Update:
+I have observed that the following function runs much slower now on Hydro. Although it is identical and I did not change anything at all. This function is part of a transformation estimation algorithm Ransac style.
+void Transformation::computeInliersAndError (
+const std::vector<cv::DMatch>& matches,
+const Eigen::Matrix4f& transformation,
+const std::vector<Eigen::Vector4f, Eigen::aligned_allocator<Eigen::Vector4f> >& origins,
+const std::vector<Eigen::Vector4f, Eigen::aligned_allocator<Eigen::Vector4f> >& earlier,
+std::vector<cv::DMatch>& inliers, //output var
+double& mean_error, std::vector<double>& errors)
+{ //output var
+
+inliers.clear ();
+errors.clear ();
+
+std::vector<std::pair<float, int> > dists;
+std::vector<cv::DMatch> inliers_temp;
+
+assert(matches.size() > 0);
+mean_error = 0.0;
+for (unsigned int j = 0; j < matches.size (); j++)
+{ //compute new error and inliers
+
+unsigned int this_id = matches[j].queryIdx;
+unsigned int earlier_id = matches[j].trainIdx;
+
+Eigen::Vector4f vec = (transformation * origins[this_id]) - earlier[earlier_id];
+
+double error = vec.dot (vec);
+
+error = sqrt (error);
+dists.push_back (std::pair<float, int> (error, j));
+inliers_temp.push_back (matches[j]); //include inlier
+
+mean_error += error;
+errors.push_back (error);
+} 
+
+}
+
+I really appreciate your help.
+Regards,
+Khalid
+
+Originally posted by K_Yousif on ROS Answers with karma: 735 on 2013-10-10
+Post score: 1
+
+Original comments
+Comment by dornhege on 2013-10-13:
+Looks to me like it's only STL and Eigen, no ROS, no pcl. Is it maybe just compile flags or something like that?
+Comment by K_Yousif on 2013-10-13:
+Thanks for your comment, I do not have much knowledge with compiler flags etc. Is there something you recommend I should do/check? And why would it have this problem only on Hydro? I still have Fuerte installed on the same machine and the algorithm works very fast.
+Comment by K_Yousif on 2013-10-13:
+You were right, it had to do with the compiler flags. I found the answer here http://answers.ros.org/question/71965/catkin-compiled-code-runs-3x-slower/. I really appreciate your help!
+
+A:
+
+I found the answer here http://answers.ros.org/question/71965/catkin-compiled-code-runs-3x-slower/
+Simply run the following command:
+catkin_make -DCMAKE_BUILD_TYPE=Release
+
+Originally posted by K_Yousif with karma: 735 on 2013-10-13
+This answer was ACCEPTED on the original site
+Post score: 1
+

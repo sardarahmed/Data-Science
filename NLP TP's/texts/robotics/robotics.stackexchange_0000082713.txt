@@ -1,0 +1,58 @@
+Q:
+
+Roslaunch and Metapackages
+
+I know that metapackages should not contain any files except for the package.xml and CMakeLists.txt meant to specify the metapackage, but I'm wondering how I might call a launch file tied to a collection of packages cleanly.
+For example, with this package structure:
+├── catkin_ws
+│   └── src
+│       └── robot_motion_control
+│           ├── robot_motion_control  # Metapackage
+│           ├── pilot
+│           ├── navigator
+│           └── controller
+
+If I wanted to run a launch file that groups together the conceptually-related pilot, navigator and controller, I'd want to call something like roslaunch robot_motion_control do_a_little_dance.launch, which exists at a higher level of abstraction than any of the three packages.
+The problem is that I can't put .launch files in a metapackage, and calling something like roslaunch robot_motion_control_launch do_a_little_dance.launch feels fairly hacky.
+I'd love to run roslaunch robot_motion_control do_a_little_dance.launch, but is there a way to architect my metapackage and packages such that I can actually do that?
+
+Originally posted by nckswt on ROS Answers with karma: 539 on 2017-09-07
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2017-09-08:
+Is src/robot_motion_control a metapackage, or just a plain directory that stores the packages in your metapackage into a single location on your FS?
+Comment by nckswt on 2017-09-08:
+src/robot_motion_control is the directory that stores the conceptually related packages, including src/robot_motion_control/robot_motion_control (the metapackage).
+
+A:
+
+I think the current best practice for these kind of things is to add a package that provides just the launch files that "group [things] together".
+Typically those packages are then called *_bringup and depend on all the packages that provide the nodes they need for the launch files they provide.
+You could take a look at the wiki/turtlebot stack and how it's setup like this.
+One thing to note is that such bringup packages can still be installed as a dependency of the overarching metapackage. But seeing as they depend on all the other packages (either directly or transitively), they will essentially be similar to your "metapackage with additional files"-idea.
+
+Edit: I think the larger issue is how one would like to provide launch files that do not necessarily depend on specific nodes (and thus packages), but actually more on specific functionality. The capabilities infrastructure tried to address that, but I haven't seen it used much. ROS2 appears to get something called a dependency group (ros2/design#138), which may make something like a capability based approach a bit easier to implement.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-09-08
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by nckswt on 2017-09-08:
+So the roslaunch call would end up being roslaunch robot_motion_control_bringup do_a_little_dance.launch? I'm wondering if the current notion of metapackages is a little too restrictive. I'd love to have launch files and configuration files in the metapackage itself.
+Comment by nckswt on 2017-09-08:
+The capabilities project is really interesting - it'd be nice to see if that gets greater use in ros 2.0
+Comment by gvdhoorn on 2017-09-08:\
+
+I'm wondering if the current notion of metapackages is a little too restrictive. I'd love to have launch files and configuration files in the metapackage itself.
+
+well they're really just for grouping installation artefacts for deployment purposes. And they do that perfectly, so ..
+Comment by nckswt on 2017-09-08:
+True. I wonder whether robot_motion_control_meta would be an appropriate name for the metapackage, then I could house the top-level concepts (launchfiles, configurations, etc.) in robot_motion_control as a non-metapackage.
+Comment by gvdhoorn on 2017-09-09:
+That's obviously up to you. I've never seen that though, and I think it's a bit of an awkward name.
+Reusing naming conventions allows your users to reuse their experience and to form somewhat of an intuition as to how pkgs are to be used / where they fit. Diverging from that is ok, but should be ..
+Comment by gvdhoorn on 2017-09-09:
+.. done after careful consideration of the consequences.
+

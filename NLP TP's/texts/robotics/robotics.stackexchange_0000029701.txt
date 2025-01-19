@@ -1,0 +1,88 @@
+Q:
+
+How to add Kinect sensor input to a URDF model?
+
+I'm able to run the Kinect demo as shown here:
+http://www.ros.org/wiki/kinect/Tutorials/Getting%20Started
+and also separately can visualize my URDF model.  The question now arises as to how to combine the two, such that the model and sensor data appear together.  I have a node within the model for the camera location, so presumably the kinect topic needs to be linked to this somehow.
+
+Originally posted by JediHamster on ROS Answers with karma: 995 on 2011-02-20
+Post score: 8
+
+A:
+
+In your model for the kinect you need to create a fixed joint between the link that represents your model and the frame_id being published by the kinect node.
+for example:
+<link name="kinect_link">
+  <visual>
+    <geometry>
+      <box size="0.064 0.121 0.0381" />
+    </geometry>
+    <material name="Blue" />
+  </visual>
+  <inertial>
+      <mass value="0.0001" />
+      <origin xyz="0 0 0" />
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+               iyy="0.0001" iyz="0.0" 
+               izz="0.0001" />
+  </inertial>
+</link>
+
+<joint name="kinect_depth_joint" type="fixed">
+  <origin xyz="0 0.028 0" rpy="0 0 0" />
+  <parent link="kinect_link" />
+  <child link="kinect_depth_frame" />
+</joint>
+
+<link name="kinect_depth_frame">
+  <inertial>
+      <mass value="0.0001" />
+      <origin xyz="0 0 0" />
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+               iyy="0.0001" iyz="0.0" 
+               izz="0.0001" />
+  </inertial>
+</link>
+
+<joint name="depth_optical_joint" type="fixed">
+  <origin xyz="0 0 0" rpy="${-M_PI/2} 0 ${-M_PI/2}" />
+  <parent link="kinect_depth_frame" />
+  <child link="kinect_depth_optical_frame" />
+</joint>
+
+<link name="kinect_depth_optical_frame">
+  <inertial>
+      <mass value="0.0001" />
+      <origin xyz="0 0 0" />
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+               iyy="0.0001" iyz="0.0" 
+               izz="0.0001" />
+  </inertial>
+</link>
+
+Then based on the above urdf launch the kinect node with the following parameteres:
+  <node pkg="openni_camera" type="openni_node" name="openni_camera" output="screen" respawn="true" >
+    <param name="device_type" value="1" />
+    <param name="registration_type" value="1" />
+    <param name="point_cloud_resolution" value="1" />
+    <param name="openni_depth_optical_frame" value="kinect_depth_optical_frame" />
+    <param name="openni_rgb_optical_frame" value="kinect_rgb_optical_frame" />
+    <param name="image_input_format" value="5" />
+    <rosparam command="load" file="$(find openni_camera)/info/openni_params.yaml" />
+  </node>
+
+Originally posted by mmwise with karma: 8372 on 2011-02-20
+This answer was ACCEPTED on the original site
+Post score: 10
+
+Original comments
+Comment by mmwise on 2011-02-21:
+yes they are offset from each other. we have the rgb_frame about 3cm to the right.
+Comment by JediHamster on 2011-02-20:
+I assume that on the Kinect itself the depth frame and the RGB frame should be in different places (depth in the center, RGB to the right?).
+Comment by onurtuna on 2016-06-10:
+by doing this, will I be able to move my robot model with the tf data coming from the kinect?
+Comment by mancer on 2018-05-11:
+I tried to do this, and installed openni_camera and openni_launch through sudo apt-get, but ran into a problem: "file does not exist [/opt/ros/kinetic/share/openni_camera/info/openni_params.yaml]"
+

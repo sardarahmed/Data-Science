@@ -1,0 +1,68 @@
+Q:
+
+Industrial robot client : Are start and end sequence numbers not genenrated by default?
+
+I'm currently working on implementing an custom Industrial Robot Server that talks with the default industrial robot client using the trajectory streamer interface. I got the communication between the robot and the robot client working but I'm now stuck on the detection of the start and end of an trajectory.  This page  http://wiki.ros.org/Industrial/Tutorials/create_joint_position_streaming_interface_using_tcp_socket_libraries
+states the following:
+
+SEQ_NUMBER – The sequence number is the number assigned by ROS to each of the points (i.e. this is always 0 or positive). A value of -1 indicates the end of a trajectory, a value of -2 indicates a stop (in both cases the controller stops, joint data is not valid for these special types)
+
+And from:
+https://github.com/ros-industrial/industrial_core/blob/indigo-devel/simple_message/include/simple_message/joint_traj_pt.h
+I get that there are a few more "special" sequence numbers:
+START_TRAJECTORY_DOWNLOAD  = -1, ///< Downloading drivers only: signal start of trajectory
+START_TRAJECOTRY_STREAMING = -2, ///< deprecated, please use START_TRAJECTORY_STREAMING instead
+START_TRAJECTORY_STREAMING = -2, ///< Streaming drivers only: signal start of trajectory
+END_TRAJECTORY  = -3, ///< Downloading drivers only: signal end of trajectory
+STOP_TRAJECTORY = -4  ///< Server should stop the current motion (if any) as soon as possible
+
+However if I use Wireshark to look at the messages that are send to the robot I can see 18 messages been send but don't see the special sequence numbers -2 (START_TRAJECOTRY_STREAMING )or -3 (END_TRAJECTORY). However if I manually stop the trajectory the -4 (STOP_TRAJECTORY) is generated.
+Could someone give me a few pointer as to where the special sequence numbers are generated, and why the are not generated in my case?
+I'm using ros Jade on Ubuntu 14.04 LTS with kernel 4.2.0.42 with all the latest packages installed from: http://packages.ros.org/ros/ubuntu repository.
+
+Originally posted by mmoerdijk on ROS Answers with karma: 28 on 2016-10-12
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-10-12:
+Not an answer, but you might be interested in Message Structures of the ROS-Industrial Simple Message Protocol (unfinished), which attempts to document the SM protocol in greater detail.
+Comment by mmoerdijk on 2016-10-12:
+Thanks, didn't know that document, could have saved me some time if I had know about it before :-). Was actually thinking about writing a similar document myself. Is there by any change more documentation about adding non standard messages? I'm now looking at the motoman rep to see how they did it.
+Comment by gvdhoorn on 2016-10-12:
+No documentation yet, but we're working on a code generator similar to gencpp to generate Simple Message structs and msgs from ROS msg idls. That would make it a lot easier.
+For now, just copying and adapting one of the existing msgs is probably easiest.
+Comment by gvdhoorn on 2016-10-12:
+See motoman#93 for an example PR that shows how to add new msgs.
+Comment by gvdhoorn on 2016-10-12:
+And:
+
+Thanks, didn't know that document, could have saved me some time if I had know about it before
+
+probably. That is one of the reasons we always ask / recommend ppl to talk to us first, as we can save you a lot of time and effort (and frustration).
+Comment by mmoerdijk on 2016-10-13:
+Yes would have been better, but I started out 3 weeks ago with ROS and did really know where to start asking :-). What would have been the right place to ask for a few pointers on implementing a "industrial robot server" it seems to me that it is a too general question for answers.ros.org.
+Comment by gvdhoorn on 2016-10-13:
+In this particular case a msg to the ROS-Industrial mailing list would have been a good start. We should probably make that more explicit.
+
+A:
+
+I think you've run into something where the download and streaming drivers differ in their implementation. The JointTrajectoryDownloader::send_to_robot(..) method in the IRC does set the first and last points to these special sequence numbers (here), making it explicit for the server when the client starts and completes uploading a new trajectory.
+The streaming driver unfortunately doesn't do this. Servers are expected to start executing a trajectory as soon as the first point (or a few, depending on server-side buffering requirements) has been received.
+I wasn't involved when this part of the infrastructure was written, but I can speculate as to why this is: a streaming trajectory is potentially infinite. And as the driver should be streaming, it would be a violation of semantics to wait for a END_TRAJECTORY (note the comment on the enum value).
+It would perhaps make sense for a streaming client to set the START_TRAJECTORY_STREAMING, to indicate to the server that a new motion is starting (and should fi replace the current one). But in practice most servers either assume that whatever they receive is part of a single trajectory and / or check the sequence numbers of consecutive traj pts and either error out if they are not contiguous, or assume a new trajectory has started.
+This is certainly too implicit right now, and I've created an issue to track this: ros-industrial/industrial_core#152.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-10-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mmoerdijk on 2016-10-13:
+I don't know how I could miss that comment. Thank you for creating the issue and answering my question.
+Comment by gvdhoorn on 2016-10-13:
+No problem. As I've said: we should probably make this all more explicit.
+Comment by meimar12 on 2017-05-13:
+Is this problem solved? Or it has been decided to leave it like that, just checking for the sequence number of the joint trajectory?
+Comment by gvdhoorn on 2017-05-14:
+No, this behaviour has not been changed. See also the ticket referenced in my answer.
+

@@ -1,0 +1,60 @@
+Q:
+
+Why Does My Gazebo Simulated Truck Move Well in an Empty World But Not in Complex Environments Like Sonoma Raceway?
+
+I am simulating a truck in Gazebo, which operates well in a minimal empty world, responding effectively to cmd_vel commands sent via the bcr_teleop package. However, when the simulation is run in more complex environments, such as the default Sonoma Raceway or custom off-road terrains, the truck hardly moves.
+The truck model, defined in a .xacro file, includes four active wheels (first and fourth) responsible for traction and four passive wheels (second and third) that are intended to be pulled without providing additional traction. Despite adjusting various parameters, the truck's mobility remains significantly restricted in these complex environments.
+Here are the key adjustments I've made in an attempt to improve performance:
+PID Tuning for Active Wheels:
+
+Increased the P gain in the steering PID from 1500 to 1700 for better steering response.
+Increased the P gain in the linear velocity PID from 1000 to 1200 for better velocity control.
+
+Friction and Collision Settings for Active Wheels:
+-Increased the friction coefficients (mu and mu2) from 1.0 to 1.5 to enhance traction.
+-Increased the spring stiffness constant (kp) from 5000000.0 to 7000000.0 for better surface contact.
+
+Increased the damping coefficient (kd) from 1.0 to 3.0 for improved shock absorption.
+
+Despite these adjustments, the truck's movement in complex environments like Sonoma Raceway or off-road terrains is minimal compared to its performance in an empty world. This leads me to suspect that the issue might involve interaction with the environment's surface properties or other Gazebo-specific physics settings affecting vehicle-ground interactions.
+VIDEO OF THIS BEHAVIOR:
+Truck Only moves on Empty world, not over terrains
+Given the truck's design, with passive wheels on the second and third shafts, I'm curious if the terrain's properties in these complex environments are contributing to the limited mobility. Is there a particular Gazebo setting or simulation parameter that I might be overlooking that could account for this discrepancy in performance across different environments?
+Any insights, suggestions, or diagnostic tips  would be greatly appreciated, as I aim to achieve realistic truck movement across various terrains in Gazebo.
+
+A:
+
+The solution was switch the default complex physics:
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <max_step_size>0.013</max_step_size> <!-- Smaller for more accuracy -->
+      <real_time_factor>1</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>100</iters> <!-- Reduced from 150 to potentially soften the simulation, lower to reduce computational load -->
+          <precon_iters>0</precon_iters>
+          <sor>1.4</sor> <!-- Lower to potentially reduce rigidity -->
+          <use_dynamic_moi_rescaling>1</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.001</cfm> <!-- Lower for a tighter simulation, reducing "sponginess" -->
+          <erp>0.15</erp> <!-- Increase to ensure error correction is more effective -->
+          <contact_max_correcting_vel>500.000000</contact_max_correcting_vel> <!-- Lower to reduce the aggressiveness of contact corrections -->
+          <contact_surface_layer>0.01</contact_surface_layer> <!-- Lower to minimize penetration without increasing rigidity -->
+        </constraints>
+      </ode>
+    </physics>
+
+for this basic one, based on Prius Repository
+    <physics name='default_physics' default='0' type='ode'>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+However I am still facing an issue, which is the joints of my truck does not let it static, even if I publish a cmd_vel = 0 to emulate a handbrake. It starts falling down on reverse as the video below shows:
+Truck Sliding on Reverse
+I am trying to implement a fake anchor, kind of handbrake, to attach the truck to the ground, but not sure if it is going to work.
+Otherwise I will need to switch the simple ackermman gazeboplugin for a more complex dynamic truck model, which assigns torque, force, power, etc to the truck's whell joints such as  Prius Hybrid Plugins
+

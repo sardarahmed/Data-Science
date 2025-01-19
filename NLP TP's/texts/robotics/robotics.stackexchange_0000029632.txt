@@ -1,0 +1,54 @@
+Q:
+
+sync problem in stereo image
+
+modified stereo_camera_model.cpp in image_geometry, now I can receive /stereo/disparity message, but still there is problem in image sync when I want to view by:  rosrun image_view stereo_view stereo:=/stereo image:=image_rect  there is just three gray windows (no image) and a [WARN] message as below
+any suggestion, please?
+[ WARN] [1297946062.739511145]: [stereo_view] Low number of synchronized left/right/disparity triplets received.
+Left images received:      104 (topic '/stereo/left/image_rect')
+Right images received:     102 (topic '/stereo/right/image_rect')
+Disparity images received: 18 (topic '/stereo/disparity')
+Synchronized triplets: 0
+Possible issues:
+               * stereo_image_proc is not running.
+                 Does `rosnode info /stereo_view_1297946016943512050` show any connections?
+               * The cameras are not synchronized.
+                 Try restarting stereo_view with parameter _approximate_sync:=True
+               * The network is too slow. One or more images are dropped from each triplet.
+                 Try restarting stereo_view, increasing parameter 'queue_size' (currently 5)
+[ WARN] [1297946077.740713539]: [stereo_view] Low number of synchronized left/right/disparity triplets received.
+Left images received:      147 (topic '/stereo/left/image_rect')
+Right images received:     155 (topic '/stereo/right/image_rect')
+Disparity images received: 29 (topic '/stereo/disparity')
+Synchronized triplets: 0
+Possible issues:
+               * stereo_image_proc is not running.
+                 Does `rosnode info /stereo_view_1297946016943512050` show any connections?
+               * The cameras are not synchronized.
+                 Try restarting stereo_view with parameter _approximate_sync:=True
+               * The network is too slow. One or more images are dropped from each triplet.
+                 Try restarting stereo_view, increasing parameter 'queue_size' (currently 5)
+
+Originally posted by Reza on ROS Answers with karma: 116 on 2011-02-17
+Post score: 2
+
+Original comments
+Comment by Reza on 2011-02-18:
+I'm prosilica camera, prosilica_node in camera_drivers.
+Comment by joq on 2011-02-17:
+What cameras and driver are you using?
+
+A:
+
+If you're running two prosilica_camera instances, probably they are not synchronized - that is, left and right image time stamps don't match up exactly. All the image_pipeline nodes assume exact synchronization for stereo (the ideal case) by default. Since you're getting disparity images from stereo_image_proc, you must have started it with ~approximate_sync set to True. You need to do the same with stereo_view, as the warning message recommends.
+A second potential problem is that stereo_image_proc is not running at frame rate. You can see that stereo_view is getting less than one disparity image for every five image pairs. I guess the Prosilica images are too high resolution (or your computer not beefy enough :) for stereo_image_proc to keep up. stereo_view keeps a queue of size 5 (by default) on each input topic, which means the left/right image messages may drop off the queues by the time their matching disparity image arrives. The solution is to increase ~queue_size.
+tl;dr Try this:
+rosrun image_view stereo_view stereo:=/stereo image:=image_rect _approximate_sync:=True _queue_size:=10
+
+If you just want to view the disparity images (no synchronization required), you can do
+rosrun image_view disparity_view image:=/stereo/disparity
+
+Originally posted by Patrick Mihelich with karma: 4336 on 2011-02-24
+This answer was ACCEPTED on the original site
+Post score: 4
+

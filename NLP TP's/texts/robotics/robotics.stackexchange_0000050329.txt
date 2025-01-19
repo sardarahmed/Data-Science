@@ -1,0 +1,91 @@
+Q:
+
+How to publish a vector of unknown length of structs in ROS?
+
+I want to publish a vector of unknown length of structs that contain two integers and two strings. Is there a publisher and subscriber in ROS that can do this?
+If not, I've been looking at the tutorial of how to create custom messages (which I cannot add a link to because I do not have enough karma) and I figure I can make one .msg file containing:
+int32 upperLeft
+int32 lowerRight
+string color
+string cameraID
+
+and another .msg file containing an array of the previous messages. But the tutorial does not give an example of how to use arrays so I do not know what to put in the second .msg file. Furthermore, I am not sure how to even use this custom message in a C++ program.
+Any tips on how to do this would be great!
+
+Originally posted by joshualan on ROS Answers with karma: 140 on 2013-04-13
+Post score: 9
+
+A:
+
+You've got a good start.  The right way to do this is to create custom ROS messages for both the "struct" and the "array of structs".  In the ROS .msg format, an undefined-length array is defined using the int[] intArray syntax (with no size in the array-brackets).
+The specifics of how arrays are handled in ROS messages are described on this wiki page.  In particular, the "array handling" section shows that variable-length arrays are interpreted as std::vector in roscpp (C++).
+As an example, see the Joint Trajectory Action tutorial.  In the armExtensionTrajectory function, the example builds up the goal.trajectory message, which is of type JointTrajectory and contains a variable-length array of JointTrajectoryPoints.  As you can see, the variable-length array is built using the usual C++ std::vector methods (push_back, resize, etc.).
+Here's a more specific example to address your case above (it's untested, so forgive any typos):
+---------------------------------------
+imgData.msg
+  int32 upperLeft
+  int32 lowerRight
+  string color
+  string cameraID
+
+---------------------------------------
+imgDataArray.msg
+  imgData[] images
+
+---------------------------------------
+demo_pub.cpp
+  ros::Publisher pub = n.advertise<my_pkg::imgDataArray>("test", 1000);
+
+  my_pkg::imgData data;
+  my_pkg::imgDataArray msg;
+  
+  data.upperleft=0; data.lowerRight=100; data.color="red"; data.cameraID="one";
+  msg.images.push_back(data);
+  data.upperleft=1; data.lowerRight=101; data.color="blue"; data.cameraID="two";
+  msg.images.push_back(data);
+
+  pub.publish(msg);
+
+---------------------------------------
+demo_sub.cpp
+  void subCB(const my_pkg::imgDataArray::ConstPtr& msg)
+  {
+    for (int i=0; i<msg->images.size; ++i)
+    {
+      const my_pkg::imgData &data = msg->images[i];
+      ROS_INFO_STREAM("UL: " << data.upperleft << "UR: " << data.upperright <<
+                      "color: " << data.color << "ID: " << data.cameraID);
+    }
+  }
+  
+  int main(int argc, char **argv)
+  {
+    ...
+    ros::Subscriber sub = n.subscribe("test", 1000, subCB);
+    ros::spin();
+  }
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-04-14
+This answer was ACCEPTED on the original site
+Post score: 45
+
+Original comments
+Comment by joshualan on 2013-04-15:
+Thanks, this is extremely helpful!
+Comment by Asfandyar Ashraf Malik on 2013-07-01:
+I am grateful to you for this answer. Thanks
+Comment by PaulYang on 2014-01-15:
+Come to say thank you for this good answer
+Comment by espkh4 on 2014-09-10:
+Jeremy, Thank you sir!
+Comment by sunsea_x on 2014-11-24:
+Thank you for your patience!!!
+Comment by Metalzero2 on 2015-08-25:
+@Jeremy Zoss I understood all of the above but I have one problem. How do I define in my CMakeLists.txt for one message to use a message from the same package? In this case, what do I write in my CMakeLists.txt so it knows to look for the imgData in the same package.
+Comment by sytelus on 2016-05-15:
+Small nitpick: It should be images.size() instead of images.size? Also you might not need to create a new msg file just for array because ROS allows to declare individual fields in message as array.
+Comment by gocarlos on 2016-10-26:
+@Metalzero2  did you find an answer?
+Comment by Rocknz on 2017-01-06:
+Oh, I did it. Thanks a lot
+

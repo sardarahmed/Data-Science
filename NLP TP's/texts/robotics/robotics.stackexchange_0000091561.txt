@@ -1,0 +1,137 @@
+Q:
+
+What is the best way to produce map from bag on a raspberry PI3?
+
+Hi,
+I'm running ROS on a raspberry PI 3
+(2019-02-19-ubiquity-xenial-lxde-raspberry-pi.img.xz).
+I'm using a RpLidar A3 (for laser scan) and a MPU9250 (for odometry).
+All of them run very well.
+So I produce good bag with right data inside (laser_scan, tf and odometry).
+Now I need to produce a map.
+I've cloned all these git :
+
+git clone https://github.com/ros-perception/slam_gmapping.git
+git clone https://github.com/ros-perception/openslam_gmapping.git
+git clone https://github.com/ros-planning/navigation.git
+git clone https://github.com/ros/geometry2.git
+
+start a catkin_make (but there are error during compiling)
+And I try this :
+rosparam set use_sim_time true
+rosrun gmapping slam_gmapping scan:=scan
+
+rosbag play --clock my_data.bag
+
+rosrun map_server map_saver -f my_map
+
+But I stay locked on : Waiting for the map !
+Could you help me ?
+Is there another best way to produce map on a PI ?
+Thanks for answer
+Greeting
+Christophe Deloly
+
+Originally posted by CdyTritor on ROS Answers with karma: 3 on 2019-05-01
+Post score: 0
+
+Original comments
+Comment by jayess on 2019-05-01:
+What errors are you getting when you try to compile? Can you please update your question with a copy and paste of these errors?
+Comment by CdyTritor on 2019-05-02:
+Hi Jayess, I have found the solution to solve these errors on compiling
+I need to add : add_definitions(-std=c++11) on all CMakeList.txt of navigation
+But even if the make is now ok, I still stay on Waiting for the map !
+
+A:
+
+@CdyTritor , instead of installing packages from source you can use apt-get like this:
+Install gmapping (change kinetic with your ROS distribution name)
+sudo apt-get install ros-kinetic-gmapping
+
+Run gmapping node with necessary parameters to subscribe /odom and /scan topics. If your topic names are different change them accordingly.
+ rosrun gmapping slam_gmapping scan:=scan odom_frame:=odom use_sim_time:=true 
+
+However, generally it is common practice to create a launch file to call gmapping node with appropriate parameters since it is difficult to call gmapping from the terminal with lots of parameters. For this purpose, you can check test.launch file below and tune parameters accordingly.
+test.launch:
+<launch>
+  <!-- Arguments -->
+  <arg name="set_base_frame" default="base_footprint"/>
+  <arg name="set_odom_frame" default="odom"/>
+  <arg name="set_map_frame"  default="map"/>
+
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_scan"
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /base_link /base_scan 10" />
+    
+  <!-- Gmapping -->
+  <node pkg="gmapping" type="slam_gmapping" name="kamu_robotu_slam_gmapping" output="screen">
+    <param name="base_frame" value="$(arg set_base_frame)"/>
+    <param name="odom_frame" value="$(arg set_odom_frame)"/>
+    <param name="map_frame"  value="$(arg set_map_frame)"/>
+    <param name="map_update_interval" value="0.1"/>
+    <param name="maxUrange" value="3.0"/>
+    <param name="sigma" value="0.05"/>
+    <param name="kernelSize" value="1"/>
+    <param name="lstep" value="0.05"/>
+    <param name="astep" value="0.05"/>
+    <param name="iterations" value="5"/>
+    <param name="lsigma" value="0.075"/>
+    <param name="ogain" value="3.0"/>
+    <param name="lskip" value="0"/>
+    <param name="minimumScore" value="0"/>
+    <param name="srr" value="0.01"/>
+    <param name="srt" value="0.02"/>
+    <param name="str" value="0.01"/>
+    <param name="stt" value="0.02"/>
+    <param name="linearUpdate" value="0.05"/>
+    <param name="angularUpdate" value="0.2"/>
+    <param name="temporalUpdate" value="0.5"/>
+    <param name="resampleThreshold" value="0.5"/>
+    <param name="particles" value="100"/>
+    <param name="xmin" value="-10.0"/>
+    <param name="ymin" value="-10.0"/>
+    <param name="xmax" value="10.0"/>
+    <param name="ymax" value="10.0"/>
+    <param name="delta" value="0.01"/>
+    <param name="llsamplerange" value="0.01"/>
+    <param name="llsamplestep" value="0.01"/>
+    <param name="lasamplerange" value="0.005"/>
+    <param name="lasamplestep" value="0.005"/>
+  </node>
+</launch>
+
+The procedure should be as follows:
+1-) Set use_sim_time parameter to true. It is necessary if you are using rosbag file to extract the map. On the other hand, if you want to make a real time SLAM, then you should set this parameter false.
+rosparam set use_sim_time true
+
+2-) Run test.launch
+roslaunch test.launch
+
+3-) Play your bag file with --clock argument. (--clock argument is needed since we set use_sim_time true)
+rosbag play --clock yourbagfile.bag
+
+To understand more about gmapping and its parameters please see Gmapping ROS Wiki page
+If you have any problem about transform tree, please realize that you need to provide necessary tf's between odom-->base_link, base_link-->base_scan and base_link-->base_footprint. These tf frame names could be different for your case. For example, in test.launch we used static_transform_publisher to define the transform between base_link-->base_scan
+<node pkg="tf" type="static_transform_publisher" name="base_link_to_scan"
+        args="0.0 0.0 0.0 0.0 0.0 0.0 /base_link /base_scan 10" />
+
+Here is an 
+I hope it helps! If it solves your problem, don't forget to click tick button to mark as answer.
+
+Originally posted by samialperen with karma: 70 on 2019-05-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by CdyTritor on 2019-05-02:
+Hi samialperen and thanks for your help
+I have removed package and install ros-kinetic-gmapping.
+I try to understand your test.launch, but inside I don't see topics.
+In my bag I have :
+data topic from imu_link frame_id (odometry)
+scan topic from laser frame_id (RpLidarA3)
+and tf topics (that transform base_link to imu_link) and (base_link to laser)
+How can I insert them in your test.launch to make it run ?
+I feel that all these data are correct but I still stay on waiting for the map !!!
+Thanks
+

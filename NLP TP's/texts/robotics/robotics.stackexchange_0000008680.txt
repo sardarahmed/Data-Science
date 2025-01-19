@@ -1,0 +1,142 @@
+Q:
+
+calculating position based on accelerometer data
+
+Please help me with the following task. I have MPU 9150 from which I get acceleration/gyro and magnetometer data. What I'm currently interested in is to get the orientation and position of the robot. I can get the position using quaternions. Its quite stable. Rarely changes when staying still.
+But the problem is in converting accelerometer data to calculate the displacement.
+As I know its required to to integrate twice the accel. data to get position.
+Using quaternion I can rotate the vector of acceleration and then sum it's axises to get velocity then do the same again to get position. But it doesn't work that way. First of all moving the sensor to some position and then moving it back doesn't give me the same position as before. The problem is that after I put the sensor back and it stays without any movement the velocity doesn't change to zero though the acceleration data coming from sensors are zeros.
+Here is an example (initially its like this):
+the gravity: -0.10  -0.00   1.00
+raw accel: -785 -28 8135
+accel after scaling to +-g: -0.10   -0.00   0.99
+the result after rotating accel vector using quaternion: 0.00   -0.00   -0.00
+After moving the sensor and putting it back it's acceleration becomes as:
+ 0.00   -0.00   -0.01
+ 0.00   -0.00   -0.01
+ 0.00   -0.00   -0.00
+ 0.00   -0.00   -0.01
+and so on.
+If I'm integrating it then I get slowly increasing position of Z.
+But the worst problem is that the velocity doesn't come back to zero
+For example if I move sensor once and put it back the velocity will be at:
+-0.089 for vx and
+0.15 for vy
+After several such movements it becomes:
+-1.22 for vx
+1.08 for vy 
+-8.63 for vz
+and after another such movement:
+vx -1.43
+vy 1.23
+vz -9.7
+The x and y doesnt change if sensor is not moving but Z is changing slowly.
+Though the quaternion is not changing at all.
+What should be the correct way to do that task?
+Here is the part of code for integrations:
+vX += wX * speed;
+vY += wY * speed;
+vZ += wZ * speed;
+
+posX += vX * speed;
+posY += vY * speed;
+posZ += vZ * speed;
+
+Currently set speed to 1 just to test how it works.
+EDIT 1: Here is the code to retrieve quaternion and accel data, rotate and compensate gravity and get final accel data.
+        // display initial world-frame acceleration, adjusted to remove gravity
+        // and rotated based on known orientation from quaternion
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetAccel(&aaReal, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+
+        //Serial.print("gravity\t");
+        Serial.print(gravity.x);
+        Serial.print("\t");
+        Serial.print(gravity.y);
+        Serial.print("\t");
+        Serial.print(gravity.z);
+        Serial.print("\t");
+
+        //Serial.print("accell\t");
+        Serial.print(aaReal.x);
+        Serial.print("\t");
+        Serial.print(aaReal.y);
+        Serial.print("\t");
+        Serial.print(aaReal.z);
+        Serial.print("\t"); 
+
+        float val = 4.0f;
+        float ax = val * (float)aaReal.x / 32768.0f;
+        float ay = val * (float)aaReal.y / 32768.0f;
+        float az = val * (float)aaReal.z / 32768.0f; 
+
+        theWorldF.x = ax;            
+        theWorldF.y = ay;
+        theWorldF.z = az;
+
+        //Serial.print("scaled_accel\t");
+        Serial.print(ax);
+        Serial.print("\t");
+        Serial.print(ay);
+        Serial.print("\t");
+        Serial.print(az);
+        Serial.print("\t"); 
+
+        theWorldF.x -= gravity.x;
+        theWorldF.y -= gravity.y;
+        theWorldF.z -= gravity.z;
+
+        theWorldF.rotate(&q);
+        //gravity.rotate(&q);
+        //Serial.print("gravity_compensated_accel\t");
+        Serial.print(theWorldF.x);
+        Serial.print("\t");
+        Serial.print(theWorldF.y);
+        Serial.print("\t");
+        Serial.print(theWorldF.z);
+        Serial.print("\t");
+        Serial.print(deltaTime); 
+        Serial.println();
+
+EDIT 2:
+
+dmpGetQuaternion, dmpGetAccel functions are just reading from the FIFO buffer of MPU. 
+dmpGetGravity is:
+uint8_t MPU6050::dmpGetGravity(VectorFloat *v, Quaternion *q) {
+    v -> x = 2 * (q -> x*q -> z - q -> w*q -> y);
+    v -> y = 2 * (q -> w*q -> x + q -> y*q -> z);
+    v -> z = q -> w*q -> w - q -> x*q -> x - q -> y*q -> y + q -> z*q -> z;
+    return 0;
+}
+
+EDIT 3:
+the library for using MPU 9150:
+https://github.com/sparkfun/MPU-9150_Breakout
+EDIT 4: Another example 
+gravity vector: -1.00   -0.02   0.02
+raw accel data: -8459   -141    125 
+accel data scaled (+-2g range): -1.03   -0.02   0.02
+gravity compensation and rotation of accel data: -0.01  0.00    0.33    
+
+A:
+
+You're trying to do numeric integration, which takes the form:
+$$
+\mbox{integrated value } +=\mbox{derivative} * \mbox{elapsed time}
+$$
+What you have instead of elapsed time is some value called speed. Try setting up your numeric integration code on an interrupt, where the interrupt timing is what you would use in place of elapsed time. 
+I'm not sure what method you're using to get from quaternions to the rotated acceleration vector, but I would like to point out that you can't just do numeric integration on quaternions like you can with accelerations or velocities. See page 11 of this document for more detail, but briefly, take your gyroscope angular accelerations $\omega_x \omega_y \omega_z$ and the existing quaternion $q(t)$ and calculate the quaternion derivative:
+$$
+\dot{q}(t) = \frac{1}{2} \left[ \begin{array}{cccc}
+0 & \omega_z & -\omega_y & \omega_x \\
+-\omega_z & 0 & \omega_x & \omega_y \\
+\omega_y & -\omega_x & 0 & \omega_z \\
+-\omega_x & -\omega_y & -\omega_z & 0 \end{array} \right] q(t)
+$$
+Then you numerically integrate that, such that, for a discrete system,
+$$
+q_k = q_{k-1} + \dot{q}_k * dT
+$$
+You do not provide any code on how you're updating your acceleration vector, no code on how you're getting a quaternion, etc., so it's not possible to give you any more specific feedback than this.
+

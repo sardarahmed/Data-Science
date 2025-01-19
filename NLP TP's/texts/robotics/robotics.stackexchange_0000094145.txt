@@ -1,0 +1,89 @@
+Q:
+
+Robot Localization: Mirrored Results
+
+Hey there. I want to use robot_localization to fuse my sensor data from optical encoders with the onboard IMU (a BNO-055). I've looked through most of the documentation around robot_localization, but adapting from the examples seems to give me funny results. I'm currently only interested in local odometry (the odom -> base_link transform).
+First, let me explain the setup of the robot. The robot is a simple differential driven robot with two motorized wheels at the back and a caster wheel in the front. The motors are hooked up to optical encoders, the data of which is sent to diff_drive. diff_drive computes odometry by integrating the difference in encoders, as is common with encoder-based odometry. Judging from RViz, this odometry is fairly accurate by itself (no weird drifts, 180 degree turns line up). I haven't confirmed if the actual distances line up, but the scale does at least.
+As mentioned, an IMU is also present. This is the BNO-055, with this node as a ROS integration. If I position the robot such that the front of the robot is pointing to the magnetic north, the X axis of the IMU points west, while the Y axis points south. Since robot_localization expects IMU data in an ENU frame (as per REP-103), I've set up TF to rotate the imu frame by 180 degrees. I think this is correct, but let me know if I should be manually editing IMU data or rotating the frame differently (or not at all!).
+The TF frames are the typical frames: odom -> base_link -> imu. The imu transform is a simple static publisher:
+rosrun tf2_ros static_transform_publisher 0 0 0 3.14 0 0 base_link imu
+
+Given this above setup, I've created the following config for robot_localization:
+frequency: 10
+
+# We're a 2D robot.
+two_d_mode: true
+
+# Set up frames.
+odom_frame: odom
+base_link_frame: base_link
+world_frame: odom
+publish_tf: true
+
+# Our odometry is on /odom. We only track the x and theta velocity, since other values are derived from those.
+# We cannot move in the y direction, but the documentation recommends to add the value so that it is integrated.
+odom0: /odom
+odom0_config: [false, false, false,
+               false, false, false,
+               true, true, false,
+               false, false, true,
+               false, false, false]
+odom0_differential: true
+
+# Our IMU is on /imu/data. We track all of it.
+imu0: /imu/data
+imu0_config: [false, false, false,
+              true,  true,  true,
+              false, false, false,
+              true,  true,  true,
+              true, true, true]
+imu0_differential: false
+imu0_relative: true
+
+As far as I understand, this should be correct for the setup.  However, I get very interesting results.
+With the 180deg imu rotation, I get the following (green is the fused odometry, red is the raw encoder odometry):
+
+If I leave out the rotation, simply attaching imu to base_link directly, I get a nearly identical result:
+
+As you can see, in both images the output from robot_localization (green) is mirrored/rotated with respect to the raw odometry (red). I was expecting the green odometry to largely overlay the red odometry.
+Do I have a (simple) error in my robot_localization set up, or am I fundamentally misunderstanding what robot_localization does?
+Here (expires 7th of January, 2020) is a download link to a rosbag that contains /odom and /imu/data. Playing that back, then running the static transform and using the config supplied above for robot_localization should yield similar results to the RViz screenshots above.
+
+Originally posted by molenzwiebel on ROS Answers with karma: 11 on 2019-12-17
+Post score: 0
+
+Original comments
+Comment by molenzwiebel on 2019-12-17:
+I just stumbled onto this question which has a similar setup to mine. Tom recommends to only integrate the IMU yaw values in that answer.
+With that, the config becomes:
+imu0_config: [false, false, false,
+              false, false, true,
+              false, false, false,
+              false, false, true,
+              false,  false, false]
+
+If I do that, the drifting issues of the localization disappear. However, the fused odometry still seems to be mirrored or rotated with respect to the original data.
+Here's a screenshot of how it looks when you only fuse the yaw data of the IMU.
+Comment by gvdhoorn on 2019-12-17:
+Please attach your images directly to the question. I've given you sufficient karma for that.
+Comment by johnconn on 2019-12-17:
+Thanks for the images and config information
+Is your imu really providing absolute yaw information?
+It kind of looks like the imu and odom are providing opposite direction yaw change. For a clock-wise rotation of the robot, are both odom and imu reporting a positive change in yaw?
+Comment by gvdhoorn on 2019-12-18:
+@molenzwiebel:
+
+Please attach your images directly to the question. I've given you sufficient karma for that.
+
+A:
+
+@johnconn's comment lead me to the answer: Turns out that my encoder and IMU had different thoughts about which rotation direction would lead to an increase in yaw. If anyone else sees weird rotating/mirroring patterns, consider checking if both go in the same direction.
+
+Originally posted by molenzwiebel with karma: 11 on 2019-12-18
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-12-18:
+To add to this: ROS uses a righthanded system, so positive (and negative) rotation directions are unambiguously defined. See also REP 103: Standard Units of Measure and Coordinate Conventions - Rotation Representation.
+

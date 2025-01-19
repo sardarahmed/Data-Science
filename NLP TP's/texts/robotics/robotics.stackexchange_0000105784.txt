@@ -1,0 +1,66 @@
+Q:
+
+How do you publish on a ROS topic when the message type is not known?
+
+I am trying to publish a ROS message in Python but I do not know the message type. I tried using AnyMsg and it did not work. If this is possible would someone be able to provide a Python code snippet?
+
+A:
+
+You can use AnyMsg to subscribe to the topic, then use this to acquire information about the topic which can be used to construct a publisher and a new message which can be published. For an example, see below.
+import rospy
+import genpy
+from rospy.msg import AnyMsg
+
+rospy.init_node("test_node")
+publisher = None
+msg_class = None
+
+# callback that we'll use to setup the publisher once we've gotten a message
+def setup_publisher(msg):
+    global msg_class
+    global publisher
+
+    topic_type = msg._connection_header["type"]
+    msg_class = genpy.message.get_message_class(topic_type)
+    publisher = rospy.Publisher("test_topic", msg_class, queue_size=10)
+
+# subscribe and wait for a message to come in
+check_rate = rospy.Rate(10)
+sub = rospy.Subscriber("test_topic", AnyMsg, setup_publisher)
+while publisher is None and not rospy.is_shutdown():
+    check_rate.sleep()
+sub.unregister() # all done with the subscriber now
+
+assert publisher is not None
+while not rospy.is_shutdown():
+    # now that we have a valid publisher we can create a new message.
+    # we could use genpy like in the callback, or we can just use the
+    # publisher:
+    new_msg = publisher.data_class()
+
+    # even if we don't know what type it is beforehand,
+    # we can find out what information can be populated
+    # thanks to the 'slots' attribute provided by messages
+    if "data" in new_msg.__slots__:
+        if type(new_msg.data) == int:
+            new_msg.data = 42
+        elif type(new_msg.data) == str:
+            new_msg.data = "Hello World!"
+        elif type(new_msg.data) == float:
+            new_msg.data = 3.14159
+
+    # we can also make use of the setattr/gettattr
+    # functions in a slightly more traditionally-python way
+    for slot in dir(new_msg):
+        if slot.startswith("_"):
+            # ignore private attributes
+            continue
+        if type(getattr(new_msg, slot)) == int:
+            # set any integer to 42
+            setattr(new_msg, slot, 42)
+
+    # now we can publish the message
+    publisher.publish(new_msg)
+
+But, notice that we need to do some introspection on the message to find/set fields if we don't know them beforehand, and this can be a bit messy. For that reason, whenever you can, it's recommended to just use the message.
+

@@ -1,0 +1,391 @@
+Q:
+
+Fail to control two husky robots in Gazebo
+
+I want to control two husky robots in Gazebo but only one of them can be controled.
+launch file 1:
+<?xml version="1.0"?>
+
+<launch>
+
+  <arg name="world_name" default="worlds/empty.world"/>
+
+  <arg name="laser_enabled" default="true"/>
+  <arg name="ur5_enabled" default="false"/>
+  <arg name="kinect_enabled" default="false"/>
+  
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)"/> <!-- world_name is wrt GAZEBO_RESOURCE_PATH environment variable -->
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>
+
+<group ns="husky1">
+    <param name="tf_prefix" value="husky1_tf" /> 
+    <include file="$(find husky_gazebo)/launch/spawn_huskys.launch">
+      <arg name="laser_enabled" value="$(arg laser_enabled)"/>
+      <arg name="ur5_enabled" value="$(arg ur5_enabled)"/>
+      <arg name="kinect_enabled" value="$(arg kinect_enabled)"/>
+      <arg name="x" value="1.0"/>
+      <arg name="y" value="-1.0"/>
+      <arg name="robotNamespace" value="husky1"/>
+      <arg name="model" value="husky1"/>
+    </include>
+  </group>
+
+  <group ns="husky2">
+    <param name="tf_prefix" value="husky2_tf" /> 
+    <include file="$(find husky_gazebo)/launch/spawn_huskys.launch">
+      <arg name="laser_enabled" value="$(arg laser_enabled)"/>
+      <arg name="ur5_enabled" value="$(arg ur5_enabled)"/>
+      <arg name="kinect_enabled" value="$(arg kinect_enabled)"/>
+      <arg name="x" value="-3.0"/>
+      <arg name="y" value="-1.0"/>
+      <arg name="robotNamespace" value="husky2"/>
+      <arg name="model" value="husky2"/>
+    </include>
+  </group>
+
+</launch>
+
+another launch file:
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="laser_enabled" default="true"/>
+  <arg name="ur5_enabled" default="false"/>
+  <arg name="kinect_enabled" default="false"/>
+ <!-- Robot pose -->
+
+  <arg name="x" default="10"/>
+  <arg name="y" default="10"/>
+  <arg name="z" default="0"/>
+  <arg name="roll" default="0"/>
+  <arg name="pitch" default="0"/>
+  <arg name="yaw" default="0"/>
+  <arg name="model" default="husky"/>
+  <arg name="robotNamespace" default="husky"/>
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(env HUSKY_GAZEBO_DESCRIPTION)'
+    laser_enabled:=$(arg laser_enabled)
+    ur5_enabled:=$(arg ur5_enabled)
+    kinect_enabled:=$(arg kinect_enabled)
+    " />
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+  <!-- Load Husky control information -->
+  <include file="$(find husky_control)/launch/control.launch"/>
+
+  <!-- Include ros_control configuration for ur5, only used in simulation -->
+  <group if="$(arg ur5_enabled)">
+
+    <!-- Load UR5 controllers -->
+    <rosparam command="load" file="$(find husky_control)/config/control_ur5.yaml" />
+    <node name="arm_controller_spawner" pkg="controller_manager" type="spawner" args="arm_controller --shutdown-timeout 3"/>
+
+    <!-- Fake Calibration -->
+    <node pkg="rostopic" type="rostopic" name="fake_joint_calibration" args="pub calibrated std_msgs/Bool true" />
+
+    <!-- Stow the arm -->
+    <node pkg="husky_control" type="stow_ur5" name="stow_ur5"/>
+
+  </group>
+
+  <group if="$(arg kinect_enabled)">
+
+    <!-- Include poincloud_to_laserscan if simulated Kinect is attached -->
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="pointcloud_to_laserscan" output="screen">
+
+        <remap from="cloud_in" to="camera/depth/points"/>
+        <remap from="scan" to="camera/scan"/>
+        <rosparam>
+            target_frame: base_link # Leave empty to output scan in the pointcloud frame
+            tolerance: 1.0
+            min_height: 0.05
+            max_height: 1.0
+
+            angle_min: -0.52 # -30.0*M_PI/180.0
+            angle_max: 0.52 # 30.0*M_PI/180.0
+            angle_increment: 0.005 # M_PI/360.0
+            scan_time: 0.3333
+            range_min: 0.45
+            range_max: 4.0
+            use_inf: true
+
+            # Concurrency level, affects number of pointclouds queued for processing and number of threads used
+            # 0 : Detect number of cores
+            # 1 : Single threaded
+            # 2->inf : Parallelism level
+            concurrency_level: 1
+        </rosparam>
+    </node>
+
+  </group>
+
+  <!-- Spawn robot in gazebo -->
+    <node name="spawn_husky_model" pkg="gazebo_ros" type="spawn_model"
+    args="-x $(arg x) -y $(arg y) -z $(arg z) -R $(arg roll) -P $(arg pitch) -Y $(arg yaw) -robotNamespace $(arg robotNamespace)
+            -unpause -urdf -param robot_description -model $(arg model)"/>
+</launch>
+
+description.gazebo.xacro
+<?xml version="1.0"?>
+
+<robot name="husky_robot_gazebo" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="laser_enabled" default="true" />
+  <xacro:arg name="ur5_enabled" default="false" />
+  <xacro:arg name="kinect_enabled" default="false" />
+
+  <xacro:include filename="$(find husky_description)/urdf/husky.urdf.xacro" />
+  <xacro:include filename="$(find husky_gazebo)/urdf/husky1.gazebo.xacro" />
+  <xacro:include filename="$(find husky_gazebo)/urdf/husky2.gazebo.xacro" />
+
+  <!-- Gazebo plugin for ROS Control -->
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>husky1</robotNamespace>
+    </plugin>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>husky2</robotNamespace>
+    </plugin>
+  </gazebo>
+
+  <xacro:husky_robot />
+
+  <xacro:husky_robot_gazebo />
+
+</robot>
+
+husk1.gazebo.xacro:
+<?xml version="1.0"?>
+
+<robot name="husky_robot_gazebo" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find husky_gazebo)/urdf/accessories/kinect_camera.gazebo.xacro"/>
+
+  <xacro:macro name="husky_robot_gazebo">
+
+    <gazebo>
+      <plugin name="imu_controller" filename="libhector_gazebo_ros_imu.so">
+        <robotNamespace>husky1</robotNamespace>
+        <updateRate>50.0</updateRate>
+        <bodyName>base_link</bodyName>
+        <topicName>imu/data</topicName>
+        <accelDrift>0.005 0.005 0.005</accelDrift>
+        <accelGaussianNoise>0.005 0.005 0.005</accelGaussianNoise>
+        <rateDrift>0.005 0.005 0.005 </rateDrift>
+        <rateGaussianNoise>0.005 0.005 0.005 </rateGaussianNoise>
+        <headingDrift>0.005</headingDrift>
+        <headingGaussianNoise>0.005</headingGaussianNoise>
+      </plugin>
+    </gazebo>
+
+    <gazebo>
+      <plugin name="gps_controller" filename="libhector_gazebo_ros_gps.so">
+        <updateRate>40</updateRate>
+        <robotNamespace>husky1</robotNamespace>
+        <bodyName>base_link</bodyName>
+        <frameId>base_link</frameId>
+        <topicName>navsat/fix</topicName>
+        <velocityTopicName>navsat/vel</velocityTopicName>
+        <referenceLatitude>49.9</referenceLatitude>
+        <referenceLongitude>8.9</referenceLongitude>
+        <referenceHeading>0</referenceHeading>
+        <referenceAltitude>0</referenceAltitude>
+        <drift>0.0001 0.0001 0.0001</drift>
+      </plugin>
+    </gazebo>
+  
+    <xacro:if value="$(arg ur5_enabled)">
+      <!--Remove when https://github.com/ros-industrial/universal_robot/pull/168 is resolved -->
+      <gazebo reference="ur5_arm_shoulder_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_upper_arm_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_forearm_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_1_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_3_link">
+       <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_2_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_ee_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="$(arg kinect_enabled)">
+      <xacro:kinect_camera_gazebo prefix="camera"/>
+    </xacro:if>
+
+  </xacro:macro>
+
+</robot>
+
+husky2.gazebo.xacro:
+<?xml version="1.0"?>
+
+<robot name="husky_robot_gazebo" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find husky_gazebo)/urdf/accessories/kinect_camera.gazebo.xacro"/>
+
+  <xacro:macro name="husky_robot_gazebo">
+
+    <gazebo>
+      <plugin name="imu_controller" filename="libhector_gazebo_ros_imu.so">
+        <robotNamespace>husky2</robotNamespace>
+        <updateRate>50.0</updateRate>
+        <bodyName>base_link</bodyName>
+        <topicName>imu/data</topicName>
+        <accelDrift>0.005 0.005 0.005</accelDrift>
+        <accelGaussianNoise>0.005 0.005 0.005</accelGaussianNoise>
+        <rateDrift>0.005 0.005 0.005 </rateDrift>
+        <rateGaussianNoise>0.005 0.005 0.005 </rateGaussianNoise>
+        <headingDrift>0.005</headingDrift>
+        <headingGaussianNoise>0.005</headingGaussianNoise>
+      </plugin>
+    </gazebo>
+
+    <gazebo>
+      <plugin name="gps_controller" filename="libhector_gazebo_ros_gps.so">
+        <updateRate>40</updateRate>
+        <robotNamespace>husky2</robotNamespace>
+        <bodyName>base_link</bodyName>
+        <frameId>base_link</frameId>
+        <topicName>navsat/fix</topicName>
+        <velocityTopicName>navsat/vel</velocityTopicName>
+        <referenceLatitude>49.9</referenceLatitude>
+        <referenceLongitude>8.9</referenceLongitude>
+        <referenceHeading>0</referenceHeading>
+        <referenceAltitude>0</referenceAltitude>
+        <drift>0.0001 0.0001 0.0001</drift>
+      </plugin>
+    </gazebo>
+  
+    <xacro:if value="$(arg ur5_enabled)">
+      <!--Remove when https://github.com/ros-industrial/universal_robot/pull/168 is resolved -->
+      <gazebo reference="ur5_arm_shoulder_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_upper_arm_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_forearm_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_1_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_3_link">
+       <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_wrist_2_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+      <gazebo reference="ur5_arm_ee_link">
+        <selfCollide>true</selfCollide>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="$(arg kinect_enabled)">
+      <xacro:kinect_camera_gazebo prefix="camera"/>
+    </xacro:if>
+
+  </xacro:macro>
+
+</robot>
+
+roslaunch Gazebo:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/791827fe22cadda69d2bb3f126f44e94
+
+my py code:
+#!/usr/bin/env python
+
+import rospy
+from std_msgs.msg import String
+from geometry_msgs.msg import Twist
+
+def talker():
+    pub1 = rospy.Publisher('/husky1/cmd_vel', Twist,queue_size=100)
+    pub2 = rospy.Publisher('/husky2/cmd_vel', Twist,queue_size=100)
+    rospy.init_node('forward', anonymous=True)
+    rate = rospy.Rate(10) # 10hz
+    tw1=Twist()
+    tw2=Twist()
+    tw1.linear.x=0.5
+    tw2.linear.x=0.5
+    while not rospy.is_shutdown():
+
+        pub1.publish(tw1)
+        pub2.publish(tw2)
+        rate.sleep()
+
+if __name__ == '__main__':
+    try:
+        talker()
+    except rospy.ROSInterruptException:
+        pass
+
+when I publish msg to /husky1/cmd_vel and husky2/cmd_vel, only one of husky robots move.
+What should I do to control another husky robot?
+Originally posted by Devin on ROS Answers with karma: 62 on 2016-02-09
+Post score: 1
+
+A:
+
+I'm kind of a newbie myself, but I'm working on a similar problem and it looks like what's happening here is that your robot_description includes both robots. The first launch file calls two versions of the spawn_husky.launch file: one for each robot. Each robot then loads a description here:
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(env HUSKY_GAZEBO_DESCRIPTION)'
+
+Where the environment variable points to the description.gazebo.xacro file. This file then opens the controller plug-in for both robots. But since you're calling this part of the code twice, this might be where the problems are coming from. Just a thought though. But here's the way I've done it:
+In the spawn_husky file
+ <param name="robot_description" command="$(find xacro)/xacro.py '$(find husky_gazebo)/urdf/$(arg namespace)description.gazebo.xacro'
+    laser_enabled:=$(arg laser_enabled)
+    ur5_enabled:=$(arg ur5_enabled)
+    kinect_enabled:=$(arg kinect_enabled)
+    " />
+
+Then I have husky1description.gazebo.xacro and husky2description.gazebo.xacro which look like this:
+<robot name="husky_robot_gazebo" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="laser_enabled" default="true" />
+  <xacro:arg name="ur5_enabled" default="false" />
+  <xacro:arg name="kinect_enabled" default="false" />
+
+  <xacro:include filename="$(find mtu_husky_description)/urdf/husky.urdf.xacro" />
+  <xacro:include filename="$(find mtu_husky_gazebo)/urdf/husky1.gazebo.xacro" />
+
+  <!-- Gazebo plugin for ROS Control -->
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>/husky1</robotNamespace>
+    </plugin>
+  </gazebo>
+
+  <xacro:husky_robot />
+
+  <xacro:husky_robot_gazebo />
+
+</robot>
+
+This works for me and allows control of both robots independently. However, I've having an issue where it's caused the "odom" frame to stop being published. So let me know if anyone has been able to figure that one out.
+
+Originally posted by nbeyers with karma: 161 on 2016-02-10
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Devin on 2016-02-11:
+Thanks! It works.
+

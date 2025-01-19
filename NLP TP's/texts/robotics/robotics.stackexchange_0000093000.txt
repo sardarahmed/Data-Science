@@ -1,0 +1,45 @@
+Q:
+
+Solving dependency: catkin_package() vs 'INSTALL'
+
+Hello guys,
+For solving the building dependencies between 2 packages, I knew that catkin_package() macro can help to solve the problem (by specifying INCLUDE_DIRS & LIBRARIES) if other packages find 'this' package, and I can also 'INSTALL' everything properly so that the other package can find files under folders under ${CATKIN_DEVEL_PREFIX}.
+I have always defined both clearly in the CMakeLists, but questions is what is benefit of this? For FHS compliance? Can I only use catkin_package() and ignore 'INSTALL' part for good?
+I have searched a bit on this but got no luck to thoroughly understand this.. Thanks for any help!
+Cheers,
+Dutch
+
+Originally posted by Dutch on ROS Answers with karma: 25 on 2019-08-19
+Post score: 0
+
+A:
+
+I have always defined both clearly in the CMakeLists, but questions is what is benefit of this? For FHS compliance?
+
+No, using install(..) and catkin_package(..) serve two very different purposes:
+
+calling catkin_package(..) declares your CMake project to actually be a "Catkin package" (ie: something other Catkin packages can work with/be dependent on) and at the same time exports metadata about the project in a nr of CMake variables. From the Catkin macro documentation (here):
+
+It installs the package.xml file, and it generates code for find_package and pkg-config so that other packages can get information about this package. For this purpose the information about include directories, libraries, further dependencies and CMake variables are used.
+
+catkin_package(..) is a Catkin-specific function, designed to make working with multiple packages in a Catkin workspace easier.
+
+the install(..) statement is just regular CMake. See the documentation here. It may be used to tell CMake to generate rules that will eventually actually copy files and/or directories to specific destinations. install(..) does not know anything about ROS, Catkin, package.xml or package metadata. It simply copies files and/or directories.
+
+Can I only use catkin_package() and ignore 'INSTALL' part for good?
+
+This should be clear now: no, you cannot "just use catkin_package() and ignore install": the former does not copy your files to their installed location, while the latter would not export metadata about your (ROS) package to the rest of the system. You need to use both for properly setup ROS packages.
+
+Having written all of this, there is a scenario in which a package with a CMakeLists.txt without install(..) rules will work: if you only ever use it in the devel space. In that case, file and directory references will resolve to /path/to/your/catkin_ws/src for the most part and otherwise to /path/to/your/catkin_ws/devel. Files always exist in the source space, and placing compiled binaries/libraries in the devel space is done automatically by Catkin (actually: CMake). ROS libraries for finding files will consider the union of these two spaces and thus "everything will work", even without having any install(..) rules.
+But not adding install(..) rules means that you cannot release your package through the ROS buildfarm: the buildfarm only packages files (into .debs) found in the install space. Not having any install(..) rules will result in your .deb being empty, making your package essentially useless.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-08-19
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-08-19:
+Finally: having install(..) rules also is just good practice and makes your ROS package a good CMake package. If you weren't using Catkin, a CMake package without install(..) rules would not work correctly (or you'd always have to use the build directory, not very nice).
+Comment by Dutch on 2019-08-19:
+I never really 'released' my package before, and I guess that why I found the 'install' is not so essential sometimes.. :) You are absolutely right, these are two different things.
+

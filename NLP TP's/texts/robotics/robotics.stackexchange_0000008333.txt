@@ -1,0 +1,45 @@
+Q:
+
+Relation between pole placement and marginal stability?
+
+I'm given an assignment in which I have to design a full state feedback controller by pole placement. The state space system is fully controllable and I've been using Matlab/Simulink to determine the required feedback gain K using the place() command for several sets of poles, however once I use poles that are "too negative", for example p=[-100,-200,-300,-400,-500], my controlled system starts showing bounded oscillatory behaviour. 
+Is it possible that too negative poles can cause marginal stability? And if so, why? I've read that this is only possible when the real part of one or more poles equals 0, which certainly isn't the case here. 
+
+A:
+
+You are most likely running into problems with the maximum time step in your simulation. This phenomenon is known as stiffness, where your equations of motion are highly sensitive to the size of the time step in a discrete solution.
+Consider a simple mass-spring system with mass $m$, spring stiffness $k$, displacement $x$ and velocity $\dot{x}$ for states $q$, and an input force $F$ for the input $u$.
+$q = \begin{bmatrix} \dot{x} \\ x \end{bmatrix}$
+$A = \begin{bmatrix} 0 & -\frac{k}{m} \\ 1 & 0 \end{bmatrix}$
+$B = \begin{bmatrix} \frac{1}{m} \\ 0 \end{bmatrix}$
+$C = \begin{bmatrix} 0 & 1 \end{bmatrix}$
+$D = 0$
+We apply a full-state feedback control law (which ends up being PD control), with:
+$u = -Kq$
+And use MATLAB's place function to determine the gain matrix $K$ for desired poles $p$. Package this into a setup script like this:
+% system coefficients
+k = 1000;               % spring stiffness (N/m)
+m = 1;                  % mass (kg)
+
+% state-space model
+A = [0 (-k/m); 1 0];
+B = [(1/m); 0];
+C = [0 1];
+D = 0;
+
+% desired poles
+p = [-1000, -2000];
+
+% gain matrix
+K = place(A,B,p);
+
+% initial conditions
+x_dot_0 = 0.5;
+x_0 = 0.2;
+
+Then create a Simulink model:
+
+Now if we use poles $p = \begin{bmatrix} -10 & -20 \end{bmatrix}$, we get an acceptable albeit slower response. But when we use poles $p = \begin{bmatrix} -1000 & -2000 \end{bmatrix}$ we find that there is only marginal stability with some steady-state error (although the bandwidth of the steady-state error is small).
+This is happening because the closed-loop system frequency is so high that there is numerical instability in the simulation caused by the solver's choice of time-step. To get around this, we can switch the maximum time step from auto to something appropriate like 1-e5. You can do this in the "Solver options" found in the "Simulation -> Model Configuration Parameters" menu (it might be called something a bit different in your version of MATLAB).
+Here is the comparison of the low gain result, high gain result with default auto maximum time-step, and high gain result with maximum time-step of 1e-5.
+

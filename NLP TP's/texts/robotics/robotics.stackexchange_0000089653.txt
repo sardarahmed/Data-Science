@@ -1,0 +1,48 @@
+Q:
+
+How to run multiple rostests with one .test file and one gtest test case
+
+I have a gtest test case that can be launched from a rostest .test file. I would like to run the same test with multiple parameters.
+I came across using ARG in cmake we can set multiple params for the .test file, but can we use the same test file with different parameters to run the same tests with different inputs? i.e. different tests with same ${launch_file} and varying args
+add_rostest(${launch_file}
+        DEPENDENCIES ${target}
+    ARGS ...
+
+In a more generic sense, would we be able to run parametrised rostests like eg. Gtest::Combine
+
+Originally posted by aswin on ROS Answers with karma: 528 on 2018-11-20
+Post score: 2
+
+Original comments
+Comment by aswin on 2018-11-20:
+I just realized that if the first ARG is the same, then the output file where results are stored are same. Not sure if this was intended
+
+A:
+
+If I understand your situation, it shouldn't be too hard to have a single .test file and single gtest binary, and then pass in different sets of parameters using something like add_rostest(check_thing.test ARGS case:=foo), where your check_thing.test file is something like (and you've compiled the check_thing binary separately using add_executable):
+<launch>
+  <arg name="case" />
+  <test test-name="check_thing_case_$(arg case)" pkg="my_fancy_package" type="check_thing">
+    <rosparam command="load" file="$(find my_fancy_package)/test/$(arg case).yaml" />
+  </test>
+</launch>
+
+However, this does incur the time cost of starting and stopping ROS for each case. If you don't actually need a fresh slate each time, it might make more sense to just build these different cases into your GTest binary— basically, use the ros::NodeHandle::setParam API to set the parameters you need for your different cases and invoke the tests. Or, even easier, load all sets of parameters in different namespaces, and then when you go to test your object, pass it NodeHandle instances pointing at the different namespaces so that it will see different sets of parameters when it goes to initialize itself.
+
+Originally posted by mikepurvis with karma: 1153 on 2018-11-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aswin on 2018-11-20:
+Thank you for the response.
+Yes right now I am using something like add_rostest(check_thing.test ARGS case:=foo)  multiple times. There doesnt seem to be an easy way to do this for add_rostest_gtest. Will open a PR if I figure this out.
+Comment by aswin on 2018-11-20:
+I was using the ros::NodeHandle::getParam, but unfortunately I am using gazebo and require a fresh state each time. Restarting gazebo and dependant environment nodes doesnt play well with ros::Time and tf
+Comment by mikepurvis on 2018-11-22:
+Use of add_rostest_gtest specifically assumes a 1:1 mapping of tests to gtest binaries, which is not the case for you. So you have to compile your binary separately.
+Comment by mikepurvis on 2018-11-22:
+FWIW, add_rostest_gtest was added later as an optimization for this common case. The old way was to always compile your test binaries separately. For the full history lesson, see: https://github.com/ros/ros_comm/issues/258
+Comment by aswin on 2018-11-22:
+Thank you. I finally followed the example in this function and added numerous arguments for the same test
+

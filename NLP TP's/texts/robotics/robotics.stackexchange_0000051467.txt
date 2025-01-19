@@ -1,0 +1,59 @@
+Q:
+
+Does the ros publisher publish in bytes?
+
+Hi all,
+Following is a simple publishing example I copied from the ROS tutorials. Is msg transmitted over TCP as bytes? or as string? For efficient transfer, I would like to know if I need to convert 'count' into bytes before publishing.
+std_msgs::String msg;
+double count = 12.76578589776736376983983231112;
+std::stringstream ss;
+ss << "hello world " << count;
+msg.data = ss.str();
+
+ROS_INFO("%s", msg.data.c_str());
+
+/**
+ * The publish() function is how you send messages. The parameter
+ * is the message object. The type of this object must agree with the type
+ * given as a template parameter to the advertise<>() call, as was done
+ * in the constructor above.
+ */
+chatter_pub.publish(msg);
+
+Originally posted by aswin on ROS Answers with karma: 528 on 2013-05-27
+Post score: 0
+
+Original comments
+Comment by weiin on 2013-05-27:
+Not quite sure what you mean by converting "hello world" into bytes before publishing. You can only publish the msg in the correct format (http://www.ros.org/doc/api/std_msgs/html/msg/String.html), which in this case is a string
+Comment by aswin on 2013-05-27:
+I am sorry. I meant how many bytes is 'count' converted to? Or in short, how many bytes are published in total?
+Comment by Bill Smart on 2013-05-28:
+strlen(msg.data.c_str()) + 1 + some amount of network headers
+
+A:
+
+Not sure what you mean by converting to bytes, since everything is represented as bytes internally.  You're constructing a string on the line
+ss << "hello world " << count;
+
+so that's what you're sending.  The string stream operator will take count, turn it into a string, append it to "hello world " and return it through the c_str() call.  If you want to know how long that string is, then use strlen().  The double needs sizeof(double) bytes (probably 8, if your machine is like mine).  Any string representation of a double with more than 8 characters will use more space.  If you really want to send a double, create a message type with a double field.
+More than that is getting sent, though, since the underlying networking layers are adding protocol wrappers to everything that gets sent out.  In general, I'd advise against trying to optimize things at this level, unless you're seeing a performance problem.  Unless you understand linux networking and how ROS uses it at a pretty fine-grained level, you might end up doing a lot of work for little gain.
+
+Originally posted by Bill Smart with karma: 1263 on 2013-05-28
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by aswin on 2013-05-28:
+I later realized that this was not a ROS question. Anyway, as you mentioned there are more than 8 bytes that are sent for "count". A message field with double field is good, but when the message includes bool, int, string etc, this leads to more messages unnecessarily.
+Comment by aswin on 2013-05-28:
+The key is to convert double, short etc... into a hex byte representation before appending to string stream, and then sending it. In this case count will always occupy 8 bytes. For people working on intel architecture this will not cause latency. I use a single core ARM
+Comment by Bill Smart on 2013-05-28:
+I'm not sure why you're packing things into a string, since defining a new message with all of the fields you need will accomplish the same thing at the same storage cost, but without you having to do the packing yourself.
+Comment by aswin on 2013-05-29:
+Agree that it has the same storage cost. However, with a different message for each datatype, this would mean I will have to maintain 5 to 6 times the number of messages & topics I have in a distributed system. There is also slight overhead due to extra headers and checksum.
+Comment by Bill Smart on 2013-05-30:
+I understand now: you're looking to send a message with a dynamic data type, right?  There's a strong typing in ROS messages, so you're going to have to pull some tricks to do this (like the one you suggest above).
+Comment by aswin on 2013-05-30:
+On another note, one should not use stringstream for packing in such applications i.e. at byte level. Presence of bytes such as 0x0A in the stream screws up the unpacking process
+

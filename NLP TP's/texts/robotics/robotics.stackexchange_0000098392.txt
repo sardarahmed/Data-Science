@@ -1,0 +1,125 @@
+Q:
+
+How to get topic data to process then publish
+
+Hi all, I'll start off with saying I'm very new to ROS and only just figuring out python too. I've followed all the tutorials and scoured forums but can't find a solution to my issue.
+I have a ROS package with node 1 publishing message data to a topic, then node 2 subscribes to the topic, processes the data then publishes it again.
+However I'm not receiving actual values from my topic through the subscriber callback even though they are being published to the topic(confirmed with rostopic echo).
+Node 2-
+#!/usr/bin/env python
+
+import rospy
+import numpy as np
+from AR_week4_test.srv import compute_cubic_traj
+from AR_week4_test.msg import cubic_traj_param
+from AR_week4_test.msg import cubic_traj_coeffs
+
+param = None
+coeffs = None
+
+def Computecubics(param):
+                pub_coeffs = cubic_traj_coeffs()
+                pub_param = cubic_traj_param()
+
+                m_list1 =pub_coeffs
+                x = np.array(m_list1)
+
+                m_list2 = [[1,(pub_param.t0),(pub_param.t0**2),(pub_param.t0**3)],
+                        [0, 1, (2*pub_param.t0), (3*pub_param.t0**2)],
+                        [1, (pub_param.tf), (pub_param.tf**2), (pub_param.tf**3)],
+                        [0, 1, (2*pub_param.tf), (3*pub_param.tf**2)]]
+                a = np.array(m_list2)
+                print(a)
+                m_list3 = [[pub_param.p0],
+                        [pub_param.v0],
+                        [pub_param.pf],
+                        [pub_param.vf]]
+                b = np.array(m_list3)
+
+                inv_a = np.linalg.inv(a)
+
+                x = np.linalg.inv(A).dot(b)
+
+                coeffs.publish(x)
+
+                rate.sleep()
+    if __name__ == '__main__':
+        try:
+
+                rospy.init_node('cubic_traj_listener', anonymous=True)
+
+                rate = rospy.Rate(0.05) #20 seconds
+
+                rospy.wait_for_service('computing_cubics')
+
+                rospy.ServiceProxy('computing_cubics', compute_cubic_traj)
+
+                rospy.Subscriber("cubic_traj_params", cubic_traj_param, Computecubics, queue_size=10)
+
+                param = rospy.Publisher("cubic_traj_newparams", cubic_traj_param, queue_size=10)
+
+                rate.sleep()
+
+                rospy.spin()
+
+        except rospy.ROSInterruptException:
+                pass
+
+Node 1 -
+#!/usr/bin/env python
+
+import rospy
+import numpy as np
+import random as ra
+from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float32
+from AR_week4_test.msg import cubic_traj_param
+pos = None
+class pointsgen():
+        def __init__(self):
+                pub = rospy.Publisher('cubic_traj_params', cubic_traj_param, queue_size=10)
+                rospy.init_node('points_generator', anonymous=True)
+
+                global pos
+                while not rospy.is_shutdown():  
+                        pos = cubic_traj_param()
+                        pos.p0 = ra.uniform(10,-10)
+                        pos.pf = ra.uniform(10,-10)
+                        pos.v0 = ra.uniform(10,-10)
+                        pos.vf = ra.uniform(10,-10)
+                        pos.t0 = 0
+                        dt = ra.uniform(5,10)
+                        pos.tf =pos.t0+dt
+
+                        print(pos)
+                        pub.publish(pos)
+                        rospy.loginfo(pos)
+                        rate = rospy.Rate(0.05)  # Publish at 0.05hz or 20 times every second
+                        rate.sleep()
+
+if  __name__ == "__main__" :
+        try:
+                ne = pointsgen()
+        except rospy.ROSInterruptException: pass
+
+Currently the error I get is a linAlg error due to the matrix m_list2 being filled with zero values
+
+Originally posted by Draaka on ROS Answers with karma: 3 on 2021-02-23
+Post score: 0
+
+A:
+
+Your Computecubics method takes param as input, but you're using pub_param in the function code. Replace pub_param with param, and you're good to go !
+Also here are some advice:
+
+try to follow the pep8 and Ros code style for python. Also use CamelCase names forros msg and srv
+in node 1: create your publisher after the rospy.init
+in node2:
+
+you're creating a ServiceProxy but not saving it into a variable. You'll need it if you want to use it later
+you are saving your publisher in the param variable instead of the coeffs. try using more self-explanatory variable names
+
+Originally posted by ejalaa12 with karma: 81 on 2021-02-25
+This answer was ACCEPTED on the original site
+Post score: 0
+

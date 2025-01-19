@@ -1,0 +1,46 @@
+Q:
+
+Custom state sampler in MoveIt!
+
+Hello everyone,
+I'm using MoveIt! with ROS Kinetic on Ubuntu 16.04 Xenial to plan the motion of a climbing legged robot. I want to try using sample-based planners to produce a feasible complete joint path/trajectory. To do that I need to create a custom state sampler, because in my application I can't rely on rejection-sampling to find suitable new states.
+I have read the MoveIt! custom constraint sampler tutorial page, but I guess it is still incomplete, because I can't find the
+
+ROBOT_moveit_plugins/ROBOT_moveit_constraint_sampler_plugin
+
+template that they talk about.
+I have also taken a look at the MoveIt! planning with approximated constraint manifolds but, from what I understand, that is not what I want.
+I wish to program in C++. I am not unfamiliar with the OMPL library (so such a thing doesn't scare me), but I'm very far from being an expert. My guess is that I need to repeat the procedure provided in the last link, and somehow make it so MoveIt! knows to use this sampler instead of the default one.
+So my question is: how can I implement a custom sampler to use in the MoveIt! framework? I say "custom" in the sense that my sampler will use a specific method to produce valid new states without having to rely extensively on rejection-sampling.
+Any input is appreciated.
+Best,
+Maxens
+
+Originally posted by mxch_18 on ROS Answers with karma: 146 on 2018-07-04
+Post score: 3
+
+A:
+
+Hello again,
+I figured it out, so I thought I would come back to share my solution. I hope it can help other people.
+As of today (July 2018), the solution to implementing a new sampler (or a planner for that matter) in MoveIt works as follow:
+
+Build MoveIt from source. Just follow the instructions on MoveIt website. I tested with ROS Kinetic. (As long as you later use an OMPL version that is compatible with your ROS distro, everything should work fine)
+Delete the OMPL binaries that should have been installed by the procedure in the previous link. To do that I used sudo apt-get remove and sudo apt-get purge on the libompl-dev package.
+Download/Checkout OMPL source code. You can use their BitBucket repository, in the "Download" section, in the "Branches" tab, you can find archives containing source code compatible with your ROS distro. Put the source code in the same catkin workspace as your MoveIt source.
+Modify OMPL source code as you need. You can find tutorials about adding planners/samplers on their website.
+Modify MoveIt source code. If you added a planner, you need to do that. It shouldn't be needed if you just added a new sampling strategy. Modify planning_context_manager.h and planning_context_manager.cpp to add your planner just like the original ones. This comes from this webarchive.
+Change install target folder in the CMakeLists.txt that can be found in ../ompl/src/ompl/CMakeList.txt. On line 83, you should change ${CMAKE_INSTALL_LIBDIR} to the path where the OMPL binaries are usually installed (their names are libompl.so or libompl.so.version_number). For example, on my system, it was /opt/ros/kinetic/lib/x86_64_linux_gnu. This step can be avoided if you understand CMake and source building better than me. You can probably tell catkin to link to the right place (some build or include folder in the workspace) while building MoveIt, but I don't know how to do that.
+sudo catkin build. You need sudo because it will install the libs in /opt. I know this is unsafe, and I guess it shows that I don't really know what I'm doing. But it worked for me.
+Modify ompl_planning.yaml. This is quite trivial. Please follow the last step from the webarchive linked above.
+
+That's it. I'm pretty sure most steps are useless to someone who understands build systems but that's what solved my problem.
+
+Originally posted by mxch_18 with karma: 146 on 2018-07-19
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by mxch_18 on 2018-07-19:
+I think the whole "put OMPL source in the same workspace" is actually not needed. You could just put it somewhere else and set some CMake variable to point to the right place at compile time, but I don't know how to do that.
+

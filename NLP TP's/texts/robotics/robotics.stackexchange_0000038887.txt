@@ -1,0 +1,60 @@
+Q:
+
+TURTLEBOT Autonomous Navigation without Rviz
+
+I would like to navigate the robot autonomously, without the use of Rviz. This is what I would want to do:
+
+I want to start the robot only from a desired location and orientation at all times. Hence I want to use rviz the first time, put the robot in this pose and then give it the estimate and allow it to know it's position. This way I can also know the co-ordinates of this position on the map. I can know what this pose means on the map.
+Then I want to change the way the turtlebot starts the amcl_demo. I want it to take the pose I give it - the one obtained from step 1 - and it should take it as a serious estimate. But without RVIZ.
+Then I would want to specify the co-ordinates of a point on the map, which is my 2D Nav Goal. This one too I would like to do without RVIZ.
+
+Originally posted by McMurdo on ROS Answers with karma: 1247 on 2012-03-22
+Post score: 3
+
+A:
+
+I was just looking at this the other day.  RViz just publishes on certain topics (or calls actionlib actions).  Here's some code for setting the initial position of the robot. You can "rostopic echo /initialpose" while setting the initialpose in RViz to see what it looks like.
+As others have mentioned, you can also specify an initial pose using parameters in the launch file.  Just copy amcl_demo.launch to your development directory and add in the parameters.
+To give the robot a goal, just publish a PoseStamped to /move_base_simple/goal or use the actionlib interface to move_base.
+python for setting initial pose:
+#!/usr/bin/env python
+
+import roslib; roslib.load_manifest('proto')
+import rospy
+from geometry_msgs.msg import *
+
+def gen_pose():
+    pub = rospy.Publisher('initialpose', PoseWithCovarianceStamped)
+    rospy.init_node('initial_pose'); #, log_level=roslib.msg.Log.INFO)
+    rospy.loginfo("Setting Pose")
+
+    p   = PoseWithCovarianceStamped();
+    msg = PoseWithCovariance();
+    msg.pose = Pose(Point(-0.767, -0.953, 0.000), Quaternion(0.000, 0.000, -0.0149, 0.9999));
+    msg.covariance = [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942];
+    p.pose = msg;
+    pub.publish(p);
+
+if __name__ == '__main__':
+    try:
+        gen_pose()
+        rospy.loginfo("done")
+    except Exception, e:
+        print "error: ", e
+
+Here's some python for setting a movement goal:
+... snip ...
+        location =  Pose(Point(15.322, 11.611, 0.000), Quaternion(0.000, 0.000, 0.629, 0.777))
+        self.goal = MoveBaseGoal()
+        self.goal.target_pose.pose = location
+        self.goal.target_pose.header.frame_id = 'map'
+        self.goal.target_pose.header.stamp = rospy.Time.now()
+                    
+        self.move_base.send_goal(self.goal)
+        
+        time = self.move_base.wait_for_result(rospy.Duration(300)) 
+
+Originally posted by brianpen with karma: 183 on 2012-03-22
+This answer was ACCEPTED on the original site
+Post score: 4
+

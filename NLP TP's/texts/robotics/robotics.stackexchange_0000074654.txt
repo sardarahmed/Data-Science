@@ -1,0 +1,172 @@
+Q:
+
+error while building 2d map
+
+hi
+i am trying to build 2d map i go just part of the map and git in the axis error that say in rviz:
+Transform
+For frame [base_link]: No transform to fixed frame [map]. TF error: [Could not find a connection between 'map' and 'base_link' because they are not part of the same tree.Tf has two or more unconnected trees.]
+ithe odometery data  are publishing and the kinect work fine i don't know where the problem is
+i will include all the information that can help:
+i am using indigo
+first i use this launch file
+<param name="port" value="/dev/ttyACM0" />
+
+<param name="baud" value="115200" />
+
+<param name="publish_tf" value="true" />
+
+<param name="publish_rate" value="10.0" />
+
+<param name="linear_scale_positive" value="0.99" />
+
+<param name="linear_scale_negative" value="0.99" />
+
+<param name="angular_scale_positive" value="1.0" />
+
+<param name="angular_scale_negative" value="1.0" />
+
+<param name="angular_scale_accel" value="0.0" />
+
+<param name="alpha" value="0.5" />
+
+<param name="use_imu" value="true" />
+
+and
+<node name="teleop" pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" output="screen" launch-prefix="xterm -e"/>
+
+<node pkg="rviz" name="rviz" type="rviz" args="-d $(find beginner_tutorials)/launch/rviz/slam.rviz"/>
+
+and it must run good
+base controller is running without any problem and  publish the odom data
+the tf tree and rviz
+Screenshot from 2016-06-18 19:51:20.png
+Screenshot from 2016-06-18 19:52:30.png
+i hope this can help.
+note: you can find base_controller in this package https://github.com/sungjik/my_personal_robotic_companion
+I use it as a reference with some difference but the tf publish is the same . I am launch robot config and slam.launch from this package I hope this information will help.
+note2: after adding this line befor launch
+rosrun tf static_transform_publisher 0 0 0 0 0 0 map base_footprint 100
+no error occure in rviz but still the axises don't move when the robot move i still don't know why this is the tree after adding this line
+
+it's make the map in the same place don't move  and the in the odom data
+seq: 1839
+stamp:
+secs: 1466341747
+nsecs: 223550043
+frame_id: /odom
+child_frame_id: /base_link
+pose:
+pose:
+position:
+x: 0.00107754043214
+y: -0.000931717192192
+z: 0.0
+orientation:
+x: 0.0
+y: 0.0
+z: -0.260476129843
+w: 0.96548028762
+when the position change no change in the position of the robot while building the map.
+note3: i use this befor the launch and this make appropriate tf tree
+rosrun tf static_transform_publisher 0 0 0 0 0 0 odom base_footprint 100
+and this is the tree
+
+and here no problem occure in rviz the tree is good but still the axis not move correctley when i move it take a while to move and not in the same direction and when the robot is in the same place for a while it's move the axis move while the robot not moving
+i know this is a different story but i hope u can help i got this msg some time
+when i build the map
+update frame 4753
+update ld=0.3162 ad=2.30165
+Laser Pose= -0.17 0.02 -0.00663924
+m_count 26
+Scan Matching Failed, using odometry. Likelihood=6.9527e-310
+lp:0.130364 0.118812 -2.30829
+op:-0.17 0.02 -0.00663924
+Scan Matching Failed, using odometry. Likelihood=-4266.67
+lp:0.130364 0.118812 -2.30829
+op:-0.17 0.02 -0.00663924
+Scan Matching Failed, using odometry. Likelihood=-4180.05
+lp:0.130364 0.118812 -2.30829
+op:-0.17 0.02 -0.00663924
+Scan Matching Failed, using odometry. Likelihood=-4266.67
+lp:0.130364 0.118812 -2.30829
+note 4:
+this is the odometery
+geometry_msgs::TransformStamped t;
+  t.header.frame_id = odom;
+ 
+
+t.child_frame_id = base_link;
+t.transform.translation.x = x_pos;
+  t.transform.translation.y = y_pos;
+
+  t.transform.translation.z = 0.0;
+
+  t.transform.rotation = odom_quat;
+
+  t.header.stamp = current_time;
+
+  broadcaster.sendTransform(t);
+
+i hope you can help me. and thanks
+
+Originally posted by ghaith on ROS Answers with karma: 89 on 2016-06-18
+Post score: 0
+
+Original comments
+Comment by Shantnu on 2016-06-18:
+Are you publishing map->odom transformation anywhere or is it there by default?
+Comment by ghaith on 2016-06-18:
+i use the control base from this package https://github.com/sungjik/my_personal_robotic_companion
+with some difference but still the method of publish tf is th same I hope this will help.
+Comment by Shantnu on 2016-06-18:
+So basically some node name base_controller which belongs to beginner_tutorials pkg is publishing the tf for you? Is that correct?
+Comment by Shantnu on 2016-06-18:
+Secondly, the problem is the missing connection between base_link and map frame. To set that up, try doing this in your terminal before launching your launch file:
+rosrun tf static_transform_publisher 0 0 0 0 0 0 map base_footprint 100
+Comment by Shantnu on 2016-06-18:
+it feels like the sequence of tf is wrong. It should be like map->odom-> base_footprint-> base_link. For you, it odom comes after base_footprint, which feels weird.
+Comment by ghaith on 2016-06-19:
+this work but still the axises don't move when the robot move but in rviz no error occure  every thing work fine but the axises don't move i don't know why
+Comment by ghaith on 2016-06-19:
+how i can solve this how i can make footprint child of odom and father of base linke
+i think this will solve move problem
+
+A:
+
+OK, so you have two problems here that I can see off the bat, and they are both related.
+First, get rid of the static transform from map->base_footprint. Gmapping knows to update the map when that transform changes (either in translation or rotation) by a user specified amount. By using a static transform, that transform will never change and therefore the map will never update.
+Second, looking at Screenshot from 2016-06-18 19:51:20.png, you can see that there is no transform between odom->base_footprint. You may have something publishing an nav_msgs/Odometry message, but there is nothing publishing the transform to the tf topic. I don't know what your odometry node looks like, but it seems to be missing the transform publisher. Take a look at lines 43-55 in the sample code of the odom tutorial.
+[EDIT]
+Change the t.child_frame_id = base_link; to t.child_frame_id = base_footprint;. Frames can have multiple children but only a single parent. The way it is set up now, base_link is the child of both base_footprint and odom. As this isn't allowed it will latch onto the first parent to be published, in this case base_footprint.
+
+Originally posted by Icehawk101 with karma: 955 on 2016-06-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ghaith on 2016-06-21:
+thanks for replay i update post and the odemtery is published in the same way
+Comment by ghaith on 2016-06-21:
+this solution work great no problem but just small question now when the robot move just turn the axies is it in the odometery problem . the robot don't move forward but building the map without any problem but it turn around the same point
+Comment by Icehawk101 on 2016-06-21:
+The map only rotates around the z axis, there is no translation? Can you give me a link to the node you are using?
+Comment by ghaith on 2016-06-21:
+i am using the appropriately the same method in this package
+https://github.com/sungjik/my_personal_robotic_companion
+in the base controller node i don't know what the problem i am publish the imu from arduino this is all the defferince and i run robot confg launch and slam all the odom change
+Comment by ghaith on 2016-06-21:
+when i move forward x and y change and it's positve if i move back ward x and y will be negative and if imove left x will be + and y - and so on so i don't know what is the reason every thing work fine and the robot move in the real world but not in the map in the map just rotate in the z axis
+Comment by Icehawk101 on 2016-06-21:
+That sounds like the kinematics are wrong. What kind of robot is it? Omnidirectional, skid-steer, or ackerman?
+Comment by ghaith on 2016-06-21:
+it's diff wheels robot
+Comment by ghaith on 2016-06-21:
+if there any other way to set the kinematics plz give it to me any tutorial or example or even an issue it will be great and thanks for your help .
+Comment by Icehawk101 on 2016-06-21:
+You'd have to look up the kinematic equations for a differential drive online and check the equations in the controller. Remember that ROS uses right hand rule: x+ forward, y+ left, z+ up
+Comment by ghaith on 2016-06-21:
+thanks for your help
+Comment by Icehawk101 on 2016-06-21:
+No problem
+

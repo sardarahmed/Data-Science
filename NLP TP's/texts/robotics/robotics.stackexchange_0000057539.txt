@@ -1,0 +1,40 @@
+Q:
+
+Problem with Costmap2DROS in Hydro
+
+Hi,
+I recently moved my code from Fuerte to Hydro and now have some issues with the costmap_2d, which I use as a local map in my obstacle avoidance module. Occasionally cells that should have higher costs due to the inflation step seem to have zero costs. When moving to Hydro I had to remove the call to Costmap2DROS::getCostmapCopy as it is not present anymore. Is it safe to just use the Costmap2D-Pointer returned by the new method Costmap2DROS::getCostmap()? Or do I have to Pause the Costmap2DROS before using the underlying Costmap2D?
+For some reason the issue disappears when I set the Output-Level of the Costmap2D to DEBUG during runtime. So it really might be some timing issue between updating and querying the Costmap2D.
+Any help is appreciated!
+
+Originally posted by Sebastian Kasperski on ROS Answers with karma: 1658 on 2014-02-26
+Post score: 1
+
+A:
+
+I found a solution to this. It seems to be necessary to lock the costmap before accessing its data by something like:
+boost::unique_lock< boost::shared_mutex > lock(*(myCostmap2DROS->getCostmap()->getLock()));
+
+Edit:
+Ok, to actually use the costmap, for example in a function. you would do it like this:
+void myFunc()
+{
+    Costmap2D* pCostmap = myCostmap2DROS->getCostmap();
+    boost::unique_lock< boost::shared_mutex > lock(*(pCostmap->getLock()));
+
+    // Now you can use the costmap.
+    [...]
+}
+
+Originally posted by Sebastian Kasperski with karma: 1658 on 2014-03-04
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by BlitherPants on 2014-03-05:
+I think I might be having a problem similar to yours. Do you think you could elaborate on the solution a little, please? For instance, how are you storing the pointer returned by getCostmap(), and do you have to do anything to unlock the 2DROS map afterwards? Still a newbie. Thanks!
+Comment by Sebastian Kasperski on 2014-03-05:
+You don't need to permanently store the Costmap2D-Pointer, as you can just get from your Costmap2DROS whenever you need it. The costmap will be unlocked again, once the created boost::unique_lock goes out of scope, that is in the example above when myFunc() returns.
+Comment by BlitherPants on 2014-03-13:
+That is very helpful, thanks!
+

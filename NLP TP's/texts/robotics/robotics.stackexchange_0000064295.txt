@@ -1,0 +1,78 @@
+Q:
+
+Install package from source
+
+I'm trying to install a package my supervisor wrote, and he's given me read access to the repo. I can't seem to install it using this method http://answers.ros.org/answers/115386/revisions/, but I was hoping it could be done in a more straightforward manner if I have the actual source locally.
+How can I install the package from source?
+Ubuntu 12.04 LTS / Hydro
+EDIT
+This is the error I get (when I run wstool update)
+~/test/src$ wstool update
+[src/pulseon_p400] Fetching https://kal04p@stash.csiro.au/scm/~her16k/pulseon_p400.git (version catkin) to /home/chris/test/src/src/pulseon_p400
+Cloning into '/home/chris/test/src/src/pulseon_p400'...
+Password for 'https://kal04p@stash.csiro.au': 
+remote: Counting objects: 162, done.
+remote: Compressing objects: 100% (157/157), done.
+remote: Total 162 (delta 87), reused 0 (delta 0)
+Receiving objects: 100% (162/162), 48.94 KiB, done.
+Resolving deltas: 100% (87/87), done.
+WARNING [vcstools] Command failed: 'git checkout catkin'
+ run at: '/home/chris/test/src/src/pulseon_p400'
+ errcode: 1:
+error: pathspec 'catkin' did not match any file(s) known to git.
+[/vcstools]
+Exception caught during install: Error processing 'src/pulseon_p400' : [src/pulseon_p400] Checkout of https://kal04p@stash.csiro.au/scm/~her16k/pulseon_p400.git version catkin into /home/chris/test/src/src/pulseon_p400 failed.
+
+ERROR in config: Error processing 'src/pulseon_p400' : [src/pulseon_p400] Checkout of https://kal04p@stash.csiro.au/scm/~her16k/pulseon_p400.git version catkin into /home/chris/test/src/src/pulseon_p400 failed.
+
+Originally posted by chris_ on ROS Answers with karma: 83 on 2014-11-27
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2014-11-27:
+It would probably help if you could detail what failed using the method outlined in the post you linked. Other than that, you should just be able to git clone .. (or whatever vcs you use) the pkg into your src/ space, cd .. and finally catkin_make. Just make sure you have all dependencies.
+Comment by chris_ on 2014-11-27:
+I'll add the error in question
+Comment by gvdhoorn on 2014-11-28:
+Why did you delete your question?
+Comment by chris_ on 2014-11-28:
+i figured it out and it was just a lack of clarity/explanation in that explanation link. it didn't really convey that the -version tag in the rosinstall was the branch of the repo you wanted.
+Comment by gvdhoorn on 2014-11-28:
+Then it would have been nice if you had just answered your own question, instead of deleting it. That way, other users running into the same issue could benefit from your insight.
+Comment by chris_ on 2014-11-28:
+my bad, undeleted.
+
+A:
+
+I assume you have something like the following in your src/.rosinstall file (the .rosinstall format is documented at docs.ros.org/api/rosinstall):
+- git: {local-name: src/pulseon_p400, uri: 'https://kal04p@stash.csiro.au/scm/~her16k/pulseon_p400.git', version: 'catkin'}
+
+The important bit of the error message you are getting is:
+WARNING [vcstools] Command failed: 'git checkout catkin'
+ run at: '/home/chris/test/src/src/pulseon_p400'
+ errcode: 1:
+error: pathspec 'catkin' did not match any file(s) known to git.
+
+As the last step after cloning the source, wstool tries to use git to change the local clone of pulseon_p400 to the catkin branch. Apparently, that fails. Are you (and / or your supervisor) sure there is a branch called catkin in the pulseon_p400 repository? If there isn't, that is most likely the cause of the failure you're seeing.
+Update the version key in the .rosinstall file, delete the current checkout and try again.
+
+That being said: you don't need to use wstool to get a package from source into your catkin workspace. In your case, a simple:
+cd /path/to/catkin_ws/src
+git clone https://kal04p@stash.csiro.au/scm/~her16k/pulseon_p400.git
+
+# optional (if the 'catkin' branch does indeed exist):
+cd pulseon_400
+git checkout -b catkin origin/catkin
+
+should also work.
+I typically only use wstool if I have a large workspace to manage, not for single packages.
+
+A few additional notes:
+
+it is not necessary to include the username for the repository in the uri field. If not present, git should ask you to provide it when it is invoked (similar to how you need to enter your password). It is supported though, so it will work.
+the local-name key is expected to provide a relative or absolute path to where wstool should install the files it downloads (or: where it instructs the various vcs tools to clone the repository to). If your .rosinstall file is in /path/to/catkin_ws/src, then with the current value of local-name (being: src/pulseon_p400), your files end up in /path/to/catkin_ws/src/src/pulseon_p400. This will work, but (imho) is not very nice. Remove the src/ prefix from the line in your .rosinstall file.
+
+Originally posted by gvdhoorn with karma: 86574 on 2014-11-28
+This answer was ACCEPTED on the original site
+Post score: 2
+

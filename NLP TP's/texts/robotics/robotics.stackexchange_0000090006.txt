@@ -1,0 +1,107 @@
+Q:
+
+Using two sensors simultaneously (Ibeo Scala)
+
+Hi there,
+I am trying to use two Ibeo Scala sensors at the same time.
+With the help of the following packages I am able to run one sensor and visualize it in rviz.
+https://github.com/astuff/ibeo_core
+https://github.com/astuff/ibeo_scala
+Now I would like to setup a second Scala sensor and visualize them both in rviz.
+I wrote a second launch file, where I changed the IP address and the frame_id.
+The problem:
+When I start the second launchfile in a new terminal, the process in the first terminal (first sensor) gets aborted.
+Log:
+^[[33m[ WARN] [1546933754.809607419]: Shutdown request received.^[[0m
+^[[33m[ WARN] [1546933754.809667337]: Reason given for shutdown: [new node regiregistered with same name]^[[0m
+
+How can I change the second nodes name to work along the first one ?
+I tried while starting the node to change the name parameter:
+roslaunch .... __name:=testnode
+
+and I tried to add a 'remap' in the Launch file
+<remap from="ibeo_scala" to="testnode"/>
+
+None of the above works, I always end up with the same error
+
+Originally posted by sporc on ROS Answers with karma: 3 on 2019-01-08
+Post score: 0
+
+A:
+
+You need to have a unique name in the node part of all of your nodes, or put your nodes in a namespace.
+You can see what your nodes are named with the command rosnode list
+So either change the name of your nodes to something like this(add arguments for the second sensor if you want or hard code the correct values):
+just to be clear, edit the name:  'node pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala"'
+<?xml version="1.0"?>
+<launch>
+  <arg name="frame_id" default="ibeo_scala0" />
+  <arg name="ip_address" default="10.152.42.111" />
+  <arg name="port" default="12004" />
+  <arg name="is_fusion" default="false" />
+  <arg name="publish_raw_data" default="false" />
+
+  <node pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala0">
+    <param name="sensor_frame_id" value="$(arg frame_id)" />
+    <param name="ip_address" value="$(arg ip_address)" />
+    <param name="port" value="$(arg port)" />
+    <param name="is_fusion" value="$(arg is_fusion)" />
+    <param name="publish_raw_data" value="$(arg publish_raw_data)" />
+  </node>
+
+  <node pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala1">
+    <param name="sensor_frame_id" value="ibeo_scala1" />
+    <param name="ip_address" value="10.152.42.112" />
+    <param name="port" value="12005" />
+    <param name="is_fusion" value="$(arg is_fusion)" />
+    <param name="publish_raw_data" value="$(arg publish_raw_data)" />
+  </node>
+</launch>
+
+rosnode list would output something like
+/rosout
+/ibeo_scala0
+/ibeo_scala1
+
+You could also add a namespace to the node, so the relevant lines would be something like
+....
+<node ns="sensor0" pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala">
+....
+</node>
+<node ns="sensor1" pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala">
+....
+</node>
+
+rosnode list output in this case would be something like
+/rosout
+/sensor0/ibeo_scala
+/sensor1/ibeo_scala
+
+After getting the nodes running in either way you will also need to configure rviz to use the correct names
+
+Regarding both nodes publishing to the same topic:
+If you ran the nodes with different names instead of namespaces then this is expected and you would need to add remaps to the node. Something like:
+....
+<node ns="sensor0" pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala">
+<remap from="as_tx/point_cloud" to="as_tx0/point_cloud"/>
+....
+</node>
+<node ns="sensor1" pkg="ibeo_scala" type="ibeo_scala" name="ibeo_scala">
+<remap from="as_tx/point_cloud" to="as_tx1/point_cloud"/>
+....
+</node>
+
+if you run the nodes in different namespaces and the node is coded sensibly you shouldn't need to remap them, the topics should appear in the namespaces like
+/sensor0/as_tx/point_cloud
+/sensor1/as_tx/point_cloud
+
+If they don't appear in the namespace you would need to change the code of the node or add remaps.
+
+Originally posted by Reamees with karma: 591 on 2019-01-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by sporc on 2019-01-08:
+Thank you. It works. I can run now two sensors simultaneously, but they are both on the same topic: "as_tx/point_cloud". When I select this topic in rviz I can see both data. Is it possible to publish each sensor to a unique topic?
+

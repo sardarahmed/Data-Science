@@ -1,0 +1,33 @@
+Q:
+
+ROS2 CPP file only second logger
+
+For a specific ROS2 (humble) node that I'm working on I want to add a second logger that just logs to a file (preferably its own). Setting up a second logger is straightforward, as one can just call rclcpp::get_logger('<logger-name>'). I could, however, not find any way to set the logger up so that it just logs to its own file. I do not want the logger to log to the terminal at all.
+Thanks!
+
+A:
+
+Short answer:
+Re. separate log files:
+It is not currently possible to log to two separate files from one node.
+To realize this, you'd have to implement an alternative rcl_logging_interface.
+(Multiple nodes in different processes do log to different files but that is not your use case.)
+Re. disabling logging to stdout:
+It is possible to disable output to stdout with the ros-args flag --disable-stdout-logs. E.g. for the demo_nodes_cpp example:
+ros2 run demo_nodes_cpp list_parameters --ros-args --disable-stdout-logs
+
+In case of the DEBUG loglevel, some messages for rcl and rclcpp are still shown, e.g.:
+ros2 run  demo_nodes_cpp list_parameters --ros-args --log-level DEBUG --disable-stdout-logs
+
+If you don't need DEBUG loglevel for rcl and rclcpp (e.g. you only need DEBUG for your nodes), then the stray stdout logmessages can avoided by specifying non-DEBUG loglevels for rcl and rclcpp:
+ros2 run  demo_nodes_cpp list_parameters --ros-args --log-level DEBUG --disable-stdout-logs --log-level rcl:=INFO --log-level rclcpp:=INFO
+
+Longer answer:
+
+Setting up a second logger is straightforward, as one can just call rclcpp::get_logger('<logger-name>').
+
+This is indeed what you'd expect based on the class name 'Logger', but it is not correct. An rclcpp::Logger does not perform any logging, it is just a small class mainly holding a name and providing some methods such as set_level(Level level), but nothing more. The logging is done solely through the log macros, e.g. RCLCPP_INFO(), which resolve to rcutils function calls.
+A while ago, I dug through the whole logging code and wrote down an almost complete walktrough in this document.
+Mind you, this is more or less a literal chronological writedown of digging through the code (i.e. not ideally structured as documentation) and there have been some changes to the code since I wrote that document, so it is not fully up to date anymore. Nevertheless: afaik it still is the best documentation on rclcpp logging currently availabe.
+I won't go through the details here, but this section describes the three current output handlers: to console / publish on topic rosout / to file. The 'to file' output handler is described in this subsection. To allow for logging to multiple files you'd need to adapt the rcl_logging_spdlog library or write a similar library and load that as the log handler.
+

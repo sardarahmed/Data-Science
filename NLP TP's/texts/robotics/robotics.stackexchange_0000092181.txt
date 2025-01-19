@@ -1,0 +1,79 @@
+Q:
+
+ros::Time::isValid doesn't do what we think it does?
+
+From the documentation (http://docs.ros.org/melodic/api/rostime/html/classros_1_1Time.html#a84cd12a499c70fb3eefce89cda2b6113), ros::Time::isValid returns "whether or not the current time is valid.  Time is valid if it is non-zero".
+However, a trivial example is enough to show that the implementation does not do this:
+#include <ros/ros.h>
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "rostime_example");
+    ros::NodeHandle n;
+
+    // default construct a time
+    ros::Time t;
+
+    ROS_WARN_STREAM("time value: " <<t.toSec());
+    ROS_WARN_STREAM("time valid: " <<t.isValid());
+
+    return 0;
+}
+
+The output is:
+ivaughn@ros-pc:~/test_ws$ rosrun rostime_example node 
+[ WARN] [1561399516.961348750]: time value: 0
+[ WARN] [1561399516.961420491]: time valid: 1
+
+Any idea what's going on here?  Is this just a bug in ROS 1, or am I misunderstanding how this function is expected to behave.
+We're kind of curious, behavior that does something different when a timestamp is invalid is often safety-critical.  Thanks!
+
+Originally posted by ivaughn_whoi on ROS Answers with karma: 13 on 2019-06-24
+Post score: 1
+
+A:
+
+I believe this is due to a misunderstanding of the comment on isValid().
+The documentation indeed states (here):
+
+Returns whether or not the current time is valid.  Time is valid if it is non-zero.
+
+But "the [..] time" it refers to is not the Time instance, but "the time", as in: the global ROS time.
+A ROS node can use different methods to retrieve the "current time": it can use walltime, a simulation time or something else. The "valid" here essentially returns true whenever one of those sources have been selected and has been initialised properly.
+0 is chosen as a sentinel value to detect when that is not the case (as it's assumed that 0 is just not a valid value for any source of time (whether that is correct is something else)).
+It's slightly confusing that a ros::Time instance can also have a 0 value and that ros::Time::isValid() is a static method of the ros::Time class.
+In the code that you show:
+
+int main(int argc, char** argv) {
+
+    ros::init(argc, argv, "rostime_example");
+    [..]
+}
+
+isValid() will return true as soon as you call ros::init(..) (as one of its duties is to initialise the time subsystem).
+
+We can also take a look at the sources (from here):
+bool Time::isValid()
+{
+  return (!g_use_sim_time) || !g_sim_time.isZero();
+}
+
+This essentially tells us that "time" is considered "valid" if either we're not using simulation time, or, if simulation time is being used, it's != 0.
+The g_ prefixes tell us that this static method is checking globals, not ros::Time member variables.
+
+Edit: perhaps a nice contribution would be to improve the documentation of this method and to remove the ambiguity.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-06-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-06-24:
+And this is not directed at you, but:
+
+Is this just a bug in ROS 1, [..]
+
+I like how posters here often insert these sort of statements almost casually in their questions.
+Comment by ivaughn_whoi on 2019-06-24:
+Yeah, I'd like to make sure I correctly understand what's going on before claiming its a bug.  WIth ROS its more likely to be a documentation issue than anything else.
+Pull request: https://github.com/ros/roscpp_core/pull/109
+

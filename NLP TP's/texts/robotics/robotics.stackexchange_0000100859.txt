@@ -1,0 +1,121 @@
+Q:
+
+Configuring ros2_control/urdf with several robots
+
+Hello guys, im hoping, as usual, to get some help.
+I'm trying to configure an urdf file with ros2_control.
+What i want to achieve:
+Start the same hardware interface, but for a subset of the available axes. In this case a hardware interface per robot, which should be managed by one controller, joint trajectory controller for example. This is desired, since i would need to write only one hardware interface if the robots are identical and would only need to pass parameters to access them via ip, or com, or something else.
+Also in case the interfaces would be different, this approach should yield similar results, since only the plugin should be changed.
+Following works:
+3 individial robots, which are defined as a system and share one controller and one hardware interface. This one is already working as intended.
+As a minimal example (simplified):
+<robot name="my_robot">
+   <link name="link1a"/>
+   <link name="link1b"/>
+   <link name="link2a"/>
+   <link name="link2b"/>
+   <link name="link3a"/>
+   <link name="link3b"/>
+   <obviously all the other joints/>
+   <ros2_control name="some_name" type="system">
+   <hardware name="system_of_robots">
+     <plugin>hw_interface/HwInterface</plugin>
+   </hardware>
+   <joint_1a/>
+   <joint_1b/>
+   <joint_2a/>
+   <all the other joints/>
+   </ros2_control>
+</robot>
+
+What doesnt work:
+3 individual robots, which are defined as a system and should share one controller, but three individual hardware interfaces.
+Also a minimal non working example (simplified):
+<robot name="my_robot">
+   <link name="link1a"/>
+   <link name="link1b"/>
+   <link name="link2a"/>
+   <link name="link2b"/>
+   <link name="link3a"/>
+   <link name="link3b"/>
+   <obviously all the other joints/>
+
+   <ros2_control name="some_name_of_robot_1" type="system">
+   <hardware name>
+     <plugin>hw_interface/HwInterface</plugin>
+   </hardware>
+   <joint_1a/>
+   <joint_1b/>
+   </ros2_control>
+
+   <ros2_control name="some_name_of_robot_2" type="system">
+   <hardware>
+     <plugin>hw_interface/HwInterface</plugin>
+   </hardware>      
+   <joint_2a/>
+   < ... >
+   <ros2_control/>
+
+   <ros2_control name="some_name_of_robot_3" type="system">
+   <hardware>
+     <plugin>hw_interface/HwInterface</plugin>
+   </hardware>
+   <joint_3a/>
+   < ... >
+   <all the other joints/>
+   </ros2_control>
+</robot>
+
+Also for good measure the ros2 controller part from my launch file:
+# ros2_control
+ros2_controllers_path = os.path.join(
+    get_package_share_directory("my_bringup_dir"),
+    "moveit_config",
+    "ros_controllers.yaml",
+)
+
+ros2_control_node = Node(
+    package="controller_manager",
+    executable="ros2_control_node",
+    parameters=[robot_description, ros2_controllers_path],
+    output={
+        "stdout": "screen",
+        "stderr": "screen",
+    },
+)
+
+joint_state_broadcaster_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+)
+
+robot_controller_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=["some_custom_trajectory_controller", "--controller-manager", "/controller_manager"],
+)
+
+Originally posted by ravnicas on ROS Answers with karma: 11 on 2021-12-20
+Post score: 1
+
+A:
+
+This is desired, since i would need to write only one hardware interface if the robots are identical and would only need to pass parameters to access them via ip, or com, or something else.
+
+Great, this is enabled by design :D
+
+Also in case the interfaces would be different, this approach should yield similar results, since only the plugin should be changed.
+
+You don't have to even change your plugin if you parameterize it properly. You should simply use another instance with different parameters.
+
+What doesnt work
+
+I am not certain why this should not work. It looks fine to me. What exactly is not working? Hardware access or are hardware interfaces not instances properly. Or interfaces are not exported correctly? Which version are you using?
+After you start your setup. Try some of the ros2 control ... commands. For example, list_hardware_interface gives you a list of all exported interfaces. Then you can see if something is missing.
+
+Originally posted by destogl with karma: 877 on 2022-02-25
+This answer was ACCEPTED on the original site
+Post score: 2
+

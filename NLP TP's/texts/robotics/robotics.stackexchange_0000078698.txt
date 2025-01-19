@@ -1,0 +1,86 @@
+Q:
+
+undefined reference to ros::init with beginner_tutorials
+
+I'm trying to compile move_base (so, the navigation stack, really) from scratch, so I can modify it. However, I get
+undefined reference to `ros::init(int&, char**, std::string const&, unsigned int)'
+
+and more. To investigate this, I tried to compile the vanilla beginner tutorial with talker.cpp and listener.cpp. See code in this gist, in particular catkin_make.out.
+I'm using GCC 4.9:
+tsbertalan@Sigurd:~/catkin_ws$ g++ -v
+Using built-in specs.
+COLLECT_GCC=g++
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/4.9/lto-wrapper
+Target: x86_64-linux-gnu
+Configured with: [snip]
+Thread model: posix
+gcc version 4.9.4 (Ubuntu 4.9.4-2ubuntu1~16.04) 
+tsbertalan@Sigurd:~/catkin_ws$ c++ -v
+Using built-in specs.
+COLLECT_GCC=c++
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/4.9/lto-wrapper
+Target: x86_64-linux-gnu
+Configured with: [snip]
+Thread model: posix
+gcc version 4.9.4 (Ubuntu 4.9.4-2ubuntu1~16.04) 
+tsbertalan@Sigurd:~/catkin_ws$ gcc -v
+Using built-in specs.
+COLLECT_GCC=gcc
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/4.9/lto-wrapper
+Target: x86_64-linux-gnu
+Configured with: [snip]
+Thread model: posix
+gcc version 4.9.4 (Ubuntu 4.9.4-2ubuntu1~16.04) 
+tsbertalan@Sigurd:~/catkin_ws$ 
+
+I've tried the catkin_make clean; catkin_make combo with both the 4.9.4 and 5.4.1 alternatives, with the same results.
+and I don't think any of my environment variables specially enable C++11 features.
+Anyone have pointers on what might be going wrong, or how to debug this? I have ROS Kinetic, on Ubuntu 16.04.
+As a new clue, catkin_make VERBOSE=1 2>&1 | grep so gives, among other things,
+/usr/bin/c++   -std=c++0x    CMakeFiles/talker.dir/src/talker.cpp.o  -o /home/tsbertalan/catkin_ws/devel/lib/beginner_tutorials/talker -rdynamic /opt/ros/kinetic/lib/libroscpp.so -lboost_signals -lboost_filesystem /opt/ros/kinetic/lib/librosconsole.so /opt/ros/kinetic/lib/librosconsole_log4cxx.so /opt/ros/kinetic/lib/librosconsole_backend_interface.so -llog4cxx -lboost_regex /opt/ros/kinetic/lib/libxmlrpcpp.so /opt/ros/kinetic/lib/libroscpp_serialization.so /opt/ros/kinetic/lib/librostime.so /opt/ros/kinetic/lib/libcpp_common.so -lboost_system -lboost_thread -lboost_chrono -lboost_date_time -lboost_atomic -lpthread -lconsole_bridge -Wl,-rpath,/opt/ros/kinetic/lib 
+
+When I then look for symbols in libroscpp.so using objdump -TC /opt/ros/kinetic/lib/libroscpp.so | grep ros::init, I find
+0000000000124a40 g    DF .text  00000000000007da  Base        ros::init(int&, char**, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned int)
+
+to be the closest to what's used in talker.cpp
+talker.cpp:(.text+0x70): undefined reference to `ros::init(int&, char**, std::string const&, unsigned int)'
+
+Is the fix then to self-compile roscpp without c++11? This seems like it shouldn't be needed. ros-kinetic-full was initially installed via apt-get as per the online instructions.
+
+Originally posted by tsbertalan on ROS Answers with karma: 63 on 2017-02-01
+Post score: 0
+
+Original comments
+Comment by rohbotics on 2017-02-04:
+Do you have a custom GCC install? Ubuntu 16.04 should have GCC 5.4.0 by default
+Comment by tsbertalan on 2017-02-04:
+@rohbotics 4.8, 4.9, and 5 are all installed by apt. See gccVersionCheck.out in the gist. This machine was updated from I think an original 14.04 install, so maybe the old GCC version was kept for my user.
+Comment by tsbertalan on 2017-02-04:
+@rohbotics Moreover, using sudo update-alternatives --config gcc to set the version to 5.4.1 doesn't fix the error.
+Comment by ahendrix on 2017-02-11:
+I think gcc on 16.04 defaults to C++11 , and it's used to build all of the ROS packages, so the solution is probably to remove any c++0x flags if you're specifying them as part of your build.
+Comment by tsbertalan on 2017-02-11:
+I have no such flags. Just now, I created a new ~/newcatkin_ws and put this plain-vanilla tutorial in it, but it still fails in the same way. Pretty crazy.
+Comment by gvdhoorn on 2017-02-12:
+@tsbertalan: can you try forcing C++11 support for beginners_tutorials? Just add add_definitions(-std=c++11) to its CMakeLists.txt. With these flags the 'newest one wins', so that should allow us to see whether the -std=c++0x is the problem here.
+Comment by tsbertalan on 2017-02-12:
+@gvdhoorn I added that at the top, but results were the same. Should I have added it elsewhere in the file? I know the order matters.
+Comment by gvdhoorn on 2017-02-12:
+Run the build with VERBOSE=1 and post the compiler command line.
+Comment by tsbertalan on 2017-02-12:
+Ok, I added the output to catkin_make _j1 VERBOSE_1 in the gist. Output doesn't change.
+Comment by sdyy on 2019-07-10:
+Also meet this issue when gcc = 4.9, change to gcc5 and rm -rf build will be OK, But driveworks need gcc<=4.9
+
+A:
+
+Well, after doing all these labyrinthine diagnostics, I tried both gcc -v and g++ -v and found them to be different versions. I tried for a while to use update-alternatives to get them both pointing to 4.9, but that didn't change my errors. I then just did sudo aptitude reinstall gcc; sudo aptitude reinstall g++ and it seems to be compiling fine now (and both report v5.4.1). Sheesh, don't know how I managed to mess that up.
+
+Originally posted by tsbertalan with karma: 63 on 2017-03-08
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Ginger on 2020-05-09:
+Thank u so much for your help. I solved the error just as what u did, but my gcc/g++ version did not change after aptitude reinstall, but it really works.
+

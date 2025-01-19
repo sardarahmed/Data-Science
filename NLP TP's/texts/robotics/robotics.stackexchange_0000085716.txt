@@ -1,0 +1,71 @@
+Q:
+
+roscpp message_filters ApproximateTime API questions
+
+Hi,
+I have two questions regarding using message_filters ApproximateTimePolicy. From the example, it is not quite clear how I can specify the delay (in seconds) between messages that they can be synchronized. There are setAgePenalty, setInterMessageLowerBound, and setMaxIntervalDuration calls. I winder which one I should be using.
+The second question is that I need to instantiate the Synchronizer with SimpleFilter<sensors_msgs::Image> instead of message_filter::Subscriber. Can anyone provide me with a code snippet how to do this? Sorry I'm not very good with c++ template, hence, the question.
+Thanks for any help.
+
+Originally posted by jlin on ROS Answers with karma: 63 on 2018-03-07
+Post score: 2
+
+Original comments
+Comment by chmod777 on 2022-12-29:
+Official doc about message_filters ApproximateTime: https://wiki.ros.org/message_filters/ApproximateTime
+
+A:
+
+Regarding your first question, you want to set the setMaxIntervalDuration. As far as I understand from a quick look at the sources, a higher value for setAgePenalty makes the algorithm more sloppy for older messages (to get them out of the queue faster) and setInterMessageLowerBound allows to set a minimum delay between messages of a single input of your filter (messages arriving faster than that will be dropped).
+As for the second question, you can just feed a SimpleFilter as an input to your Synchronizer:
+#include <ros/ros.h>
+#include <image_transport/subscriber_filter.h>
+#include <message_filters/pass_through.h>
+#include <message_filters/simple_filter.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/Image.h>
+
+void callback(const sensor_msgs::Image::ConstPtr& imagemessage1,
+    const sensor_msgs::Image::ConstPtr& imagemessage2) {
+
+}
+
+int main(int argc, char ** argv) {
+  ros::init(argc, argv, "test_synchronizer");
+  ros::NodeHandle nodehandle;
+
+  image_transport::ImageTransport imagetransport{nodehandle};
+
+  image_transport::SubscriberFilter imagesubscriber1;
+  imagesubscriber1.subscribe(imagetransport, "/image1", 32);
+
+  image_transport::SubscriberFilter imagesubscriber2;
+  imagesubscriber2.subscribe(imagetransport, "/image2", 32);
+
+  message_filters::PassThrough<sensor_msgs::Image> passthrough(imagesubscriber2);
+  message_filters::SimpleFilter<sensor_msgs::Image> & simplefilter = passthrough;
+
+  using MyPolicy = message_filters::sync_policies::ApproximateTime<
+      sensor_msgs::Image, sensor_msgs::Image>;
+  MyPolicy mypolicy(32);
+  mypolicy.setMaxIntervalDuration(ros::Duration(1.e-3));
+  message_filters::Synchronizer<MyPolicy> synchronizer{
+      static_cast<const MyPolicy &>(mypolicy), imagesubscriber1, passthrough};
+  synchronizer.registerCallback(boost::bind(&callback, _1, _2));
+
+  ros::spin();
+
+  return EXIT_SUCCESS;
+}
+
+Originally posted by Maarten with karma: 206 on 2018-03-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by jlin on 2018-03-09:
+Thanks so much! Somehow the program failed to link with undefined reference to `image_transport::ImageTransport::ImageTransport(ros::NodeHandle const&)'. I'm on ROS 1 kinetic. Probably my environment is not set up right.
+Comment by Maarten on 2018-03-09:
+You probably just need to add image_transport to your package.xml file (<depend>image_transport</depend>). And install the ros-kinetic-image-transport package if it's not yet installed, but I suppose you would get a compiler error and didn't get to the linking phase if it wasn't installed.
+

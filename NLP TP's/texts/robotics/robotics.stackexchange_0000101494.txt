@@ -1,0 +1,186 @@
+Q:
+
+Navigation stack not going straight
+
+Hello,
+I previously posted about my robot rotating in place but that has been solved as it is due to the map not being aligned.
+However, the robot now turns left and right towards the set goal instead of going straight.
+Have taken advice on previous post to tweak parameters like base_local_planner_params.yaml and both local and global costmap param but issue persist. Is there any possible solution to this and please let me know what information would be informative and I will update ASAP.
+Thank you.
+Info:
+
+followed: https://automaticaddison.com/how-to-set-up-the-ros-navigation-stack-on-a-robot/ (have went through his tutorial prior to this link as well and there are no issue)
+SBC- Odroid C4
+RPLiDAR a1m8
+MCU - Arduino Uno
+motor driver l298n
+bno055 imu sensor
+pololu magnetic quad encoder
+
+Github: https://github.com/roomtempiq/Odroid_bot
+Thank you very much.
+
+Originally posted by 1024son on ROS Answers with karma: 7 on 2022-04-08
+Post score: 0
+
+Original comments
+Comment by 1024son on 2022-04-10:
+I have added my github repository for this project as suggested by another user.
+Comment by 1024son on 2022-04-11:
+The robot when met with an obstacle, it is unable to change its trajectory and rotate in place. This eventually leads to the map and laser scan misaligned. Is this possibly still base_loacal_planner (for not going straight and unable to change planned path with obstacle) and amcl (laser scan) issue?
+Any help even a comment on possible issue is greatly appreciated.
+Thank you.
+Comment by 1024son on 2022-04-11:
+will replacing base local planner with dwa planner work?
+
+A:
+
+However, the robot now turns left and
+right towards the set goal instead of
+going straight.
+
+I look into your code and it looks like you have some code smells there, e.g.
+// Check if we need to turn 
+  if (cmdVel.angular.z != 0.0) {
+ 
+    // Turn left
+    if (cmdVel.angular.z > 0.0) {
+      pwmLeftReq = -PWM_TURN;
+      pwmRightReq = PWM_TURN;
+    }
+    // Turn right    
+    else {
+      pwmLeftReq = PWM_TURN;
+      pwmRightReq = -PWM_TURN;
+    }
+  }
+  // Go straight
+  else {...}
+
+You are checking cmdVel.angular.z != 0.0, when checking cmdVel.angular.z < SOME_MIN_DIFF would be better for uC.
+I am not so sure with your PWM control too - did you check it on the real robot?
+// Publish tick counts to topics
+leftPub.publish( &left_wheel_tick_count );
+rightPub.publish( &right_wheel_tick_count );
+
+Are these for sure synchronized? Your comment with
+
+However, the robot now turns left and
+right towards the set goal instead of
+going straight.
+
+seems to be connected to this.
+
+Originally posted by ljaniec with karma: 3064 on 2022-04-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by 1024son on 2022-04-14:
+I recalculated my ticks per meter, k_p and b constant. and it now goes left & right and straight then repeat towards the goal.
+Seems that it is an improvement and that the issue is contributed by the diff drive controller.
+I will look into what u have mentioned above and also use my new parameters and configure the base_local planner
+Thank you
+Comment by 1024son on 2022-04-15:
+Left and right wheel ticks are in sync and have negligible difference when checking with rostopic echo /.
+If thats what u meant by synchronized. Let me know if I am mistaken and also so, what is uC?
+Thank you very much
+Comment by ljaniec on 2022-04-15:
+uC - microcontrollers, but I thought about hardware overall here. In reality you will never have a "pure" zero in something, it will be nearly always some 10e-7 value etc. Usually it is solved by a kind of dead zone around boundary values, e.g. abs(cmdVel.angular.z) <  0.001 should be treated as a zero. Right now I think about the frequency of your cmd_vel commands, maybe they are published less frequently than they should? How is your driver working with rapid changing of PWM values?
+Comment by 1024son on 2022-04-16:
+oh I see "u" as in micro. Will try to give an allowance for abs(cmdVel.angular.z).
+I used rqt_robot_steering rqt_robot_steering and publish different speed to the robot and it does react instantaneously.
+Will be updating later if I have better result with what I have done.
+Once again, thank you.
+Comment by 1024son on 2022-04-16:
+Hello, I changed the map update and publish frequency to 60 instead of 30, changed to abs(cmdVel.angular.z) < 0.001 instead of <0.0 and it work towards the goal without rotation with a static obstacle!
+So I tried to find out if it's the map parameter or the angular allowance that made this improvement by:
+
+changing the angular back to '<0.0' with updated map param
+changing map param to 30hz with updated abs(cmdVel.angular.z) < 0.001
+
+Changing abs(cmdVel.angular.z) < 0.001 back to zero shows the rotation problem. But updating it back to abs(cmdVel.angular.z) < 0.001 does not replicate the first time I did it.
+Why is this happening?
+Update: I further tried with a smaller value of 0.0001 and 0.00001. It remains the same. I guess i made a mistake? I should increase the value correct?
+Comment by ljaniec on 2022-04-16:
+I am not sure what are you asking here, to be honest, with replicating things etc. With values - you know for sure from school inequalities with a module, e.g. |x| < 0.1 or |x| < 0.01 - the first one has a bigger range of solutions: (-0.1; 0.1), second one smaller: (-0.01;0.01). If you increase RHS of this inequality you will get bigger "dead zone" around zero - this way your code is more robust to small differences, e.g. controller will wait for bigger differences to change it's control. Smaller RHS - more sensitive control.
+Comment by 1024son on 2022-04-17:
+Yes I understand what you mentioned. I overlook things as I was constantly trying and my brain kind of died.
+What I meant by replicating is that I am unable to get the perfect run even after changing the values back to the perfect run values.
+Will update later. Thank you
+Comment by 1024son on 2022-04-19:
+Hello, sorry for posting late as I was writing and finishing my report for this project as it is due yesterday.
+I am now getting a much reliable result after changing to
+// Turn left
+if (cmdVel.angular.z > 0.4) {
+  pwmLeftReq = -PWM_TURN;
+  pwmRightReq = PWM_TURN;
+}
+// Turn right    
+else if (cmdVel.angular.z < -0.4) {
+  pwmLeftReq = PWM_TURN;
+  pwmRightReq = -PWM_TURN;
+}
+
+Checked the angular value with rostopic echo /cmd_vel and it is 0.5 for left and -0.5 for right.
+And also tried it with dwa_local_planner instead.
+Thank you.
+Comment by ljaniec on 2022-04-19:
+Glad to be able to help. You can accept this answer as good enough results have been achieved. Hope you are not too frustrated with robotics and  ROS :^)
+Comment by 1024son on 2022-04-20:
+Have accepted and ROS and robotics as a hobby is definitely going to stick with me. Not so much if its going to be a school module with risk of failing.
+Thank you once again
+Comment by Changwhan Lee on 2023-01-02:
+Hi,
+I'm experiencing exactly same problem.
+Original Arduino code from "Automatic Addison" of below, I think it makes robot rotate if there's any value of angular.z, it ignores linear.x.
+  pwmLeftReq = K_P * cmdVel.linear.x + b;
+  pwmRightReq = K_P * cmdVel.linear.x + b;
+ 
+  // Check if we need to turn 
+  if (cmdVel.angular.z != 0.0) {
+ 
+    // Turn left
+    if (cmdVel.angular.z > 0.0) {
+      pwmLeftReq = -PWM_TURN;
+      pwmRightReq = PWM_TURN;
+    }
+    // Turn right    
+    else {
+      pwmLeftReq = PWM_TURN;
+      pwmRightReq = -PWM_TURN;
+    }
+
+}
+So your workaround is making robot rotate only when angular.z is quite high.
+// Turn left
+if (cmdVel.angular.z > 0.4) {
+  pwmLeftReq = -PWM_TURN;
+  pwmRightReq = PWM_TURN;
+}
+// Turn right    
+else if (cmdVel.angular.z < -0.4) {
+  pwmLeftReq = PWM_TURN;
+  pwmRightReq = -PWM_TURN;
+}
+
+I wonder you still use this workaround or better solution?
+Comment by ljaniec on 2023-01-04:
+I will try this one for sure first - the minimal value of cmdVel.angular.z will probably have to be adjusted to your robot.
+Comment by Changwhan Lee on 2023-01-05:
+Hi,
+I'm trying this new code, which doesn't ignore PWM value which was calculated from linear.x.
+vLeft = (2.0 * cmdVel.linear.x - cmdVel.angular.z * WHEEL_BASE) / 2.0 ;
+vRight = (2.0 * cmdVel.linear.x + cmdVel.angular.z * WHEEL_BASE) / 2.0 ;
+pwmLeftReq = K_P * vLeft + K_b;
+pwmLeftReq = K_P * vLeft - K_b;
+
+Comment by ljaniec on 2023-01-05:
+What is the result?
+Comment by Changwhan Lee on 2023-01-05:
+Tuning is difficult, when angular.z is small, robot doesn't rotate.
+So I'm working to make PID on both vLeft and VRight.
+Thanks!
+Comment by ibrahim9 on 2023-07-18:
+Hi, I have the same issue. Did you find any good solution? I need to submit my FYP, just left with this issue
+

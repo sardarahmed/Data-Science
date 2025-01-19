@@ -1,0 +1,60 @@
+Q:
+
+How to prevent ROS namespace from overwriting topic names?
+
+I am now working on the simulation with multiple robots and I want to use namespaces to organize the nodes better. However, I am also trying some information exchange among robots so they are also subscribing to topics from others' namespaces.
+Here  is the part in my launch file I start the node send_follow_waypoints
+<node pkg="uuv_control_utils" type="send_follow_waypoints.py" name="$(anon name)">
+    <param name="uuv_name" value="$(arg uuv_name)" />
+    <param name="follow_name" value="$(arg follow_name)" />
+    <param name="max_forward_speed" value="$(arg max_forward_speed)" />
+    <param name="heading_offset" value="$(arg heading_offset)" />
+    <param name="use_fixed_heading" value="$(arg use_fixed_heading)" />
+    <param name="radius_of_acceptance" value="$(arg radius_of_acceptance)" />
+    <param name="start_time" value="$(arg start_time)" />
+    <param name="x_shift" value="$(arg x_shift)" />
+    <param name="y_shift" value="$(arg y_shift)" />
+    <param name="z_shift" value="$(arg z_shift)" />
+    <param name="success_rate" value="$(arg success_rate)" />
+</node>
+
+And here is my subscriber inside send_follow_waypoints.py:
+rospy.Subscriber('/%s/pose_gt' % follow_name,
+            Odometry,
+            follow_pose_callback)
+
+I want the robot with uuv_name to subscribe to the topic /follow_name/pose_gt, but if I add an ns="$(arg uuv_name)" tag to the node, it would try to subscribe to /uuv_name/follow_name/pose_gt. Is there some way to stop the namespaces from changing the topic names?
+
+Originally posted by MakinoharaShouko on ROS Answers with karma: 13 on 2020-12-05
+Post score: 1
+
+Original comments
+Comment by chfritz on 2020-12-05:
+yes, of course. But in order to tell you how we'd need to see your code and potentially launch files.
+
+A:
+
+Since you have the follow_name argument in the launch file already, I would just remap the topic there:
+<node pkg="uuv_control_utils" type="send_follow_waypoints.py" name="$(anon name)">
+  <param name="uuv_name" value="$(arg uuv_name)" />
+  <param name="follow_name" value="$(arg follow_name)" />  # Still needed?
+  <param name="max_forward_speed" value="$(arg max_forward_speed)" />
+  <param name="heading_offset" value="$(arg heading_offset)" />
+  <param name="use_fixed_heading" value="$(arg use_fixed_heading)" />
+  <param name="radius_of_acceptance" value="$(arg radius_of_acceptance)" />
+  <param name="start_time" value="$(arg start_time)" />
+  <param name="x_shift" value="$(arg x_shift)" />
+  <param name="y_shift" value="$(arg y_shift)" />
+  <param name="z_shift" value="$(arg z_shift)" />
+  <param name="success_rate" value="$(arg success_rate)" />
+
+  <remap from="follow_name/pose_gt" to="/$(arg follow_name)/pose_gt" />  # Leading slash denotes global namespace.
+</node>
+
+And in your node:
+rospy.Subscriber('follow_name/pose_gt', Odometry, follow_pose_callback)
+
+Originally posted by tryan with karma: 1421 on 2020-12-06
+This answer was ACCEPTED on the original site
+Post score: 0
+

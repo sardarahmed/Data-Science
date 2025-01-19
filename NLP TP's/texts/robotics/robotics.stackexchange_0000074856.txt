@@ -1,0 +1,167 @@
+Q:
+
+"Cannot allocate an object of abstract type [...]" due to PLUGINLIB_EXPORT_CLASS
+
+Hi all,
+I have been trying to create a Rviz plugin to plant multiple waypoints on the map, I refer to PlantFlagTool and try to make one out of my own. The problem when I did so from scratch is that the compiler complains the following error:
+In instantiation of ‘B* class_loader::class_loader_private::MetaObject<C, B>::create() const [with C = rviz_waypoint_assigner::RvizWaypointAssigner; B = rviz::Tool]’:
+
+(...)
+
+cannot allocate an object of abstract type ‘rviz_waypoint_assigner::RvizWaypointAssigner’
+      return new C;
+                 ^
+
+But I did whatever I could to get the plug-in to get to the ROS tool-chain. Is it because I missed the exact procedure to make the plug-in functional? Thank you in advance !
+Here is the barebone of my codes:
+CMakeLists.txt
+cmake_minimum_required(VERSION 2.8.3)
+project(iceira_waypoint_provider)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  rviz
+  visualization_msgs
+)
+
+find_package(PkgConfig)
+
+include_directories( include
+  ${catkin_INCLUDE_DIRS}
+)
+
+link_directories(${catkin_LIBRARY_DIRS})
+
+catkin_package(
+    INCLUDE_DIRS include
+    LIBRARIES ${PROJECT_NAME}
+    CATKIN_DEPENDS roscpp visualization_msgs
+)
+
+add_library(${PROJECT_NAME} src/rviz_waypoints_assigner.cpp)
+
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
+
+package.xml
+<?xml version="1.0"?>
+<package>
+  <name>iceira_waypoint_provider</name>
+  <version>0.0.0</version>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>rviz</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>rviz</run_depend>
+  <run_depend>visualization_msgs</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+
+  <export>
+      <rviz plugin="${prefix}/plugin_description.xml"/>
+  </export>
+</package>
+
+plugin_description.xml
+<library path="lib/libiceira_waypoint_provider">
+  <class name="rviz_waypoint_assigner/RvizWaypointAssigner"
+     type="rviz_waypoint_assigner::RvizWaypointAssigner"
+     base_class_type="rviz::Tool">
+  </class>
+</library>
+
+rviz_waypoints_assigner.h
+#ifndef _RVIZ_WAYPOINT_ASSIGNER_
+#define _RVIZ_WAYPOINT_ASSIGNER_
+
+#include <rviz/tool.h>
+#include <boost/concept_check.hpp>
+
+namespace rviz_waypoint_assigner {
+  class RvizWaypointAssigner : public rviz::Tool
+  {
+  public:
+    RvizWaypointAssigner();
+    ~RvizWaypointAssigner();
+    
+    virtual void onInitialize() ;
+    
+    virtual void activate() ;
+    virtual void deactive() ;
+    
+    
+    
+  private:
+
+  } ; // class RvizWaypointAssigner
+} // namespace rviz_plugin_tutorials
+#endif 
+
+rviz_viewpoints_assigner.cpp
+#include <ros/console.h>
+
+#include "iceira_waypoint_provider/rviz_waypoints_assigner.h"
+
+namespace rviz_waypoint_assigner {
+
+RvizWaypointAssigner::RvizWaypointAssigner()
+{
+  // do something
+}
+
+RvizWaypointAssigner::~RvizWaypointAssigner()
+{
+    // do something
+}
+
+void RvizWaypointAssigner::onInitialize()
+{
+  // do something
+}
+
+void RvizWaypointAssigner::activate()
+{
+    // do something
+}
+
+void RvizWaypointAssigner::deactive()
+{
+    // do something
+}
+
+  
+} // namespace rviz_waypoint_assigner
+
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(rviz_waypoint_assigner::RvizWaypointAssigner, rviz::Tool )
+
+Originally posted by Megacephalo on ROS Answers with karma: 106 on 2016-06-28
+Post score: 0
+
+A:
+
+The problem is that the compiler expects you to have implemented all methods declared in rviz::Tool. If you don't, you've essentially created something called an abstract base class.
+  class RvizWaypointAssigner : public rviz::Tool
+  {
+  public:
+    ...
+    virtual void activate() ;
+    virtual void deactive() ;
+    ...
+  };
+
+Looking at the rviz::Tool API docs, the last method is actually called deactivate(), not deactive() (see the docs as well).
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-06-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Megacephalo on 2016-06-28:
+thank you @gvdhoorn. By correcting that simple typo, everything works! So, I really need to learn more how to use API for verification ! Thanks！
+

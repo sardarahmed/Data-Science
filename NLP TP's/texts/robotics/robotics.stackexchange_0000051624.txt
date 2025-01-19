@@ -1,0 +1,58 @@
+Q:
+
+joint_trajectory_action question
+
+I am reading the joint_trajectory_action.cpp file in joint_trajectory_action ros package.
+I have a question about following callback function.
+void goalCB(GoalHandle gh)
+{
+  // Ensures that the joints in the goal match the joints we are commanding.
+  if (!setsEqual(joint_names_, gh.getGoal()->trajectory.joint_names))
+  {
+    ROS_ERROR("Joints on incoming goal don't match our joints");
+    gh.setRejected();
+    return;
+  }
+
+  // Cancels the currently active goal.
+  if (has_active_goal_)
+  {
+    // Stops the controller.
+    trajectory_msgs::JointTrajectory empty;
+    empty.joint_names = joint_names_;
+    pub_controller_command_.publish(empty);
+
+    // Marks the current goal as canceled.
+    active_goal_.setCanceled();
+    has_active_goal_ = false;
+  }
+
+  gh.setAccepted();
+  active_goal_ = gh;
+  has_active_goal_ = true;
+
+  // Sends the trajectory along to the controller
+  current_traj_ = active_goal_.getGoal()->trajectory;
+  pub_controller_command_.publish(current_traj_);
+}
+
+I don't understand why it needs to cancel the currently active goal.
+Thanks for any help in advance!
+
+Originally posted by AdrianPeng on ROS Answers with karma: 441 on 2013-06-02
+Post score: 0
+
+A:
+
+This action server implements a goal policy in which only one goal is active and new goals preempt previous goals, ie. it always executes the latest received goal.
+In this context, "Cancels the currently active goal" means canceling the trajectory that was being executed prior to the goal that woke up the goalCB callback. Note that the currently active goal is not the goal that that woke up the goalCB callback.
+Since what remains of the currently active goal won't be executed, it makes sense to cancel it, providing clients with feedback that allows them to take proper action, if needed.
+
+Originally posted by Adolfo Rodriguez T with karma: 3907 on 2013-06-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by AdrianPeng on 2013-06-03:
+Very clear! Thanks!
+

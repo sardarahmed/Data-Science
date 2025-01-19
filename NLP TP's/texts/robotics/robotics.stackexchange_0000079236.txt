@@ -1,0 +1,73 @@
+Q:
+
+rosjava ListenerGroup causes android memory leak
+
+I have been developing an Android based application using rosjava and android_core dependencies. I have found an issue with the ListenerDispatch class leaking memory (specifically classes that extend NodeMain). These leaked classes cannot be garbage collected and cause large android applications to crash.
+I have created a simple Android application that contains two activities, each of type ROSActivity, one called "Main" and the other called "Second". The "Main" activity starts the "Second" activity which contains a simple Heartbeat class that implements NodeMain. The Heartbeat publishes a Header message every second, and allocates 10MB when it created (to show the leak). In "Second"s onDestroy method, the Heartbeat is shutdown using shutdownNodeMain() provided by the NodeMainExecutor.
+@Override
+protected void onDestroy() {
+    if(mNodeMainExecutor != null)
+    {
+        if(mHeartbeat != null)
+        {
+            Log.d(LOG_TAG, "Shutting down Heartbeat");
+            mNodeMainExecutor.shutdownNodeMain(mHeartbeat);
+        }
+    }
+    super.onDestroy();
+}
+
+To demonstrate the leak, the "second" activity is repetitively navigated into and out of using a button on the "Main" activity and the back button. The Hearbeat is created in the onCreate() call of the "Second" activity, executed in the init() call and is shutdown in onDestroy().
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_second);
+
+    Log.d(LOG_TAG, "Creating a new Heartbeat");
+    mHeartbeat = new Heartbeat();
+}
+
+@Override
+protected void init(NodeMainExecutor nodeMainExecutor) {
+    mNodeMainExecutor = nodeMainExecutor;
+    mNodeConfiguration = NodeConfiguration.
+            newPublic(InetAddressFactory.newNonLoopback().getHostAddress(),getMasterUri());
+
+    if(mNodeMainExecutor != null)
+        mNodeMainExecutor.execute(mHeartbeat, mNodeConfiguration);
+}
+
+The system memory continues to increase until the application crashes due to the fact that the system garbage collector cannot free memory.
+
+After dumping the application heap and anlazing the data, it seems that the created Heartbeat objects cannot be garbage collected due a reference tree depth of 0 caused by the EventDispatcher in org.ros.concurrent.ListenerGroup.
+
+After inspecting the ListenerGroup source, it seems that the shutdown() method should be called to cancel the EventDispatchers which could be holding up the Heartbeat NodeMain from being garbage collected.
+I can't find in any of the source where the ListenerGroup.shutdown() method is called? Has anyone experienced this?
+In large Android RosJava applications any class that extends NodeMain will theoretically be leaked. Anyone have any ideas?
+Thanks in advance!
+Here is a link to the source code used to generate the leak: ROSLeak Source
+
+Originally posted by dambrosio on ROS Answers with karma: 161 on 2017-02-27
+Post score: 3
+
+Original comments
+Comment by gvdhoorn on 2017-02-27:
+I'd say this seems more like a bug report than an actual question, and as such posting an issue on one of the issue trackers over at github.com/rosjava seems to make more sense. Has been quite some activity in rosjava lately, so I'm hopeful you'll get a response.
+Comment by gvdhoorn on 2017-02-27:
++1 for the analysis btw. Nice work.
+Comment by dambrosio on 2017-02-27:
+Thanks, I will post a bug report there. Also I can update info here as I get it, if that is the recommended follow on action.
+Comment by gvdhoorn on 2017-02-27:
+That would be very much appreciated, yes.
+Comment by jcerruti on 2017-03-01:
++1 great analysis work! I just wanted to add that this kind of bug is not extremely unusual so without digging into it myself I would risk to guess you found a genuine bug that needs fixing. So if you have any concrete suggestion on how to fix it please do go ahead and propose it with a PR.
+
+A:
+
+This one was solved in https://github.com/rosjava/rosjava_core/pull/234.
+Thanks @dambrosio!
+
+Originally posted by jubeira with karma: 1054 on 2017-10-18
+This answer was ACCEPTED on the original site
+Post score: 0
+

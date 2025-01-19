@@ -1,0 +1,83 @@
+Q:
+
+Manipulator Shakes/Wobbles
+
+I am using a Universal Robots UR5 mounted to a cylindrical post using fixed joints (one to world, the other to the UR5).
+When I drive it in Gazebo using Moveit! the model shakes/wobbles. It eventually settles down....
+I am wondering if there is something that I'm doing wrong to induce this? Or if there are things I need to adjust to eliminate this?
+
+Originally posted by b3l33 on ROS Answers with karma: 113 on 2014-04-24
+Post score: 3
+
+Original comments
+Comment by BennyRe on 2014-04-24:
+Has the cylindrical post a mass?
+Comment by b3l33 on 2014-04-25:
+Yes. It has a mass of 50. I have since discovered that the manipulator exhibits the same behaviour if fixed directly to the ground as well. Please see the following youtube video for reference:
+http://youtu.be/RVYIK4C_mgk
+Any suggestions on what I may do to stabilize the robot's behaviour?
+Thank you!
+
+A:
+
+Hi b3l33
+The gains of the controller and the inertia of the model have default values.
+This cause the the arm has a lot of inertia and the controller is very slow and underdamped.
+The origin of the oscilations is the gravity, acting as a perturbation on the system.
+Other efect is a very large position error. When the arm stops, the hand is very down the goal state. You can see it in rviz.
+I want to develope a best modell next week, but now you can use the following;
+(This values are tested for hydro-dev branch of  ros-industrial/universal_robot package.)
+In order to improve the behaviour, you should increase the gain of the controller, reduce the inertia of the links and increase the damping in the joins.
+You can change all  p gain from 1.000 to 10.000 in the file,
+
+ur_gazebo/controller/arm_controller_ur5.yam
+
+shoulder_pan_joint: {p: 10000.0, i: 0.0, d: 0.0, i_clamp: 0.0, i_clamp_min: 0.0, i_clamp_max: 0.0}
+shoulder_lift_joint: {p: 10000.0, i: 0.0, d: 0.0, i_clamp: 0.0, i_clamp_min: 0.0, i_clamp_max: 0.0}
+elbow_joint: {p: 10000.0, i: 0.0, d: 0.0, i_clamp: 0.0, i_clamp_min: 0.0, i_clamp_max: 0.0}
+
+Reduce inertia in all links to inertia to  ixx="0.002" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.002" in files
+
+ur_description/ur5_joint_limited.urdf.xacro   and   ur_description/ur5_joint_limited.urdf.xacro
+
+  <inertia ixx="0.002" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.002"/>
+
+And increase the damping in all joints to 0.5 in files
+
+ur_description/ur5_joint_limited.urdf.xacro   and   ur_description/ur5_joint_limited.urdf.xacro
+
+  <dynamics damping="0.5" friction="0.0"/>
+
+Originally posted by jalfonso with karma: 66 on 2014-04-27
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by b3l33 on 2014-04-29:
+Awesome - thank you! I will try these suggestions out.
+Am I correct in inferring that you will eventually add your changes into the ros-industrial package?
+Comment by jalfonso on 2014-04-29:
+Yes, I will propose add the changes to UR5 package maintainers. Meanwhile, you can use the above values​​.
+Comment by b3l33 on 2014-04-29:
+Update: I tried the suggested settings. The wobbling appears to be much  improved but still looks like it is vibrating. Execution is much faster and smoother. Wobbling is less violent - much better damped. This will prove to be much more usable! Thank you - this was helpful and informative.
+Comment by jalfonso on 2014-04-29:
+Another problem, is the arm apears in rviz in strange positions. Maybe is caused because you use demo.launch and a gazebo launch. First launch fake_controller . In order to avoid this situation, your launch file should include
+
+Comment by b3l33 on 2014-04-29:
+Thanks. I'm a little confused about what you mean by "First launch fake_controller". I am doing the following: (1) launching gazebo (2) launching rviz using a version of demo.launch with fake_execution = false.
+Comment by b3l33 on 2014-04-29:
+New update! I just realized you suggested setting iyy="0.02". I had been using 0.002 by mistake. When I corrected this the robot movement movement is VERY SMOOTH AND STABLE. THANK YOU!
+Comment by jalfonso on 2014-04-29:
+Check /joint_states topic is only published by gazebo using:
+rostopic info /joint_states
+If there are two publishers,  and you use demo.launch, then comment or remove
+  
+  
+     
+    [/move_group/fake_controller_joint_states]
+  
+Enjoy a rviz graphics without weird positions of arm.
+Comment by b3l33 on 2014-04-29:
+Again THANK YOU! I get it now... Yes - this fixed the issue of "ghost state" :) I owe you one... or two.
+Here's a clip of the corrected/improved configuration: http://youtu.be/k5rzlfS1RvA
+

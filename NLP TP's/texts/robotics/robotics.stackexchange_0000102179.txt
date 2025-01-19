@@ -1,0 +1,85 @@
+Q:
+
+[ROS2] Set namespace and node name from launch file in rclpy
+
+Hi, how to set namespace and node name from the launch file in rclpy?
+Sample Launch File:
+my_node = Node(
+    package='my_pkg',
+    namespace='my_ns',
+    executable='my_talker',
+    name='my_name',
+    output='screen',
+)
+
+Sample Node:
+class Talker(Node):
+    def __init__(self):
+        super().__init__('talker')
+        self.i = 0
+        self.pub = self.create_publisher(String, 'chatter', 10)
+        timer_period = 1.0
+        self.tmr = self.create_timer(timer_period, self.timer_callback)
+
+From the API, I can see that node_name and namespace are provided as input to the node. Furthermore, self.get_name() and self.get_namespace() returns the name and namespace of the node, respectively.
+Therefore, my question is how to set namespace and node name from the launch file in rclpy?
+
+Originally posted by ravijoshi on ROS Answers with karma: 1744 on 2022-07-25
+Post score: 0
+
+A:
+
+With the ROS2 command line interface you can see some examples there, e.g.
+
+Let’s start 2 nodes, using the same
+executable, but different names.
+$ ros2 run ros2_tutorials_py minimal_node --ros-args -r
+>     __node:=node_1
+>     [INFO] [1593589221.422757460] [node_1]: Node has been started.
+>     --> in another terminal
+>     $ ros2 run ros2_tutorials_py minimal_node --ros-args -r
+__node:=node_2
+[INFO] [1593589224.588230634] [node_2]: Node has been started.
+
+So, you can start a node and modify
+its name. But now it could be nice to
+be able to see what’s going on in the
+ROS2 graph.
+ros2 node list will give you the list
+of all the nodes you’ve launched in
+the same graph/network.
+$ ros2 node list
+/node_1
+/node_2
+
+Great, we can see the 2 nodes we’ve
+just started.
+
+How to use it within launch files are there in the official documentation, parts with turtlesim_ns
+and
+turtlesim_ns_launch_arg = DeclareLaunchArgument(
+    'turtlesim_ns',
+    default_value='turtlesim1'
+)
+
+for using it like that
+ros2 launch launch_tutorial example_substitutions.launch.py turtlesim_ns:='turtlesim3' use_provided_red:='True' new_background_r:=200
+
+Originally posted by ljaniec with karma: 3064 on 2022-07-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ravijoshi on 2022-07-25:
+Sorry, I could not understand it. For example turtlesim_node = Node(package='turtlesim', namespace=turtlesim_ns, executable='turtlesim_node', name='sim'). I assumed that this name will override the name mentioned in super().__init__('talker'). Instead, it shows a clear warning as following: [WARN] [1658737147.953929711] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+Comment by ljaniec on 2022-07-25:
+It is a warning inside your node (talker) for the topic inside it (chatter) - you should remap the publisher like there for both of them:
+talker_node = Node(
+    package="demo_nodes_cpp",
+    executable="talker",
+    name="my_talker",
+    remappings=[
+        ("chatter", "my_chatter")
+    ]
+)
+

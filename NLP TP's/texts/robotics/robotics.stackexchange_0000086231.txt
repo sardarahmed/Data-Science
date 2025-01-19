@@ -1,0 +1,64 @@
+Q:
+
+Use identical package.xml for ROS1 and ROS2 pkgs
+
+What would be the general package.xml strucutre in order to compile a package for both ROS1(catkin) and ROS2(ament) ?
+It would be very helpful if gives an example for doing this.
+
+Originally posted by Skyking on ROS Answers with karma: 151 on 2018-03-28
+Post score: 4
+
+A:
+
+The REP 149 which specifies format 3 of package.xml files addresses exactly this use case.
+The assumption is that a ROS package which want to support both major ROS versions will have consistent header information (name, version, license, maintainer, etc.) and only diverges in dependencies (e.g. in ROS 1 using roscpp, in ROS 2 using rclcpp).
+The new condition attribute on dependency tags allows you to express that:
+<depend condition="$ROS_VERSION == 1">roscpp</depend>
+<depend condition="$ROS_VERSION == 2">rclcpp</depend>
+
+The environment variable ROS_VERSION is provided by the new package ros_environment package which is available as of ROS Kinetic as well as ROS Ardent
+
+Originally posted by Dirk Thomas with karma: 16276 on 2018-03-29
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by nuclearsandwich on 2018-03-29:
+But there's no way to conditionally change a package's build_type as far as I understand, and the only build_type that's common to both ROS and ROS 2 is cmake. I don't actually know the nuances of how catkin vs cmake packages are built outside of bloom release templates but I imagine there is one.
+Comment by William on 2018-03-29:
+That's a good point.
+Comment by demmeln on 2018-04-15:
+So is there a way to use this to build pure cmake packages for both ros 1 and 2 with a single package.xml? AFAICT the respective build_types are cmake and ament_cmake. See the discussion at https://github.com/strasdat/Sophus/pull/152#issuecomment-378110219 and the linked package.xml files.
+Comment by William on 2018-04-15:
+For pure CMake it is just cmake In both cases.
+Comment by demmeln on 2018-04-15:
+Ah I see. Is there documentation for plain cmake packages with ament somewhere? For example, should you add something like an exec depend on catkin, which is suggested for pure cmake packages in catkin (to make sure the setup files are there when the package is installed)?
+Comment by demmeln on 2018-04-15:
+Or is there an example?
+Comment by William on 2018-04-15:
+It's recommended to depend on catkin from pure cmake packages, but we removed that need in ament, since the build tool, and not the package itself, now creates the root setup.*sh files. We create the setup.*sh files if needed in a "workspace package".
+Comment by William on 2018-04-15:
+@nuclearsandwich addressed this in our ament debian packages with the injected dependency on the ros_workspace (http://repo.ros2.org/status_page/ros_ardent_default.html?q=ros_workspace) package.
+Comment by William on 2018-04-15:
+The googletest packages are both plain cmake, as an example: https://github.com/ament/googletest/blob/ros2/googlemock/package.xml
+Comment by demmeln on 2018-04-16:
+Just saw your third comment. Posted the answer by accident. The example is helpful, thanks!
+Comment by demmeln on 2018-04-16:
+Btw, how do we deal with the different build_type for ros 1 and ros 2 for regular catkin / ament packages? As @nuclearsandwich pointed out above, the conditions are only for dependencies only, or are they not?
+Comment by demmeln on 2018-04-22:
+@William @Dirk Thomas, is there a solution in sight for the issue concerning build_type for a mixed ros1 / ros2 package?
+Comment by demmeln on 2018-05-02:
+@William @Dirk Thomas, friendly ping about the issue concerning different build_type for mixed catkin / ament packages (not pure-cmake). Is there any solution is sight or already implemented? Maybe I'm missing something...
+Comment by William on 2018-05-02:
+If you use the same built type in both (basically <build_type>cmake</build_type> is the only one that would be supported) then you can do it. I believe we'll need some additional changes to the package.xml format to support conditional build type, but no one has followed up yet.
+Comment by demmeln on 2018-05-04:
+Thanks for confirming the current state. Just for the record, an alternative to changing package format again would maybe be if the build system(s) would support or translate more identical build_types (rather than just cmake as is now).
+Comment by William on 2018-05-16:
+For reference: https://github.com/ros-infrastructure/rep/pull/171
+Comment by david.hodo on 2018-12-06:
+I see where the changes to the REP were merged, but it doesn't look like the condition on build_type is being checked in the current version of ament.  Is this on the roadmap or is there another suggestion for making ROS1 and ROS2 packages co-exist?
+Comment by William on 2018-12-06:
+The only code that would be affected is in catkin_pkg. It looks like it was never modified: https://github.com/ros-infrastructure/catkin_pkg/blob/efcc4389cf7b3dd0cdb7013f997c5b7107366cc2/src/catkin_pkg/package.py#L143-L156 So that would need to be changed. Might be an oversight.
+Comment by Dirk Thomas on 2019-01-02:
+I created an issue for the missing feature: https://github.com/ros-infrastructure/catkin_pkg/issues/244
+

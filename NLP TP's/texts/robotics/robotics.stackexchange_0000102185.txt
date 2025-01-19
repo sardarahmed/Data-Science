@@ -1,0 +1,79 @@
+Q:
+
+fastdss discovery-server 50% operational in docker
+
+I'm having issues with ROS2 discovery. I managed to dumb down the problem to the dockerfile below:
+version: "3.3"
+services:
+  discovery-server:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    network_mode: host
+    command: /bin/bash -c 'source /opt/ros/humble/setup.bash && fastdds discovery -i 0'
+  talker:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      ROS_DISCOVERY_SERVER: 127.0.0.1:11811
+    network_mode: host
+    command: /bin/bash -c 'apt-get update -qq && apt-get install -qqy ros-humble-demo-nodes-cpp && source /opt/ros/humble/setup.bash && ros2 run demo_nodes_cpp talker'
+  listener:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      ROS_DISCOVERY_SERVER: 127.0.0.1:11811
+    network_mode: host
+    command: /bin/bash -c 'apt-get update -qq && apt-get install -qqy ros-humble-demo-nodes-cpp && source /opt/ros/humble/setup.bash && ros2 run demo_nodes_cpp listener'
+
+This file seems to be working on my (Mint 20.3) PC, but not on the robot (Ubuntu-server 20.04).
+I tested two other ubuntu setups: ubuntu 20.04 desktop works and ubuntu 22.04 server does not. Not sure if the versions are relevant, because well, docker?
+What could be wrong with the setup above?
+Note that the example above also breaks on a ros:galactic image with ros-galactic-rmw-fastrtps-cpp installed.
+
+Originally posted by Timple86 on ROS Answers with karma: 80 on 2022-07-26
+Post score: 0
+
+A:
+
+Give it a try to set Docker IPC mode to host:
+version: "3.3"
+services:
+  discovery-server:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    network_mode: host
+    ipc: host
+    command: /bin/bash -c 'source /opt/ros/humble/setup.bash && fastdds discovery -i 0'
+  talker:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      ROS_DISCOVERY_SERVER: 127.0.0.1:11811
+    network_mode: host
+    ipc: host
+    command: /bin/bash -c 'apt-get update -qq && apt-get install -qqy ros-humble-demo-nodes-cpp && source /opt/ros/humble/setup.bash && ros2 run demo_nodes_cpp talker'
+  listener:
+    image: ros:humble
+    environment:
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      ROS_DISCOVERY_SERVER: 127.0.0.1:11811
+    network_mode: host
+    ipc: host
+    command: /bin/bash -c 'apt-get update -qq && apt-get install -qqy ros-humble-demo-nodes-cpp && source /opt/ros/humble/setup.bash && ros2 run demo_nodes_cpp listener'
+
+TL;DR
+You are running into a limitation of the default SHM transport. To try to identify whether two nodes are running in the same host machine, Fast DDS relies on the available network interfaces. Since your compose sets the network_mode to host, all three container instances will have the exact same network interfaces, and therefore Fast DDS will think that your three nodes are running on the same host, so it will default to the SHM transport. However, since you have container isolation, the nodes do not share the same shared memory segments, thus communication fails. The easiest for you would be to set the IPC mode to host as well (I have verified that this solves the problem locally).
+
+Originally posted by EduardoPonz with karma: 56 on 2022-08-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Timple86 on 2022-08-03:
+Yes, this works. Thank you.
+Curious: does this mean that this solution is also more performant than not using network_mode: host? As in that case upd would be used instead of shared memory.
+Comment by EduardoPonz on 2022-08-03:
+Yes, exactly! If you do not use host network mode, then Fast DDS will use UDPv4, so you'll lose performance.
+

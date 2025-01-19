@@ -1,0 +1,92 @@
+Q:
+
+Wrong constructor in ROS2
+
+I am trying to create a constructor for my odom node but for some reason I keep getting the strange error:
+ error: no matching function for call to ‘rclcpp::TimeSource::TimeSource(<brace-enclosed initializer list>)’
+ odom_pub{}, _odom_tb{std::make_shared<tf2_ros::StaticTransformBroadcaster>(shared_from_this())}
+
+The thing is that I am not even trying to pass the rclcpp::TimeSource but my compiler thinks so. I think i managed to follow the variable declaration = variable initialization order, so for example in my header:
+class OdomNode : public rclcpp::Node
+{
+    
+private:
+    int _rate, _ticks_meter, _left_pos, _right_pos, _enc_left, _enc_right, _lmult, _rmult;
+    int _prev_rencoder, _prev_lencoder;
+    double _d_left, _d_right;
+    std::shared_ptr<tf2::Quaternion> q;
+    std::string _base_frame_id, _odom_frame_id;
+
+    //Node
+    rclcpp::TimeSource _ts;
+    rclcpp::Clock::SharedPtr _clock;
+    std::shared_ptr<geometry_msgs::msg::TransformStamped> _odom_ts;
+    rclcpp::Rate _loop_rate;
+    rclcpp::Time _then;
+
+    // Subs and publishers:
+    //rclcpp::Subscriber _left_sub;
+    std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> _odom_pub;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> _odom_tb;
+
+    // Known vars:
+    double _x{0};
+    double _y{0};
+    double _th{0};
+    std::vector<double> _q_imu{0,0,0,1};
+    std::shared_ptr<std_msgs::msg::Float64> _state_left, _state_right;
+
+And my cpp file:
+OdomNode::OdomNode() : Node("odometry_node","odometry_node_ns", rclcpp::NodeOptions()), _rate(30), _ticks_meter(1), _left_pos{0},
+                       _right_pos{0}, _enc_left{0}, _enc_right{0}, _lmult{0},
+                       _rmult{0}, _prev_rencoder{0}, _prev_lencoder{0},
+                       _d_left{0}, _d_right{0}, q{std::make_shared<tf2::Quaternion>()},
+                       _base_frame_id{"base_footprint"}, _odom_frame_id{"odom"},
+                       _ts{this}, _clock{std::make_shared<rclcpp::Clock>(RCL_ROS_TIME)},
+                       _odom_ts{std::make_shared<geometry_msgs::msg::TransformStamped>()}, _loop_rate{30},
+                       _then{}, _odom_pub{}, _odom_tb{std::make_shared<tf2_ros::StaticTransformBroadcaster>(shared_from_this())}
+{}
+
+Originally posted by EdwardNur on ROS Answers with karma: 115 on 2019-08-08
+Post score: 1
+
+A:
+
+The time source
+rclcpp::TimeSource _ts;
+
+Is being initialized with this
+_ts{this}
+
+Which is of type OdomNode *, but the only constructor that takes any arguments expects rclcpp::Node::SharedPtr.
+However, rclcpp::Node already creates a time source and clock. Instead of creating a time source, use get_clock() or now() since OdomNode inherits from rclcpp::Node.
+
+Originally posted by sloretz with karma: 3061 on 2019-08-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by EdwardNur on 2019-08-08:
+@sloretz Ok, I see now... Also, can you explain why am I getting this error:
+[odometry_node-1] terminate called after throwing an instance of 'std::bad_weak_ptr'
+[odometry_node-1]   what():  bad_weak_ptr
+
+I mean I know that this is because of hanged pointer but why does it happen? Is it because of
+shared_from_this() ? I also have this line:
+while(rclcpp::ok())
+    {
+        this->loop();
+        this->_loop_rate.sleep();
+        rclcpp::spin(shared_from_this());
+    }
+
+And I think it is the last line that brings me that error, as the shared_ptr was hanged. I tried to do this just before the while loop:
+std::shared_ptr<rclcpp::Node> _for_spin = std::make_shared<rclcpp::Node>(this);
+
+But it did not work
+Comment by sloretz on 2019-08-08:
+Please open a second question for the new error. Questions are easier to find than comments for future people with the same problem .
+Comment by EdwardNur on 2019-08-08:
+@sloretz Yes, I did :
+https://answers.ros.org/question/330261/what-bad_weak_ptr/
+

@@ -1,0 +1,107 @@
+Q:
+
+sensor_msgs/JointState on Arduino
+
+Hi all,
+I've got maybe a very noob question. I'm using rosserial on a Arduino One board and I'm trying to stream out the readings from wheel encoders as a sensor_msgs/JointState data structure. The problem is that I can't figure out how to properly push back elements in the data structure and when I try to use push_back() method I get the following error.
+
+error: request for member ‘push_back’
+in
+‘wheel_odo.sensor_msgs::JointState::name’,
+which is of non-class type ‘char**’
+
+Can you help me out?
+Thanks!
+EDIT: here is the code
+#include <CAN.h>
+#include <SPI.h>
+#include <SerialCommand.h>
+#include <ros.h>
+#include <std_msgs/String.h>
+#include <sensor_msgs/ChannelFloat32.h>
+#include <sensor_msgs/JointState.h>
+
+ros::NodeHandle  nh;
+std_msgs::String str_msg;
+
+//sensor_msgs::ChannelFloat32 wheel_odo[4];
+sensor_msgs::JointState wheel_odo;
+char* id = "/myBot";
+ros::Publisher sinbot_odometry("sinbot_odometry", &wheel_odo);
+
+SerialCommand serialCommand;
+
+#define CAN_BUS_SPEED 1000  // 1Mbaud
+
+int state = 0;
+int pin = LOW;
+
+byte received[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+byte rec [4] = {0x00, 0x00, 0x00, 0x00};
+
+signed long rec_new;
+
+void setup() {
+    // put your setup code here, to run once:
+
+    pinMode(7, OUTPUT);
+    pinMode(8, OUTPUT);
+
+    CAN.begin();
+    CAN.baudConfig(CAN_BUS_SPEED);
+    CAN.setMode(NORMAL);
+    delay(100);
+    Serial.begin(115200); //Baudrate Serial connection
+    
+    wheel_odo.header.frame_id = id;
+    wheel_odo.name.push_back(str_msg);
+    nh.initNode();
+    nh.advertise(sinbot_odometry);
+}
+
+PS: By the way what I'm trying to do is streaming out the information from 4 wheel encoders using an Arduino One board.
+What I would like to have is the following set of information for each wheel:
+
+[ ros_timestamp, arduino_timestamp,
+encoder_reading]
+
+Considering that I'm not willing to implement my own message, is sensor_msgs/JointState the best solution in my case?
+EDIT: Also, using Joint_state data structure as it is done in this link
+"answers.ros.org/question/43157/trying-to-use-get-joint-state-with-my-urdf/"
+is not working for Arduino and I get
+
+error: request for member ‘resize’ in
+‘wheel_odo.sensor_msgs::JointState::position’,
+which is of non-class type ‘float*’
+
+when I try to resize the structure as:
+wheel_odo.position.resize(7);
+
+Originally posted by RagingBit on ROS Answers with karma: 706 on 2014-07-07
+Post score: 0
+
+Original comments
+Comment by McMurdo on 2014-07-07:
+Please update question with the relevant lines that produce the error. It might be difficult without that.
+Also look at the API for sensor_msgs::JointState. http://docs.ros.org/api/sensor_msgs/html/msg/JointState.html
+.
+
+A:
+
+Since the arduino has far less memory, the message generation for rosserial uses different data structures. In this case, I think it's representing the list of names int the joint state message as a char** instead of a std::vector<std::string>. You should probably put your joint names in a char ** and assign it into your joint_states message.
+
+Originally posted by ahendrix with karma: 47576 on 2014-07-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by RagingBit on 2014-07-08:
+Can you provide an example of how you would do that?
+Thanks!
+Comment by McMurdo on 2014-07-08:
+char *a[] = {"joint_1", "joint_2", "joint_3", "joint_3.2"};
+Comment by RagingBit on 2014-07-08:
+The main problem I'm having is how to allocate memory to my joint space data structure. resize() or push_back() methods seems not to be available on Arduino.
+Comment by McMurdo on 2014-07-08:
+Yes, resize and push_back are only applicable to c++ containers. So for a regular array of strings/floats you can only use new / malloc, I guess. Of course the array of strings can be directly specified since it won't change.
+

@@ -1,0 +1,237 @@
+Q:
+
+Point cloud misaligned with gazebo sensor plugin
+
+Greetings. I have inserted a camera within my gazebo simulation via the gazebo plugin. The camera works as intended, however the point cloud generated does not match the camera picture. Since Octomaps are build on the point cloud the collision map is also misaligned. I've aligned the gazebo camera plugin via optical link to the camera link (mesh and collision).
+How do I get the proper orientation of the point cloud? - Since the picture in RViz matches the viewed object I would assume the point cloud would behave the same.
+
+Camera macro:
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+   <xacro:macro name="generate_camera" params="prefix attachment_link package_name:=modproft_camera_description camera_type:=canon_powershot_g7_mk3 debug:=false">
+  
+    <xacro:include filename="$(find ${package_name})/urdf/inc/camera_common.xacro"/>
+    <xacro:include filename="$(find ${package_name})/urdf/inc/materials.xacro"/>
+
+    <xacro:read_camera_data model_parameter_file="$(find ${package_name})/config/${camera_type}.yaml"/>
+
+    <!-- Todo: Fix Prefix ${prefix} != &quot; &quot;-->
+    <xacro:if value="${prefix != &quot; &quot;}">
+      <xacro:property name="sensor_reference" value="${prefix}${sensor_name}"/>
+    </xacro:if>
+    <xacro:if value="${prefix == &quot; &quot;}">
+      <xacro:property name="sensor_reference" value="${sensor_name}"/>
+    </xacro:if>
+
+    <!-- Define gazebo sensor -->
+    <gazebo reference="${sensor_reference}_virtual_frame_link">
+      <sensor name="${sensor_reference}" type="${sensor_type}" >
+        <always_on>${sensor_always_on}</always_on>
+        <update_rate>${sensor_update_rate}</update_rate>
+        <camera name="${sensor_reference}">
+          <horizontal_fov>${sensor_horizontal_fov}</horizontal_fov>
+          <image>
+            <width>${sensor_image_width}</width>
+            <height>${sensor_image_height}</height>
+            <format>${sensor_image_format}</format>
+          </image>
+          <clip>
+            <near>${sensor_image_clip_near}</near>
+            <far>${sensor_image_clip_far}</far>
+          </clip>
+          <distortion>
+            <k1>${sensor_image_distortion_k1}</k1>
+            <k2>${sensor_image_distortion_k2}</k2>
+            <k3>${sensor_image_distortion_k3}</k3>
+            <p1>${sensor_image_distortion_p1}</p1>
+            <p2>${sensor_image_distortion_p2}</p2>
+            <center>${sensor_image_distortion_center}</center>
+          </distortion>
+        </camera>
+          <plugin filename="libgazebo_ros_camera.so" name="${sensor_reference}_controller">
+            <ros>
+                <imageTopicName>/${sensor_reference}/color/image_raw</imageTopicName>
+                <cameraInfoTopicName>/${sensor_reference}/color/camera_info</cameraInfoTopicName>
+                <depthImageTopicName>/${sensor_reference}/depth/image_raw</depthImageTopicName>
+                <depthImageCameraInfoTopicName>/${sensor_reference}/depth/camera_info</depthImageCameraInfoTopicName>
+                <pointCloudTopicName>/${sensor_reference}/points</pointCloudTopicName>
+            </ros>
+            <camera_name>${sensor_reference}</camera_name>
+            <frame_name>${sensor_reference}_virtual_frame_link</frame_name>
+            <hack_baseline>${sensor_hack_baseline}</hack_baseline>
+            <min_depth>${sensor_min_depth}</min_depth>
+          </plugin>
+      </sensor>
+    </gazebo>
+  
+    <!-- Links -->
+    <link name="${sensor_reference}_link">
+      <visual>
+        <origin rpy="${camera_visual_origin_rpy}" xyz="${camera_visual_origin_xyz}"/>
+        <geometry>
+          <mesh filename="package://${package_name}/meshes/${camera_visual_geometry_mesh}" scale="${camera_visual_geometry_scale}"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin rpy="${camera_collision_origin_rpy}" xyz="${camera_collision_origin_xyz}"/>
+        <geometry>
+          <mesh filename="package://${package_name}/meshes/${camera_visual_geometry_mesh}" scale="${camera_visual_geometry_scale}"/>
+        </geometry>
+        <material name="${camera_visual_material}"/>
+      </collision>
+      <inertial>
+        <mass value="${camera_inertial_mass}"/>
+        <origin rpy="${camera_inertial_origin_rpy}" xyz="${camera_inertial_origin_xyz}"/>
+        <inertia ixx="${camera_inertial_inertia_ixx}" ixy="${camera_inertial_inertia_ixy}" ixz="${camera_inertial_inertia_ixz}" iyy="${camera_inertial_inertia_iyy}" iyz="${camera_inertial_inertia_iyz}" izz="${camera_inertial_inertia_izz}"/>
+      </inertial>
+    </link>
+
+    <link name="${sensor_reference}_virtual_frame_link">
+      <!-- Todo: Fix debug condition block-->
+      <xacro:if value="${debug != 'False'}">
+        <visual>
+          <geometry>
+            <mesh filename="package://${package_name}/meshes/${virtual_visual_geometry_mesh}" scale="${virtual_visual_geometry_scale}"/>
+          </geometry>
+        </visual>
+      </xacro:if>
+    </link>
+  
+    <!-- Joints -->
+    <joint type="fixed" name="${prefix}${attachment_link}_${sensor_name}_joint">
+      <origin rpy="${cameraattachment_joint_origin_rpy}" xyz="${cameraattachment_joint_origin_xyz}"/>
+      <child link="${sensor_reference}_link"/>
+      <parent link="${prefix}${attachment_link}"/>
+    </joint>
+
+    <joint type="fixed" name="${prefix}${attachment_link}_${sensor_name}_virtual_frame_joint">
+      <origin rpy="${cameravirtual_joint_origin_rpy}" xyz="${cameravirtual_joint_origin_xyz}"/>
+      <child link="${sensor_reference}_virtual_frame_link"/>
+      <parent link="${sensor_reference}_link"/>
+    </joint>
+
+  </xacro:macro>
+</robot>
+
+Originally posted by NotARobot on ROS Answers with karma: 109 on 2022-11-25
+Post score: 0
+
+A:
+
+Thank you for your answers.
+It seems, that Gazebo has an issue with the plugin. For as long the problem remains relevant the solution is to use the optical link as frame reference (<frame_name>${sensor_reference}_virtual_frame_link</frame_name>) but not as Gazebo plugin reference ( <gazebo reference="${sensor_reference}_link">). With that you are able to rotate the optical link as you see fit, without impacting the Octomap. This solution was found here.
+Also as a note of importance (because it didn't occur to me right away): Do not publish a static transform for the camera link, if you implement the camera via URDF. Since your robot_state_publisher does already publish the transform for you, there will be issues if a static transform is tried, resulting in a inconsistent tf2 tree.
+The whole camera macro with solution:
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+   <xacro:macro name="generate_camera" params="prefix attachment_link package_name:=modproft_camera_description camera_type:=canon_powershot_g7_mk3 debug:=false">
+  
+    <xacro:include filename="$(find ${package_name})/urdf/inc/camera_common.xacro"/>
+    <xacro:include filename="$(find ${package_name})/urdf/inc/materials.xacro"/>
+
+    <xacro:read_camera_data model_parameter_file="$(find ${package_name})/config/${camera_type}.yaml"/>
+
+    <!-- Todo: Fix Prefix ${prefix} != &quot; &quot;-->
+    <xacro:if value="${prefix != &quot; &quot;}">
+      <xacro:property name="sensor_reference" value="${prefix}${sensor_name}"/>
+    </xacro:if>
+    <xacro:if value="${prefix == &quot; &quot;}">
+      <xacro:property name="sensor_reference" value="${sensor_name}"/>
+    </xacro:if>
+
+    <!-- Define gazebo sensor -->
+    <gazebo reference="${sensor_reference}_link">
+      <sensor name="${sensor_reference}" type="${sensor_type}" >
+        <always_on>${sensor_always_on}</always_on>
+        <update_rate>${sensor_update_rate}</update_rate>
+        <camera name="${sensor_reference}">
+          <horizontal_fov>${sensor_horizontal_fov}</horizontal_fov>
+          <image>
+            <width>${sensor_image_width}</width>
+            <height>${sensor_image_height}</height>
+            <format>${sensor_image_format}</format>
+          </image>
+          <clip>
+            <near>${sensor_image_clip_near}</near>
+            <far>${sensor_image_clip_far}</far>
+          </clip>
+          <distortion>
+            <k1>${sensor_image_distortion_k1}</k1>
+            <k2>${sensor_image_distortion_k2}</k2>
+            <k3>${sensor_image_distortion_k3}</k3>
+            <p1>${sensor_image_distortion_p1}</p1>
+            <p2>${sensor_image_distortion_p2}</p2>
+            <center>${sensor_image_distortion_center}</center>
+          </distortion>
+        </camera>
+        <plugin filename="libgazebo_ros_camera.so" name="${sensor_reference}_controller">
+          <ros>
+              <imageTopicName>/${sensor_reference}/color/image_raw</imageTopicName>
+              <cameraInfoTopicName>/${sensor_reference}/color/camera_info</cameraInfoTopicName>
+              <depthImageTopicName>/${sensor_reference}/depth/image_raw</depthImageTopicName>
+              <depthImageCameraInfoTopicName>/${sensor_reference}/depth/camera_info</depthImageCameraInfoTopicName>
+              <pointCloudTopicName>/${sensor_reference}/points</pointCloudTopicName>
+          </ros>
+          <camera_name>${sensor_reference}</camera_name>
+          <frame_name>${sensor_reference}_virtual_frame_link</frame_name>
+          <hack_baseline>${sensor_hack_baseline}</hack_baseline>
+          <min_depth>${sensor_min_depth}</min_depth>
+        </plugin>
+      </sensor>
+    </gazebo>
+  
+    <!-- Links -->
+    <link name="${sensor_reference}_link">
+      <visual>
+        <origin rpy="${camera_visual_origin_rpy}" xyz="${camera_visual_origin_xyz}"/>
+        <geometry>
+          <mesh filename="package://${package_name}/meshes/${camera_visual_geometry_mesh}" scale="${camera_visual_geometry_scale}"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin rpy="${camera_collision_origin_rpy}" xyz="${camera_collision_origin_xyz}"/>
+        <geometry>
+          <mesh filename="package://${package_name}/meshes/${camera_visual_geometry_mesh}" scale="${camera_visual_geometry_scale}"/>
+        </geometry>
+        <material name="${camera_visual_material}"/>
+      </collision>
+      <inertial>
+        <mass value="${camera_inertial_mass}"/>
+        <origin rpy="${camera_inertial_origin_rpy}" xyz="${camera_inertial_origin_xyz}"/>
+        <inertia ixx="${camera_inertial_inertia_ixx}" ixy="${camera_inertial_inertia_ixy}" ixz="${camera_inertial_inertia_ixz}" iyy="${camera_inertial_inertia_iyy}" iyz="${camera_inertial_inertia_iyz}" izz="${camera_inertial_inertia_izz}"/>
+      </inertial>
+    </link>
+
+    <link name="${sensor_reference}_virtual_frame_link">
+      <!-- Todo Fix debug condition block-->
+      <xacro:if value="${debug != 'False'}">
+        <visual>
+          <geometry>
+            <mesh filename="package://${package_name}/meshes/${virtual_visual_geometry_mesh}" scale="${virtual_visual_geometry_scale}"/>
+          </geometry>
+        </visual>
+      </xacro:if>
+    </link>
+  
+    <!-- Joints -->
+    <joint type="fixed" name="${prefix}${attachment_link}_${sensor_name}_joint">
+      <origin rpy="${cameraattachment_joint_origin_rpy}" xyz="${cameraattachment_joint_origin_xyz}"/>
+      <child link="${sensor_reference}_link"/>
+      <parent link="${prefix}${attachment_link}"/>
+    </joint>
+
+    <joint type="fixed" name="${prefix}${attachment_link}_${sensor_name}_virtual_frame_joint">
+      <origin rpy="${cameravirtual_joint_origin_rpy}" xyz="${cameravirtual_joint_origin_xyz}"/>
+      <child link="${sensor_reference}_virtual_frame_link"/>
+      <parent link="${sensor_reference}_link"/>
+    </joint>
+
+  </xacro:macro>
+</robot>
+
+Originally posted by NotARobot with karma: 109 on 2022-11-28
+This answer was ACCEPTED on the original site
+Post score: 0
+

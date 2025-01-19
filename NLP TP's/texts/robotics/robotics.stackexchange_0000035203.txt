@@ -1,0 +1,81 @@
+Q:
+
+How to put more than one URDF model into RVIZ
+
+Hello,
+I would like to have more URDF models (next to robot's one) displayed in RVIZ (for example ipa-kitchen,cup, table...). How to do it correctly? Models have often same named links (dummy_link)...
+This is my current solution, but there are some errors in RVIZ as you can see...
+This is my launch file: http://pastebin.com/igmvk7cq
+Model looks good in RVIZ, but there are errors in robot model.
+
+As you can see, there are /world_tf/xx transforms and also xx ones. Why?
+There is screenshot of rxgraph:
+
+Output of roswtf:
+
+Found 2 warning(s).
+Warnings are things that may be just fine, but are sometimes at fault
+
+WARNING The following node subscriptions are unconnected:
+ * /gazebo:
+   * /gazebo/set_model_state
+   * /gazebo/set_link_state
+
+WARNING These nodes have died:
+ * world/spawn_urdf_world-2
+
+Found 7 error(s).
+
+ERROR Communication with [/rviz] raised an error: 
+ERROR Communication with [/rosout] raised an error: 
+ERROR Communication with [/rxconsole_1319534397534378303] raised an error: 
+ERROR Communication with [/world/joint_state_publisher] raised an error: 
+ERROR Communication with [/gazebo] raised an error: 
+ERROR Communication with [/world/robot_state_publisher] raised an error: 
+ERROR The following nodes should be connected but aren't:
+ * /world/joint_state_publisher->/world/robot_state_publisher (/world/joint_states)
+ * /gazebo->/rviz (/tf)
+ * /gazebo->/world/robot_state_publisher (/clock)
+ * /gazebo->/world/joint_state_publisher (/clock)
+ * /rosout->/rxconsole_1319534397534378303 (/rosout_agg)
+ * /gazebo->/rviz (/clock)
+ * /gazebo->/gazebo (/clock)
+ * /world/robot_state_publisher->/rviz (/tf)
+
+Am I completely wrong with using join_state_publisher and robot_state_publisher (for fixed joints) or is there just some small mistake? Thanks a lot for any useful advice. Cheers :-)
+
+Originally posted by ZdenekM on ROS Answers with karma: 704 on 2011-10-24
+Post score: 3
+
+A:
+
+Model looks good in RVIZ, but there are errors in robot model.
+
+In fact there is no error in the model. There is only status info that model has errors.
+When rviz starts, it parses robot_description without tf_prefix therefore showing model error of not transformed links. When the tf_prefix is entered (either manually or via .vcg configuration) there is update of links transformations, but status is not cleared from the previous error state. The new correct info is added to previous one, but to global status is left as Error.
+Simple patch to robot_model_display.cpp cures this out.
+
+*** /opt/ros/fuerte/stacks/visualization/rviz/src/rviz/default_plugin/robot_model_display.cpp     2012-08-01 00:39:38.876030807 +0200
+--- /opt/ros/fuerte/stacks/visualization/rviz/src/rviz/default_plugin/robot_model_display.cpp     2012-08-01 00:39:47.564200799 +0200
+***************
+*** 137,142 ****
+--- 137,144 ----
+  
+  void RobotModelDisplay::setTFPrefix(const std::string& prefix)
+  {
++   clearStatuses();
++ 
+    tf_prefix_ = prefix;
+  
+    propertyChanged(tf_prefix_property_);
+
+I'll try to issue a ticket for this.
+
+Originally posted by Jakub with karma: 1821 on 2012-07-31
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by hersh on 2012-08-01:
+Fixed in latest version of rviz.  I just kicked off a new Fuerte release (visualization-1.8.14). It should be available in the next day or so.  Thanks for the patch!
+

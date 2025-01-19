@@ -1,0 +1,113 @@
+Q:
+
+turtlebot orientation and moving towards target
+
+Hi everybody,
+I am new to ROS and currently I am using turtlebot for my experiment. My aim is to rotate the turtlebot to face my target coordinate and move towards it. However, the turtlebot is not behaving as I expected. The turtlebot is keep rotating or keep moving forward. Here is my source code and kindly give me some advices.
+for example destination is (1,-0.5)
+curr_loc = msg->pose.pose;
+
+double x=msg->pose.pose.position.x;
+double y=msg->pose.pose.position.y;
+double z=msg->pose.pose.orientation.z;
+double w=msg->pose.pose.orientation.w;
+
+curr_head=atan2(2*(x*y+w*z), w*w + x*x - y*y - z*z);
+
+DestX=1; DestY=-0.5;
+
+left_X=DestX-x;
+left_Y=DestY-y;
+
+left_dist=sqrt((left_X * left_X) + (left_Y*left_Y));
+
+if(left_dist <= 0.05)
+{
+   reached=true;
+}
+
+if(!reached)
+{
+   heading=atan2(left_locY,left_locX);
+}
+
+n_head=curr_head-heading;
+
+if (n_head<0.2 && n_head>-0.2)
+   facing=true;
+else
+   facing=false;
+
+if (!facing)
+   cmdvel.linear.x=0.0;
+  
+if (n_head>-3.14)
+   cmdvel.angular.z=-0.25;
+else if (n_head>-1.6)
+   cmdvel.angular.z=-0.10;
+else if (n_head<3.14)
+    cmdvel.angular.z=0.25;
+else if (n_head>1.6)
+    cmdvel.angular.z=0.10;
+else if (n_head>3.14)
+     cmdvel.angular.z=-0.10;
+else if (n_head<-3.14)
+     cmdvel.angular.z=0.10;
+
+if (facing && !reached)
+   {
+     cmdvel.angular.z=0.0;
+          if (left_dist>0.5)
+           {
+            cmdvel.linear.x=-0.2;
+                usleep(1000000);
+       }
+          else if (left_dist>0.2)
+          {
+           cmdvel.linear.x=-0.15;
+           usleep(1000000);
+      } 
+         else if (left_dist>0.08)
+         {
+          cmdvel.linear.x=-0.05;
+          usleep(1000000);
+     }
+  }
+ else if (reached)
+ {
+    cmdvel.linear.x=0.0;
+    n_head=0.0;
+    ROS_INFO("Turtlebot has reached the destination");
+}
+
+Hope anybody can help me out. Thank you!
+
+Originally posted by nadal11 on ROS Answers with karma: 23 on 2014-02-03
+Post score: 0
+
+A:
+
+Hey,
+I believe there is lil problem with logic,
+atan(y,x) gives you angle mapped from -3.14 to 3.14. So at any point of time your curr_head and heading value will be between -pi to pi.
+and n_head = curr_head-headding (lets take a cases)
+
+both values from 0 to pi/2  -> diff will be > -3.14 so it will satisfy first condition and wont go for next (coz of else if)
+(this will behave same way for any angles with abs(diff) < pi )
+It will move round and round in most cases .. and you should increase your threshold because the subscribed topic callback depends on the frequency you give. so if its not high enough then it will skip some poses.
+you can rearrange if conditions for your first problem, ( first try to write extreme conditions like >pi or <-pi)
+
+NOTE :Actually, n_head value ls between -2pi to 2pi, you should consider those cases too. Its better if you map the data first to 0 -> 2*pi , and use abs(diff) to get diff in value and abs(diff)/diff to get direction. it would be lot easier with lot less equations.
+Hope this helped
+Sudeep
+
+Originally posted by Sudeep with karma: 460 on 2014-05-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ahendrix on 2014-05-14:
+The angles package has a few functions that are very useful for this sort of angle-based math: normalize_angle and shortest_angular_distance. Much cleaner and easier than writing your own angle normalization.
+Comment by nadal11 on 2014-05-15:
+Thank you for both suggestion!
+

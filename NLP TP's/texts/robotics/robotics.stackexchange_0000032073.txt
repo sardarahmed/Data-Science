@@ -1,0 +1,121 @@
+Q:
+
+Using the household_objects_database with diamondback
+
+Hello
+I'd like to use the grasping-database on our PR2 (or gazebo to start with). I installed the database according to this tutorial: http://www.ros.org/wiki/household_objects_database/Tutorials/Install%20the%20household_objects%20database%20on%20your%20local%20database%20server
+and the node via the object_manipulation-package.
+This is my server config and launchfile for the db:
+household_objects_database:
+  database_host: localhost
+  database_port: 5432
+  database_user: willow
+  database_pass: willow
+  database_name: household-objects-0.4 (was 0.2 in earlier version)
+
+and
+<launch>
+  <!-- load database connection parameters -->
+  <rosparam command="load" 
+            file="$(find object_detection)/config/my_server.yaml"/>
+  <!-- start the database wrapper node -->
+  <node pkg="household_objects_database" name="objects_database_node" 
+        type="objects_database_node" respawn="true" output="screen"/>
+</launch>
+
+A first check on the DB looks good:
+rosservice call /objects_database_node/get_model_list REDUCED_MODEL_SET
+return_code: 
+  code: -1
+model_ids: [18665, 18685, 18691, (...)]
+
+But I can't get any gripping positions:
+rosservice call /objects_database_node/database_grasp_planning "{arm_name: right_arm, target: {type: 1, model_pose:{model_id: 18744 } } }"
+ERROR: Incompatible arguments to call service:
+No field name [target.model_pose]
+Provided arguments are:
+ * {'arm_name': 'right_arm', 'target': {'model_pose': {'model_id': 18744}, 'type': 1}} (type dict)
+
+Service arguments are: [arm_name target.reference_frame_id target.potential_models target.cluster.header.seq (...) ]
+
+If I use the db within the pick&place-demo, the demo aborts with the message
+Object manipulator failed to call planner at /objects_database_node/database_grasp_planning
+
+which seems rather related to the db error.
+Has anyone used the db with diamondback and can give me a hint?
+Nikolas
+// Update (see comments)
+In Standalone:
+rosservice call /objects_database_node/database_grasp_planning "{arm_name: right_arm, target: {potential_models: [{ model_id: 18744 }] } }"
+returns
+grasps: []
+error_code: 
+  value: 2
+
+and the service itself prints those messages:
+[ERROR] [1307478152.866188465, 25974.284000000]: Database grasp planning: database query error
+[ERROR] [1307478758.305219944, 26535.359000000]: Hand description: could not find parameter /hand_description/right_arm/hand_database_name
+[ERROR] [1307478758.305614745, 26535.360000000]: Database get list: query failed. Error: ERROR:  column "grasp_compliant_copy" does not exist
+LINE 1: ...sp_cluster_rep, grasp_table_clearance, hand_name, grasp_comp...
+                                                             ^
+
+[ERROR] [1307478758.305675838, 26535.360000000]: Database grasp planning: database query error
+
+// Update 2:
+Results for the 0.4-2 db:
+grasps: []
+error_code: 
+  value: 0
+
+and
+[ERROR] [1307617317.355176736]: Hand description: could not find parameter /hand_description/right_arm/hand_database_name
+[ INFO] [1307617317.359785243]: Database object node: retrieved 0 grasps from database
+[ INFO] [1307617317.359861977]: Database grasp planner: pruned 0 grasps for table collision or gripper angle above threshold
+[ INFO] [1307617317.359905145]: Database grasp planner: returning 0 grasps
+
+Originally posted by NikolasEngelhard on ROS Answers with karma: 106 on 2011-06-06
+Post score: 1
+
+Original comments
+Comment by Matei Ciocarlie on 2011-06-10:
+This is strange, I was pretty sure that the 0.4 version has the grasp_compliant_copy field. In any case, you can always check by hand using PGAdmin3. If the table grasp does not have that column, can you please add it by hand, type boolean, and set the default to False?
+Comment by NikolasEngelhard on 2011-06-08:
+This already was the result for the 0.4 db (diamondback-prerelease-backup), I just forgot to change the name in the config-file after I restored the db from the 0.4-backup.
+Comment by Matei Ciocarlie on 2011-06-08:
+I think this is caused by using the 0.2 version of the database, which works with cturtle. Can you please give it a try with the 0.4 prerelease version, which you can download from the same spot: https://code.ros.org/svn/data/trunk/household_objects/
+Comment by NikolasEngelhard on 2011-06-07:
+Thanks for your help :) I updated the question. I'll add the error messages from the demo tomorrow.
+Comment by Matei Ciocarlie on 2011-06-07:
+When calling it standalone, can you please try instead: rosservice call /objects_database_node/database_grasp_planning "{arm_name: right_arm, target: {potential_models: [{ model_id: 18744 }] } }"
+Comment by Matei Ciocarlie on 2011-06-07:
+Any other error messages when you try running it from the pick and place demo? I am trying to get some insight into why the service call is failing.
+
+A:
+
+I now installed the database (household_0.4) on our PR2 and still get some errors, though this time, they are a bit different:
+engelhar@marvin:~$ rosservice call /objects_database_node/database_grasp_planning  "{arm_name: right_arm, target: {potential_models: [{ model_id: 18780 }] } }"
+
+ grasps: []
+ error_code: 
+  value: 2
+
+And the service says:
+[ERROR] [1312116981.010510658]: Hand description: could not find parameter /hand_description/right_arm/hand_database_name
+[ERROR] [1312116981.011074672]: Database get list: query failed. Error: ERROR:  column "fingertip_object_collision" does not exist
+LINE 1: ...rasp_compliant_original_id, grasp_scaled_quality, fingertip_...
+                                                             ^
+
+[ERROR] [1312116981.011722189]: Database grasp planning: database query error
+
+I checked for the "grasp_compliant_copy" value and its boolean and false by default.
+
+Originally posted by NikolasEngelhard with karma: 106 on 2011-07-31
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Matei Ciocarlie on 2011-08-01:
+To get rid of this, you should be able to also add the "fingertip_object_collision" boolean field to the "grasp" table and set its default to FALSE.
+Comment by Matei Ciocarlie on 2011-08-01:
+This is caused by a mismatch between the code and the database schema, sorry about this... It seems to be complaining about the "fingertip_object_collision" field, which only appears in the prerelease_2 version of the backup file. Is that the one you downloaded?
+

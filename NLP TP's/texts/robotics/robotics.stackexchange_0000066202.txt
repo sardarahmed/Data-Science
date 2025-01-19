@@ -1,0 +1,81 @@
+Q:
+
+Again a Migration Question From TF to TF2
+
+Hi all,
+at first, I am sorry if this question might be a duplicate, however I didn't find a clear answer while searching this forum.
+So I decided to migrate my code from TF to TF2. I encountered lots of confusion since I am missing now some helper functions, Datatypes are obviously changed from tf:: to tf2:: and so forth.
+In a nutshell, what I am trying to do is to lookup some transforms, compute my kinematic-chain-relation and publish a new frame.
+1.) lookup a transform with my tf2::buffer, which returns a geometry_msgs::TransformStamped
+geometry_msgs::TransformStamped geo_msg = buffer.lookupTransform( "frame1", "frame2", ros::Time(0) );
+
+2.) transform this geometry_msgs::TransformStamped into a tf2::Transform in order to make ordinary frame operations such as multiplications, inverse() etc.
+In order for this to work I have to convert my geometry_msgs::TransformStamped into a tf2::Transform and this is where the confusion starts.
+in tf1, I'd use any helper functions listed in <tf/transform_datatypes.h> tf/transform_datatypes.h
+static void tf::transformStampedMsgToTF (const geometry_msgs::TransformStamped &msg, StampedTransform &bt)
+
+Since tf::StampedTransform and tf2::Transform are not compatible, I googled for the tf2:: equivalent and found this tf2/transform_datatypes.h:
+static inline void pointStampedMsgToTF2(const geometry_msgs::PointStamped & msg, Stamped<Point>& bt)
+
+This finally leads to compilation error, since the link points to an old revision and those functions were apparently replaced by a templated convert function. So I tried:
+tf2::Transform tf_msg;
+tf2::convert<geometry_msgs::TransformStamped, tf2::Transform>( geo_msg, tf_msg );
+
+This fails to compile with:
+.../ros/include/tf2/convert.h:89:5: error: 'toMsg' was not declared in this scope
+.../ros/include/tf2/convert.h:89:5: error: 'fromMsg' was not declared in this scope
+
+Then I thought, maybe I am coding a mismatch between Stamped-Object and Non-Stamped objects, so I tried further:
+tf2::Transform tf_msg;
+tf2::convert<geometry_msgs::Transform, tf2::Transform>( geo_msg.transform, tf_msg );
+This fails with the same error messages ( I tried to include basically everything I have in tf2 :) )
+So my only option to convert those two objects was manually copying all the translations and rotations from on into another, which ridiculously overblows my code.
+  tf2::Quaternion q( geo_msg.transform.rotation.x,
+                     geo_msg.transform.rotation.y,
+                     geo_msg.transform.rotation.z,
+                     geo_msg.transform.rotation.w
+      );
+  tf2::Vector3 r( geo_msg.transform.translation.x,
+                  geo_msg.transform.translation.y,
+                  geo_msg.transform.translation.z
+      );
+  tf2::Transform tf_msg( q,r);
+
+So with this I could finally do my transform operations.
+tf2::Transform computed_tf_msg = tf_msg.inverse() * <whatever_tf>
+
+3.) Publishing a geometry_message from a transform
+In tf1 I could simply trigger the tf_broadcaster like this:
+tf_broadcaster.sendTransform(tf::StampedTransform( computed_tf_msg, time, "new_frame", "frame2") );
+
+However, this doesn't work in tf2:: so that I ended up doing the conversion from tf2::Transform to geometry_msgs::TransformStamped manually
+To conclude:
+Is this really the way to go or do I miss anything here? In comparison to TF1, I miss a lot of simple conversion functions and such. I think this pipeline of looking up transform, computing a new frame relation and publish this is nothing fancy.
+Sorry for the long post.
+
+Originally posted by Karsten on ROS Answers with karma: 643 on 2015-03-05
+Post score: 7
+
+A:
+
+Hi @Karsten
+In general I believe that most users have been using the kdl datatypes which have most of the conversions defined
+Part of the design of tf2 was to enable the use of your own arbitrary datatypes. We've recently gotten feedback that people want to use the tf2 datatypes themselves. During the design they were brought in as a necessary dependency, but sought to discourage their use. To make this available there are some new conversions on the way
+The goal is that to add support for any arbitrary datatype takes one header file with ~ 15 lines of boiler plate plus the implementation itself. This should be low enough for anyone to add support for project specific datatypes as well as having generic ones available.
+There are definitely more bullet conversions possible, as well as a tf2_eigen package which was originally envisioned but without demand was never written.
+In general there are a ton of conversions possible, so we haven't tried to spent time speculatively filling in every conversion possible. If you or anyone else would like any more specific datatypes conversions supported please open a ticket or even better a pull-request.
+
+Originally posted by tfoote with karma: 58457 on 2015-03-05
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Karsten on 2015-03-06:
+Hi @tfoote
+thanks for the response that clears things up. I was simply unsure what's the correct way to go.
+Regarding the datatypes - is there a best practice whether to prefer KDL over TF2 ?
+Comment by tfoote on 2015-03-06:
+It's a trade-off. If you only need what currently exists in the tf2 data types it's ok to use them, but they're not expected to evolve or expand. The KDL datatypes have notably more features, but does bring in another dependency.
+Comment by Dragonslayer on 2020-12-08:
+Iam at the same point today, as the poster was 5 years ago. Has there been anything done in the past 5 years to make this more convenient?
+

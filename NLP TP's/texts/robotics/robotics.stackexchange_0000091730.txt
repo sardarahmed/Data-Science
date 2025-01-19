@@ -1,0 +1,115 @@
+Q:
+
+Use transformation from another node
+
+Hi everyone,
+I am trying to use frames that have been already created in another node in my node to do a transformation from a plan to another, but it seems that I have missed a step because then my program is running, it doesn't use the frame from the other node.
+This is the class that I have made to do my transform step.
+class TransformToGlobal:
+
+def __init__(self, tfname):
+    #self.tl = tf.TransformListener()
+    self.mytfname = tfname
+    self.tfBuffer_ = tf2_ros.Buffer()
+    self.listener = tf2_ros.TransformListener(self.tfBuffer_)
+    #rospy.Subscriber("/sometopic", PointStamped, self.some_message_handler)
+
+def transformToGlobal(self, x, y , z):
+    transformStamped_ = TransformStamped()
+    br = tf2_ros.TransformBroadcaster()
+    posPoint = Vector3()
+    transformStamped_.header.stamp = rospy.Time.now()
+    transformStamped_.header.frame_id = dronename + "_svo_drone_vision"
+    transformStamped_.child_frame_id = dronename + "_depth_drone_vision"
+    transformStamped_.transform.translation.x = 0.035
+    transformStamped_.transform.translation.y = 0.05
+    transformStamped_.transform.translation.z = 0.03
+    q = tf_conversions.transformations.quaternion_from_euler(-pi/2, 0, 0)
+    transformStamped_.transform.rotation.x = q[0]
+    transformStamped_.transform.rotation.y = q[1]
+    transformStamped_.transform.rotation.z = q[2]
+    transformStamped_.transform.rotation.w = q[3]
+    br.sendTransform(transformStamped_)
+
+    transformStamped_.header.stamp = rospy.Time.now()
+    transformStamped_.header.frame_id = dronename + "_depth_drone_vision"
+    transformStamped_.child_frame_id = dronename + "_bary_depth_frame"
+    transformStamped_.transform.translation.x = x
+    transformStamped_.transform.translation.y = y
+    transformStamped_.transform.translation.z = z + 0.16
+
+    br.sendTransform(transformStamped_)
+
+    try:
+        transformStamped_ = self.tfBuffer_.lookup_transform(self.mytfname, dronename + "_bary_depth_frame", rospy.Time.now())
+        posPoint.x = transformStamped_.transform.translation.x 
+        posPoint.y = transformStamped_.transform.translation.y
+        posPoint.z = transformStamped_.transform.translation.z
+    except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+        rate.sleep()
+        rospy.logwarn("Error transform")
+    return posPoint
+
+I only get a posPoint filled with 0.
+This class is called from this part of the code
+# Récupère les coordonées cartésiennes des points dans le repère de la caméra
+bottomdist = sensor_msgs.point_cloud2.read_points_list(PC.GetDataPoint(), skip_nans=False,  uvs=[bottommost])
+topdist = sensor_msgs.point_cloud2.read_points_list(PC.GetDataPoint(), skip_nans=False, uvs=[topmost])
+rightdist = sensor_msgs.point_cloud2.read_points_list(PC.GetDataPoint(), skip_nans=False, uvs=[rightmost])
+leftdist = sensor_msgs.point_cloud2.read_points_list(PC.GetDataPoint(), skip_nans=False, uvs=[leftmost])
+closedist = sensor_msgs.point_cloud2.read_points_list(PC.GetDataPoint(), skip_nans=False, uvs=[min_loc])
+
+# Convertit les coordonnées précemments trouvées dans le repère global
+# Renseigne le message des coordonnés converties
+myObs.bottomPoint = tftoglob.transformToGlobal(bottomdist[0][0], bottomdist[0][1], bottomdist[0][2])
+myObs.topPoint = tftoglob.transformToGlobal(topdist[0][0], topdist[0][1], topdist[0][2])
+myObs.rightPoint = tftoglob.transformToGlobal(rightdist[0][0], rightdist[0][1], rightdist[0][2])
+myObs.leftPoint = tftoglob.transformToGlobal(leftdist[0][0], leftdist[0][1], leftdist[0][2])
+myObs.closePoint = tftoglob.transformToGlobal(closedist[0][0], closedist[0][1], closedist[0][2])
+distanceobstacle.append(myObs)
+
+Cheers.
+
+Originally posted by oiseau on ROS Answers with karma: 32 on 2019-05-21
+Post score: 0
+
+A:
+
+I'm assuming that the transformations between self.mytfname and dronename + "_svo_drone_vision" are being provided by your other node.
+One thing to point out is that the TF system is based on message passing, so it is not safe to assume that a TF will be available in the buffer immediately after it has been broadcast. It will take a small amount of time before it is available.
+I also noticed that you're looking up the TF at the current time, this will required extrapolating the drone TFs into the future so I would be expecting to see that excepting being thrown. A way around this is to lookup using the time rospy.Time(0) this tells the TF listener to return the most recent transform available, which should get around this problem.
+It would be good to see a more complete block of code so we could see how transformToGlobal is being called. Hope this helps.
+Thanks for the update:
+I'm afraid that this is not how the TF system is meant to be used. You're broadcasting two static transforms and looking up a TF every time the transformToGlobal method is being called. This will be very slow at best and not work at all at worst.
+I would recommend using two static transform publisher nodes to setup the two transformations you're creating in the transformToGlobal method. These transforms should define the location of your depth sensor of the drone. This way you'll only need to lookup a single transform inside this node.
+Also you're transformToGlobal method should return the transform itself, so that the same transform can be used to transform all the points. This means you only need to do the lookup once, not again for each new point.
+Hope this makes sense.
+Update:
+If you need to transform a point into a different frame this feature is already built into the TF system for you. If you convert your point into a PointStamped object so it has a time then you can convert it with a single line:
+from tf2_geometry_msgs import PointStamped
+
+...
+
+PointStamped myPoint
+myPoint.header.frame_id = "depth_frame"
+myPoint.header.stamp = <Time of depth scan>
+myPoint.x = x
+myPoint.y = y
+myPoiny.z = z
+
+transformedPoint = tf_buf.transform(myPoint, "new_frame_id")
+
+This will take care of the fully transformation for you including any rotations.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2019-05-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by oiseau on 2019-05-21:
+I have updated the question with the code where I called my class. Yes you are right, I am waiting for this two frames.Ok, thank you, I will update my code accordingly.
+Comment by oiseau on 2019-05-23:
+It seems that I didn't understand properly, I can't do a simple addition for the point I get because my drone is not fixed and can move on 6 axis. How I can get the transformation to get the coordinate of my points ?
+Comment by PeteBlackerThe3rd on 2019-05-23:
+No worries, you're correct, but there is an easy function built in to do what you need. I've updated my answer to include it.
+

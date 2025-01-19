@@ -1,0 +1,125 @@
+Q:
+
+Double caster wheel problem
+
+Hi guys,
+I'm trying to implement a double wheeled caster. Obviously it's different from the other one of the tutorial, which it's a sphere.
+My new caster works well, except when the model try to turn 180º. At this point, the joint doesn't turn 180º only, it continues turning...
+Here is the code of my caster:
+(PASTED IN PASTEBIN)
+Here you have a picture with the bot having the issue: http://dl.dropbox.com/u/6821156/gazebo-issue1.png
+I tried with different types of joints, parameters as physics or surface with mu, etc. but nothing better (maybe I was doing wrong).
+Sorry for my English and thank you very much!
+EDIT 1:
+The limits are not the solution. I've tried the limit to PI (180 degrees are PI rads) and the behavior isn't good. The caster should turn totally free, but without affect the model chassis. It's like if the caster has more priority or weight at the moment of turning or movement.
+A video better than 1000 words: http://www.youtube.com/watch?v=rKppVt4Yivk
+EDIT 2:
+I've applied the force to the joints of big wheels, not to the caster wheels. Caster wheels is always at 0 N/m². I want a behavior similar as the office chairs casters, only joint, without force.
+EDIT 3:
+Matrix, Dumping, and many other intents of modify the physical or dynamic properties of the joint and nothing. Absolutely nothing. I paste the code of the robot and the castor models here, maybe you can see something wrong or try to implement the model in Gazebo (I'm in 1.3.1):
+Model: http://pastebin.com/pHcirtLC
+Double wheel castor: http://pastebin.com/dahypi5f
+A little explanation from the castor: is a unique link for the body (with 3 parts, in 'S' form). At the top of this, there is a small cylinder to joint the castor with another model. And below are 1 collision (instead 2, 1 for each wheel) and 2 visual (1 for each wheel).
+The name of the parts are in Spanish:
+Rueda = Wheel
+Eje = Axis/Hing
+Castor = Caster
+Izq = Left
+Der = Right
+I don't know how much difficult could be this to implement...it's too simple: the castor must stop turning when the robot acquires a direction! :D
+SOLUTION:
+As my German friend saids, the intertial matrix had the solution. Changing some values I have obtained a best behavior. Video: http://www.youtube.com/watch?v=x6YERSiA3n4
+It's not perfect, but better by far from the first one.
+The code of this castor: http://pastebin.com/3ZA22s8T
+Thank you !!
+Now, I will try to improve the behavior :)
+
+Originally posted by pablogaralv on Gazebo Answers with karma: 15 on 2013-02-11
+Post score: 1
+
+A:
+
+Hi I quickly tried to make your model work as I would want it to look.
+What I figured is that you didn't add any rotational part of the castor wheel itself, so this should be something like this (I just added the left wheel of the castor wheel):
+<link name="left_wheel">
+  <pose>0.0295 0.0087 0.0255 0 1.5707 1.5707</pose>
+  <visual name='left_wheel_visual'>
+    <pose>0 0 0 0 0 0</pose>
+    <geometry>
+      <cylinder>
+        <radius>.0255</radius>
+        <length>.01</length>
+      </cylinder>
+    </geometry>
+  </visual>
+
+  <collision name="left_wheel_collision">
+    <pose>0 0 0 0 0 0</pose>
+    <geometry>
+      <cylinder>
+        <radius>.0255</radius>
+        <length>.01</length>
+      </cylinder>
+    </geometry>
+    <surface>
+      <friction>
+        <ode>
+          <mu>1000000</mu>
+          <mu2>100</mu2>
+          <slip1>0</slip1>
+          <slip2>0</slip2>
+        </ode>
+      </friction>
+    </surface>
+  </collision>
+</link>
+<joint type="revolute" name="left_wheel_hinge">
+  <pose>0 0 0 0 0 0</pose>
+  <child>left_wheel</child>
+  <parent>ejev</parent>
+  <axis>
+    <xyz>0 1 0</xyz>
+  </axis>
+</joint>
+
+If you add this I got an expected behaviour, you probably also want to add some inertial properties to your chassis link:
+<inertial>
+  <mass>5</mass>
+  <pose>0 0 0 0 0 0</pose>
+  <inertia>
+      <ixx>0.092140417</ixx> <!-- I = 1/4*m*(r^2 + 1/3*l^2) -->
+      <ixy>0</ixy>
+      <ixz>0</ixz>
+      <iyy>0.092140417</iyy> <!-- I = 1/4*m*(r^2 + 1/3*l^2) -->
+      <iyz>0</iyz>
+      <izz>0.15876</izz> <!-- I = 0.5*m*l^2 -->
+  </inertia>
+</inertial>
+
+And yes you probably also want to add inertial properties to the wheels and the rod and you want to make sure that you have friction coefficients such that the wheel doesn't slip. I usually display the joints, by right clicking on the model ->view->joints.
+Hope that helps.
+
+Originally posted by ffurrer with karma: 349 on 2013-02-14
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by pablogaralv on 2013-02-15:
+Hi! I have 3 doubts for you: 1-Why you use these values in mu and mu2 when these parameters only take a value between 0 and 1? 2-Why you add a new wheel to the caster? Look at my model, I have 2 visuals (left and right) but only 1 collision to less restrictions in the physical engine. 3-Where can I find the formulas you used? Is a rectangular box, and I haven't got the same values (having care the different mass value, of course). However, thanks you for your purpose! I'll try it.
+Comment by ffurrer on 2013-02-15:
+@pablogaralv:
+
+yes you are right, my mu values were arbitrary and I copied them from some other model and the documentation of sdf states that the values should be between 0 and 1 including boundaries but in the code (as far as I looked into it) this is never enforced and ODE also just suggests values around 1.
+you don't necessarily need this, but having a wheel would give you a better behaviour in the sense that it actually rolls in one direction and blocks in the other.
+3.not enough chars
+
+Comment by ffurrer on 2013-02-15:
+@pablogaralv:
+3. this are simple inertias for a cylinder; as you have this as your body:
+
+0.252
+0.175
+
+you can find the formulas for the different axis of a cylinder on:
+http://en.wikipedia.org/wiki/List_of_moments_of_inertia
+

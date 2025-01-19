@@ -1,0 +1,91 @@
+Q:
+
+How to execute a script at shutdown of a launch process
+
+I am trying to execute a bash script when my robotic simulation is shut down (to tear down the network configuration necessary for the simulation).
+I use ROS2 launch system to do so and I planned on using the OnShutdown event handler to launch some ROS actions when I ctrl-C the launch system.
+However, I fail to execute anything else than a LogInfo action in this callback:
+Example launch file:
+import os
+from launch import LaunchDescription
+from launch.actions import ExecuteProcess, LogInfo, RegisterEventHandler
+from launch.event_handlers import OnShutdown
+from launch_ros.actions import Node
+from launch.substitutions import LocalSubstitution
+
+def generate_launch_description():
+
+    talker_node = Node(
+            package='demo_nodes_cpp',
+            executable='talker',
+            name='demo_talker',
+        )
+
+    ld = LaunchDescription([
+        talker_node,
+        RegisterEventHandler(
+            OnShutdown(
+                on_shutdown=[
+                    LogInfo(
+                        msg=['Launch was asked to shutdown: ', LocalSubstitution('event.reason')]
+                    ),
+                    ExecuteProcess(
+                        cmd=['echo', 'Hello from ExecuteProcess']
+                    )
+                ]
+            )
+        )
+    ])
+
+    return ld
+
+This will give the following output. It ignores the echo command entirely, but executes LogInfo properly.
+theotime@theotime-Precision-5570:~/simulation_ws$ ros2 launch src/launch/test_launch.py --show-all-subprocesses-output 
+[INFO] [launch]: All log files can be found below /home/theotime/.ros/log/2023-06-20-15-25-59-974180-theotime-Precision-5570-170652
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [talker-1]: process started with pid [170653]
+[talker-1] [INFO] [1687267561.062017969] [demo_talker]: Publishing: 'Hello World: 1'
+[talker-1] [INFO] [1687267562.061961754] [demo_talker]: Publishing: 'Hello World: 2'
+[talker-1] [INFO] [1687267563.061974971] [demo_talker]: Publishing: 'Hello World: 3'
+^C[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [launch.user]: Launch was asked to shutdown: ctrl-c (SIGINT)
+[talker-1] [INFO] [1687267563.397639727] [rclcpp]: signal_handler(signum=2)
+[INFO] [talker-1]: process has finished cleanly [pid 170653]
+
+Why does OnShutdown refuse to execute actions other than LogInfo?
+How can I execute a bash script on shutdown of a launch process ?
+For reference and convenience: Link to the code responsible for OnShutdown
+
+A:
+
+I can reproduce this. I don't have advice about the root cause, but it looks like you can provide a callable to the on_shutdown= argument which might work for your use case.
+For example, I can define:
+def shutdown_func_with_echo_side_effect(event, context):
+    os.system('echo [os.system()] Shutdown callback function can echo this way.')
+    return [
+        LogInfo(msg='Shutdown callback was called for reason "{}"'.format(event.reason)),
+        ExecuteProcess(cmd=['echo', 'However, this echo will fail.'])]
+
+and register it with the OnShutdown event handler like this:
+ld = LaunchDescription([
+        talker_node,
+        RegisterEventHandler(
+            OnShutdown(on_shutdown=shutdown_func_with_echo_side_effect)
+        )
+    ])
+
+This gives
+[INFO] [launch]: All log files can be found below <path to logs>
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [talker.EXE-1]: process started with pid [19092]
+[talker.EXE-1] [INFO] [1687924816.372554600] [demo_talker]: Publishing: 'Hello World: 1'
+[talker.EXE-1] [INFO] [1687924817.377274200] [demo_talker]: Publishing: 'Hello World: 2'
+[talker.EXE-1] [INFO] [1687924818.367993100] [demo_talker]: Publishing: 'Hello World: 3'
+[talker.EXE-1] [INFO] [1687924819.381295400] [demo_talker]: Publishing: 'Hello World: 4'
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[os.system()] Shutdown callback function can echo this way.
+[INFO] [launch.user]: Shutdown callback was called for reason "ctrl-c (SIGINT)"
+[INFO] [talker.EXE-1]: process has finished cleanly [pid 19092]
+
+Like your example, the ExecuteProcess action returned by the function does not appear to do anything.
+

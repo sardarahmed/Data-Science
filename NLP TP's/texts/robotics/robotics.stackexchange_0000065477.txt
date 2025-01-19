@@ -1,0 +1,85 @@
+Q:
+
+Include Header file from another package - Indigo
+
+Hi folks,
+I have a file called (every name here is FAKE) file.h from the package named "my_package."
+Now, main.cpp located inside package named "the_package" needs to include the library in this manner:
+#include <file.h>
+
+but "the_package" cannot find file.h
+How do I make catkin allow "the_package" to find file.h without having to do something like:
+#include "../../../my_package/file.h"
+
+I am assuming I have to do it in my CMakeList.txt, but using find_package() nor find_package(catkin Required ...) are doing it.
+Every package is located inside my "catkin_ws" workspace.
+What is the proper way?
+Thanks
+
+Originally posted by Pototo on ROS Answers with karma: 803 on 2015-01-28
+Post score: 9
+
+A:
+
+You must install the header file.h from the package called my_package. You can do that by using this CMake snippet in the CMakeLists.txt file in the my_package package:
+## Install project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE)
+
+Note that this assumes your headers, in this case file.h, are in your package under the include/<project name> folder, which for my_package would be include/my_package/file.h. This is a good practice, since all header files for all packages can be installed to the same place and you wouldn't want your file.h and another package's to collide. This also means that the main.cpp in the_package should do #include <my_package/file.h> instead of what you listed above.
+Then the the_package package must:
+
+have a build_depend on my_package in its package.xml
+have called find_package(my_package REQUIRED) in its CMakeLists.txt
+add my_package's exported include directories by doing include_directories(${my_package_INCLUDE_DIRS})
+
+The include_directories(...) CMake call needs to come after the find_package(...) call.
+Each of those points above ensures that:
+
+my_package is built before the_package
+my_package exists and can be found through CMake
+the location of the headers exported by my_package is passed to the compiler for the libraries and executables in the_package
+
+Note that you can also do find_package(catkin REQUIRED COMPONENTS my_package ...) instead of find_package(my_package REQUIRED), where the ... maybe other packages that the_package depends on.
+Doing this would allow you to use the catkin_ prefixed CMake variables, so you would do include_directories(${catkin_INCLUDE_DIRS}) rather than include_directories(${my_package_INCLUDE_DIRS}).
+
+Originally posted by William with karma: 17335 on 2015-01-28
+This answer was ACCEPTED on the original site
+Post score: 31
+
+Original comments
+Comment by Pototo on 2015-01-28:
+The installation process needs to be done for the all the related files of which the_package depends on. That includes doing it for the packages that my_package depends on as well. Super recursive process haha.
+Thanks
+Comment by joq on 2015-01-28:
+Each one has to follow the procedure correctly, but it's the same for them all, except that <build_export_depends> may be required when there are transitive dependencies.
+Comment by William on 2015-01-29:
+If you are chaining these libraries across packages then, as @joq said, you'll need to make sure you declare the build_export_depends so that transitive dependencies are respected. I didn't mention transitive dependencies because you didn't say you were doing that in your original question.
+Comment by William on 2015-01-29:
+This documentation should help: http://docs.ros.org/indigo/api/catkin/html/howto/format2/building_libraries.html
+Comment by Raul Gui on 2015-06-19:
+I tried this and doesn't work, because in CMakeLists.txt of my_package is missing:
+catkin_package(
+  INCLUDE_DIRS include
+)
+
+with yours steps and adding this resolve the problem.
+Comment by Raul Gui on 2015-06-19:
+but if you put:
+catkin_package(
+INCLUDE_DIRS include
+LIBRARIES create_lib
+CATKIN_DEPENDS roscpp rospy std_msgs
+DEPENDS system_lib
+)
+you get a CMake Error:
+Project 'the_package' tried to find library 'my_package'.  The library is neither a target nor
+Comment by yash_5 on 2018-11-07:
+After following the above steps, I get the following error.
+CMake Error at /opt/ros/kinetic/share/catkin/cmake/custom_install.cmake:13 (_install):  install DIRECTORY given no DESTINATION!  Call Stack (most recent call first): CMakeLists.txt:19 (install)
+
+Comment by jayess on 2018-11-07:
+@yash_5 you should probably create a new question and reference this. This is a fairly old question and the you'll probably get a better response by making a new one.
+

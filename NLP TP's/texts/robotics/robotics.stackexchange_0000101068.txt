@@ -1,0 +1,96 @@
+Q:
+
+How to publish float64 array to a topic?
+
+Hello, I am trying to publish fake joint states on a topic. My code compiles successfully, however, it gives an error "Segmentation fault, core dumped" when is run the node. Basically, I want to publish two fake positions (0) and two velocities.
+#include<ros/ros.h>
+#include<std_msgs/Float64.h>
+#include <sensor_msgs/JointState.h>
+float lVel = 0, rVel = 0, lPos = 0, rPos = 0;
+
+int main(int argc, char** argv){
+    ros::init(argc, argv, "custom_joint_state_publisher");
+    ros::NodeHandle n;
+    ros::Publisher statePub = n.advertise<sensor_msgs::JointState>("measured_joint_states", 100); 
+    sensor_msgs::JointState joint_values;
+    ros::Rate r(10);
+    while(ros::ok()){
+        joint_values.header.stamp = ros::Time::now();
+        joint_values.position[0] = 0 ;
+        joint_values.position[1] = 0;
+        joint_values.velocity.push_back(0);
+        joint_values.velocity.push_back(0);
+        statePub.publish(joint_values);
+        r.sleep();
+        ros::spinOnce();
+    }
+    return 0;
+}
+
+Here you can see that I am using the assignment operator and pushback() function. The segmentation fault error appears with the assignment operator only. The issue with push_back function is that instead of publishing one value (0), it publishes multiple values (array of 0s) on the topic. How to publish one 0 at a time to the topic? I am using ROS melodic, Ubuntu 18.04.
+Thank you!
+
+Originally posted by faraziii on ROS Answers with karma: 3 on 2022-01-19
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2022-01-19:
+Similar questions:
+
+https://answers.ros.org/question/380890/unable-to-publish-float64multiarray-in-python/
+
+https://answers.ros.org/question/273480/publish-and-subscribe-array-of-vector-as-message/
+
+https://answers.ros.org/question/393396/print-uint8multiarray-values-in-python/
+
+https://answers.ros.org/question/372108/using-float64multiarray-with-c/
+
+Comment by faraziii on 2022-01-19:
+Thank you for comment. I actually went through above links but couldn't fix the issue i am facing.
+Comment by ljaniec on 2022-01-19:
+Please edit your question so your code is easy readable, only then we could help
+Comment by gvdhoorn on 2022-01-20:
+Just to note: the OP is not publishing "a float64 topic". This is a regular JointState publisher.
+Comment by faraziii on 2022-01-20:
+Sorry, i didn't know how to do that but someone did that for me. Thanks to him.
+
+A:
+
+resize will solve this problem.
+#include<ros/ros.h>
+#include<std_msgs/Float64.h>
+#include <sensor_msgs/JointState.h>
+float lVel = 0, rVel = 0, lPos = 0, rPos = 0;
+
+int main(int argc, char** argv){
+    ros::init(argc, argv, "custom_joint_state_publisher");
+    ros::NodeHandle n;
+    ros::Publisher statePub = n.advertise<sensor_msgs::JointState>("measured_joint_states", 100); 
+    sensor_msgs::JointState joint_values;
+    ros::Rate r(10);
+    while(ros::ok()){
+        joint_values.header.stamp = ros::Time::now();
+        joint_values.position.resize(2);
+        joint_values.position[0] = 0 ;
+        joint_values.position[1] = 0;
+        joint_values.velocity.resize(0);
+        joint_values.velocity.push_back(0);
+        joint_values.velocity.push_back(0);
+        statePub.publish(joint_values);
+        r.sleep();
+        ros::spinOnce();
+    }
+    return 0;
+}
+
+position will be resize at 2 to make room for the assignment.
+velocity should be resize by 0 to clear the assigned area. This can also be done with empty.
+
+Originally posted by miura with karma: 1908 on 2022-01-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by faraziii on 2022-01-20:
+Thank you! That's what i was missing.
+

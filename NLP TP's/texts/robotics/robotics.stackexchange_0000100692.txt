@@ -1,0 +1,90 @@
+Q:
+
+How to attach objects in robot state
+
+I am planning a robot motion in two steps. So I can modify the boundary conditions of the target pose of the first step (orienation of gripper), if the planning of step two fails (bring part to target pose). Background is to handle parts of high varity in geometry without teaching.
+In a first development step I planned AND executed the steps subsequently. All motions worked fine and there were no collisions. Now, I observe some collisions in the second step in RViz but the motion is executed without recognition of the collision. Furthermore all of the end poses are correct. Planning algorithm is the same.
+Some background info of my code: I plan the first motion in classic way with
+tubehandling.move_group.set_pose_target(targets[0])
+plan1 = tubehandling.move_group.plan()
+
+If plan1[0] == True the next planning step follows. For this I get the joint angles of the last plannend point in plan1 and update with this angels the robot_start_state for the second planning:
+target_joints = plan1[1].joint_trajectory.points[-1].positions
+target_joints = list(target_joints)
+robot_state = tubehandling.robot.get_current_state().joint_state.position
+robot_state = list(robot_state)
+# Update joint angles with planned robot state at gripping point
+robot_state[0:6] = target_joints[0:6]
+print("Robot end state (angles):")
+print(robot_state[0:6])
+
+robot_state = tuple(robot_state)
+robot_start_state = tubehandling.robot.get_current_state()
+robot_start_state.joint_state.position = robot_state
+
+# Set new start state for 2nd planning
+tubehandling.move_group.set_start_state(robot_start_state)
+
+After this the planning follows WITH attached part and if plan2[0] == True the two plans are carried out.
+tubehandling.move_group.set_pose_target(targets[1])
+tubehandling.attach_part(tubename) 
+plan2 = tubehandling.move_group.plan()
+tubehandling.detach_part(tubename)
+
+Do I overlook something? Do I have to update somethin else? As usual, thanks in advance!
+
+Originally posted by nicob on ROS Answers with karma: 37 on 2021-12-01
+Post score: 0
+
+Original comments
+Comment by nicob on 2021-12-01:
+It was possible for me to pinpoint the fault more. With the MotionPlanning - Trajectory Slider in RViz I recognized that the part is not correctly attached to the robot. I do not understand why it makes a difference if I attach the part to the robot when I am planning step by step. The function I am using is the same:
+# Attach a part to the robot
+def attach_part(self, part_name, timeout=4):
+    print("Attaching following object:")
+    print(part_name)
+
+    self.move_group.attach_object(part_name)
+      
+    rospy.sleep(0.5)
+    # Wait for the planning scene to update.
+    return self.wait_for_state_update( part_name,
+        object_is_attached=True, object_is_known=False, timeout=timeout
+    )
+
+Any ideas? Thanks!
+Comment by nicob on 2021-12-01:
+print(tubehandling.scene.get_attached_objects()) shows the attached object correctly in the second planning.
+Comment by nicob on 2021-12-01:
+One more comment...
+I think it is definitv a problem of an incomplete definition of the robot_state msg. The command robot_start_state = tubehandling.robot.get_current_state() seems not to return the attached objects in contrast to tubehandling.move_group.set_start_state_to_current_state(), which is setting the attached objects correct accordingly to the planning scene.
+Is there a comfortable way to update the attached objects to the robot_state msg from the planning interface by hand? Thanks!
+Comment by Ranjit Kathiriya on 2021-12-02:
+Hello @nicob,
+Instead of adding multiple comments, I would suggest re-editing your question.
+
+A:
+
+After long hours of puzzling over the problem I found a working solution. Perhaps it is not the most elegant solution but it works...
+I get the attached-objects msg from the planning scene and appends it at the robot state. After that I had to modifiy the mesh_poses and frame_id to place the object in the right pose (not shown in the code fragment).
+# Attach part for creating attached object msg
+tubehandling.attach_part(tubename)
+attached_objects = tubehandling.scene.get_attached_objects()
+tubehandling.detach_part(tubename)
+# Remove part to prevent collision in planning
+tubehandling.remove_part(tubename)
+
+# Update the robot state with attached objects
+robot_start_state = tubehandling.robot.get_current_state()
+robot_start_state.joint_state.position = robot_state
+
+# Add attached object to robot state
+robot_start_state.attached_collision_objects.append(attached_objects[tubename])
+
+I just attached one object.
+I hope the code fragment helps... Thanks!
+
+Originally posted by nicob with karma: 37 on 2021-12-02
+This answer was ACCEPTED on the original site
+Post score: 0
+

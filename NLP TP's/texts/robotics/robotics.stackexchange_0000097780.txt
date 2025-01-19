@@ -1,0 +1,68 @@
+Q:
+
+Is it possible to increase the publishing rate of a topic inside a launch file?
+
+This is my situation,
+I am subscribing to a topic which publishes messages at a rate of 5 Hz and I want to increase the rate to 100 Hz. A way to achieve that, is creating a node and republish the incoming messages to a higher frequency, however I am wondering if there is already a ROS tool able to perform such task and that can be defined inside a launch file.
+PD: Sorry for my poor English grammar.
+
+Originally posted by EDU4RDO-SH on ROS Answers with karma: 52 on 2020-12-07
+Post score: 0
+
+Original comments
+Comment by Martin Günther on 2020-12-08:
+So you basically want to repeat each message 20x? This doesn't sound right. Could you comment why you want to do this?
+Comment by mgruhler on 2020-12-08:
+The question is: Why would you want to do that? The message stays the same in between the 5Hz updates. So there is nothing gained by increasing the frequency in this way.
+Could you explain in more detail why you want to do that and what you hope to gain?
+There are some tools to easily deal with topics in the topic_tools package, but not for your use case.
+Comment by EDU4RDO-SH on 2020-12-08:
+The reason is because I am implementing a control system whose plant publishes messages of the current states at 5 Hz which seems to me a low speed. For this reason, I decided to somehow increase the frequency no matter what intermediate values are repeated.
+
+A:
+
+Based on your comments, I guess this is the situation (correct me if I'm wrong):
+
+You're implementing a control system in your ROS node that you want to run at 100 Hz.
+The input messages arrive at 5 Hz.
+Your control logic happens in the callback method; since the messages only arrive at 5 Hz, the control logic also runs at 5 Hz instead of 100 Hz.
+
+The solution is not to increase the input frequency to 100 Hz by repeating each message 20 times. The solution is to move your control logic out of the callback method.
+Your code probably looks something like this:
+callback(input_msg) {
+  runControlSystem(input_msg);
+}
+
+main() {
+  subscribe(..., callback);
+  ros::spin();
+}
+
+Instead, it should look like this:
+last_input_;
+
+callback(input_msg) {
+  last_input_ = input_msg;
+}
+
+main() {
+  subscribe(..., callback);
+
+  ros::Rate r(100); // 100 hz
+  while (ros::ok()) {
+    ros::spinOnce();    // this will process all incoming messages and call your callback function.
+                        // The difference to spin() is that spin() blocks, but spinOnce() returns
+                        // so your code can continue.
+    runControlSystem(last_input_);
+    r.sleep();
+  }
+}
+
+Originally posted by Martin Günther with karma: 11816 on 2020-12-08
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by EDU4RDO-SH on 2020-12-08:
+Thanks! Now it makes more sense.
+

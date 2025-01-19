@@ -1,0 +1,54 @@
+Q:
+
+How to Connect a tf::messageFilter to two subscribers
+
+Hi All,
+I would like to synchronise two sensor inputs with a tf::messageFilter. How would I go about connecting both message_filters::subscribers to a single tf::messageFilter.
+I have tried to sync both the subscribers via a synchroniser using an approximate time policy. I would like to connect this to the tf::messageFilter
+In the header file I have:
+tf::TransformListener m_tfListener;
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::NavSatFix, sensor_msgs::Imu> MySyncPolicy;
+    message_filters::Subscriber< sensor_msgs::NavSatFix > *m_gpsSub;
+    message_filters::Subscriber<sensor_msgs::Imu> *m_imuSub;
+    message_filters::Synchronizer<MySyncPolicy>* sync;
+
+    tf::MessageFilter< sensor_msgs::NavSatFix, sensor_msgs::Imu>* m_gpsFilter;
+
+in the .cpp file I have
+ m_gpsSub= new message_filters::Subscriber<sensor_msgs::NavSatFix>(private_nh, "fix", 5);
+  m_imuSub = new message_filters::Subscriber<sensor_msgs::Imu>(private_nh, "imu", 5) 
+  m_gpsFilter = new tf::MessageFilter<sensor_msgs::NavSatFix, sensor_msgs::Imu>(m_tfListener, odomFrameId, 10) 
+  sync= new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(20), *m_gpsSub, *m_imuSub);
+  m_gpsFilter->connectInput(sync);
+  m_gpsFilter->registerCallback(boost::bind(&SwarmbotMCL::gpsCallback, this, _1, _2));
+
+however It complains that tf::MessageFilter can only take one input:
+ error: wrong number of template arguments (2, should be 1)
+/opt/ros/hydro/include/tf/message_filter.h:106:7: error: provided for ‘template<class M> class tf::MessageFilter’
+
+does anyone know of the correct way to do this?
+
+Originally posted by PeterMilani on ROS Answers with karma: 1493 on 2014-09-20
+Post score: 2
+
+A:
+
+Based on the insight given in a previous answer that this is possible because the tf::message_filter is just another message filter, I came up with the following working solution. Sync your tf::message_filter with one (or possibly both) your message_filter subscribers. pass the pointer of the resulting tf::message_filter to your synchronizer, and link you synchronizer to the callback. As in the following reworked .cpp code :
+m_gpsSub= new message_filters::Subscriber<sensor_msgs::NavSatFix>(private_nh, "fix", 5);
+
+  m_imuSub = new message_filters::Subscriber<sensor_msgs::Imu>(private_nh, "imu", 5);
+  //m_gpsSub->connectInput(m_imuSub);
+  m_gpsFilter = new tf::MessageFilter<sensor_msgs::NavSatFix>(*m_gpsSub, m_tfListener, odomFrameId, 10);
+
+  sync= new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(20), *m_gpsFilter,  *m_imuSub );
+  //m_gpsFilter->connectInput(sync);
+  sync->registerCallback(boost::bind(&SwarmbotMCL::gpsCallback, this, _1, _2));
+
+Originally posted by PeterMilani with karma: 1493 on 2014-09-20
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by nkuwenjian on 2020-03-21:
+Thanks very much! It works!
+

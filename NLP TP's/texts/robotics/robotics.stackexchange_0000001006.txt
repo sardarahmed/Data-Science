@@ -1,0 +1,41 @@
+Q:
+
+Taylor Series expansion for EKF
+
+In Probablistic Robotics by S. Thrun, in the first section on the Extended Kalman Filter, it talks about linearizing the process and observation models using first order Taylor expansion.  
+Equation 3.51 states:
+$g(u_t,x_{t-1}) \approx g(u_t,\mu_{t-1}) + g\prime(u_t, \mu_{t-1})(x_{t-1} - \mu_{t-1})$
+I think $\mu_{t-1}$ is the state estimate from the last time step.  My question is: what is $x_{t-1}$?  
+Also, the EKF algorithm following this (on table 3.3) does not use the factor $(x_{t-1} - \mu_{t-1})$ anywhere, only $g\prime(u_t, \mu_{t-1})$.  So after being confused about $x_{t-1}$, I'm left wondering where it went in the algorithm.
+
+A:
+
+$\mu_{t-1}$ is the state estimate from the last time step, $x_{t-1}$ is the actual state (a random variable) in the last time step. 
+Basically it goes like this: in the traditional Kalman filter, you have linear models that tells us how states evolve and measurements are made. In the EKF you have non-linear models but want to use the Kalman filter equations, so you use the first order Taylor expansion as the KF linear model. That way you can still propagate covariances appropriately.
+Note that state and measurement predictions still use the non-linear models. So linearization "only" affects covariance propagation -- which affects everything really, because that regulates how certain you are about your estimates and the relative trust you place on your state estimate vs your measurements.
+
+A:
+
+After the propagation step, we need to find the parameters of the Gaussian which describe our new estimate. These are, the mean $\mu$, and the co-variance $\Sigma$. You asked about the mean specifically, so here we go.
+Note that the definition of the mean of the propagated state is the expectation of the propagated state. Taking the expectation of the Taylor series expansion, we have (note I'm using shorter notation of superscript - for prior):
+$$x = g(x^-, u) $$
+And by Taylor series expansion,
+$$x \approx g(x^-, u) + g^\prime(x^- , u) (x-x^-)$$
+Evaluating the approximate function $g()$ at the mean of the prior yeilds:
+$$x \approx g(\mu, u) + g^\prime(\mu , u) (x-\mu)$$
+So, let's use $\mathbb{E}$ as the expectation operator to find the expected value of the output (which is the mean of our posterior estimate.
+$$\mu = \mathbb{E}[x]$$
+$$\mu = \mathbb{E}[g(\mu^-,u)]$$
+$$\mu \approx \mathbb{E}[g(x^-, u) + g^\prime(x^- , u) (x-\mu^-)]$$
+$$\mu \approx \mathbb{E}[g(x^-, u)] + \mathbb{E}[g^\prime(x^- , u) (x-\mu^-)]$$
+Now substitute in $G$, the Jacobian of the function $g$ also evaluated at the mean.
+$$\mu \approx \mathbb{E}[g(x^-, u)] + \mathbb{E}[G\cdot (x-\mu^-)]$$
+$$\mu \approx \mathbb{E}[g(x^-, u)] + \mathbb{E}[G\cdot x - G\cdot \mu^- ]$$
+And by linearity of expectation:
+$$\mu \approx \mathbb{E}[g(x^-, u)] + G\cdot \mathbb{E}[x] - G\cdot \mathbb{E}[\mu^- ]$$
+And guess what? The expected value of both of those things on the right is zero. (why? because we assumed they were Gaussian).** 
+Now, we have to compute the co variance, defined as $\mathbb{E}\left[ (x-\mathbb{E}[x])(x-\mathbb{E}[x])^T\right]$. You can easily derive this by following the same steps. First expand the terms inside the first expectation, then substitute the linear approximation of $g$ as before. Some matrix algebra will yield the EKF co-variance update. Note that you have to include the "white noise" Jacobian. 
+See here for a possibly better derivation.
+
+**The real lie the EKF tells you is that the term, $\mathbb{E}[g(x^-, u)]$ is the same as $g(\mu^-,u)$, which holds as long as the function $g()$ isn't too crazy.
+

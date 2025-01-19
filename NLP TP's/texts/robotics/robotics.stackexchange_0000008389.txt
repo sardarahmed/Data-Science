@@ -1,0 +1,44 @@
+Q:
+
+3 DOF Inverse Kinematics Implementation: What's wrong with my code?
+
+I am currently trying to implement an Inverse Kinematics solver for Baxter's arm using only 3 pitch DOF (that is why the yGoal value is redundant, that is the axis of revolution). I for the most part copied the slide pseudocode at page 26 of http://graphics.cs.cmu.edu/nsp/course/15-464/Fall09/handouts/IK.pdf .
+def sendArm(xGoal, yGoal, zGoal):
+    invJacob = np.matrix([[3.615, 0, 14.0029], [-2.9082, 0, -16.32], [-3.4001, 0, -17.34]])
+    ycurrent = 0
+    while xcurrent != xGoal:
+        theta1 = left.joint_angle(lj[1])
+        theta2 = left.joint_angle(lj[3])
+        theta3 = left.joint_angle(lj[5])
+        xcurrent, zcurrent = forwardKinematics(theta1, theta2, theta3)
+        xIncrement = xGoal - xcurrent
+        zIncrement = zGoal - zCurrent
+        increMatrix = np.matrix([[xIncrement], [0], [zIncrement]])
+        change = np.dot(invJacob, increMatrix)
+        left.set_joint_positions({lj[1]: currentPosition + change.index(0)/10}) #First pitch joint
+        left.set_joint_positions({lj[3]: currentPosition + change.index(1)/10}) #Second pitch
+        left.set_joint_positions({lj[5]: currentPosition + change.index(2)/10}) #Third Pitch joint
+
+def forwardKinematics(theta1, theta2, theta3):
+    xcurrent = 370.8 * sine(theta1) + 374 * sine(theta1+theta2) + 229 * sine(theta1+theta2+theta3)
+    zcurrent = 370.8 * cos(theta1) + 374 * cos(theta1+theta2) + 229 * cos(theta1+theta2+theta3)         
+    return xcurrent, zcurrent
+
+Here is my logic in writing this:
+I first calculated the Jacobian 3x3 matrix by taking the derivative of each equation seen in the forwardKinematics method, arriving at:
+[370cos(theta1) + 374cos(theta1+theta2) .....   
+0                                               0                      0
+-370sin(theta1)-374sin(theta1+theta2)-......                            ]
+In order to arrive at numerical values, I inputted a delta theta change for theta1,2 and 3 of 0.1 radians. I arrived at a Jacobian of numbers:
+[0.954  0.586   .219
+0.0000          0.000         0.0000
+-.178   -.142   -0.0678]
+I then input this matrix into a pseudoinverse solver, and came up with the values you see in the invJacob matrix in the code I posted. I then multiplied this by the difference between the goal and where the end effector is currently at. I then applied a tenth of this value into each of the joints, to make small steps toward the goal. However, this just goes into an infinite loop and my numbers are way off what they should be. Where did I go wrong? Is a complete rewrite of this implementation necessary? Thank you for all your help.
+
+A:
+
+The (inverse) Jacobi Matrix is pose dependent. It is not constant, it is dependent on pose (joint angles or TCP coords, based on formulation) and so it characterizes a pose not a robot. By implementing it as a constant you basicly assume that the same joint velocity will always cause the same TCP velocity. In reality it is clear that joint positions play an important role in how joint velocities are transformed to the TCP. 
+I recommend you generate the (inverse) Jacobi matrix in a symbolic form, similarly as your forward kinematics, dependend on variables (joint angles of TCP cooridnates) and write a function that calculates the value of the matrix for each current pose. 
+Then recalculate the matrix in every iteration and it should be fine.
+Furthermore, in this form, if you have a 3x3 matrix, you can easily calculate its inverse, you do not need a pseudoinverse. Later, if you have 7 DOFs you might...
+

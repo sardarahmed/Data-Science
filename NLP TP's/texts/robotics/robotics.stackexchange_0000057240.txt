@@ -1,0 +1,177 @@
+Q:
+
+Custom classes in message files
+
+I would like to communicate (mulitple) custom C++ classes between nodes. On the ROS wiki I have found how to adapt C++ types to be used with publish and subcribe:
+http://wiki.ros.org/roscpp/Overview/MessagesSerializationAndAdaptingTypes
+Using the approach above I can publish only one class for each topic.
+However, I would also like to use these C++ classes in the messages used by the SimpleActionServer/SimpleActionClient and send some additional information (so not only sending the class itself). Hence, I had to idea to use these classes inside a message file.
+I have tried to use a test class in an example message item_test.msg with some class Item, adapted as described on the ROS wiki.
+Item item
+
+This was to test if it is possible to use the adapted C++ classes with .msg/.srv/.action files. However, I got the following error when compiling:
+CMake Error at /home/mathijs/git/rose2_0/gui/build/gui_item_selector/cmake/gui_item_selector-genmsg.cmake:3 (message):
+Could not find messages which
+'/home/mathijs/git/rose2_0/gui/src/gui_item_selector/msg/item_test.msg'
+depends on.  Did you forget to specify generate_messages(DEPENDENCIES ...)?
+
+Cannot locate message [Item]: unknown package [custom_classes] on search
+path [{{'geometry_msgs':
+['/opt/ros/hydro/share/geometry_msgs/cmake/../msg'], 'gui_item_selector':
+['/home/mathijs/git/rose2_0/gui/src/gui_item_selector/msg',
+'/home/mathijs/git/rose2_0/gui/devel/share/gui_item_selector/msg'],
+'std_msgs': ['/opt/ros/hydro/share/std_msgs/cmake/../msg'],
+'actionlib_msgs': ['/opt/ros/hydro/share/actionlib_msgs/cmake/../msg'],}}]
+Call Stack (most recent call first):
+/opt/ros/hydro/share/genmsg/cmake/genmsg-extras.cmake:303 (include)
+gui_item_selector/CMakeLists.txt:39 (generate_messages)
+
+I have specified generate_messages(DEPENDENCIES custom_classes) in the CMakelist, so that is not the fault.
+Is there a way to use the Item class in a .msg/.srv/.action file?
+
+Originally posted by mathijsdelangen on ROS Answers with karma: 88 on 2014-02-14
+Post score: 4
+
+Original comments
+Comment by dornhege on 2014-02-14:
+Is Item a ROS message?
+Comment by mathijsdelangen on 2014-02-15:
+Item is a C++ class which I have adapted for serialization (from http://wiki.ros.org/roscpp/Overview/MessagesSerializationAndAdaptingTypes)
+Comment by Okke on 2014-02-17:
+I am also looking for a method to uses custom classes as messages in pub/sub, services and GFR. I am building a datamanager node which retrieves data from disk or database and wraps this in an object, which I want to send to another node.
+Comment by Matias on 2014-10-21:
+I'm also looking for an answer to this.
+Comment by mathijsdelangen on 2014-10-22:
+For now, we have still have not found a solution for this. What we do at this moment is using the adaptions of C++ types as described above and sending only one class over topics and services. A big drawback for us is that you lose the interface to Python and introspection of topics/services.
+Comment by Matias on 2014-10-22:
+I just want to clear up that my problem was with services using adapted C++ types, not the multiple-class per-topic problem. In fact, I believe this is a limitation of ROS itself, where you publish one message type per topic.
+
+A:
+
+There is sort of a simple rule to keep in mind when thinking about publish/subscribe custom class, you must always have a defined .msg for each topic.
+In you original question you mentioned that you have a message item_test.msg defined as:
+Item item
+
+Where Item is only otherwise defined as a C++ class. This will not work, you must have a corresponding .msg definition of the Item class. This will generate C++ and Python (others) code for the Item.msg message definition, but in your code you can use your own Item class and then use the message traits to have a custom serialization for your custom implementation of the Item class.
+For instance, you might define the Item.msg file as:
+string name
+uint32 id
+
+This will produce some C++ code like this (simplified):
+namespace your_package_name {
+struct Item_
+{
+    std::string name;
+    uint32_t id;
+};
+typedef Item_ Item;
+}
+
+But then you could make your own Item class:
+namespace my_item_class {
+class Item {
+  public:
+    void setName(std::string name) {name_ = name;}
+    std::string getName() {return name_;}
+    void setId(size_t id) {id_ = id;}
+    size_t getId() {return id_;}
+  private:
+    std::string name_;
+    size_t id;
+};
+}
+
+Then you could write the necessary message traits to allow you to publish and subscribe to topics using your custom type (this is an "all-in-one" version):
+namespace ros
+{
+namespace message_traits
+{
+template<> struct IsFixedSize<my_item_class::Item> : public TrueType {};
+template<> struct IsSimple<my_item_class::Item> : public TrueType {};
+
+template<>
+struct MD5Sum<my_item_class::Item>
+{
+  static const char* value()
+  {
+    return MD5Sum<your_package_name::Item>::value();
+  }
+
+  static const char* value(const my_item_class::Item& m)
+  {
+    return MD5Sum<your_package_name::Item>::value(m);
+  }
+};
+
+template<>
+struct DataType<my_item_class::Item>
+{
+  static const char* value()
+  {
+    return DataType<your_package_name::Item>::value();
+  }
+
+  static const char* value(const my_item_class::Item& m)
+  {
+    return DataType<your_package_name::Item>::value(m);
+  }
+};
+
+template<>
+struct Definition<my_item_class::Item>
+{
+  static const char* value()
+  {
+    return Definition<your_package_name::Item>::value();
+  }
+
+  static const char* value(const my_item_class::Item& m)
+  {
+    return Definition<your_package_name::Item>::value(m);
+  }
+};
+} // namespace message_traits
+
+namespace serialization
+{
+template<>
+struct Serializer<my_item_class::Item>
+{
+  template<typename Stream, typename T>
+  inline static void allInOne(Stream& stream, T item)
+  {
+    stream.next(item.getName());
+    uint32_t id = static_cast<uint32_t>(item.getId());
+    stream.next(id);
+  }
+
+  ROS_DECLARE_ALLINONE_SERIALIZER;
+};
+} // namespace serialization
+} // namespace ros
+
+The majority of the above code is just associating your custom class, my_item_class::Item, with the generated, my_package_name::Item, message class. This association allows you to use the types interchangeably in your code, but tools and other nodes will always interpret it as a my_package_name::Item unless they use the same message trait code above to receive it as the custom class too.
+Again the thing to remember is that in order to send something over a topic in ROS you need to have a fully defined message (.msg file) with which to associate your custom class.
+
+Originally posted by William with karma: 17335 on 2014-10-22
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by andrestoga on 2016-03-29:
+I don't understand how a ROS message can be associated with a custom c++ class. To begin with, ROS messages don't contain methods.. just fields.... or can they only be associated  with custom c++ classes which don't contain methods?
+Comment by William on 2016-03-29:
+The C++ class generated from .msg files cannot be extended, but you can create a custom class which is a superset of the generated class that has additional data and methods and use it as if it were the generated class so long as you define functions to serialize and deserialize them. As above.
+Comment by NINMort on 2020-01-31:
+Hello, I tried your example William, I only changed "size_t id;" to "size_t id_;" but when I try to compile I get the following error: "error: no matching function for call to ‘ros::message_traits::MD5Sumgeometry2d::Item_<std::allocator<void > >::value(const my_item_class::Item&)’" with a note saying "note:   no known conversion for argument 1 from ‘const my_item_class::Item’ to ‘const geometry2d::Item_std::allocator<void >&’"
+What should I be doing different? Full error log here: https://pastebin.com/iTC7ZQ0U
+Comment by Brent on 2020-04-16:
+NINMort, I think the solution is to remove the "m" variable from the three return lines, so:
+return MD5Sum<your_package_name::Item>::value(m);
+
+becomes
+return MD5Sum<your_package_name::Item>::value();
+
+and so on.
+It compiles and works for me. I think it makes sense that the purpose of those methods is to return the values of the ROS message type, but it's kind of a guess.
+

@@ -1,0 +1,32 @@
+Q:
+
+How to Fuse or Merge PointClouds Efficiently?
+
+I have a stereo camera that gives me an X,Y,Z point for each pixel in the image. I detect an object in the image using an algorithm and get a bounding box. I then have a radar that also gives me detected targets with x,y,z track points. It would be very inefficient to merge (using ros_pcl) each and every xyz point from the stereo camera with the radar track points.
+If the stereo camera and radar were co-located, I'd just trust that xyz points from the camera line up with xyz points with the radar, but actually the camera is several feet above and behind the radar, and as a result I need some math performed to convert the detected object in the image's xyz point to the equivalent xyz point relative to the radar.
+So is there a ROS node that can take a displacement vector, describing the offset between two sensors, and transform the xyz points of one sensor to the other?
+This would allow me to confirm the position of the detected object in the image with the position the radar reports. For example, in the simplest case let's pretend the stereo camera is precisely 1 meter directly behind the radar. If the camera reports a detected object is 15 meters away directly in front, then this transform I'm looking for would report that the object is actually 14 meters away - so that the end result is relative to the radar instead of the camera. Now I can precisely confirm: Does the radar also measure the object is 14 meters away?
+I think tf2 will allow me to offset the camera x,y,z points, but unfortunately the distances would still read "15 meters" per my example above. Is there a node that will not only offset but subtract the distance between the two sensors, to get 15 - 1 = 14 meters?
+
+Originally posted by ia on ROS Answers with karma: 23 on 2021-02-12
+Post score: 0
+
+A:
+
+I think what you need to do here is to transform your data into the same frame of reference. You need to have a tf tree created (using either a urdf description or using static transform publisher). Then, in you code, you can have a transform listener to transform your data into the same frame of reference (either transform your images into your radar frame or vice. versa). Once both data are in the same frame, you don't have to worry about the relative position of your sensors. Or, if you still do, you can look up the returned object from the transform listener (transformStamped if you refer the above example).
+P.S: there exists a similar transform listener in python.
+
+Originally posted by Akhil Kurup with karma: 459 on 2021-02-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ia on 2021-02-12:
+I greatly appreciate your response, but my issue with tf2 is that it applies to the entire pointcloud, which as I mentioned above is very inefficient to do for the entire set. I'd accept using tf2 and your answer is otherwise perfect, but is there a way to only transform a specific (single or small subset) of points with tf2? Now that I think of it, would I have to republish a subset of points and run tf2 on just those? Trying to run this on a Nvidia Jetson with a very slow processor so large pointcloud processing is very slow.
+Comment by Akhil Kurup on 2021-02-12:
+When you say large, how large is your point cloud? I ask because I assume that your sensor locations are fixed. If that is in fact the case, you only need the transform listener once (say at the first pointcloud) and apply it repeatedly. If you're working with c++, you could use the Eigen library for the transformation which is quite fast!
+Another suggestion would be to transform it the other way around. Why not transform the radar data to the camera's reference frame instead?
+Comment by ia on 2021-02-12:
+Thank you again, I hadn't heard of eigen, but you're also right about static placement too and I think where I was mistaken was in using static_transform_publisher, which transforms every point in a topic. So am I understanding correctly that like in the carrot frame tutorial, I just publish a static transform once and then instead I simply subtract the x, y, and z difference tf2 calculated between the cam/radar sensors to get the camera's detection from the point of view of the radar (no complex trig?!)? If so, that sounds pretty simple and I was overthinking this ;)
+And the reason I want the radar's point of view is because it coincides with a good estimate for the vehicle frame (saves me one extra frame).
+

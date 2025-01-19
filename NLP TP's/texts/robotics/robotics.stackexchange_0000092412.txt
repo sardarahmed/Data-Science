@@ -1,0 +1,59 @@
+Q:
+
+New ur modern driver ros-control follow joint trajectory
+
+I used to drive the ur3 using action client for follow joint trajectory. Now I have upgraded the ur modern driver that I should be able to use ros control but I don’t know how to. The README of the new driver says that when ros control is active the action lib will not be switched on. So how can I send the joint trajectory to the driver for execution?
+Your help would be very much appreciated.
+Victor Wu.
+
+Originally posted by Victor Wu on ROS Answers with karma: 53 on 2019-07-08
+Post score: 0
+
+A:
+
+The ros_control configuration of ur_modern_driver typically loads the joint_trajectory_controller (here for the UR3).
+That controller exposes a FollowJointTrajectory action server, just as the non-ros_control version of ur_modern_driver does.
+Provided your trajectories are well-formed, you shouldn't need to change anything in your code -- apart from perhaps the name of the action topic (but that you should be able to just remap).
+
+Edit:
+
+My actual question should be: Do we need a different trajectory that specifies the velocity instead of the position of every way point? Or does the driver already work out the velocity from the position specified?
+
+the "velocity based" joint_trajectory_controller uses a velocity controlled hw interface and uses that to run a position control on top of that. So it's positions in -> velocities out. It can not be used as a pure velocity controller (ie: velocity in -> velocity out).
+
+Anyway, I tried using the vel_based action server but then the ur3 stopped by the controller because of safety! I am not sure why yet.
+
+I don't know either, that would require more debugging.
+Just to make sure: you have a regular UR3 (no e-series) and are using teh kinetic-devel version of ur_modern_driver?
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-07-08
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Victor Wu on 2019-07-08:
+This uses the pos_based_pos_traj_controller, can I use the vel_based_pos_traj_controller? but use the same action client?
+Comment by gvdhoorn on 2019-07-09:
+The link I posted was just an example. A few lines down the velocity-based joint_trajectory_controller is configured (here).
+They expose the exact same FollowJointTrajectory action server.
+Comment by Victor Wu on 2019-07-09:
+Thanks very much, I realised that that part of the yaml is there. My actual question should be: Do we need a different trajectory that specifies the velocity instead of the position of every way point? Or does the driver already work out the velocity from the position specified?
+Anyway, I tried using the vel_based action server but then the ur3 stopped by the controller because of safety! I am not sure why yet.
+Comment by Victor Wu on 2019-07-09:
+The actual error was: A dialogue box with the title Protective Stop, the box contains: C153A1: Protective Stop: Postion deviates from path: Shoulder.
+Comment by Victor Wu on 2019-07-09:
+I have tried all afternoon. It seems that the behaviour of the ur3 depends on the velocity that it moves. There is a slider on the UR teach pandent and can be used to adjust the speed the manipulator moves. When it is 100%, when the manipulator halfway to the destination, it was stopped because its position deviates from the path. When the slider is used to reduce the speed of the manipulator to 70%, it crashes on the workpiece before it reaches the target (or goal). When the speed is 80%, it still crashes on the workpiece but nearer to the target. So, it seems the position of the end effector depends on the speed of movement as well as the weight of the end effector. Is this true? I am just guessing.
+Comment by gvdhoorn on 2019-07-09:
+You cannot use the slider on the TP: it must be at 100% always. Otherwise the assumptions in the driver about performance of the robot and the influence of the parameters for the motion commands don't hold and nothing will work correctly.
+Comment by gvdhoorn on 2019-07-09:
+But you still haven't answered my questions: are you using a regular UR3 or an e-series, and are you using the kinetic-devel branch of ur_modern_driver?
+Comment by Victor Wu on 2019-07-09:
+I'm sorry. Yes, I am using a regular UR3 not an e-series. I am using the kinetic-devel branch of the ur_modern_driver.
+Further my questions, does it mean that the payload must be accurately specified? It seams that all these relationship of position, velocity and acceleration depends also on the inertia. So the pay load is very important and sensitive. Isn't it?
+Comment by gvdhoorn on 2019-07-09:\
+
+does it mean that the payload must be accurately specified? It seams that all these relationship of position, velocity and acceleration depends also on the inertia. So the pay load is very important and sensitive.
+
+on the UR controller? Yes, always. And the TCP as well.
+That information is not used by motion planners such as MoveIt right now, but the controller will need that information and it will stop your robot if the EEF is holding on to something heavy but you haven't actually configured the correct payload and TCP settings on the controller.
+

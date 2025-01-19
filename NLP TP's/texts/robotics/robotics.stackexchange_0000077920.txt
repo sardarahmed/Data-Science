@@ -1,0 +1,54 @@
+Q:
+
+How to thread a specific computationally expensive callback
+
+Hello ROS community.
+I am building a specific application where I have two subscriber callbacks as written below:
+def callback1(msg):
+    X = msg.X
+
+def callback2(msg):
+    desX = msg.desX
+    publish(desX)
+    while duration < 1 sec:
+        if equal(X, desX):
+            return True
+    return False
+
+The callbacks are oversimplified for easier understanding, and I also assume X is some global variable (or object attribute), so that both callbacks can access it.
+callback1 is a sensor measurement coming in at 20 Hz.
+callback2 is called on user request, but let's assume it can be called at more than 1 Hz.
+In a single threaded mode, this will not work, since callback2 blocks callback1 and the sensor measurement is not read properly. I would like to implement this multi-threaded, but with following requirements:
+
+callback1 is blocking, i.e. two of them cannot be performed at the same time,
+callback2 is preemptable, i.e. if another call is made the previous one will be canceled,
+It should be done in C++.
+
+My initial idea was to have a separate callback queue for callback2 and have the callback1 in the global queue in the single-threaded callback manner, like mentioned here under point 2.
+I would like to know how to implement this given the additional requirement that the callback2 is preemptable. Also, any other design recommendations are more than welcome!
+
+Originally posted by hamzamerzic on ROS Answers with karma: 111 on 2016-12-19
+Post score: 0
+
+Original comments
+Comment by spmaniato on 2016-12-19:
+Why not have the two callbacks simply update the global/member variables and then implement the logic in a main loop or a roscpp Timer ? You could also use a ROS Action for callback2 (instead of a plain subscriber)
+Comment by hamzamerzic on 2016-12-19:
+In case of using a timer, what would be a good design? Have a timer which periodically checks if equal(X, desX), and takes into consideration the timestamp to publish False on exceeding the max duration? Also, regarding placing the logic in main, are there any pr's of doing that?
+Comment by spmaniato on 2016-12-19:
+You can do a ros::Timer that triggers every so often and does that check or you can have a while loop running at some ros::Rate. They are similar, although the ROS wiki recommends Timers.
+Comment by spmaniato on 2016-12-19:
+And here some more info: http://wiki.ros.org/roscpp/Overview/Time#Sleeping_and_Rates and http://wiki.ros.org/roscpp_tutorials/Tutorials/Timers
+Comment by hamzamerzic on 2016-12-20:
+Thanks a lot, this solution works fine.
+
+A:
+
+I decided to go with the solution of having multiple callback queues by adapting the answer found here.
+callback1 is thus kept in the global ROS queue, while callback2 is run asynchronously.
+To make the callback2 preemptable, I added a variable which stores the time stamp of the most recent callback, and a check for a more recent time stamp in the while loop of the callback which is used for preemption. Some care had to be taken to avoid race condition, but it was rather simple with atomic variables or mutex locks.
+
+Originally posted by hamzamerzic with karma: 111 on 2016-12-20
+This answer was ACCEPTED on the original site
+Post score: 0
+

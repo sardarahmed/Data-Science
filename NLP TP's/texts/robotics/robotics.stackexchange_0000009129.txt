@@ -1,0 +1,31 @@
+Q:
+
+How to compute the error function in graph SLAM for 3D poses?
+
+Given a pose $x_i = (t_i, q_i)$ with translation vector $t_i$ and rotation quaternion $q_i$ and a transform between poses $x_i$ and $x_j$ as $z_{ij} = (t_{ij}, q_{ij})$ I want to compute the error function $e(x_i, x_j) = e_{ij}$, which has to be minimized like this to yield the optimal poses $X^* = \{ x_i \}$:
+$$X^* = argmin_X \sum_{ij} e_{ij}^T \Sigma^{-1}_{ij} e_{ij}$$
+A naive approach would look like this:
+$$ e_{ij} = z_{ij} - f(x_i,x_j) $$
+where $z_{ij}$ is the current measurement of the transform between $x_i$ and $x_j$ and $f$ calculates an estimate for the same transform. Thus, $e_{ij}$ simply computes the difference of translations and difference of turning angles:
+$$ e_{ij} = \begin{pmatrix} t_{ij} - t_j - t_i \\\ q_{ij} (q_j q_i^{-1})^{-1} \end{pmatrix} $$
+Is there anything wrong with this naive approach? Am I missing something?
+
+A:
+
+Yes, you have an issue, and it has to do with the parameterization of rotations. As you have it, your $e_{ij}$ will be a $7\times 1$ column, but your pose has only six degrees of freedom (three for translation, three for rotation). There is actually a constraint that isn't properly represented in your optimization function (the norm of a unit quaternion must be one). This means that when you try to do the optimization, it will not "know" about this redundancy and solving for $X^*$ will actually optimize a degree of freedom that doesn't exist.
+So how do we deal with this? It's a good idea to use unit quaternions because they avoid the singularities present in all minimal parameterizations (i.e., three parameter representations) of rotations. A good approach to this problem is using a dual parameterization of rotations. First, we use a singularity-free parameterization of the rotation in the state (e.g., your use of unit quaternions is fine), but we represent rotation errors using a minimal parameterization. If the differences between your measurements $z_{ij}$ and predicted measurements $f$ are relatively small, you can safely convert the error rotation to a minimal parameterization without fear of it encountering a singularity (depending on your choice of minimal parameterization).
+For example, let's use a rotation vector $\mathbf{r} = \theta\mathbf{a}$ for the minimal parameterization (where $\theta$ is the angle of rotation and $\mathbf{a}$ is the axis of rotation). Your new error vector is
+$$
+e_{ij} = \begin{bmatrix} t_{ij} - t_j - t_i \\ \log\left(q_{ij}(q_jq_i^{-1})^{-1}\right) \end{bmatrix}
+$$
+where $\log(q)$ converts a quaternion to a rotation vector. Note that you should also be representing the uncertainty of your rotation measurement using a minimal parameterization (i.e., $\Sigma_{ij}$  is a $6\times 6$ matrix).
+After you solve for the optimal $6 \times 1$ perturbation of the state $\Delta\mathbf{x}^*$, you need to apply it to your state by converting the rotation vector back to a unit quaternion; i.e.,
+$$
+q \gets q\, \exp(\Delta \mathbf{r}^*)
+$$
+where $\Delta \mathbf{r}^*$ is the optimal perturbation of one of the state's quaternions (i.e., it's part of $\Delta\mathbf{x}^*$), and $\exp$ converts a rotation vector to a unit quaternion.
+I didn't really go into too much detail here, and skipped some mathematical rigour for the sake of keeping things brief. For more information on this approach, see the below references. This approach is not limited to rotations.
+C. Hertzberg, R. Wagner, U. Frese, and L. Schröder, “Integrating generic sensor fusion algorithms with sound state representations through encapsulation of manifolds,” Information Fusion, vol. 14, no. 1, pp. 57–77, Jan. 2013.
+G. Grisetti, R. Kümmerle, C. Stachniss, and W. Burgard, “A tutorial on
+graph-based SLAM,” IEEE Intelligent Transportation Systems Maga- zine, vol. 2, no. 4, pp. 31–43, 2010.
+

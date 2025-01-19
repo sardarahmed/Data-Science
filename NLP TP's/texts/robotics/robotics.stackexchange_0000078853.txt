@@ -1,0 +1,97 @@
+Q:
+
+ROS-i ABB driver - publish more than 6 variable through /joint_states
+
+Dear all,
+I am basically trying to send the translational and rotational positions of the tip (total 7 float variables) from RAPID to the ROS as a ros topic. I was thinking of using the /joint_states topic's velocity and acceleration vectors to contain these variables. The end result that I expect will be the /joint_states topic publishing the 6 out of 7 variables as a position vector element and the last variable as first element in velocity.
+However, I cannot seem to send more than 6 variable (I tried to pack more raw data beyond 6) using the send_msg function in the ros-i abb's socket module and the ROS_StateServer module. Has anyone done this before? or is there any proper way or guide of publishing to ros from rapid?
+Thank you in advance!
+
+Edit: Hi gvdhoorn! Thank you so much for the quick, detailed and amazing reply!
+Due to the time constraint, I went ahead with the measure 2 and I finally got it working! The issue was indeed the mapping from the ros pc side (industrial_robot_client).
+However, the changes in controller_joint_names parameter did not work for me (for all robot models). Instead, I went to hard code the joint_names variable of  abb_robot_state_node.cpp file in abb_driver/src and it worked out fine for me.
+//initial configuration
+//  std::vector<std::string> joint_names = rsi.get_joint_names();
+
+//changed configuration
+std::vector<std::string> joint_names;
+joint_names.push_back("trans_x");
+joint_names.push_back("trans_y");
+joint_names.push_back("trans_z");
+joint_names.push_back("rot_q1");
+joint_names.push_back("rot_q2");
+joint_names.push_back("rot_q3");
+joint_names.push_back("rot_q4");
+
+Oh by the way, if it does not cause too much trouble for you, could you please tell me where I can do the
+
+and finally extend the robot_state node to publish a ROS geometry_msgs/Pose (or perhaps a TF frame directly)
+
+of the measure 1?
+This is so that I can change the name of rostopic and also cater for other type of messages. I could not find any function or variable that looks like it.
+Again Thank you very much!
+
+Originally posted by ninanona on ROS Answers with karma: 7 on 2017-02-09
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-02-10:
+A comment: please don't use screenshots to show us what is essentially text (the console output). Just copy-paste the text and use the Preformatted Text button (the one with 101010 on it) to properly format it.
+
+A:
+
+I am basically trying to send the translational and rotational positions of the tip (total 7 float variables) from RAPID to the ROS as a ros topic
+
+So if I understand you correctly, you are looking for a way to transmit the Cartesian pose of the TCP to the industrial_robot_client nodes?
+And then in XYZ+Quaternion form, correct?
+
+I was thinking of using the /joint_states topic's velocity and acceleration vectors to contain these variables
+
+If possible, I would recommend not to do that: you'd be completely changing the semantics of the messages involved, which is really not a good idea (see also note 6 under JOINT_POSITION in the specification document linked below).
+You have two options:
+
+define a new message (TCP_POSE or something similar) at the simple_message level, extend the RAPID code to send the required bytes (in the correct order) over the TCP socket, extend the simple_message package to include deserialisers for the TCP_POSE message and finally extend the robot_state node to publish a ROS geometry_msgs/Pose (or perhaps a TF frame directly). This would be the recommended approach.
+
+abuse the JOINT_POSITION message: instead of sending joint space poses, insert your data into the joint_data array, leave simple_message and robot_state as they are and interprete ROS JointState messages on your own. Note that doing it this way would mean that you cannot reuse the ROS robot_state_publisher, as it will expect joint space poses.
+
+However, I cannot seem to send more than 6 variable (I tried to pack more raw data beyond 6) using the send_msg function in the ros-i abb's socket module and the ROS_StateServer module.
+
+This suggests you went with option 2. This is definitely possible, but you need to take the layout of the messages into account: JOINT_POSITION messages contain a sequence nr (unused) and an array of 10 floats (see Message Structures of the ROS-Industrial Simple Message Protocol - Message Definitions - JOINT_POSITION). The abb_driver RAPID code fills the first 6 elements of the joint_data array with the joint poses of the first 6 axes of the robot. The 4 other elements are set to 0.
+On the ROS side, the entire message is deserialised (so all 10 elements from joint_data), but only the indices for which the robot_status node has a known mapping will be included in the JointState msgs it publishes. That mapping is defined in the controller_joint_names parameter (here for an IRB 2400).
+So in your specific case -- and for option 2 -- you'll have to change that parameter to include a seventh 'joint' (here you see the semantic problem).
+If I have everything correct, that should lead to the robot_state node publishing all 7 values in the position array (which at this point are not the regular joint space poses but the XYZ+Quaternion TCP pose).
+Note that there is no inherent limit in the length of the arrays/lists of a ROS JointState message: the only reason there are just 6 values there is because of the controller_joint_names parameter.
+
+Edit:
+
+Due to the time constraint, I went ahead with the measure 2
+
+Ah ..
+
+However, the changes in controller_joint_names parameter did not work for me (for all robot models). Instead, I went to hard code the joint_names variable of  abb_robot_state_node.cpp file in abb_driver/src and it worked out fine for me.
+
+I probably won't have to tell you that hard-coding like that is also really not a good idea.
+(I was going to suggest to try and diagnose what is going on with the parameter, but you shouldn't be doing this anyway, so let's not spend any effort in that direction)
+
+Oh by the way, if it does not cause too much trouble for you, could you please tell me where I can do the
+
+and finally extend the robot_state node to publish a ROS geometry_msgs/Pose (or perhaps a TF frame directly)
+
+of the measure 1? This is so that I can change the name of rostopic and also cater for other type of messages. I could not find any function or variable that looks like it.
+
+This is again something that should make your 'spidey sense' go off: you'll have to change the joint_relay_handler.cpp in the industrial_robot_client package. In that file, the mapping between simple_message msgs and ROS msgs is done.
+If you are going to do this, it would be really nice if you could take the next step (which is relatively small) and add that new message type that I described above.
+If you don't, you'll lose JointState publishing (at least if you don't run another robot_state instance) and thus cannot use any of the ROS URDF infrastructure anymore.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-02-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-02-09:
+If you would be interested in option 1, I would be willing to provide my support. Please open a ticket over at ros-industrial/abb.
+Comment by gvdhoorn on 2017-02-09:
+Note also btw that the pose of the EEF is also available through TF, as the tool0 frame. Requesting the transform between base and tool0 should result in the same transform as the one the controller shows you on the TP. If not, that would be a bug, and a bug report would be appreciated.
+Comment by gvdhoorn on 2017-02-09:
+Perhaps also of interest is PR12 on the ROS-Industrial REP repository which intends to add a Cartesian extension (both state reporting as well as trajectory relay) to the industrial_robot_client packages.
+

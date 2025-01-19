@@ -1,0 +1,51 @@
+Q:
+
+Questions about Moveit collision detection
+
+Hi everyone,
+I am doing research about safety issue about human and robot cooperation. I am really interested in using collision detection functionality provided by moveit.
+As far as I know, I can get the distance between world object and any part of pr2 link through moveit API of collision detection. I am wondering if it is possible to get the coordinates information about the point on pr2 link which is closest to the world object? And is it possible to get the joint vector (standard vector on z-axis of a joint) information?
+Thanks for any help in advance!
+update1:
+For FCL distance check called in moveit, can I simply create a new  fcl::DistanceRequest object with the public attribute "enable_nearest_points" set to true and pass the fcl::DistanceRequest object to "double d = fcl::distance(o1, o2, fcl::DistanceRequest(), dist_result);" ? If I do so, can I get nearest points between o1 and o2 from dist_result?
+update2:
+I modified the code in FCL distance check in following way:
+fcl::DistanceResult dist_result;
+dist_result.update(cdata->res_->distance, NULL, NULL, fcl::DistanceResult::NONE, fcl::DistanceResult::NONE); // can be faster
+double d = fcl::distance(o1, o2, fcl::DistanceRequest(true), dist_result);
+printf("\n print nearest point 1 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!! \n  %f %f %f  \n",dist_result.nearest_points[0].data.vs[0], dist_result.nearest_points[0].data.vs[1], dist_result.nearest_points[0].data.vs[2]);
+printf("\n print nearest point 2 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!! \n  %f %f %f  \n",dist_result.nearest_points[1].data.vs[0], dist_result.nearest_points[1].data.vs[1], dist_result.nearest_points[1].data.vs[2]);
+
+But I don't know why I got (0,0,0) for each nearest point.
+Quan
+
+Originally posted by AdrianPeng on ROS Answers with karma: 441 on 2013-08-02
+Post score: 4
+
+Original comments
+Comment by Adolfo Rodriguez T on 2013-09-03:
+I +1 a feature request for allowing to query the closest distance vector, or equivalently the two witness points associated to the closest distance.
+
+A:
+
+MoveIt uses FCL for Collision Detection.  This library definitely supports returning the closest-point coordinates you're interested in.  See fcl::distance() and fcl::DistanceResult.  I've used this library independently from MoveIt to retrieve closest-point pairs by scanning through different combinations of STL mesh data.  It works great, and is really fast!
+However, looking through the MoveIt code, I don't think you can get distance pairs "out of the box" with the current design.  You can get collision contact points  and a scalar value for the minimum distance between non-contacting parts, but not the closest-distance points you're looking for.
+See the MoveIt wiki for info on how to Retrieve Contact Info.  That example checks for self-collisions, but a similar call is used for robot/world collision checks.  The result of this call is a CollisionResult, which contains a scalar distance field and a list of Contact data that specifies collision points.  If we dig into the MoveIt collision detection code, we see that the FCL distance check is called here using a default fcl::DistanceRequest object.  This default request does not include the nearest-point calculations (only the scalar distance).  And MoveIt only saves the closest distance value, as seen here.
+So, it looks to me like you're going to need to call the FCL library directly to perform the distance checks you're looking for.  That being said, the MoveIt developers are fairly responsive, and may be able to add the functionality you're looking for.  Your best bet will be to send an email to the MoveIt Developer's List, as they follow that list closer than this website.
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-08-06
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by AdrianPeng on 2013-09-03:
+Hi Jeremy, I really appreciate your patient reply! I have another question about FCL distance check called in Moveit (update in question). I am wondering if I can simply modify the code in moveit to get the nearest point information.
+Comment by Jeremy Zoss on 2013-09-03:
+Sure.  There's no reason why you can't.  But if you do fork the MoveIt code like that, you'll need to manually keep your local version updated with any new updates released by the MoveIt team.  And your code won't be portable to other users (unless they also make the same MoveIt updates).  Once you develop a patch, you might consider submitting it to the MoveIt developers, so they can integrate it into the official distribution.
+Comment by AdrianPeng on 2013-09-04:
+Hi Jeremy, I tried to Modify the code in moveit to get the nearest points, but I meet the question in update 2. Do you mind having a look on that if you have time? Thanks a lot!
+Comment by dsolomon on 2013-10-18:
+Adrian, I will be examining this problem deeper in the next few weeks, but I have a brief suggestion to check: try changing printf to "std::cout << "Nearest point 1: " << dist_result.nearest_points[0] << std::endl;" as fcl::Vec3f type has a built-in ostream operator that may show values correctly
+Comment by dsolomon on 2013-10-18:
+Also, you may want to additionally check that your objects are not currently in collision, as the distance check may default to 0,0,0 in that case
+

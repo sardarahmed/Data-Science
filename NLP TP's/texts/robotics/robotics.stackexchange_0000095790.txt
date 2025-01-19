@@ -1,0 +1,41 @@
+Q:
+
+Collision between planning scene objects (e.g. CollisionObjectA and CollisionObjectB)
+
+I was wondering if the Moveit API supports collision checking between two collision objects in a planning scene.
+The robot state does not come into the picture here - only two collision objects of type "moveit_msgs::CollisionObject".
+I am working with ROS Melodic on Ubuntu 18.04 running in a docker container.
+Here are some of my ideas so far:
+
+I tried digging through code related AllowedCollisionMatrix. It has methods such as "setDefaultEntry". As far as I understood, it useful only for ignoring collision between robot and a specific object in the scene.
+
+A hacky solution is to put the robot in a known non-colliding state. Then, temporarily attach "CollisionObjectA" to the robot. And, see if it collides with "CollisionObjectB" using the existing functions in the API. This solution seems like the easiest but it is also ugly.
+
+Define "CollisionObjectA" as link attached to a 6 DOF joint co-located at the root of the robot. Make a planning group for the 6 DOF joint. Set the 6 DOF state of the "CollisionObjectA" and query collision via the existing API (i.e., isValid ). Though it theoretically makes sense, I guess that there can be complications when solving IK for other planning groups.
+
+Instantiate FCL collision manager object on my own and perform the necessary collision checks. This has the drawback of ensuring the collision object A and B in planning scene are in sync with the same in my FCL collision manager.
+
+If anybody can shed light on how collision between two collision objects can be detected/queried, it would be really helpful.
+
+Originally posted by pradeepr on ROS Answers with karma: 23 on 2020-05-08
+Post score: 1
+
+A:
+
+I think you explained the available options pretty well. If you want to know which objects are in collision, you will need to query the collision environment yourself, since MoveIt only checks for collisions with the robot by default.
+Rather than instantiating and maintaining a collision environment yourself though, you should be able to access the one used by MoveIt internally. Maybe a look at the Developer Concepts will help you find the right entry point. Please feel free to post an answer with your own solution when you find it.
+PS: You can certainly set the AllowedCollisionMatrix such that two objects may not collide, but I haven't tested if disallowing collisions between two objects in the scene causes the planning to fail, and either way I don't believe there is an API to check for those collisions outside of the collision manager itself.
+
+Originally posted by fvd with karma: 2180 on 2020-05-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pradeepr on 2020-05-19:
+Thanks for the link to Developer Concepts. I did not know such a webpage even existed. It gives a lot of behind the scenes information that will be very useful in crafting a solution.
+Comment by fvd on 2020-05-19:
+Great. If this helped please accept the answer, so the question is out of the queue.
+Comment by pradeepr on 2020-05-19:
+Following your suggestion, I found a way to use "collision_env" object to provide the necessary collision flags. I was wondering if I should propose a feature to MoveIt. My solution involves modifying the interface definition of "collision_env" and adding a new virtual function for collision checking between two sets of collision objects. Then, defining the new function in "collision_env_fcl.h" and "collision_env_fcl.cpp".
+For now, I am going to add the function definition as an answer just in case someone needed it immediately.
+

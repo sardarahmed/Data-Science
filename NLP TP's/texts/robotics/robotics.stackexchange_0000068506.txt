@@ -1,0 +1,68 @@
+Q:
+
+Use rosparam get in launch file
+
+Hi I am trying to launch a static_transform_publisher from the tf package. It has the following syntax:
+static_transform_publisher x y z yaw pitch roll frame_id child_frame_id period_in_ms
+
+which should be called from a launch file like this
+<launch>
+    <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="1 0 0 0 0 0 1 link1_parent link1 100" />
+</launch>
+
+What I am trying to achieve is to load the parameters x y z yaw pitch roll from a calibration (.yaml) file, just as I can  load rosparams using the rosparam load syntax:
+<rosparam command="load" file="$(find rosparam)/example.yaml" />
+
+But I can't find a way to use the values from the parameter server and pass them via the args= Argument.
+I am hoping to find a launchfile-based solution instead of writing a node, that basicaly does the same as the static_transform_publisher node.
+Does anyone have a solution?
+PS: I do not want to hardcode the values into the launch file, because they might change. Not during runtime, but in between runs.
+
+Originally posted by cbandera on ROS Answers with karma: 123 on 2015-07-08
+Post score: 5
+
+Original comments
+Comment by dornhege on 2015-07-08:
+My guess is that this is not possible.
+Comment by luc on 2015-07-08:
+You may want to edit the source so that those arguments are instead loaded via the parameter server instead of through the launch file.
+
+A:
+
+Just stumbled upon this questions..
+I would go for launch file arguments (http://wiki.ros.org/roslaunch/XML/arg):
+<launch>
+    <arg name="args" default="1 0 0 0 0 0 1 link1_parent link1 100"/>
+    <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="$(arg args)"/>
+</launch>
+
+Maybe you should use one argument per parameter.
+If you really want to use parameters, you can use this hackish solution that uses bash to append the arguments read by rosparam:
+<launch>
+    <param name="myargs" value="1 0 0 0 0 0 1 link1_parent link1 100"/> <!-- or elsewhere -->
+    <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" launch-prefix="/bin/bash -c '$* `rosparam get myargs`' --"/>
+</launch>
+
+Originally posted by Mathias Lüdtke with karma: 1596 on 2015-11-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by cbandera on 2015-11-06:
+Hi, thanks for your replay. I will test this next time.
+In the meantime, I have written my own "static_transform_publisher_node" which is able to accept rosparams, and can even read from our custom file format. So this solved it for me.
+Comment by GuillaumeB on 2017-01-09:
+It seems that the second hack doesn't work for me (ros indigo)
+Comment by Mathias Lüdtke on 2017-01-14:
+I have just run a test on kinetic and it works. And I am pretty sure I have tested it with indigo as well..
+Comment by GuillaumeB on 2017-01-16:
+Sorry, I just retried and it work. I don't know what was my test. Even the param overwrite work. Thx
+Comment by Chrisando on 2017-01-26:
+This hackish solution works for me. How can I use it with a namespace? For example get /"namespace"/sensor_pos_0' <group ns="tower_0"> <node pkg="tf" type="static_transform_publisher"  name="sensor_pose_0" launch-prefix="/bin/bash -c '$* rosparam get /tower_0/sensor_pos_0`' --"/>
+Comment by Mathias Lüdtke on 2017-01-27:
+rosparam retrieve its data relative the to namespace of the .
+rosparam get /tower_0/param should work as well as rosparam get param.
+Please do not name your parameter the same as your node as it turns sensor_pos_0 into a namespace.
+Comment by Chrisando on 2017-01-27:
+Thank you @Mathias Lüdtke I works as you said.
+

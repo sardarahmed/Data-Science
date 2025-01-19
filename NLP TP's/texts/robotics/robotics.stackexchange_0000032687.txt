@@ -1,0 +1,50 @@
+Q:
+
+Customizing rosh initialization
+
+I notice that rosh doesn't seem to exactly have the same initialization behavior as ipython.  For example, in ~/.ipython/ipythonrc, I have the line:
+importmod os sys
+So if I start ipython, I have the os module available in the interactive namespace.   But with the same setup, starting rosh does not make those names available.
+
+Originally posted by bhaskara on ROS Answers with karma: 1479 on 2011-07-01
+Post score: 0
+
+A:
+
+This is probably a bug in rosh.   The rosh loader for the shell needs to import os and sys.  In order to be 'clean', it then deletes os and sys.
+Here's a patch that I think resolves this peculiarity (needs more testing):
+diff -r 35d8b08984d6 shell.py
+--- a/shell.py  Fri Jul 01 12:45:40 2011 -0700
++++ b/shell.py  Fri Jul 01 12:45:42 2011 -0700
+@@ -10,6 +10,14 @@
+ # import all symbols after initialization
+ from rosh import *
+ 
++try:
++    cleanup_os = 'os' not in sys.modules
++    cleanup_sys = False
++except:
++    import sys
++    cleanup_os = 'os' not in sys.modules
++    cleanup_sys = True
++    
+ import os, sys
+ plugins = sys.argv[1:]
+ 
+@@ -39,7 +47,9 @@
+         del _f
+ 
+ del plugins
+-del sys
+-del os
++if cleanup_sys:
++    del sys
++if cleanup_os:
++    del os
+ del _roshrcp
+ del _rosenv
+
+Originally posted by kwc with karma: 12244 on 2011-07-01
+This answer was ACCEPTED on the original site
+Post score: 0
+

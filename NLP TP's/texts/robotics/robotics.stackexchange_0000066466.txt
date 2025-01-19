@@ -1,0 +1,230 @@
+Q:
+
+gmapping with navigation
+
+Hi,
+I am trying to do a project on SLAM Gmapping (turtlebot2,kobuki base,ros-hydro) and I'm really blocked I need your help;
+actually my task is to navigate the TurtleBot  and avoid obstacles and at the same time make carthographie.
+I follow the tutorial of stack navigation and after I realized that in that case I should not work with AMCL and map_server.
+So as a first step I tried to build the map,at the beginning it worked but after it didn't, I didn't  know the reason, I find in rviz message: No map received.
+here are the steps I did:
+roslaunch turtlebot_bringup minimal.launch
+rosrun tf (laser-->base_link)
+rosrun tf (odom-->base_link)
+roslaunch turtlebot_navigation gmapping_demo.launch
+the launch file of gmapping_demo.launch :
+**
+
+the xml file of gmapping:
+<param name="delta" value="0.05"/>
+<param name="llsamplerange" value="0.01"/>
+<param name="llsamplestep" value="0.01"/>
+<param name="lasamplerange" value="0.005"/>
+<param name="lasamplestep" value="0.005"/>
+<remap from="scan" to="$(arg scan_topic)"/>
+
+the xml file of move_base:
+<remap from="cmd_vel" to="navigation_velocity_smoother/raw_cmd_vel"/>
+<remap from="odom" to="$(arg odom_topic)"/>
+
+and the configuration of costmap parametrs:
+costmap_common_parametrs.yaml:
+obstacle_range: 2.5
+raytrace_range: 3.0
+robot_radius: 0.20
+footprint: [[-0.16, -0.16], [-0.16, 0.16], [0.16, 0.16], [0.16, -0.16]]
+footprint_padding: 0.01
+inflation_radius: 0.5
+max_obstacle_height: 0.6
+min_obstacle_height: 0.0
+observation_sources: scan bump
+scan: {data_type: LaserScan, topic: /scan, marking: true, clearing: true}
+bump: {data_type: PointCloud2, topic: mobile_base/sensors/bumper_pointcloud, marking: true, clearing: false, min_obstacle_height: 0.0, max_obstacle_height: 0.15}
+local_costmap_param:
+local_costmap:
+global_frame: /odom
+robot_base_frame: base_link
+update_frequency: 5.0
+publish_frequency: 2.0
+static_map: false
+rolling_window: true
+width: 6.0
+height: 6.0
+resolution: 0.05
+global_costmap_param:
+globasl_costmap:
+global_frame: /map
+robot_base_frame: base_link
+update_frequency: 5.0
+static_map: true
+base_local_planner_param:
+controller_frequency: 3.0
+recovery_behavior_enabled: true
+clearing_rotation_allowed: true
+TrajectoryPlannerROS:
+max_vel_x: 0.3
+min_vel_x: 0.1
+max_vel_theta:  1.0
+min_vel_theta: -1.0
+min_in_place_vel_theta: 0.6
+acc_lim_x: 0.5
+acc_lim_theta: 1.0
+yaw_goal_tolerance: 0.3
+xy_goal_tolerance: 0.15
+sim_time: 3.0
+vx_samples: 6
+vtheta_samples: 20
+meter_scoring: true
+pdist_scale: 0.6
+gdist_scale: 0.8
+occdist_scale: 0.01
+heading_lookahead: 0.325
+dwa: true
+oscillation_reset_dist: 0.05
+holonomic_robot: false
+sim_granularity: 0.025
+dwa: true
+simple_attractor: false
+I await your response
+Thanks in advance
+
+Originally posted by sophye_turtlebot on ROS Answers with karma: 53 on 2015-03-19
+Post score: 0
+
+A:
+
+It sounds like you and I are working on nearly the same project.  I am using the Pioneer3-DX and Microsoft Kinect rather than TurtleBot with laser scanner.  I'll post what I have and hopefully it will help.
+I followed this tutorial: Navigation - Robot Setup
+I also followed the video in this tutorial to help me set up RViz so I can send navigation goals to the robot and visualize him moving to the goal while building the map.
+And this tutorial to build a map: Gmapping - Building a map from logged data
+It looks as if you are doing everything correctly, starting your robot launch files, then your move_base.launch file.
+Again, I recommend taking a look at the Navigation - Robot Setup tutorial.  It is very straightforward, and while it is not specific for the Turtlebot, it should work with any robot.  The turtlebot packages should take care of odometry, sensor, and tf (unless you need to add sensors) information.
+I am still playing with the parameters to tune his navigation better.  Long process...
+Here is my move_base.launch:
+<launch>
+
+  <!-- Start gmapping -->
+    <node  pkg="gmapping" name="slam_gmapping" type="slam_gmapping" output="screen" />
+
+  <!-- Start navigation -->
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+        <rosparam command="load" file="$(find follow_me_2dnav)/launch/costmap_common_params_p3dx.yaml" ns="global_costmap" />
+        <rosparam command="load" file="$(find follow_me_2dnav)/launch/costmap_common_params_p3dx.yaml" ns="local_costmap" />
+        <rosparam command="load" file="$(find follow_me_2dnav)/launch/local_costmap_params.yaml" />
+        <rosparam command="load" file="$(find follow_me_2dnav)/launch/global_costmap_params.yaml" />
+        <rosparam command="load" file="$(find follow_me_2dnav)/launch/base_local_planner_params.yaml" />
+    </node>
+</launch>
+
+costmap_common_params.yaml:
+obstacle_range: 4.0
+raytrace_range: 5.0
+inflation_radius: 0.5
+
+footprint: [ [x1, y1], [x2, y2], [x3, y3], [x4, y4] ]
+
+transform_tolerance: 0.5
+expected_update_rate: 60
+map_type: costmap
+
+observation_sources: laser_scan_sensor
+laser_scan_sensor: {sensor_frame: kinect_depth_frame, data_type: LaserScan, topic: scan, marking: true, clearing: true, expected_update_rate: 0.2}
+
+global_costmap_params.yaml:
+global_frame: /map
+robot_base_frame: base_link
+update_frequency: 2.0
+publish_frequency: 10.0
+static_map: true
+
+local_costmap_params.yaml:
+global_frame: /odom
+robot_base_frame: base_link
+update_frequency: 5.0
+publish_frequency: 10.0
+static_map: false
+rolling_window: true
+width: 7.5
+height: 7.5
+resolution: 0.05
+
+base_local_planner_params.yaml
+TrajectoryPlannerROS:
+  max_vel_x: 0.6
+  min_vel_x: 0.1
+  max_rotational_vel: 0.5
+  min_in_place_rotational_vel: 0.3
+  escape_vel: -0.2
+
+  sim_time: 2.0
+  path_distance_bias: 0.7
+  goal_distance_bias: 0.5
+  occdist_scale: 0.05
+  meter_scoring: true
+
+  acc_lim_th: 2.0
+  acc_lim_x: 2.0
+  acc_lim_y: 2.0
+
+  yaw_goal_tolerance: 0.1
+  xy_goal_tolerance: 0.25
+
+  holonomic_robot: false
+
+Originally posted by sealguy77 with karma: 323 on 2015-03-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by sealguy77 on 2015-03-21:
+Try to use comments, rather than an answer, unless you have the real answer...
+You can edit your question or add updates to it instead.
+Comment by sealguy77 on 2015-03-21:
+I'm not sure exactly what you are looking for or the changes you made to gmapping_demo.launch.  But you can find the files you need here.
+Comment by sealguy77 on 2015-03-21:
+The parameter files are here.
+The move_base.launch.xml and gmapping.launch.xml are here.
+Hope that helps.
+Comment by sophye_turtlebot on 2015-03-23:
+thank you very much I checked the files you sent me
+they look like my files
+but I still had the same problem
+I'll explain better my problem
+Comment by sophye_turtlebot on 2015-03-23:
+I want build a map exactly like this tutorial:
+http://wiki.ros.org/turtlebot_navigation/Tutorials/Build%20a%20map%20with%20SLAM
+so  I am writing:
+Comment by sophye_turtlebot on 2015-03-23:
+roslaunch turtlebot_bringup minimal.launch
+roslaunch turtlebot_navigation gmapping_demo.launch
+roslaunch turtlebot_rviz_launchers view_navigation.launch
+Comment by sophye_turtlebot on 2015-03-23:
+but what I did not understand when I "roslaunch turtlebot_navigation gmapping_demo.launch"
+[INFO] [1427123086.980804765]: Loading from pre-hydro parameter style
+[INFO] [1427123087.085777796]: Using plugin "static_layer"
+[INFO] [1427123087.220729356]: Requesting the map ...
+Comment by sophye_turtlebot on 2015-03-23:
+as if he wait for a map while I'll build a map!! and the rviz screnn shows a warning "no map received"
+Comment by sealguy77 on 2015-03-23:
+Looking at the turtlebot_navigation, it does not seem like it should be looking for a map.
+Try this: RViz
+Comment by sealguy77 on 2015-03-23:
+To make a map using teleop, I used this tutorial.
+Comment by sophye_turtlebot on 2015-03-24:
+apparently it's a XnSensorServer server problem,
+sometimes require a reboot for it to work.
+ust one question after having set the parameters of costmap_common_params.yaml
+the TurtleBot will avoid obstacles? or I need to configure this to detect and avoid obstacles?
+Comment by sophye_turtlebot on 2015-03-24:
+I have added these two lines in the code that I have done in the tutorial of navigation stack for "transformation":
+include <costmap_2d/costmap_2d_ros.h>
+costmap_2d::Costmap2DROS costmap("my_costmap", tf);
+I found it in this in this tutorial http://wiki.ros.org/costmap_2d/hydro
+Comment by sophye_turtlebot on 2015-03-24:
+But apparently it's insuffisent , i think that i must do something else for my robot to detect obstacles,
+have you any idea about this?
+Comment by sealguy77 on 2015-03-24:
+I recommend you give this Navigation tutorial a try.  I followed it and the robot is able to detect and avoid obstacles as well as simultaneously build a map.  I'll add my parameter files in my answer.
+Comment by sealguy77 on 2015-03-24:
+Also, here is additional information on costmap_2d and base_local_planner.
+

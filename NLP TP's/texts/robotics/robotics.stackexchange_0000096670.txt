@@ -1,0 +1,101 @@
+Q:
+
+Writing a Subscriber template
+
+I am trying to write a subscriber template that can be initialized using any type of message and with an assignable callback. Below is my code for this template, and as such it compiles, however attempting to instantiate any subscribers with it causes huge error messages which mainly have to do with template argument deduction failing as far as I can tell. Is this type of subscriber even possible? Any info would be greatly appreciated.
+template <typename ROSMSG>
+class MinimalSubscriber : public rclcpp::Node
+
+{
+
+public:
+MinimalSubscriber(const std::string& topic, const std::function<void(const ROSMSG&)>& callback)
+: Node("minimal_subscriber")
+{
+  bound_callback_func=std::bind(callback, std::placeholders::_1, topic);
+  subscription_ = this->create_subscription<ROSMSG>(
+  topic, 10, &MinimalSubscriber::bound_callback_func);
+}
+private:
+
+std::function<void(const std::shared_ptr<ROSMSG>)> bound_callback_func = nullptr;
+typename rclcpp::Subscription<ROSMSG>::SharedPtr subscription_;
+
+};
+
+template <typename ROSMSG>
+class State {
+public:
+  State() = default;
+
+  void init(const std::string& topic, const std::function<void(const ROSMSG&)> callback){
+      node_=rclcpp::Node::make_shared<MinimalSubscriber<ROSMSG>(topic, callback)>;
+      subscription_=node_->create_subscription<ROSMSG>(topic, 10, callback); //THIS LINE FAILS TO COMPILE
+   }
+
+  void set(ROSMSG value) {
+    last_update_time = subscription_->now();
+    holder_.set(value);
+    }
+  }
+
+  ROSMSG get() { return holder_.get(); }
+ 
+private:
+  rclcpp::Node::SharedPtr node_; 
+  std::function<void(const ROSMSG&)> callback_{nullptr}; 
+  Holder<ROSMSG> holder_;
+  typename iiwa_ros::MinimalSubscriber<ROSMSG>::SharedPtr subscription_=nullptr;
+};
+
+Originally posted by anonymous57109 on ROS Answers with karma: 1 on 2020-07-29
+Post score: 0
+
+Original comments
+Comment by praskot on 2020-07-29:
+Hey, I'm not savvy enough in C++, so I cannot fully parse your code. But, I have a template publisher that I wrote a while back, sharing here, see if it's useful.
+template <class T>
+class OffboardMsgPublisher {
+    private:
+        int publish_rate_;
+        ros::NodeHandle nh_;
+    public:
+        ros::Publisher  _ros_msg;
+        T               msg_;
+        int             counter_;
+        std::string     name_;
+
+        OffboardMsgPublisher(ros::NodeHandle &nh, std::string _name, int _publish_rate=0):
+            nh_(nh), name_(_name), publish_rate_(publish_rate_) {
+            counter_ = 0;
+            _ros_msg = nh_.advertise<T>(name_,3);
+
+        }
+
+        void publish() {
+                _ros_msg.publish(msg_);
+        }
+};
+
+Comment by pcoenen on 2020-07-31:
+node_=rclcpp::Node::make_shared<MinimalSubscriber<ROSMSG>(topic, callback)>;
+this line looks wrong to me and might break compilation of the following line. I'm unsure about the specifics about ROS2, but at least the make_shared function call looks odd. I would guess it needs to be std::make_shared<MinimalSubscriber<ROSMSG>>(topic, callback).
+Comment by anonymous57109 on 2020-07-31:
+@praskot Thanks for the code! Unfortunately I already have a version of this subscriber written in ROS1 which works as intended. I am trying to migrate my codebase to ROS2 though, and am not sure exactly how to move my subscriber template.
+Comment by anonymous57109 on 2020-07-31:
+@pcoenen Good catch! That bracket is definitely in the wrong spot. I'm not sure if it solved my problem, but instead of type deduction errors I'm at least getting failed casting errors instead...
+Comment by carlgugugu on 2022-01-03:
+@Anonymous57109, have you solved this compile error yet? just encounter the same problem as you :(
+
+A:
+
+Hello,
+I don't remember when explicitly using the template keyword is needed, but it sometimes is. Did you try with ?
+  subscription_ = node_->template create_subscription<ROSMSG>(topic, 10, callback);
+
+Reference https://en.cppreference.com/w/cpp/language/dependent_name
+
+Originally posted by ahcorde with karma: 421 on 2020-07-30
+This answer was ACCEPTED on the original site
+Post score: 0
+

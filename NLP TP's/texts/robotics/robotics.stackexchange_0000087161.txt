@@ -1,0 +1,55 @@
+Q:
+
+How to collect messages from all topics and put them into a csv file?
+
+Hello everyone!
+I have a .bag file with recorded messages from 4 different sensors (2xIMU, 2xINEMO), which have been worked simultaneously. I need to collect all messages from all sensors' topics and put them into one .csv file to do further research. So I want to get a table like this:
+(rosbagTimestamp, IMU_1_data, IMU_2_data, INEMO_1_data, INEMO_2_data)
+So how can I get such table with synchronically collected messages (data) from all topics?
+Edit:
+Would the solution provided by message_filters.ApproximateTimeSynchronizer solve the problem?
+
+Originally posted by kolner on ROS Answers with karma: 5 on 2018-05-28
+Post score: 0
+
+Original comments
+Comment by PeteBlackerThe3rd on 2018-05-28:
+There is no reason why the four sensors you're using would be synchronised like this, so you would not be able to represent them this way.
+If you could tell us what type of sensor you're using then we might be able to help you.
+Comment by kolner on 2018-05-28:
+Sorry for that incompleteness. There are 2 IMUs and 2 INEMOs that are working simultaneously during a surgical operation. So the information from all those sensors for each time step is required for further analyse of the accomplished operation.
+Comment by PeteBlackerThe3rd on 2018-05-28:
+The problem is the 4 IMUs will not be sampled at exactly the same time intervals, so you'll be able to collect 4 sensor readings at almost the same time but not exactly the same time. So if you try and represent 4 readings with a single time stamp you'll be introducing temporal errors.
+Comment by kolner on 2018-05-28:
+Okay, do any workarounds exist for that problem? E.g. timing approximation, i.e. to sample sensors' data not every millisecond, but every second or something like that.. I am pretty sure that someone has already struggled with such problems.
+
+A:
+
+A brute force approach could be to make a node that subscribes to the topics and prints exactly what you want in the csv file. Run this node and redirect the output into a text file, like this:
+rosrun example_pkg example_node > csv.txt
+
+Run the bag file and csv.txt should contain everything that would have been printed to the console
+In order to synchronize the data, you can store the most updated value for each sensor. In each callback, update these values. At a fixed time interval, print these most updated values along with the time.
+
+Originally posted by mntan with karma: 51 on 2018-05-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by kolner on 2018-05-28:
+Thank you for the answer! When I do in this way, will the messages in the csv.txt be synchronized displayed? (i.e. whether the data e.g. from first sensor will match to the data from second sensor in the csv.txt for each time step)
+Comment by mntan on 2018-05-28:
+Just to clarify, do you want to attempt to "sample" all sensors at fixed intervals? So basically, at a time step, it will return the most recent sensor reading from each sensor. The time reported won't be the rostime of when the data came in, but an approximation.
+Comment by kolner on 2018-05-29:
+Exactly, I want to sample all sensors at fixed intervals. When it is not possible, the approximated time would be good for me as well, I do not think that there would be significant deviations.
+Comment by kolner on 2018-05-29:
+I've found probably more elegant way to provide sychronized reading, which involves a class message_filters.ApproximateTimeSynchronizer in order to synchronize callbacks of IMUs' subscribers. Would it work appropriately?
+Comment by jarvisschultz on 2018-05-29:
+The algorithm that the ApproximateTimeSynchronizer uses is explained in some detail here. If that type of synchronization is appropriate for your use case (which only you can answer), then yes, it could work.
+Comment by jarvisschultz on 2018-05-29:
+Although, as @PeteBlackerThe3rd pointed out, this could be introducing temporal error to some of your data. If you really need exactly synchronized data then either your hardware needs to provide the capability to synchronize somehow (e.g. triggering, shared clocks, etc.) or you should be aware...
+Comment by jarvisschultz on 2018-05-29:
+... of how the approximations used in synchronizing are affecting the data and how these errors might change results further down the computation pipeline. You could always do some custom online smoothing+splining+resampling to produce approximate data that is synchronized according to your needs.
+Comment by kolner on 2018-05-30:
+Thanks so much for your answers! Due to them the situation bacame clear.
+

@@ -1,0 +1,66 @@
+Q:
+
+teb_local_planner in Gazebo
+
+Hey,
+I have been reading more about above mentioned planner and it was stated in github that it should be rather easy to intergrate into Gazebo.
+Heres the quote:
+"Currently it provides a differential drive and a carlike robot simulation setup. In order to depend on as few     dependencies as possible, the simulations are performed with stage_ros and without any URDF models. However, they are easily extendable and integrable (e.g. Gazebo, URDF models, voxel costmaps, robot hardware nodes, ...)."
+I was wondering if theres a sample somewhere that I could use. As I understand URDF has to be very specific to be able to make it drive as a car in Gazebo.  I would be grateful if someone could provide me with a tutorial.
+I also found this tutorial, but it does not provide a sample.
+
+Originally posted by murdock on ROS Answers with karma: 75 on 2016-04-23
+Post score: 0
+
+Original comments
+Comment by murdock on 2016-04-23:
+@croesmann I believe you could provide the best answer.
+
+A:
+
+Hey murdock,
+I think we should clarify a few things:
+the planner itself (and in general the complete navigation stack) cannot and is not intended to be integrated into Gazebo.
+We need to separate between:
+
+robot low-level interface (driver/controllers/hardware/...)
+robot model (URDF)
+local planner
+
+The former usually takes velocity commands (and for car-like robots often a steering angle) as controllable input. The robot low-level driver (talking about a real robot) now controls your robot according to this input (open-loop/closed-loop control) by e.g. generating torques at each wheel.
+A URDF file describes the kinematic structure and metrics of your robot such that we can apply transformations between important parts (laser-scanner, wheels etc.).
+The local planer generates a trajectory (w.r.t. a global plan, robot constraints and the changing environment) and provides the velocity profile for the robot-low-level interface.
+The robot interface and the local planner should be created completely independent of each other.
+Now, if I got it right, you want to create a simulation model for your car-like robot. But this part should be completely
+independent of the chosen planner! You just replace your real robot with a model and provide the same low-level interface that accepts velocity commands.
+Here comes the tricky part, you must not only define the visual (and maybe dynamic) model of the robot, you also
+have to implement/simulate the controllers (open-loop or closed-loop, numerical integration) which move the robot according to the incoming velocity commands. For your car-like robot you might even control the steering angle of the front wheels.
+There are some controller plugins that can be integrated into gazebo (I am not a gazebo expert!).
+In summary, I think you should first create your gazebo model without trying any planner.
+For testing your Gazebo model I suggest to command some pre-defiend velocity sequences for which you already know the movement. If you have the real car-like robot, the best approach would obviously be to record some demonstrations in order to verify your model later.
+Then if you have a working model, you can start with configuring the planner (e.g. refer to the Tutorials and the teb_local_planner_tutorials package).
+According to the quote you added:
+I provide only stage navigation configurations since they do not have a lot of heavy dependencies and they are easily customizable. And I think it's enough to just demonstrate how working planner configurations can look like.
+With
+
+easily extendable and integrable
+
+I do not mean the creation but the inclusion of working gazebo models resp. URDF files.
+E.g., you can replace the stage node from the launch file with a gazebo configuration accepting the same control inputs (subscribing to cmd_vel topic, or if you check the car-like tutorial by adding a ackermann_msgs converter).
+Also adding a working URDF model just for visualization purposes is simple by just filling the robot_description parameter with the model url (see navigation tutorials).
+Hope that helps.
+
+Originally posted by croesmann with karma: 2531 on 2016-04-23
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by murdock on 2016-04-23:
+Youre right. Im trying to simulate a car-like robot. I tried to find the most simple car-like sample that works in Gazebo, so I could start building what I need. I found some people using ackermann plug in, but I dont fully understand which control should be used for that.
+Comment by murdock on 2016-04-24:
+Correct me if I am wrong, but only if I used Gazebo I could simulate IMU, odom data, laser scan data and know the ground truth data when comparing how wrong/right robot is in his localization algorithm (aka take ground truth and compare to where it thinks it is)?
+Comment by croesmann on 2016-04-24:
+I'm not sure what exactly you mean. You can also use stage for simulating your robot with odom and laser. Here you can manually set the odom error. Even in Gazebo, since you are simulating your robot, you know the start pose in the map and if you don't add any noise, you have your ground truth.
+Comment by croesmann on 2016-04-24:
+but compared to your simulation model and compared to your real robot. But since you want to check the localization algorithm, it is probably what you want
+

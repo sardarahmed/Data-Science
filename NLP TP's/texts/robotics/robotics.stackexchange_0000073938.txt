@@ -1,0 +1,69 @@
+Q:
+
+Zeroing Out Orientation and Linear Acceleration of IMU
+
+Hi, I am trying to figure out how to zero out the orientation and linear acceleration of my IMU, so that when I launch it, the x and y values begin at 0, rather than at some value like orientation of 0.126.
+Anything would help, but my code for using my IMU is here for reference: https://github.com/brianzhan/husky_robot_fork
+Below is a sample of the message when I launch my um6.launch script, where orientation and linear acceleration don't begin at 0. It is necessary for me get it to 0 to fuse it with my wheel odometry data and other  tasks:
+header: 
+  seq: 456
+  stamp: 
+  secs: 1463184035
+  nsecs: 667352940
+  frame_id: imu_link
+orientation: 
+  x: 0.0279296576
+  y: 0.1263548452
+  z: -0.9905964737
+  w: 0.0441436295
+orientation_covariance: [0.01596195437014103, -0.0012914746766909957, -0.0005610909429378808, -0.0012914201943203807, 0.012185076251626015, 0.00017108242900576442, -0.0005610864027403295, 0.0001710832875687629, 0.011863413266837597]
+angular_velocity: 
+  x: 0.00319579559884
+  y: -0.00106526519961
+  z: -0.00106526519961
+angular_velocity_covariance: [2.5e-05, 0.0, 0.0, 0.0, 2.5e-05, 0.0, 0.0, 0.0, 2.5e-05]
+linear_acceleration: 
+  x: -0.03952058
+  y: 0.4311336
+  z: -10.28073997
+linear_acceleration_covariance: [0.0036, 0.0, 0.0, 0.0, 0.0036, 0.0, 0.0, 0.0, 0.0036]
+
+Originally posted by bzhan on ROS Answers with karma: 21 on 2016-05-13
+Post score: 0
+
+A:
+
+I also faced this problem as IMU always gives non-zero values for angular velocity (and hence orientation) and linear acceleration even when it is not moving. I didn't find any built-in filter inside ros which could do this task of zeroing out the values when it is stationary. So, I ended up building my own simple filter in which I zero-ed out the values based on a threshold value. This threshold value was found through manual observations on imu.
+
+Originally posted by b2meer with karma: 66 on 2016-05-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by bzhan on 2016-05-15:
+Thanks a lot! May I ask, what you changed to zero out the values? I'm not sure what part of the code to alter
+Comment by b2meer on 2016-05-16:
+Find out the part of your code where it is publishing the imu message, and put a condition there that if the x,y,z value is less than 'threshold', then put zero values in the imu message instead of the original values.
+Comment by b2meer on 2016-05-16:
+I used rtimulib for my imu  so I put this condition in the while loop which you can find at the end of this file
+https://github.com/romainreignier/rtimulib_ros/blob/master/src/rtimulib_ros.cpp
+Comment by bzhan on 2016-05-17:
+Thank you so much!
+Comment by bzhan on 2016-05-17:
+I actually couldn't figure out where/how the while or if condition there checks for threshold of zeros values in the code you linked?
+Comment by b2meer on 2016-05-17:
+The link I provided contains the original code. I put an If condition inside the while loop just before the line imu_pub.publish(imu_msg). Following is the If condition.
+Comment by b2meer on 2016-05-17:
+If (imu_msg.angular_velocity.z <= 0.009) {
+imu_msg.angular_velocity.x = 0;
+imu_msg.angular_velocity.y = 0;
+imu_msg.angular_velocity.z = 0;
+imu_msg.linear_acceleration.x = 0;
+imu_msg.linear_acceleration.y = 0;
+imu_msg.linear_acceleration.z = 0;
+}
+Comment by bzhan on 2016-05-17:
+Got it, thank you so much for the help!
+Comment by bzhan on 2016-05-17:
+I just tried this: for me, it only artificially zeros out the angular velocities? Basically, when the condition is satisfied, the items will be published as 0, but when it is not, the values will be published incorrectly again?
+

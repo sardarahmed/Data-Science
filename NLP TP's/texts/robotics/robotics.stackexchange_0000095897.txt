@@ -1,0 +1,44 @@
+Q:
+
+Applying scene changes through service call does not block until changes are applied
+
+This is a follow up to question: https://answers.ros.org/question/352589/planner-not-planning-around-obstacles-in-scene/
+According to the tutorial. using the service call should block until the scene changes are applied.
+However, I found that after the /apply_planning_scene service returns, querying the planning scene with
+planning_scene_monitor::LockedPlanningSceneRO scene(my_planning_scene_monitor);
+
+does not give me a scene with the scene changes applied.  A slight delay is required before the returned scene contains the changes.
+
+Originally posted by Rufus on ROS Answers with karma: 1083 on 2020-05-19
+Post score: 0
+
+A:
+
+The service applies the scene to the PlanningScene instance maintained by the move_group node.
+There is no way for it to wait until your, or any other PlanningSceneMonitor, that might listen to the monitored planning scene topic processed the update.
+If you want a deterministic way to retrieve the updated scene, you have to request it via the get_planning_scene service from the move_group node.
+
+Originally posted by v4hn with karma: 2950 on 2020-05-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Rufus on 2020-05-19:
+Is this the correct way of retrieving the updated scene and converting it into a PlanningScenePtr to be used for planning?
+moveit_msgs::GetPlanningScene get_planning_scene_call;
+get_planning_scene_call.request.components.components = get_planning_scene_call.request.components.WORLD_OBJECT_GEOMETRY;
+get_planning_scene_service_client.call(get_planning_scene_call);
+planning_scene_monitor::LockedPlanningSceneRO scene_snapshot(monitor);
+planning_scene::PlanningScenePtr current_scene(scene_snapshot->diff(get_planning_scene_call.response.scene));
+
+Comment by v4hn on 2020-05-20:
+The idea looks ok. When requesting WORLD_OBJECT_GEOMETRY, quite often you might want to have ROBOT_STATE_ATTACHED_OBJECTS and possibly ALLOWED_COLLISION_MATRIX.
+Looks like you know what you're doing though, so that's mostly a comment for other readers in the future.
+Also I'm not sure what happens when your local scene monitor receives the same updates again a moment later via the monitored topic. It should not be a problem though.
+Alternatively you can also wait for the change to appear in your local monitor on its own (will happen soon after your request), but depending on the configured rates your proposed approach will be much faster.
+That being said, I'm personally not a fan of local PlanningSceneMonitors to begin with.
+Either you maintain your own scene entirely using a PlanningSceneMonitor and do not care about move_group at all, or you write MoveGroupCapabilitys and run your workload in move_group directly.
+Mixing these approaches is always difficult
+Comment by Rufus on 2020-05-20:
+@v4hn Yeah I'm starting to feel my approach of maintaining a local PlanningSceneMonitor is fundamentally flawed.  Where can I find more information regarding writing MoveGroupCapability so I can use the existing move_group stuff?  Is it the MoveGroup C++ Interface you're talking about?
+

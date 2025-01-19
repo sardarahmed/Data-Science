@@ -1,0 +1,137 @@
+Q:
+
+2D Transformations as Affine Matrices
+
+I have found the following exercises about 2D Transformations as Affine Matrices. I am stuck at the second exercise that goes as follows:
+
+The 2D pose of a robot w.r.t. a global coordinate frame is commonly written as $x =(x, y, \theta)^T$, where $(x, y)$ denotes its position in the xy-plane and $\theta$ its orientation. The homogeneous transformation matrix that represents a pose $x = (x, y, θ)^T$ w.r.t. to the origin $(0, 0, 0)^T$ of the global coordinate system is given by 
+  $$
+X=\begin{pmatrix}
+\textbf{R}(\theta) & \textbf{t} \\
+0 & 1
+\end{pmatrix}, \textbf{R}(\theta)=\begin{pmatrix}
+cos(\theta) & -sin(\theta) \\
+sin(\theta) & cos(\theta)
+\end{pmatrix}, \textbf{t}=\begin{pmatrix}
+x \\
+y
+\end{pmatrix}
+$$
+(a) While being at pose $x_1 = (x_1, y_1, \theta_1)^T$, the robot senses a landmark $l$ at position $(l_x, l_y)$ w.r.t. to its local frame. Use the matrix $X_1$ to calculate the coordinates of $l$ w.r.t. the global frame.
+  $$
+\text{Let } ^g\textbf{T}_{x_1}=\begin{bmatrix}
+cos \theta_1 & -sin \theta_1 & x_1 \\
+sin \theta_1 & cos \theta_1 & y_1 \\
+0 & 0 & 1
+\end{bmatrix} \text{ and } ^{x_1}\mathbf{l}=\begin{bmatrix}
+l_x \\
+l_y \\
+1
+\end{bmatrix} \text{ then } ^g\mathbf{l}=^g\textbf{T}_{x_1}\cdot^{x_1}\mathbf{l}
+$$
+
+In answer a) why does $^{x_1}l$ have this vector $[lx, ly, \mathbf{1}]^T$ instead of $[lx, ly, \mathbf{0}]^T$?
+
+b) Now imagine that you are given the landmark’s coordinates w.r.t. to the global frame. How can you calculate the coordinates that the robot will sense in his local frame?
+... we follow the same logic as the previous exercise, i.e.$$
+^{x_1}l=^{x_1}T\cdot \text{ }^gl=(^gT_{x_1})^{-1}\cdot\text{ }^gl
+$$
+
+The answer to b) is an inverse of $T$ vector multiplied by $^{x_1}l$. Why? Why do I need to inverse T vector? What does a matrix inverse signify in mobile-robotics? 
+
+A:
+
+Regarding your first question:
+
+In answer a) why does $^{x_1}l$ have this vector $[l_x,l_y,1]^T$ instead of $[l_x,l_y,0]^T$?
+
+The matrices work out to be one dimension larger than what you're working with in order to keep that $1$ entry in the input vector/matrix. This is because your matrix is doing rotation plus translation in one step:
+Consider rewriting your transform matrix as a rotation $R$ and a translation $dS$:
+$$
+\left[\begin{array}{ccc}
+R & dS \\
+0 & 1 \\
+\end{array}\right]
+$$
+Now, when you want to transform some points, you append a value of $1$ below the bottom row in order to get something like:
+$$
+\left[\begin{array}{ccc}
+\mbox{transformed points} \\
+1 \\
+\end{array}\right] = \left[\begin{array}{ccc}
+R & dS \\
+0 & 1 \\
+\end{array}\right]
+\left[\begin{array}{ccc}
+\mbox{raw points} \\
+1 \\
+\end{array}\right]
+$$
+If you write out the matrix math by hand things become a little more clear. You do element-wise multiplication of the first row of the transform matrix by the first column of the raw points vector/matrix and sum the results. This gives you the first row, first column entry in the transformed points vector/matrix, then you do second row of the transform matrix by the first column of the raw points and sum the results, and that gives you the second row, first column entry in the transformed points vector/matrix. 
+Showing the math here, you get:
+$$
+\left[\begin{array}{ccc}
+\mbox{transformed points} \\
+1 \\
+\end{array}\right] = \left[\begin{array}{ccc}
+R\left(\mbox{raw points}\right) + dS\left(1\right) \\
+0\left(\mbox{raw points}\right) + 1\left(1\right) \\
+\end{array}\right]
+$$
+And so you can see that you wind up with:
+$$
+\mbox{transformed points} = R\left(\mbox{raw points}\right) + dS \\
+$$
+If you were to append a zero instead of a one in your raw point/input then you would get the WRONG ANSWER of:
+$$
+\require{cancel}\cancelto{\mbox{wrong answer}}{\mbox{transformed points} = R\left(\mbox{raw points}\right) + \boxed{dS*0}} \\
+$$
+Appending a zero instead of a one means you won't actually include the translation portion of your transform. The appended one is included to setup the points to be transformed. You append it before you transform your points and you can strip it off as soon as the points are transformed.
+Regarding your second question:
+
+The answer to b) is an inverse of T vector multiplied by $^{x_1}l$. Why? Why do I need to inverse T vector? What does a matrix inverse signify in mobile-robotics?
+
+You need to invert the transform because the question is asking you to change your point of reference. If you walk one mile East of your house, where is your house relative to you? You could call it -1 mile East of you, or 1 mile West. 
+You could say that you turn your body +30 degrees, or you could say that the whole world rotates -30 degrees. 
+Obviously your house didn't move away from you, and the world didn't rotate, but you have to chose something as your basis for measurement (datum). The transform that will take you from your location back to the world location (measurement datum) is the inverse of the transform that took you from the world location to your current location. 
+Again, to the math! Consider again the transform matrix:
+$$
+\left[\begin{array}{ccc}
+R & dS \\
+0 & 1 \\
+\end{array}\right]
+$$
+If your rotation is zero, then the rotation matrix is the identity matrix $I$, which is essentially 1 (ones on the diagonals). This means that, for no rotation, your transform matrix is then just the change in position $dS$:
+$$
+T = \left[\begin{array}{ccc}
+1 & dS \\
+0 & 1 \\
+\end{array}\right]
+$$
+And, if you invert that matrix, you get:
+$$
+T^{-1} = \left[\begin{array}{ccc}
+1 & -dS \\
+0 & 1 \\
+\end{array}\right]
+$$
+So you can see there that, if you don't rotate, then the translation that will take you from B back to A is the opposite of the translation that took you from A to B ($dS$).
+The full result is marginally trickier, because the direction of your translation will change if you rotate. Consider, for example, taking one large step forward and then turning 90 degrees. How do you get back to where you started? One large step backward and then turning -90 degrees? NO! because your orientation after the first transform is not the same as the starting orientation. 
+If +90 degrees is a quarter turn to your left (counter clockwise), then instead of just taking a large step backward you need to rotate that large step backwards by -90 degrees, which means sticking your leg behind you and then rotating it a quarter turn clockwise. This results in a large step left, then turning your body -90 degrees. 
+Similarly, if your initial transform matrix is:
+$$
+T = \left[\begin{array}{ccc}
+R & dS \\
+0 & 1 \\
+\end{array}\right]
+$$
+then the full result for inverting it is:
+$$
+T^{-1} = \left[\begin{array}{ccc}
+R^{-1} & -dS(R^{-1}) \\
+0 & 1 \\
+\end{array}\right]
+$$
+So you can see that the inverse transform is un-rotating to get back to the direction you were originally facing ($R^{-1}$) AND going the opposite distance $-dS$ for the direction you were originally facing $R^{-1}$.
+Hopefully this helps clarify things for you. If you're still stuck, just leave a comment with what's not clicking and I can edit the answer to help. 
+

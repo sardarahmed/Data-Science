@@ -1,0 +1,79 @@
+Q:
+
+Attempt to spin a callback queue from two spinners, one of them being single-threaded
+
+Hello,
+I followed this guide to implement a controller for my rotary stage. Everything works just fine, but when I launch my controller, I get the following error (which does not impair the functionality of my controller btw.):
+[ERROR] [1548319318.740806716]: SpinnerMonitor: single-threaded spinner after multi-threaded one(s).Attempt to spin a callback queue from two spinners, one of them being single-threaded. In the future this will throw an exception! Only allowed for backwards compatibility.
+
+The error is probably caused, when executing my controller executable of my hardware interface. The code, where I create my hardware interface looks like this:
+#include "urs100_hardware_interface/urs100_hardware_interface.h"
+
+int main(int argc, char** argv)
+{
+ros::init(argc, argv, "urs100_hardware_interface");
+ros::NodeHandle nh;
+ros::AsyncSpinner spinner(1);
+spinner.start();
+urs100_hardware_interface::Urs100HardwareInterface Urs100Stage(nh);
+ros::spin();
+return 0;
+}
+
+Does anyone know how I can get rid of that error? I already tried to get rid of the ros::spin() and put the spinner.start() right before the return.
+Would really like to know how to implement this spinning functionality properly.
+
+Originally posted by nmelchert on ROS Answers with karma: 143 on 2019-01-24
+Post score: 0
+
+A:
+
+You have:
+int main(int argc, char** argv)
+{
+  [..]
+  ros::AsyncSpinner spinner(1);
+  spinner.start();
+  [..]
+  ros::spin();
+  return 0;
+}
+
+That ros::spin() should not be used here, as AsyncSpinner is already processing your queues (that's what the error message also tells you).
+If you don't have some other blocking action in your control flow of the node, you can use ros::waitForShutdown().
+See the comments on ros::AsyncSpinner on the ROS wiki: roscpp/Overview/Callbacks and Spinning: Multi-threaded Spinning.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-01-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by nmelchert on 2019-01-24:
+Thanks for your answer. The following code worked for me:
+ros::init(argc, argv, "urs100_hardware_interface");
+ros::NodeHandle nh;
+ros::AsyncSpinner spinner(2);
+urs100_hardware_i
+
+Comment by gvdhoorn on 2019-01-24:
+Your last comment confuses me: that is not a typical flow of control I would expect with a hw interface.
+Comment by nmelchert on 2019-01-24:
+When I writing the hardware interface, I implemented a blocking method and a non blocking method to move the stage. I know that blocking functions are not supposed to be in the hw interface since it harms the sampling time of the controller, but this just worked fine for me.
+Comment by gvdhoorn on 2019-01-24:
+As long as you're aware that you're breaking the (implicit) contract between you and whatever is loading and spinning your hw interface implementation.
+Comment by Jose_M on 2019-02-20:
+Excuse me sir, did you manage to make it works? I'm trying the same process but got this message error:
+Segmentation fault (core dumped)
+Also i changed the ros::spin() for ros::waitForShutdown(), so i'll appreciate if you could help me
+Comment by nmelchert on 2019-02-21:
+Hi, this is, what worked for me:
+ros::init(argc, argv, "urs100_hardware_interface");
+ros::NodeHandle nh;
+ros::AsyncSpinner spinner(2);
+urs100_hardware_interface::Urs100HardwareInterface Urs100Stage(nh);
+spinner.start();
+ros::waitForShutdown();
+
+Comment by nmelchert on 2019-02-21:
+You might have to adjust the thread count depending on your needs.
+

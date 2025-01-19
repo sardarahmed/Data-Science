@@ -1,0 +1,163 @@
+Q:
+
+Building msg in c++
+
+I am trying to construct a message in c++. I am using Ros kinetic, ubuntu 16.04.
+I have a message that consists of a list of the Point message from geometry_msgs. The message looks as follows:
+geometry_msgs/Point[] points
+
+I use this message to transport a list of xy coordinates. The next node uses these coordinates to filter a distance from a pointcloud msg. The part were it goes wrong is when I try to construct the message that the second node publishes. This has to be a list, similair to the one that is sent from the first node. However, this should consist of xyz coordinates. The code I am using (if more is desired I'll add it):
+void pixelTo3DPoint(const sensor_msgs::PointCloud2 pCloud, coord_proces::xyz xy_coord)
+{
+    // get width and height of 2D point cloud data
+    int width = pCloud.width;
+    int height = pCloud.height;
+    int step;
+    int n = 0;
+    float min_x = 0;
+    float min_y = 0;
+    float min_z = 0;
+
+    int list_size = xy_coord.points.size();
+
+    float z_List[list_size];
+    float y_List[list_size];
+    float x_List[list_size];     
+
+    coord_proces::xyz obj_coords;
+    geometry_msgs::Point pt;
+    
+    
+    for (int i = 0; i < list_size; i++)
+    { 
+        const int u = static_cast<int>(xy_coord.points[i].x);
+        const int v = static_cast<int>(xy_coord.points[i].y);
+
+        // Convert from u (column / width), v (row/height) to position in array
+        // where X,Y,Z data starts
+        int arrayPosition = v*pCloud.row_step + u*pCloud.point_step;
+
+        // compute position in array where x,y,z data start      
+        int arrayPosX = arrayPosition + pCloud.fields[0].offset; // X has an offset of 0
+        int arrayPosY = arrayPosition + pCloud.fields[1].offset; // Y has an offset of 4
+        int arrayPosZ = arrayPosition + pCloud.fields[2].offset; // Z has an offset of 8
+    
+        float X = 0.0;
+        float Y = 0.0;
+        float Z = 0.0;
+
+        // Copy the data directly from the location in the message
+        memcpy(&X, &pCloud.data[arrayPosX], sizeof(float));
+        memcpy(&Y, &pCloud.data[arrayPosY], sizeof(float));
+        memcpy(&Z, &pCloud.data[arrayPosZ], sizeof(float));
+       
+        if(not(isnan(X)) & not(isnan(Y)) & not(isnan(Z)))
+        {
+            if((0.05 < Z) & (Z < 2.0))
+            {
+                ROS_INFO("check1");
+                ROS_INFO_STREAM(X);
+                pt.x = X;
+                pt.y = Y;
+                pt.z = Z;
+            }
+        } 
+
+        obj_coords.points[i].insert(0, pt);   
+    }
+    
+    // select lowest Z
+    ROS_INFO("check3");
+    point_pub.publish(obj_coords);  
+}
+
+The program progresses to check2, but does not reach check3 after constructing the message. I know for a fact that the values in pt are correct. However it won't store them in obj_coords.points. I am guessing this is caused by my attempt to itterate through the list adding points until all relevant xy combinations are combined with their appropriate z.
+How would I go about properly storing all coordinates in the message?
+
+Originally posted by THordijk on ROS Answers with karma: 5 on 2019-04-09
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-04-09:
+Just an observation:
+
+float X = 0.0;
+
+memcpy(&X, &pCloud.data[arrayPosX], sizeof(float));
+
+What is the difference with X = pCloud.data[arrayPosX]?
+Comment by gvdhoorn on 2019-04-09:\
+
+The program progresses to check2, but does not reach check3 after constructing the message.
+
+there is no check3 in the code you show.
+
+However it won't store them in obj_coords.points.
+
+and how have you determined this?
+Comment by bsaund on 2019-04-09:
+Use && instead of & for boolean logic
+Comment by bsaund on 2019-04-09:
+Posting the specific error you are receiving will help us solve the problem
+Comment by THordijk on 2019-04-09:
+gvdhoorn, I took the code from someone else, I am not very familiar with c++ so I could not tell you the difference. If there is none then I will use your suggestion, as it much cleaner.
+I have determined that it does not reach check 3 (edited in main question) by running the program in combination with the other nodes. The program crashes between check2 and 3.
+bsaund What would be the functional difference between & and &&, that part of the code seems to be working properly.
+Comment by gvdhoorn on 2019-04-09:\
+
+Use && instead of & for boolean logic
+
+this is a good comment, but in the end it doesn't really matter here I believe: the if-clause consists of two predicates. With the boolean<->integer coercion in C++, the clause translates to a binary AND of two integers. The integers will be either 0 or 1. So in the end the entire clause will only be 1 if both subclauses are true == 1.
+Comment by gvdhoorn on 2019-04-09:
+As long as we're "reviewing" this code: the inner loop seems to implement a filter, but the method is called pixelTo3DPoint(..). That seems like a disconnect there.
+Comment by THordijk on 2019-04-09:
+The code takes pixel values x and y and retrieves the corresponding xyz coordinates. What would you call it?
+Comment by gvdhoorn on 2019-04-09:
+So what is this doing in there then?
+
+if((0.05 < Z) & (Z < 2.0))
+
+that looks like it's filtering points based on their Z value.
+Comment by THordijk on 2019-04-09:
+True, I got values far from what was reasonable. I use this to filter a range based on Z values.
+Comment by gvdhoorn on 2019-04-09:
+That would seem to violate the separation of concerns principle.
+Comment by THordijk on 2019-04-10:
+What is the difference with X = pCloud.data[arrayPosX]?
+I tried this and it does not return anything, can not tell you why though.
+That would seem to violate the separation of concerns principle.
+
+I am not familiar with this principle. I will look into it.
+
+A:
+
+coord_proces::xyz obj_coords;
+
+[..]
+obj_coords.points[i] = pt;
+
+obj_coords.points is a std::vector (see wiki/msg: Message Description Specification). You cannot just index into a std::vector without first reserving space for the objects. You must either first reserve(..) or you should use push_back(..).
+
+The next node uses these coordinates to filter a distance from a pointcloud msg.
+
+From the code it looks like you're essentially implementing a passthrough filter with a threshold for Z set to min 5cm and max 2m. You might want to take a look at pcl/documentation/Filtering a PointCloud using a PassThrough filter which essentially does the same thing, but in much less lines (and potentially more efficient).
+
+Edit:
+
+The program crashes between check2 and 3.
+
+that would be one symptom of using memory past the end of the vector, which would be another indication that not reserve(..)ing and not using push_back(..) is the most likely cause here.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-04-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by THordijk on 2019-04-09:
+This worked thank you!
+Comment by gvdhoorn on 2019-04-09:
+Please note: this is more a general C++ related issue than an actual ROS question. The fact that ROS messages are being used is not that important (in the end it's just a regular C++ std::vector, and that was being used incorrectly).
+While we're all here to help, it might be more efficient to post these sort of queries on dedicated C++ fora.
+Comment by THordijk on 2019-04-09:
+Noted. from now i'll go there first.
+

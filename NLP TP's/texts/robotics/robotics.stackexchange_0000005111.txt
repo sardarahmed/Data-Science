@@ -1,0 +1,42 @@
+Q:
+
+redundant arm path planning and trajectory following
+
+I have a 7dof robotic arm and a set of end effector trajectories in cartesian space I need it to follow. 
+How do I deal with the redundancy in the arm when planning to follow these trajectories both with and without obstacle avoidance?
+
+A:
+
+To expand on Alexandre's answer:
+Controlling the arm with the Jacobian along an end-effector trajectory is one way to do it.  However, this will not give you obstacle avoidance.  Although you could manually check for collisions at each time step, but i imagine this could get ugly.  Additionally, this is a gradient technique, so you will be constrained to the arm configurations close to the current one.  But if you do want to go this route, I find the notation in the book: Robotics: Modelling, Planning and Control by Bruno Siciliano, Lorenzo Sciavicco, Luigi Villani, Giuseppe Oriolo a little easier to understand / use:
+$$
+\dot{q}=J^{\dagger}v_{e}+(I-J^{\dagger}J)\dot{q_o}
+$$
+where:
+$$
+J^{\dagger} = J^T(JJ^T)^{-1}
+$$
+is the right-pseudo-inverse of the Jacobian.  (This is needed because you are under-constrained and have more joints than the 6 DoF space of end-effector motion).  There are other ways to get the pseudoinverse, but this method works well for arm Jacobians.  $J$ is obviously the Jacobian, which changes based on the arm configuration, so it is really $J(q)$, and must be recalculated when the arm moves. $v_e$ is the end-effector velocity vector.  The first three elements are the Cartesian translation velocity in the global frame, and the last three are rotational velocities.  $I$ is the identity matrix.  $\dot{q}$ is the joint velocities, and $\dot{q_o}$ are joint velocities to move the arm in its null space (again, which you have since you are under-constrained).  I have never found this very useful, so I usually zero it out which greatly simplifies the equation.  
+To use this formulation, you will need a linear algebra package, which there are many available, and you will also need to calculate the geometric Jacobian of your arm.  This is a topic for another question.
+NOTE: I typically only use this method for small motions or when i know the arm is in no danger of collision.
+To expand on my other answer:
+I think the more standard way to solve this problem is to use an arm planner.  These planners will have some model of the environment which constitutes obstacles.  You give the planner start and goal arm configurations (i.e. joint angles), and it figures out how to best move the arm between them while avoiding obstacles.  Note that you will typically have start and goal end-effector poses.  and because you have a redundant arm, there are many arm configurations that can satisfy them.  So you must first do some IK and find the configuration that is best for you based on some heuristic.  
+Some notable arm planners / toolkits:
+
+OpenRave - Typically Linux based, but i believe can be cross complied.
+ROS MoveIt! - again, ROS is typically Linux based, but i think has some limited cross-compile support, but i am not sure about MoveIt.
+Matlab Robotics Toolkit - matlab based, so works on Windows, but is not C++.
+Orocos - Typically Linux based, but i believe can be cross complied.  Not sure if it has arm planning actually.
+Trajopt - no Windows support
+
+Underneath these most of these libraries is a planner such as RRT.  If you want to do planning yourself, you should check out:
+
+OMPL
+SBPL
+
+Having said all that, answering your questions specifically:
+
+The planner will handle the arm's redundancy without issue.  (besides increasing the search space)
+There are many planner algorithms.  Too many to list here.  For example, this is the list of planners available in OMPL.   But if you use an off the shelf planner, it will output a trajectory in joint space which is easy to follow with standard control techniques.  
+Libraries and some "do it yourself" code listed above
+

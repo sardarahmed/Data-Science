@@ -1,0 +1,90 @@
+Q:
+
+PCL-ROS run time error while doing plane segmentation
+
+Hello everyone,
+I am trying to do plane segmentation using PCL and ROS. I am using the sensor Asus xtion pro live. I was able to launch openni_kinect and got the sensor pumping out necessary coordinates.
+Here is my program:
+
+ros::Publisher pub;
+sensor_msgs::PointCloud2::Ptr downsampled,output;   
+
+void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
+{
+pcl::PointCloud::Ptr output_p(new pcl::PointCloud);
+pcl::PointCloud::Ptr downsampled_XYZ(new pcl::PointCloud);
+ output_p->width  = 15;
+  output_p->height = 1;
+  output_p->points.resize (output_p->width * output_p->height);
+
+downsampled_XYZ->width  = 15;
+  downsampled_XYZ->height = 1;
+  downsampled_XYZ->points.resize (output_p->width * output_p->height);
+
+pcl::VoxelGrid sor;
+sor.setInputCloud (input);
+sor.setLeafSize (0.01f, 0.01f, 0.01f);
+sor.filter (*downsampled);
+// Change from type sensor_msgs::PointCloud2 to pcl::PointXYZ
+pcl::fromROSMsg (*downsampled, *downsampled_XYZ);
+pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
+// Create the segmentation object
+      pcl::SACSegmentation seg;
+      // Optional
+      seg.setOptimizeCoefficients (true);
+      // Mandatory
+      seg.setModelType (pcl::SACMODEL_PLANE);
+      seg.setMethodType (pcl::SAC_RANSAC);
+      seg.setMaxIterations (1000);
+      seg.setDistanceThreshold (0.01);
+
+      // Create the filtering object
+      pcl::ExtractIndices extract;
+
+      // Segment the largest planar component from the cloud
+      seg.setInputCloud (downsampled_XYZ);
+      seg.segment (*inliers, *coefficients);
+      if (inliers->indices.size () == 0)
+          {
+              std::cerr width * output_p->height  ("output/points", 100);
+
+  // Spin
+  ros::spin ();
+}
+
+so the run time error is:
+
+: /usr/include/boost/smart_ptr/shared_ptr.hpp:412: boost::shared_ptr::reference boost::shared_ptr::operator*() const [with T = sensor_msgs::PointCloud2_ >, boost::shared_ptr::reference = sensor_msgs::PointCloud2_ >&]: Assertion `px != 0' failed.
+Aborted
+
+I am aware of the shared pointer issue through this post http://answers.ros.org/question/39818/ros-pcl-run-time-error-segmenting-planes/ . As a matter of fact the code developed is based on this.
+I know the answer is very near ,Can you guys please help me out on this?.
+Thanks.
+regards,
+Karthik
+
+Originally posted by metal on ROS Answers with karma: 174 on 2013-01-02
+Post score: 0
+
+A:
+
+If you haven't figured it out already (or it's an omission in your code copying), it looks like the downsampled cloud pointer has not been initialized with a valid cloud. You pass the dereferenced shared pointer in the sor.filter(*downsampled) line...
+At some point, you need: downsampled.reset(new sensor_msgs::PointCloud2)
+In addition, the output cloud pointer has not been initialized, so the call to pcl::toROSMsg(*output_p, *output) will also generate an error.
+If that is not the problem, you'll probably have to provide some more information (like a backtrace from gdb or something)...
+Hope this helps.
+
+Originally posted by jlowenz with karma: 36 on 2013-01-03
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by metal on 2013-01-03:
+downsampled->width  = 15;
+downsampled->height = 1;
+output->width=15;
+output->height=1; As you can see I did the intialization,but it  still shows the same run-time error.
+Comment by jlowenz on 2013-01-03:
+Except that the code you posted says downsampled_XYZ->width = 15; ... and I still don't see where you call new sensor_msgs::PointCloud2 anywhere.
+

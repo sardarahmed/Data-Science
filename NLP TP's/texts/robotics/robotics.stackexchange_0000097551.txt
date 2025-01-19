@@ -1,0 +1,82 @@
+Q:
+
+rqt_gui error in perspective manager in ROS noetic
+
+I run my code flawlessly in ROS Melodic but in ROS Noetic, I am having the following error (maybe because of python3):
+Traceback (most recent call last):
+  File "/opt/ros/noetic/lib/rqt_gui/rqt_gui", line 13, in <module>
+    sys.exit(main.main())
+  File "/opt/ros/noetic/lib/python3/dist-packages/rqt_gui/main.py", line 61, in main
+    return super(
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/main.py", line 614, in main
+    perspective_manager.import_perspective_from_file(
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 360, in import_perspective_from_file
+    self._convert_values(data, self._import_value)
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 422, in _convert_values
+    self._convert_values(groups[group], convert_function)
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 422, in _convert_values
+    self._convert_values(groups[group], convert_function)
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 422, in _convert_values
+    self._convert_values(groups[group], convert_function)
+  [Previous line repeated 1 more time]
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 419, in _convert_values
+    keys[key] = convert_function(keys[key])
+  File "/opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py", line 429, in _import_value
+    return QByteArray.fromHex(eval(value['repr(QByteArray.hex)']))
+  File "<string>", line 1, in <module>
+TypeError: arguments did not match any overloaded call:
+  QByteArray(): too many arguments
+  QByteArray(int, str): argument 1 has unexpected type 'str'
+  QByteArray(Union[QByteArray, bytes, bytearray]): argument 1 has unexpected type 'str'
+
+Any idea on this? Or have you encountered this before?
+Thanks
+
+Originally posted by abata on ROS Answers with karma: 33 on 2020-11-10
+Post score: 3
+
+Original comments
+Comment by mikessut on 2020-11-11:
+I'm hitting exact same error with rqt.  I'm able to get it to run by changing /opt/ros/noetic/lib/python3/dist-packages/qt_gui/perspective_manager.py:429 to return value['repr(QByteArray.hex)']. Still get a bunch of errors, but it at least runs.
+Comment by abata on 2020-11-11:
+My launch file was using a .perspective file.  Also, when I tried to load it manually in rqt.  The same errors happened.  It was not necessary for me to load that file, then I modified the launch file :)
+
+A:
+
+Hey, I also encountered the same problem when porting some existing code to the ROS noetic.
+In my case I had a launch file which invoked rqt_gui with a so-called perspective file, like this:
+<node name="rqt_gui" pkg="rqt_gui" 
+type="rqt_gui" respawn="false" 
+args="--perspective-file $(find cyton_gamma_300_gazebo)/config/gazebo_effort_controller.perspective"/>
+
+The perspective file in turn looked similar to the following:
+    ..., "mainwindow": {
+  "keys": {
+    "geometry": {
+      "type": "repr(QByteArray.hex)", 
+      "repr(QByteArray.hex)": "QtCore.QByteArray('01d9d')", 
+      "pretty-print": "     :     I :     I     "
+    }, 
+    "state": {
+      "type": "repr(QByteArray.hex)", 
+      "repr(QByteArray.hex)": "QtCore.QByteArray('000000ff')", 
+      "pretty-print": "                 Lrqt_topic__TopicPlugin__1__TopicWidget          Xrqt_publisher__Publisher__1__PublisherWidget                            6MinimizedDockWidgetsToolbar        "
+    }
+  }, ....
+
+We are interested in the key-value pairs looking similar to the following:
+"repr(QByteArray.hex)": "QtCore.QByteArray('000000ff')", 
+
+and change it to the following:
+"repr(QByteArray.hex)": "b'000000ff'",
+
+I.e. after replacing the value with only byte content, like b'000000ff' and removing QtCore.QByteArray() creation, the rqt_gui is able to start without errors. No patching of noetic code required. Hope this helps!
+
+Originally posted by selyunin with karma: 96 on 2021-01-06
+This answer was ACCEPTED on the original site
+Post score: 7
+
+Original comments
+Comment by M Usamah Shahid on 2021-01-29:
+This worked perfectly for me. Thanks a lot
+

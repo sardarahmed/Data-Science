@@ -1,0 +1,71 @@
+Q:
+
+Motion planning and robot controlling
+
+I am stuck with understanding how can I make my robot move along planned path. For instance, if we have a grid map of an environment and applied, for example, A* to plan a path then after that we have to make our robot move through each cell in our path. Assuming that we know center coordinates of cells, the task is to generate control commands which will lead robot along the trajectory. 
+I have two differential wheeled robot so equations of motion are going to be like these, where b is a distance between wheels:
+$v = \frac{1}{2}(v_{1}+v_{2})\\
+\dot\theta=\frac{1}{b}(v_{2}-v_{1})\\
+\theta = \frac{\delta t}{b}(v_{2}-v_{1}) + \theta_{0}\\
+\dot x = v\cos(\theta)\\
+\dot y = v\sin(\theta)\\
+x = x_{0} + \frac{b(v_{1}+v_{2})}{2(v_{2}-v_{1})}(\sin(\theta)-\sin(\theta_{0}))\\
+y = y_{0} - \frac{b(v_{1}+v_{2})}{2(v_{2}-v_{1})}(\cos(\theta)-\cos(\theta_{0}))
+$
+Suppose that we can control speeds of both wheels therefore we are able to set any possible angular and linear velocities. So what actually I have to do with these equations to make robot move through each cell?
+Moreover there may be different constraints like moving with constant linear speed etc. I understand that I have to solve these equations somehow.
+Will appreciate practical advises, certain names of algorithms and etc. Thanks!  
+
+A:
+
+The model you have given is called the unicycle model and is widely used n robotics. In general the model is given by
+\begin{eqnarray}
+\dot{x} &= v\cos \theta \\
+\dot{y} &= v\sin \theta \\
+\dot{\theta} &= \omega
+\end{eqnarray}
+where $v = 1/2(v_1+v_2)$ and $\omega = 1/b(v_2-v_1)$ are the controls of the robot. 
+The method that you have mentioned is a waypoint following method, where the destination would be updated as you reach a point along a path. The problem is, due to the Lyapunov design, the destination is approached exponentially, i.e, as $t\rightarrow \infty$. Thus, the robot would slow down exponentially as it approaches the target.
+One way to overcome this is to use design process that uses feedback linearization. But first you need to parameterize the path you get from A* with time to get a desired trajectory $\mathbf{x_d}(t)$. This is easy to do by selecting a speed for the robot to traverse the path.
+Next select a point $p$ that is a distance $d$ away from the point of rotation of the robot, along the central axis of the robot. Assume that this point $p$ has a fully actuated kinematic model given by,
+$$ \mathbf{\dot{x}_p} = \mathbf{v_p}$$ where $\mathbf{v_p}$ is the control for this point. If we set, 
+$$ \mathbf{v_p} = k_v(\mathbf{x_d}(t) - \mathbf{x_p}(t) ) + \mathbf{\dot{x}_d}(t), $$ then $\mathbf{x_p} \rightarrow \mathbf{x_d}$ exponentially, i.e., the point $p$ will follow the path. Note that its the point $p$ that follows the path and not the rotation center of the robot.
+Control Design,
+Next you should set the controls $v$ and $\omega$ of the robot so that point $p$ has this desired control $\mathbf{v_p}$. The position of the point $p$ can be written as,
+$$ \mathbf{x_p} = \mathbf{x_0} + d[\cos \theta, \sin \theta ]^T.$$ Thus the velocity of the point $p$ is,
+$$ \mathbf{\dot{x}_p} = \mathbf{\dot{x}_0} + d\dot{\theta}[-\sin \theta, \cos \theta ]^T.$$
+Using the kinematic model of the robot to substitute for $\mathbf{x_0}$ and $\dot{\theta}$, this can be written as,
+\begin{equation}
+\mathbf{\dot{x}_p} = 
+\left[ 
+  \begin{array}[c c]
+     g\cos\theta & -d\sin \theta\\
+    \sin\theta & d\cos \theta 
+  \end{array}
+\right]
+\left[ 
+  \begin{array}[c]
+     sv\\ \omega
+  \end{array}
+\right].
+\end{equation}
+In order to get $p$ to follow the trajectory, we need $\mathbf{\dot{x}_p} = \mathbf{v_p} = k_v(\mathbf{x_d}(t) - \mathbf{x_p}(t) ) + \mathbf{\dot{x}_d}(t)$. Thus, the required controls are given by,
+\begin{equation}
+\left[ 
+  \begin{array}[c]
+     sv\\ \omega
+  \end{array}
+\right] = 
+1/d\left[ 
+  \begin{array}[c c]
+     gd\cos\theta & d\sin \theta\\
+    -\sin\theta & \cos \theta 
+  \end{array}
+\right]\bigg(k_v(\mathbf{x_d}(t) - \mathbf{x_p}(t) ) + \mathbf{\dot{x}_d}(t)\bigg).
+\end{equation}
+Once the controls are set, the wheel speeds can be set as,
+\begin{eqnarray} 
+v_1 = \frac{2v +b\omega}{2}\\
+v_2 = \frac{2v -b\omega}{2}
+\end{eqnarray}
+

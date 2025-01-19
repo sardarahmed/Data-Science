@@ -1,0 +1,56 @@
+Q:
+
+callback function with arguments from subscription to three nodes
+
+Hi !
+I'm looking for a way to process a
+
+sensor_msgs::LaserScan
+
+using two angles provided by another node that provides two topics (the angles as std_msgs::Float32). The thing is, when I read other posts regarding sending several parameters to a callback function (boost::bind) or using one callback function for several subscriptions (this case seems to be only explained for cases where you want to apply a similar function to three different topics independently, and not somehow combine the three topics to build something to publish, which is what I want to do), it never really answers all of my questions.
+I'm therefore looking for something like:
+pub_ = nh_.advertise<sensor_msgs::LaserScan>("/filtered_scan",100);
+
+sub_ = nh_.subscribe<sensor_msgs::LaserScan>("/scan",100, &SubscribeAndPublish::callbackFilter, this);
+
+sub2_ = nh_.subscribe<std_msgs::Float32>("/angle1",100, &SubscribeAndPublish::callbackFilter, this);
+
+sub3_ = nh_.subscribe<std_msgs::Float32>("/angle2",100, &SubscribeAndPublish::callbackFilter, this);
+
+void callbackFilter(const sensor_msgs::LaserScan& inputScan, const std_msgs::Float32& inputAngle1, const std_msgs::Float32& inputAngle2);
+
+Would someone have an accurate idea (or, my dream, an example code :D) of how to implement that ?
+Sorry if I missed the right forum post to solve my problem !
+
+Originally posted by Blupon on ROS Answers with karma: 127 on 2017-08-07
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-08-08:
+Should the three topics be synchronised (ie: use msg from time t from topic 1, 2 and 3)? If so, look at message_filters.
+Comment by Blupon on 2017-08-08:
+Not necessarily, the angles and the LaserScan variables should just be updated when new data comes in. Doing it right away, thanks.
+Comment by Blupon on 2017-08-08:
+Actually, I could just use one callback method per input attribute, to update the input attributes, and at each of these updates, call another callback method that would update the output attribute (a LaserScan) and publish it ?
+Comment by gvdhoorn on 2017-08-08:
+If it's acceptable that none of the three callbacks can guarantee (or: you run the risk of publishing a msg in cb1 that uses old data from cb2 and cb3) that it has the 'latest' data of the other two then yes, that could work.
+Comment by Blupon on 2017-08-08:
+I'm going to try this. That being said, I'm hesitating between closing this post or waiting to see if another solution is found by me or suggested by someone else :|
+Comment by gvdhoorn on 2017-08-08:
+I would say the canonical way to do any sort of semi-synchronised publishing based on multiple message streams is to use message_filters with a suitable filter setup (ie: time based or something else). That is the least 'weird' and follows standard practices. That needs msgs with Headers though.
+
+A:
+
+Assuming I understand the problem fully, I would make a class that had inputAngle1 and inputAngle2 as member variables, then I would have three separate callbacks as member functions.
+The first callback would subscribe to /angle1 and simply update inputAngle1 member variable.
+The second callback would do the same but for the second angle.
+The third callback would subscribe to /scan and do all the processing and grabbing the class's up to date inputAngle1 and inputAngle2 values.
+
+Originally posted by Airuno2L with karma: 3460 on 2017-08-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-08-08:
+This is a sampling approach on top of an event based architecture. It works, but it's also very easy to work with stale data, as depending on when the last callback for each subscription was processed the member variable may not have been updated for a (very) long time.
+

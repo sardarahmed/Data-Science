@@ -1,0 +1,59 @@
+Q:
+
+Persistent Service initialization
+
+I am changing a ROS service to be persistent.
+I experiment with checking the connection, but the initialization puzzles me.
+Do I really have to initialize the client twice like this:
+ros::ServiceClient client;
+
+// I need to create a client before I can check for the servers existence
+client = m_nh.serviceClient<SomeServiceType>("ServiceName", true);
+client.waitForExistence();
+
+// if the server came up during the "waitForExistence", the client is not valid at this point:
+ROS_WARN_COND(!client.isValid(), "Client not valid"); 
+
+// so I have to create it again!!!
+client = m_nh.serviceClient<SomeServiceType>("ServiceName", true);
+
+Is this really the right way?
+
+Originally posted by knxa on ROS Answers with karma: 811 on 2018-01-31
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-01-31:\
+
+Do I really have to initialize the client twice
+
+no. That should not be needed.
+What are you trying to do? And what gave you the impression that this was needed?
+Comment by knxa on 2018-01-31:
+I conclude this based on the isValid check. It returns false right after waitForInstance(). I ended up with this example because AFAIK, when using a persistent service connection, I have to check the validity of the client connection before using client.call(...).
+Comment by gvdhoorn on 2018-01-31:
+Ok. In that case: yes, you do need to do that:
+
+Clients using persistent connections should implement their own reconnection logic in the event that the persistent connection fails.
+
+(or some variant thereof).
+As with all remoting, there's going to be opportunity for race conditions, sadly.
+Comment by knxa on 2018-01-31:
+The waitForService that you pointed out in your now deleted answer seems to be the answer for this question.
+Comment by gvdhoorn on 2018-01-31:
+I'm not sure. If you use waitForService(..), it'll tell you whether the service exists. client.isValid() tells you whether the client instance you created is valid. Unless validity is determined only by checking whether the service exists, those would seem to not be necessarily equivalent.
+
+A:
+
+Concluding on my own question:
+I now initialize by:
+ros::service::waitForService("some_service_name");
+# then create service client: client = nh.serviceClient(...)
+# then check validity with: client.isValid()
+
+Then later, if client.call() fails, then retry the above initialization block.
+
+Originally posted by knxa with karma: 811 on 2018-03-16
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,46 @@
+Q:
+
+Webots: Spawn multiple nodes and disable collision between them, but not the environment
+
+In Webots, I am spawning 10 vehicle nodes at the same time and position for reinforcement learning. I would like the vehicles to not interact with each other (collision and LIDAR) but still have physics to collide with the environment.
+So my question:
+Is there provision in Webots for disabling collision and LIDAR point cloud between certain nodes (so that they can pass through each other), but retain physics to interact with the environment?
+
+A:
+
+Yes, it is possible to disable collision and LIDAR detection with a specific node in Webots.
+These are two different tasks that can be achieved with the following solutions.
+
+Disable collision
+To control the collision detection you have to write a physics plugin.
+At this link you can find all the information about how to set it up.
+The main point is to overwrite the webots_physics_collide(dGeomID g1, dGeomID g2) callback function, and if both the geometries g1 and g2 belong to a vehicle node then you just have to return 1 to tell the physics engine to ignore the collision.
+The biggest development effort in your physics plugin will be to detect if an ODE geometry belongs to a vehicle.
+In a physics plugin you can use all the ODE API functions (ODE is the Webots' physics engine).
+In particular you might be interested in these funtions to get the ODE body from a dGeomId, check if two bodies are connected by a joint, and get a ODE body/geom given a Webots DEF name.
+// ODE functions
+dBodyID dGeomGetBody (dGeomID)
+int dAreConnected (dBodyID, dBodyID);
+// Webots utility functions
+dBodyID dWebotsGetBodyFromDEF(const char *DEF);
+dGeomID dWebotsGetGeomFromDEF(const char *DEF);
+
+Here you can find an example of pyhsics plugin just to have an idea about how to structure it.
+However, note that the functionality implemented in the webots_physics_collide(dGeomID g1, dGeomID g2) differs from what you would like to achieve.
+
+Disable LIDAR detetion
+You can use the Supervisor function wb_supervisor_node_set_visibility.
+So, in the controller where you are spawning the vehicles you would have to add something like this (just pseudo code)
+foreach (string vehicle_name, vehicles) {
+  WbNodeRef vehicle_node = wb_supervisor_node_get_def(vehicle_name);
+  foreach (string other_vehicle_name, vehicles) {
+    if (vehicle_name == other_vehicle_name)
+      continue;
+    // assuming expects the vehicle has a unique DEF name and
+    // the LIDAR is visible in the Webots scene tree with DEF name 'LIDAR'
+    WbNodeRef lidar_node = wb_supervisor_node_get_def(vehicle_name + '.LIDAR'); 
+    wb_supervisor_node_set_visibility(vehicle_node, lidar_node);
+}
+
+Disclaimer: I am a Webots developer working at Cyberbotics.
+

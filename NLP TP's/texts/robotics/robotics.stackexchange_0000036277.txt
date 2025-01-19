@@ -1,0 +1,227 @@
+Q:
+
+Subscription a topic from another package
+
+Below is my code that publishes laser scanner messages and one line that is supposed to subscribe a topic of "pose2D" from another package called laser_scanner_matcher package. I've also referred to the tutorial and am interested to follow what is described in section 2.3.2 using Class Methods, but, it still does not work. Perhaps, one can go to what I've commented out "This subscription does not work" that is needed to be corrected.
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include <sstream>
+#include <fstream>
+#include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/PointCloud2.h>
+#include "geometry_msgs/Twist.h"
+#include "geometry_msgs/Pose.h"
+#include "geometry_msgs/PoseStamped.h"
+#include <vector>
+#include "laser_geometry/laser_geometry.h"
+#include <tf/transform_listener.h>
+#include <boost/algorithm/string.hpp>
+#include "tf/tf.h"
+#include "tf/transform_datatypes.h"
+#include <tf/transform_broadcaster.h>
+// PCL specific includes
+#include <pcl/ros/conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/ros/conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include "pcl/common/angles.h"
+
+using namespace std;
+
+const int num_row = 264;
+const int num_column  = 1089;
+
+class PointCloud
+{
+private:
+    ros::NodeHandle n;
+//  ros::Publisher chatter_pub;
+    ros::Publisher scan_pub;
+    ros::Publisher pose_pub;
+
+    int count;
+    vector<vector<double> > data_set;
+
+public:
+    PointCloud();
+    ~PointCloud();
+
+    /**
+     * Opens and reads file
+     */
+    bool operateFile();
+    void publishLaser();
+//  void display(); //translate and publish
+
+};
+
+    PointCloud::PointCloud()
+    {
+        scan_pub = n.advertise<sensor_msgs::LaserScan>("/scan", 50);
+//      This subscription does not work
+        sub = n.subscribe("/pose2D", 1, this);
+        count = 0;
+
+    }
+
+    PointCloud::~PointCloud()
+    {
+        ROS_INFO("Shutting down publisher_node node.");
+    }
+
+    /**
+     *  @brief Opens and reads file for further processing
+     *
+     *  @param
+     *
+     *  @return True if the file is successfully manipulated
+     */
+    bool PointCloud::operateFile()
+    {
+
+        ifstream inFile;  // object for reading from a file
+        ofstream outFile; // object for writing to a file
+        char inputFilename[] = "/home/alfa/ros_workspace/dataset1.txt";
+        inFile.open(inputFilename, ios::in);
+
+        if (!inFile) {
+          cerr << "Can't open input file " << inputFilename << endl;
+          exit(1);
+        }
+        else
+            cout << "The file is successfully opened :-)" << endl;
+
+        // Set up sizes. (num_row x num_column)
+        data_set.resize(num_row);
+        for (int i = 0; i < num_row; ++i)
+            data_set[i].resize(num_column);
+
+        // Store in a buffer/vector what have been read.
+        for (int j = 0; j < num_row; j++)
+            for (int k = 0; k < num_column; k++)
+            {
+                inFile >> data_set[j][k];
+            }
+
+        return (true);
+    }
+
+    void PointCloud::publishLaser()
+    {
+        int num_laser_readings;
+        double laser_frequency;
+
+        num_laser_readings = 1080;
+
+        laser_frequency = 40; //20 could be
+
+        ros::Rate r(1.0);
+
+        int t = 0;
+
+        while (n.ok() && (t < num_row))
+        {
+            sensor_msgs::LaserScan scan;
+
+            ros::Time scan_time( double(data_set[t][1]/1000));
+
+            for (int i = 0; i < num_row; i++)
+            {
+                scan.header.stamp =  scan_time;
+            }
+
+            scan.header.frame_id = "laser_frame";
+            scan.angle_min = - 270 / 2 * M_PI / 180; // -xx degree
+            scan.angle_max = 270 / 2 * M_PI / 180;   // xx degree
+
+            scan.angle_increment = (scan.angle_max-scan.angle_min)/num_laser_readings;
+
+            scan.time_increment = (1 / laser_frequency) / (num_laser_readings);
+            scan.range_min = 0.0;
+            scan.range_max = 100.0;
+
+            scan.set_ranges_size(num_laser_readings);
+
+            for(int i = 0; i < num_laser_readings; ++i)
+            {
+//              Laser scanner data reside in column 10th to 1080th
+                scan.ranges[i] = data_set[t][i+9] / 1000.0;
+            }
+
+            scan_pub.publish(scan);
+            ++count;
+            ++t;
+
+            r.sleep();
+        }
+    }
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "publisher_node");
+    PointCloud pointCloud;
+    ROS_INFO("Node started");
+    ros::Rate loop_rate(10);
+    pointCloud.operateFile();
+    pointCloud.publishLaser();
+
+    ROS_INFO("Node finished");
+
+    return 0;
+
+}
+
+Originally posted by alfa_80 on ROS Answers with karma: 1053 on 2011-12-06
+Post score: 0
+
+A:
+
+First you need to create a class method that will be called each time a new message is received from /pose2D topic (I will assume that it publishes geometry_msgs/Pose2D messages):
+void PointCloud::pose_callback(const geometry_msgs::Pose2DConstPtr& message)
+{
+    // process the message here
+}
+
+Then to create a subscriber to /pose2D topic you would do:
+pose_sub = n.subscribe("/pose2D", 1, &PointCloud::pose_callback, this);
+
+Originally posted by arebgun with karma: 2121 on 2011-12-06
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by alfa_80 on 2011-12-19:
+dornhege: Thanks for the answer.
+Comment by dornhege on 2011-12-19:
+you don't. ros::spin() does.
+Comment by alfa_80 on 2011-12-18:
+@arebgun and @dornhege: How do I invoke the callback function from main function? I am confused because it requires input parameters to be passed there.
+Comment by alfa_80 on 2011-12-07:
+@dornhege: Thanks a lot!
+Comment by dornhege on 2011-12-07:
+The datatype always has the same name as the message. I.e. a geometry_msgs/Pose2D will be available as geometry_msgs::Pose2D in c++.
+Comment by alfa_80 on 2011-12-06:
+@arebgun: I'm just curious how did you know/decide that the type of "Pose2DConstPtr" will suit this? Any hint for that..
+Comment by alfa_80 on 2011-12-06:
+By the way, why do we actually need the callback function, if any can clarify..after reading the tutorial, I just got it on the surface, but I believe if somebody can explain this, it would be great to see the thing in this regard.
+Comment by alfa_80 on 2011-12-06:
+It's solved already, my bad, I've changed this "geometry_msgs::Pose2DConstPtr" to something else..Thanks a lot @arebgun and @dornhege.
+Comment by alfa_80 on 2011-12-06:
+The above error message was obtained in a terminal upon running the nodes.
+Comment by alfa_80 on 2011-12-06:
+How to correct if I got this message format error: "[ERROR] [1323243574.662154822]: Client [/publisher_node] wants topic /pose2D to have datatype/md5sum [geometry_msgs/Pose/e45d45a5a1ce597b249e23fb30fc871f], but our version has [geometry_msgs/Pose2D/938fa65709584ad8e77d238529be13b8]. Dropping conne"
+Comment by alfa_80 on 2011-12-06:
+@dornhege: Thanks a lot..
+Comment by dornhege on 2011-12-06:
+You can use rostopic echo to see if messages are published on a topic.
+Comment by alfa_80 on 2011-12-06:
+@arebgun:How do I check whether it is publishing fine or not in my code? I've tried using "cout" but it doesn't work..Thanks anyway..
+Comment by arebgun on 2011-12-06:
+Right, that's a typo, it is fixed now. Thanks!
+Comment by alfa_80 on 2011-12-06:
+@arebgun: Thanks a lot for the guide..I think there's a typo perhaps of in the second block of code which is &this, with this, it gives an error "lvalue required as unary "&" operand"..Once, I changed this variable without "&", it returns no error..it is a typo right?
+

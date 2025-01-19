@@ -1,0 +1,120 @@
+Q:
+
+Examine ROS buildfarm pull request testing result output
+
+I particularly have no clue in how to analyze the result of pull request testing on ROS buildfarm.
+A test on buildfarm for one of my PRs fails, while the tests in the repo run on Travis CI succeeds. Same result (good on Travis, failure on buildfarm) keeps happening with updated commits so the behavior seems stable. And on buildfarm, tests defined in the package seems to be passing too. Not sure what makes the buildfarm script to fail the test.
+
+Link to the PR
+link to buildfarm output
+
+Can anyone tell us what to look for when the job fails for PR testing on buildfarm?
+I typically try to find keywords "fail", "error", "not found", "summary", "undefined" (to hit rostest result section) by in-page search. For the buildfarm output I also browsed through. For the particular aforementioned PR, however, none of these didn't convince me for the cause of the error.
+Thanks.
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2016-07-27
+Post score: 1
+
+A:
+
+Looking at the build log it appears to pass the tests, but the conversion to JUnit xml format fails when Jenkins is parsing the results. And the error appears to be due to a missing xml file. Looking at the last file processed it appears that the output has no test results,
+The file in question: rosunit-nxo_moveit.xml appears to have no results inside it.
+<?xml version="1.0" encoding="utf-8"?>
+
+Looking at the full log it appears that there should be one successful test in the xml.
+Erroring section of the log:
+# BEGIN SECTION:
+Clean up to save disk space on slaves
+18:31:13 + rm -fr catkin_workspace/build_isolated
+18:31:13 + rm -fr catkin_workspace/devel_isolated
+18:31:13 + rm -fr catkin_workspace/install_isolated
+18:31:13 + echo # END SECTION
+18:31:13 # END SECTION
+18:31:13 [WARNINGS]Parsing warnings in console log with parser GNU C Compiler 4 (gcc)
+18:31:13 [WARNINGS]Computing warning deltas based on reference build #2
+18:31:13 [xUnit] [INFO] - Starting to record.
+18:31:13 [xUnit] [INFO] - Processing GoogleTest-1.6
+18:31:13 [xUnit] [INFO] - [GoogleTest-1.6] - 11 test report file(s) were found with the pattern 'catkin_workspace/test_results/**/*.xml' relative to '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64' for the testing framework 'GoogleTest-1.6'.
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_gazebo/rostest-test_gz.xml' .
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_gazebo/rosunit-test_gz.xml' .
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_moveit_config/rostest-test_joy.xml' .
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_moveit_config/rostest-test_nxo_moveit.xml' .
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_moveit_config/rosunit-hz_moveplan_joy.xml' .
+18:31:13 [xUnit] [INFO] - Converting '/home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64/catkin_workspace/test_results/nextage_moveit_config/rosunit-nxo_moveit.xml' .
+18:31:13 [xUnit] [ERROR] - Conversion error Error to convert - A file not found
+18:31:13 ERROR: Step ‘Publish xUnit test result report’ aborted due to exception: 
+18:31:13 java.io.IOException: remote file operation failed: /home/jenkins-slave/workspace/Ipr__rtmros_nextage__ubuntu_trusty_amd64 at hudson.remoting.Channel@73d6a4f4:ip-172-31-15-104.us-west-1.compute.internal: hudson.util.IOException2: There are some problems during the conversion into JUnit reports: 
+18:31:13    at hudson.FilePath.act(FilePath.java:986)
+18:31:13    at hudson.FilePath.act(FilePath.java:968)
+18:31:13    at org.jenkinsci.plugins.xunit.XUnitProcessor.performTests(XUnitProcessor.java:145)
+18:31:13    at org.jenkinsci.plugins.xunit.XUnitProcessor.performXUnit(XUnitProcessor.java:88)
+18:31:13    at org.jenkinsci.plugins.xunit.XUnitPublisher.perform(XUnitPublisher.java:142)
+18:31:13    at org.jenkinsci.plugins.xunit.XUnitPublisher.perform(XUnitPublisher.java:134)
+18:31:13    at hudson.tasks.BuildStepMonitor$1.perform(BuildStepMonitor.java:20)
+18:31:13    at hudson.model.AbstractBuild$AbstractBuildExecution.perform(AbstractBuild.java:782)
+18:31:13    at hudson.model.AbstractBuild$AbstractBuildExecution.performAllBuildSteps(AbstractBuild.java:723)
+18:31:13    at hudson.model.Build$BuildExecution.post2(Build.java:185)
+18:31:13    at hudson.model.AbstractBuild$AbstractBuildExecution.post(AbstractBuild.java:668)
+18:31:13    at hudson.model.Run.execute(Run.java:1763)
+18:31:13    at hudson.model.FreeStyleBuild.run(FreeStyleBuild.java:43)
+18:31:13    at hudson.model.ResourceController.execute(ResourceController.java:98)
+18:31:13    at hudson.model.Executor.run(Executor.java:410)
+18:31:13 Caused by: hudson.util.IOException2: There are some problems during the conversion into JUnit reports: 
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitTransformer.invoke(XUnitTransformer.java:183)
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitTransformer.invoke(XUnitTransformer.java:44)
+18:31:13    at hudson.FilePath$FileCallableWrapper.call(FilePath.java:2719)
+18:31:13    at hudson.remoting.UserRequest.perform(UserRequest.java:121)
+18:31:13    at hudson.remoting.UserRequest.perform(UserRequest.java:49)
+18:31:13    at hudson.remoting.Request$2.run(Request.java:324)
+18:31:13    at hudson.remoting.InterceptingExecutorService$1.call(InterceptingExecutorService.java:68)
+18:31:13    at java.util.concurrent.FutureTask.run(FutureTask.java:262)
+18:31:13    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+18:31:13    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+18:31:13    at hudson.remoting.Engine$1$1.run(Engine.java:63)
+18:31:13    at java.lang.Thread.run(Thread.java:745)
+18:31:13    at ......remote call to ip-172-31-15-104.us-west-1.compute.internal(Native Method)
+18:31:13    at hudson.remoting.Channel.attachCallSiteStackTrace(Channel.java:1416)
+18:31:13    at hudson.remoting.UserResponse.retrieve(UserRequest.java:220)
+18:31:13    at hudson.remoting.Channel.call(Channel.java:781)
+18:31:13    at hudson.FilePath.act(FilePath.java:979)
+18:31:13    ... 14 more
+18:31:13 Caused by: org.jenkinsci.plugins.xunit.exception.XUnitException: Conversion error Error to convert - A file not found
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitConversionService.convert(XUnitConversionService.java:87)
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitTransformer.invoke(XUnitTransformer.java:146)
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitTransformer.invoke(XUnitTransformer.java:44)
+18:31:13    at hudson.FilePath$FileCallableWrapper.call(FilePath.java:2719)
+18:31:13    at hudson.remoting.UserRequest.perform(UserRequest.java:121)
+18:31:13    at hudson.remoting.UserRequest.perform(UserRequest.java:49)
+18:31:13    at hudson.remoting.Request$2.run(Request.java:324)
+18:31:13    at hudson.remoting.InterceptingExecutorService$1.call(InterceptingExecutorService.java:68)
+18:31:13    at java.util.concurrent.FutureTask.run(FutureTask.java:262)
+18:31:13    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+18:31:13    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+18:31:13    at hudson.remoting.Engine$1$1.run(Engine.java:63)
+18:31:13    at java.lang.Thread.run(Thread.java:745)
+18:31:13 Caused by: org.jenkinsci.lib.dtkit.util.converter.ConversionException: Error to convert - A file not found
+18:31:13    at org.jenkinsci.lib.dtkit.util.converter.ConversionService.convert(ConversionService.java:358)
+18:31:13    at org.jenkinsci.lib.dtkit.util.converter.ConversionService.convert(ConversionService.java:172)
+18:31:13    at org.jenkinsci.lib.dtkit.model.InputMetricXSL.convert(InputMetricXSL.java:181)
+18:31:13    at org.jenkinsci.lib.dtkit.model.InputMetricXSL.convert(InputMetricXSL.java:189)
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitConversionService.convertInputMetricXSL(XUnitConversionService.java:118)
+18:31:13    at org.jenkinsci.plugins.xunit.service.XUnitConversionService.convert(XUnitConversionService.java:80)
+18:31:13    ... 12 more
+18:31:13 Caused by: org.xml.sax.SAXParseException; lineNumber: 2; columnNumber: 1; Premature end of file.
+18:31:13    at com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(DOMParser.java:257)
+18:31:13    at com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(DocumentBuilderImpl.java:338)
+18:31:13    at org.jenkinsci.lib.dtkit.util.converter.ConversionService.convert(ConversionService.java:316)
+18:31:13    ... 17 more
+18:31:13 Sending e-mails to: ros-buildfarm-indigo@googlegroups.com tfoote+buildfarm@osrfoundation.org dev@opensource-robotics.tokyo.jp iisaito@opensource-robotics.tokyo.jp k-okada@jsk.t.u-tokyo.ac.jp support@o```pensouce-robotics.tokyo.jp 130s@lateeye.net
+18:31:13 Setting status of abecd9ad9691744358bceac2a40bef3ee57848e0 to FAILURE with url http://build.ros.org/job/Ipr__rtmros_nextage__ubuntu_trusty_amd64/6/ and message: 'Build finished. No test results found.'
+18:31:13 Using context: Ipr__rtmros_nextage__ubuntu_trusty_amd64
+18:31:14 Finished: FAILURE
+
+Originally posted by tfoote with karma: 58457 on 2016-07-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by 130s on 2016-07-28:
+Indeed, there seems to be an issue with a mentioned test (test_nxo_moveit) that somehow quietly finishes without emitting errors. Thank you.
+

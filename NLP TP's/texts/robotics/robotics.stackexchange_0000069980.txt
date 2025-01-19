@@ -1,0 +1,84 @@
+Q:
+
+cv_bridge segmentation fault OpenCV 3.0
+
+Hello everybody,
+I have compiled and installed from source OpenCV 3.0 and the project I had now throws a segmentation fault error.
+I tracked down the callback that causes it
+void imageCallback(const sensor_msgs::ImageConstPtr &msg){
+  cv_bridge::CvImagePtr cv_image;
+  cv_image = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
+  (cv_image->image).copyTo(frame_);
+}
+
+It seems that cv_bridge has a problem with the new version of the library.
+For this specific project I can use OpenCV 2.x without any problem, however for other projects (both ROS and non-ROS) I have to use OpenCV 3.0.
+How can I solve the problem?
+
+Originally posted by Mago Nick on ROS Answers with karma: 385 on 2015-10-17
+Post score: 2
+
+A:
+
+Is this with cv_bridge installed from ros-jade-cv-bridge and your from-source OpenCV? If so, that is most likely the issue: binary compatibility is only guaranteed when all packages that depend on OpenCV depend on the exact same version.
+
+Edit:
+
+Yes, this is the case. Is there any way I can edit my CMakeList.txt to force link with another OpenCV version?
+
+There is (something like find_package(OpenCV 3.0 REQUIRED)), but I'm not sure that is what you want.
+
+I can install the 2.x one along with the 3.0 Do you believe is a good idea?
+
+If you installed any ROS Jade packages that depend on cv_bridge, you should already have an OpenCV 2 version installed. The issue is that you are probably linking your executable with cv_bridge, which pulls in OpenCV 2 dependencies, but also with OpenCV 3, which won't work.
+If I remember correctly, @Vincent Rabaud has been working on OpenCV 3 ROS integration. He might be able to work out the best way to do this.
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-10-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Mago Nick on 2015-10-19:
+Yes, this is the case. Is there any way I can edit my CMakeList.txt to force link with another OpenCV version? I can install the 2.x one along with the 3.0
+Do you believe is a good idea?
+Comment by Mago Nick on 2015-10-19:
+I see. What I meant was not to force link to OpenCV 3.0 but to the built in OpenCV of ros
+Comment by gvdhoorn on 2015-10-19:\
+
+Unfortunately downgrading OpenCV is not an option
+
+and
+
+What I meant was not to force link to OpenCV 3.0 but to the built in OpenCV of ros
+
+This seems conflicting to me: if you can actually use OpenCV2, then there would be no issue, right?
+Comment by Mago Nick on 2015-10-19:
+No, there would not. I probably explained myself wrong. What I meant was that I could not unistall OpenCV 3.0. At the moment I do not know how to link to the built in version of ros.
+The OpenCV 3.0 are needed for another project. Therefore, is fine to me to use the older ones to compile this package
+Comment by gvdhoorn on 2015-10-19:
+Ok, so could you please update your original question with some more details? If I understand you correctly, you have:
+
+ROS nodes that should just use OpenCV2
+an installation of OpenCV3 which you only need for non-ROS projects?
+
+Comment by Mago Nick on 2015-10-19:
+Not exactly. I have:
+
+A ROS project with independent ROS workspace that requires (apparently) OpenCV 2
+Other project bot ROS (that will have their own workspace) and non-ROS
+
+hope this cleared out a bit
+Comment by gvdhoorn on 2015-10-19:\
+
+hope this cleared out a bit
+
+Not really. I'm not sure how a binary ros-jade-cv-bridge could be linked at runtime against your from-source OpenCV 3, unless you are also doing find_package(OpenCV) in your CMakeLists.txt, and that is pulling in CV3 libs.
+Comment by Mago Nick on 2015-10-19:
+Ok. I am actually doing as you are suggesting, but this implies that the software links to the new version of OpenCV. How should I do to link it to the old version?
+Comment by gvdhoorn on 2015-10-19:
+To get CMake to find the old version, you can try something like find_package(OpenCV 2 REQUIRED), which should find the older version. You'll want to (build,run)_depend on libopencv-dev (in >= Indigo).
+Comment by gvdhoorn on 2015-10-19:
+The only way to use OpenCV 3 with your other ROS projects would be to build everything in opencv_vision from source, making sure it finds your new version, or by not using opencv_vision at all, being very careful, and just link your node(s) with OpenCV 3. But that will likely be brittle.
+Comment by mariam on 2016-04-21:
+Hi, I have the exact same problem mentioned above and I've tried adding find_package(OpenCV 2 REQUIRED) to my CmakeLists but it doesn't work. How can I (build,run)_depending on libopencv-dev ?
+

@@ -1,0 +1,151 @@
+Q:
+
+LaserScan from bag causing Error: "Lookup would require extrapolation into the past."
+
+Hello,
+I am trying to convert a LaserScan message from a bag. On my header file, I have the following:
+#include <ros/ros.h>
+#include <tf/transform_listener.h>
+#include "sensor_msgs/LaserScan.h"
+#include "sensor_msgs/PointCloud.h"
+#include <laser_geometry/laser_geometry.h>
+
+class laserScan2PC   {
+public:
+
+ros::NodeHandle nh_;
+ros::Subscriber scan_sub_;
+ros::Publisher cloud_pub_;
+tf::TransformListener listener;
+tf::StampedTransform transform;
+laser_geometry::LaserProjection projector_;
+sensor_msgs::PointCloud2 cloud;
+laserScan2PC(ros::NodeHandle nh_);
+
+void scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_in);
+};
+
+And on the .cpp file:
+#include "../include/PrecisionAgriculture/laserScan2PC.h"
+
+laserScan2PC ::laserScan2PC(ros::NodeHandle nh) : nh_(nh){
+// http://wiki.ros.org/tf/Tutorials/Writing%20a%20tf%20listener%20(C%2B%2B)
+scan_sub_  = nh.subscribe("/base_scan/scan", 1000, &laserScan2PC::scanCallback, this);
+cloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/pt_cloud", 1);
+
+}
+
+void laserScan2PC :: scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan_in)
+{
+
+    // http://wiki.ros.org/laser_geometry
+    if(!listener.waitForTransform(scan_in->header.frame_id, "/base_link",scan_in->header.stamp + ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),ros::Duration(2.0)))
+    {
+         ROS_ERROR("Unable to transform");
+    }
+    else
+    {
+        projector_.transformLaserScanToPointCloud("/base_link", *scan_in, cloud, listener);
+    }
+    cloud_pub_.publish(cloud);
+}
+
+The problem is that after having the following error messages (caused by the LookupTransform):
+[ERROR] [1521684287.419099514]: Unable to transform
+[ERROR] [1521684289.429183124]: Unable to transform
+(...)
+[ERROR] [1521684303.469321561]: Unable to transform
+[ERROR] [1521684305.470800803]: Unable to transform
+
+I get the following error:
+terminate called after throwing an instance of 'tf2::ExtrapolationException'
+  what():  Lookup would require extrapolation into the past.  Requested time 1357578703.109095188 but the earliest data is at time 1357578703.124125818, when looking up transform from frame [base_scan_link] to frame [base_link]
+[laserScan2PC-2] process has died [pid 7674, exit code -6, (...)
+
+Which is caused by the projector_.
+I have tried to use ros::Time(0) or ros::Time::now() instead of the scan_in->header.stamp.
+I think this is related to the fact that the stamp of the laser scan is not in agreement with the transform stamp, but I couldn't find a solution so far.
+Finally, I am using the commands below before I play the bag:
+rosparam use_sim_time_true
+rosbag play --clock <nameOfTheBag>
+
+Any hints on how to solve the error? Thank you in advance!
+EDIT:
+I have tried to use try/catch to avoid the exception but the problem remains unsolved, only avoiding the crashing of the program. Something like this:
+ros::Time time;
+
+try {
+    time = scan_in->header.stamp + ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment);
+
+    if(!listener.waitForTransform("/base_link", "/servo_link", time, ros::Duration(1.0)))
+    {
+        ROS_ERROR("Unable to transform");
+        return;
+    }
+    projector_.transformLaserScanToPointCloud("/base_link", *scan_in, cloud, listener);
+    ROS_INFO("Transform Retrieved!");
+}
+catch (tf::TransformException &ex) {
+    ROS_ERROR("%s", ex.what());
+    ros::Duration(1.0).sleep();
+}
+
+Which causes the output depicted below:
+[ERROR] [1521729232.549585422]: Unable to transform
+(...)
+[ERROR] [1521729243.626700137]: Unable to transform
+[ERROR] [1521729244.632651396]: Unable to transform
+[ERROR] [1521729244.633163741]: Lookup would require extrapolation into the past.  Requested time 1357578703.149084276 but the earliest data is at time 1357578703.164612891, when looking up transform from frame [base_scan_link] to frame [base_link]
+[ INFO] [1521729245.633830180]: Transform Retrieved!
+[ INFO] [1521729245.634297009]: Transform Retrieved!
+(...)
+[ INFO] [1521729245.669169912]: Transform Retrieved!
+[ INFO] [1521729245.669593802]: Transform Retrieved!
+
+The bag has approximately 4 seconds. After running the node, it takes a couple of seconds (and a couple of "Unable to transform messages" to start showing "Transform Retrieved". When the latter is shown, the bag already stopped playing for a while... Is this normal? It is taking so long until it is able to transform. When visualizing the Point Cloud in RViz I can only see a small portion of the points, indicating that a lot of points were not transformed.
+
+Originally posted by jpde.lopes on ROS Answers with karma: 64 on 2018-03-21
+Post score: 0
+
+Original comments
+Comment by tuandl on 2018-03-22:
+Could you show your try&catch block?
+Comment by jpde.lopes on 2018-03-22:
+Yes. I have edited the question.
+Comment by lucasw on 2018-03-22:
+What is the reason for the time stamp offset?
+time = scan_in->header.stamp + ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment)
+
+Comment by jpde.lopes on 2018-03-22:
+It is explained here: laser_geometry
+It is because the time stamp contains the time of the first measurement, but we need to wait until the last scan measurement.
+Comment by lucasw on 2018-03-22:
+I suppose to do it more robustly there would need to be a lookup to make sure both the first and last message can be transformed, it's possible the first would have fallen out of the buffer.  Though it is never perfect because the buffer is even changing perhaps between the wait and transform...
+
+A:
+
+Many other questions and #q283013 is similar.  Increase the waitForTransform timeout to 4 or 5 seconds or however long it takes to get more point clouds transformed, though the very first ones may never work- the next time you record a bag you'll want to 'pre-roll' it for a second or two to get tf history before the point clouds you want are received.
+Because your callback queue size is already very large you shouldn't lose data due to buffer overflow, if you did it would need to be make it even larger.
+
+Originally posted by lucasw with karma: 8729 on 2018-03-22
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by jpde.lopes on 2018-03-22:
+Your hint helped a lot.
+If I decrease the buffer size (I have tried with 10 instead of 1000):
+scan_sub_  = nh.subscribe("/base_scan/scan", 10, &laserScan2PC::scanCallback, this);
+
+I am able to visualize the points in RViz, without the "Unable to transform" error appearing on the console.
+Comment by jpde.lopes on 2018-03-22:
+Do you think that is because of the lack the "pre-roll" you just mentioned?
+Comment by jpde.lopes on 2018-03-22:
+Ps: I have seen a lot of similar questions but none the solutions seemed to solve my problem, which is why I've decided to start a new question.
+Comment by lucasw on 2018-03-22:
+I see the issue now- I think your buffer was full of perhaps hundreds of messages that were all waiting a second for the transform and then failing when they needed to have been discarded quickly, and then it may have become full and not allowed very many messages in that would have transformed...
+Comment by lucasw on 2018-03-22:
+...  or by the time the good messages got to use the callback they also could have become too old to use?  (your stdout doesn't show that though)  Is canTransform (with ros::Time(0)?) before waitForTransform with the proper timestamp the proper filter that still allows a large queue_size?
+Comment by lucasw on 2018-03-22:
+Yeah a lot of the questions are just enough different to justify different answers (and the same question differently worded is sometimes valuable for searches), but it is good to link them together.
+

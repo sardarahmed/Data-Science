@@ -1,0 +1,154 @@
+Q:
+
+Controlling Robots Through Serial
+
+I recently have been working on a little project. Unfortunately, I've ran into a bit of a road block with controlling servos using serial commands. The servos do appear to move when i put in any character into serial, but only a little. When i type in say, 90 characters of random gibberish, both servos connected to my arduino move several degrees. Here's my code:
+#include <Servo.h>
+Servo ULF; // Upper left front servo
+Servo LLF; // Lower left front servo
+byte index = 0;
+int commandnum=1;
+int steps = 0; // position of LLF servo
+int partnum = 0; // unused for now
+String command = ""; // the command we're building
+void setup()
+{
+  LLF.attach(0);
+  ULF.attach(1);
+  Serial.begin(9600);
+}
+
+void loop()
+{
+  while(Serial.available() > 0) { // while there are more than zero bytes to read
+      char in = Serial.read();
+      if(in=='!') {
+             //! is escape character
+       commandnum++;
+       partnum = 0;
+       Serial.println("New Command. Command #: "+commandnum);
+        break;
+      }
+      command+=in;
+      if(in == ' ') {
+        partnum++;
+        //if we have a space, there's a new section to the command
+      }
+      if(command == "LLF") {
+        Serial.read(); //skip a space
+
+        Serial.println("Lower Left Foot Selected.");
+        int angle = Serial.parseInt(); // find the angle we want
+        Serial.println("ANGLE: "+String(angle));
+
+        for(int pos = 0; pos < angle; pos++) // for loop through positions to reach goal
+        {                                  
+           LLF.write(pos); // write servo position
+           delay(15);
+        } 
+        for(int pos = angle; pos > 0; pos--) // for loop through positions to reach goal
+        {                                  
+           LLF.write(pos); // write servo position
+           delay(15);
+        } 
+      }
+   }
+}
+
+Any help would be much appreciated.
+EDIT: Another note, nothing is printed in the serial monitor.
+Also, these are micro towerpro rc servos.
+
+A:
+
+I rewrote your program a bit. Not tested since I have no servos.
+#include <Servo.h>
+Servo ULF; // Upper left front servo
+Servo LLF; // Lower left front servo
+byte index = 0;
+int commandnum=1;
+int steps = 0; // position of LLF servo
+int partnum = 0; // unused for now
+String command = ""; // the command we're building
+char in;                // character to read
+int angle;              // desired angle
+
+void setup()
+{
+  LLF.attach(0);
+  ULF.attach(1);
+  Serial.begin(9600);
+}
+
+void loop()
+{
+    // define a protocol for commands, maybe like this:
+    // [XXX<d>] where XXX is command and <d> is the angle,
+    // the brackets [] indicates start and stop of a "packet" ( the command ).
+    // Example: [LLF120], [LLF035], [LLF005]. I am here assuming a 3-digit
+    // value for angle.
+
+    // You also need to reset the variables that holds the command data
+    // when the command has been executed so that they are ready for the next command.
+    // and to use parseInt() you must ensure that the serial buffer has all the 
+    // digits that you sent.
+
+  if(Serial.available() > 0) { // if there are more than zero bytes to read
+      in = Serial.read();
+      if(in == '[') // start of packet, now read command
+      {
+        command = "";
+
+        // get command, 3 chars
+        while(command.length() < 3)
+        {
+            if(Serial.available() > 0)
+                command += Serial.read();
+
+            delay(10);  
+        }
+
+        // get angle    
+        while(Serial.available() < 3) 
+        {               
+            delay(10);  
+        }
+
+        angle = Serial.parseInt(); // find the angle we want
+
+        // flush buffer, all info received
+        Serial.flush();
+      }   
+
+      if(command == "LLF") {
+
+        Serial.println("Lower Left Foot Selected.");
+
+        Serial.println("ANGLE: "+String(angle));
+
+        for(int pos = 0; pos < angle; pos++) // for loop through positions to reach goal
+        {                                  
+           LLF.write(pos); // write servo position
+           delay(15);
+        } 
+        for(int pos = angle; pos > 0; pos--) // for loop through positions to reach goal
+        {                                  
+           LLF.write(pos); // write servo position
+           delay(15);
+        } 
+      }
+   }
+}
+
+A:
+
+According to the Arduino reference for Servo.attach( ), you should be using pins 9 and 10, not 0 and 1.
+
+Note that in Arduino 0016 and earlier, the Servo library supports only servos on only two pins: 9 and 10.
+
+Verify that you are setting the proper pin number in code.  Specifically, look at these lines in your originally-posted code:
+void setup()
+{
+  LLF.attach(0);
+  ULF.attach(1);
+

@@ -1,0 +1,33 @@
+Q:
+
+How to make a particle filter evaluation function with LIDAR sensing?
+
+I am currently trying to implement a particle filter an a robot in a view to localize it on a 2D plane (i.e. to determine x, y and its orientation theta ). I am using a LIDAR which give me (alpha, d) with alpha the angle of measurement and d the distance measured at this angle. For now, I can compute the theoretical measures for each of my particle. But I am struggling with the evaluation function (the function that will give me the probability (or weight) of a particle considering the real measures).
+Suppose my LIDAR give me 5 values per rotation (0°, 72°, 144°, 216°, 288°), thus I store one rotation in an array (5000mm is my maximum value) :
+
+Real LIDAR value : [5000, 5000, 350, 5000, 5000]
+Particle 1 : [5000, 5000, 5000, 350, 5000]
+Particle 2 : [5000, 5000, 5000, 5000, 350]
+
+In this example, I want the function to return a higher probability (or weight) for Particle 1 than for Particle 2 (72° error vs 144°). 
+For now I am just doing the invert of the sum of the absolute difference between the two value at the same place in the array (e.g. for Particle 1 : 1 / (5000-5000 + 5000-5000 + 5000-350 + 5000-350 + 5000-5000)). The problem with this method is that, in this example, Particle 1 and 2 have the same probability.
+So, what kind of function should I use to have the probability of a particle to be the right one with those kind of measurements ?
+PS : I am trying to adapt what is in this course : https://classroom.udacity.com/courses/cs373/lessons/48704330/concepts/487500080923# to my problem.
+
+A:
+
+Having your "real" measurement, particles' state and model of taking "virtual" measurements from particles, you can define multivariate Gaussian and exploit it in order to get your probability.
+Multivariate normal distribution has density function:
+$f(x) = \frac{1}{\sqrt{(2\pi)^{k} |\boldsymbol{\sum}|}}\exp(-\frac{1}{2}(x-u)^{T}\sum^{-1}(x-u))$ where $x$ and $u$ are measurements vectors of size [k x 1] and $\sum$ is a covariance matrix of size [k x k]. As $u$ you use your "real" measurements taken by robot, as for $x$, it contains "virtual" measurements taken from particles.
+In your case you have 5 measurements so $x$ is going to have a size of [5 x 1] and $\sum$ --- [5 x 5]. Since measurements are independent, off-diagonal elements of covariance matrix are going to be zeros and diagonal elements define how uncertain your measurements are. So covariance matrix looks like this:
+$\sum = 
+\begin{bmatrix}
+q_{0} & 0 & 0 & 0 & 0\\ 
+0 & q_{1} & 0 & 0 & 0\\
+0 & 0 & q_{2} & 0 & 0\\
+0 & 0 & 0 & q_{3} & 0\\
+0 & 0 & 0 & 0 & q_{4}\\
+\end{bmatrix}$
+And because all your measurements are taken by the same LIDAR $q = q_{0} = ... =q_{4}$.
+Now having a state of your particle you can obtain "virtual" measurement and feed it to your density function and as an output you will get the probability $p(z|x)$ which describes how likely this "virtual" measurement  is your "real" measurement. Then based on that probability you can resample your particles.
+

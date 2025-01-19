@@ -1,0 +1,33 @@
+Q:
+
+An alternative to data processing inside callback functions?
+
+I want to perform calculations on the data from my subscriptions the instant it arrives.
+I could of course just do this inside the callback function, but i would insted like to perform these calculations outside of the callback function, right after it has returned.
+The callback function will then just pass the data to a queue which another function will use for processing.
+My question is then: How can this be achieved?.
+
+Originally posted by ros_geller on ROS Answers with karma: 92 on 2016-02-24
+Post score: 0
+
+A:
+
+Edit: now I see that I can edit my answer, oops. Please make sure and read mitch722 's answer below! Original answer follows:
+By moving the calculations outside of the callback (recommended, of course!), you're explicitly decoupling calculations from the callback mechanism, thereby necessarily losing the ability to begin processing the "instant it arrives". With that said, what you probably desire is an event system (that operates with its own event queue, not simply a subsidiary function callback). That's beyond the scope of this answer.
+What you could do instead -- much easier, but likely uses a bit more CPU and is a bit less responsive -- is to use a combination of ROS Timer and your own data queue. In your data callback, put the data in your queue; in the timer callback, process an (likely all) element that is in the queue (if none, just return).
+Note that by using a Timer, you're utilizing the ROS callback system. Assuming single threaded spinning, there's no need to worry about data synchronization. But note also that a typical spin() will process all messages in the callback queue, so special measures would need to be taken to process one message at a time (e.g., guarantee that there will always be a timer event between queued data messages).
+
+Originally posted by kramer with karma: 1470 on 2016-02-25
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-02-25:
+Wouldn't simply pushing the incoming message into an application/node level queue and then assigning that queue to a (pool of) worker threads give you that "event system"? That isn't too complicated, and you also don't need to resort to implementing a polling system as you describe.
+Comment by kramer on 2016-02-26:
+Yes, as you say, that's effectively an event system as I used the term. With no language specified, I assume C++, so shy away from recommending multi-threading. Plus, it still seems to me that a Timer of high enough frequency is the easiest method, albeit not the most efficient/timely.
+Comment by ros_geller on 2016-03-01:
+Sorry for the late response: I am using C++, yes. After thinking about it, what I think i need here is something like a producer-consumer design. So I'm now wondering if there are ROS native functionalities to do this or if i have to do it from scratch? I should prob go read up on the design pattern
+Comment by kramer on 2016-03-02:
+What I described is a producer-consumer. The publisher is the producer, the timer callback is the consumer. The issues are the delay and interleaving message reception/processing. Y'know, if polling is a concern, you could add a one-shot timer in the message callback.
+

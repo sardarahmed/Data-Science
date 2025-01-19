@@ -1,0 +1,99 @@
+Q:
+
+Loading map layers as plugins into turtlebot_navigation - sometimes works, sometimes doesn't
+
+UPDATE: The solution, as far as the plugins go, was to move my plugin info to a yaml file of it's own called simple_layers.yaml (so local_costmap_params.yaml is back to default). Then add a clear_params attribute to the move_base < node > tag in turtlebot_navigation/launch/includes/move_base.launch.xml. Then within this < node > tag, add <rosparam file="$(find turtlebot_navigation)/param/simple_layers.yaml" command="load" />.
+Mark clear_params as "true". When you want to load the plugins uncomment the above line. When want to unload, comment out that same line. simple_layers.yaml looks like this:
+local_costmap:
+   plugins:
+    -
+     name: layer_simple
+     type: "simple_layer_namespace::SimpleLayer"
+    -
+     name: layer_grid
+     type: "simple_layer_namespace::GridLayer"
+
+Hello everyone,
+I have a bunch of different problems, but they're all very inter-related, so I'm going to pose them all in this one question. Here's the situation:
+I created two costmap layers called layer_simple and layer_grid as per the tutorial here. I then load them into the local_costmap_params.yaml file of turtlebot_navigation/amcl_demo.launch as per the tutorials here. The idea is to have these layers added to the map_file launched by amcl_demo.launch.
+The problem, in a nutshell, is that this sometimes works and sometimes doesn't. I find it easier to describe in the form of a table. Consider the following variables:
+"File" refers to the event that I DO have the plugin information in my local_costmap_params.yaml file.
+"Source" refers to the event that I DO run source /home/turtlebot/workspace/devel/setup.bash where 'workspace' contains my simple_layers package. [When this event is false, or no, then /opt/ros/hydro/setup.bash is sourced].
+"NotExist" refers to the event that I DO get this error (if I don't get it, the plugins load successfully and I can view them on rviz):
+[ INFO] [1397144317.022246229]: Using plugin "layer_simple"
+terminate called after throwing an instance of 'pluginlib::LibraryLoadException'
+  what():  According to the loaded plugin descriptions the class simple_layer_namespace::SimpleLayer with base class type costmap_2d::Layer does not exist. Declared types are  costmap_2d::FootprintLayer costmap_2d::InflationLayer costmap_2d::ObstacleLayer costmap_2d::StaticLayer costmap_2d::VoxelLayer costmap_2d::VoxelWithFootprintLayer
+[move_base-16] process has died ...
+
+"Goal" refers to the event that I CAN run 2DNavGoal on rviz (or send goals to /move_base/goal) successfully. If I can't, I get this error:
+[ WARN] [1397145188.637196407]: Clearing costmap to unstuck robot.
+[ WARN] [1397145199.036562301]: Rotate recovery behavior started.
+
+"ClassLoader" refers to the event that I DO get this error AFTER shutting down amcl_demo.launch:
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+
+Having said that, here's the table (Case 1-6 happen chronologically --> 1 before 2, etc.):
+
+A few things to notice:
+
+Even when the plugins are irrelevant, as in Case 1 and 2, ClassLoader happens. When the plugins do matter as in Case 3 and 4, ClassLoader doesn't happen. So is the "library" spoken of NOT referring to my simple_layers library?
+When File is false after being true previously, the plugins are still sought (Case 5) and even loaded (Case 6). Does this mean that the system does not realize I've taken the information out of local_costmap_params.yaml?
+In other posts and tutorials, I see people only exporting their layer plugins to costmap_2d, and not also turtlebot_navigation. So if they don't use amcl_demo.launch (part of turtlebot_navigation) for their costmaps, what DO they use?
+Sometimes Goal happens and works when I haven't changed anything. Just pure randomness (I think). It had worked with the plugins loaded and without. For now, it does NOT work.
+
+PLEASE HELP ME MAKE SENSE OF THIS.
+
+Update: The following is no longer needed!
+(Old) EDIT (In response to @demmeln 's answer)
+For method 2, I moved my plugin info to a yaml file of it's own called simple_layers.yaml (so local_costmap_params.yaml is back to default). Then I add these lines to move_base.launch.xml within the move_base  tag:
+<rosparam file="$(find turtlebot_navigation)/param/simple_layers.yaml" command="load"/>
+But that doesn't accommodate for unloading the parameters too from the parameter server. So I guessed I should use rosparam delete command. First I find the name of the parameters of my plugins using rosparam list. Then I add this line to move_base.launch.xml in the same  tag:
+
+(Obviously when I want to rosparam delete the params, I comment OUT the rosparam load line). But the PROBLEM IS THAT when I do run this, after loading the plugins once and now desiring to unload them, they do not get unloaded. In fact rosparam list still shows these param names.g%20Layered%20Costmaps) and here.
+
+Originally posted by oswinium on ROS Answers with karma: 105 on 2014-04-10
+Post score: 0
+
+Original comments
+Comment by demmeln on 2014-04-15:
+It probably will be easiest add clear_params="true" to this line https://github.com/turtlebot/turtlebot_apps/blob/hydro/turtlebot_navigation/launch/includes/move_base.launch.xml#L10. I did not suggest to add rosparam delete statements to the launch file. It was rather a means to manually remove...
+Comment by demmeln on 2014-04-15:
+... them from the command line with the rosparam command for debugging. It is not a very scalable solution.
+Comment by demmeln on 2014-04-16:
+Just a comment on what you wrote as a solution: It should not be necessary to change clear_params to false. Just leave it as true all the time, and comment or uncomment the additional <param ... > tag that you added to change between with and without your custom plugin.
+
+A:
+
+How are you running your trials? In particular, ros parameters are in general not cleared from the parameter server. So if you "take out" parameters from the yaml file, they might still be present on the parameter server. There are multiple ways to deal with this.
+
+Restart roscore in between your trials, which also restarts the parameter server. This is the sledgehammer method that should always work, but might be inconvenient.
+Manually remove the parameters with rosparam or with according commands in the launch file.
+Use the clear_params attribute to the node tag in your launch files. This clears the private namespace of a node before launch. Depending on how you load parameters, this might not work. http://wiki.ros.org/roslaunch/XML/node
+Use anonymous node name. This way the name is different for each run and you can be sure there are no 'stale' parameters. This and the previous solution don't do anything about global parameters, but I think in your case it is only about private ones.
+
+I suggest making sure stale parameters of previous runs don't affect you any more, and then try again and see if it makes more sense.
+
+Originally posted by demmeln with karma: 4306 on 2014-04-11
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by oswinium on 2014-04-11:
+Thanks, I'll give those a shot. In the mean time, could you shed some light on points 1 and 3 in MY post (not your answer) i.e. about the ClassLoader error and about using turtlebot_navigation for my purposes... Again, thanks!
+Comment by oswinium on 2014-04-11:
+For your methods, @demmeln, only method 1 works so far. Methods 3 and 4 require me to have my own node; all I have are two .cpp libraries defined in my simple_layers package. Do these count as nodes?
+Comment by oswinium on 2014-04-15:
+@demmeln, just wondering if you saw the latest edits and comments? :) Thank you for your time, sir.
+Comment by demmeln on 2014-04-15:
+No, 3. and 4. do not require you to write your own nodes. You just need to edit the launch files where the nodes are started, but you are doing that already, so where is the problem?
+Comment by oswinium on 2014-04-15:
+I am running this launch file: http://bit.ly/P3kMNl exactly as it is. The changes I have made are in move_base.launch.xml as described in the EDIT portion of my question. The problem is that methods 3 and 4 require a  tag which (I think) is n/a over here :S Unless I'm mistaken.
+Comment by demmeln on 2014-04-15:
+You will need to edit this file: https://github.com/turtlebot/turtlebot_apps/blob/hydro/turtlebot_navigation/launch/includes/move_base.launch.xml . There is the node tag for move_base. Try the clear_params.
+Comment by oswinium on 2014-04-15:
+Yes, but wouldn't that also clear the other parameters like local and global costmap? I only want to remove the plugins I ADDED :)
+Comment by demmeln on 2014-04-15:
+It clears all those parameters, but then the rosparam tags inside the node tag make sure to add them again.
+Comment by oswinium on 2014-04-15:
+YES THAT WORKS! Thank you!
+

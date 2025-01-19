@@ -1,0 +1,132 @@
+Q:
+
+ROS 2 Bouncy : Node, Log and Classes best practice
+
+Hello I am working with ROS 2 Bouncy and was wondering what is the best practice to log stuff in classes that are instantiated in a Node ?
+I know it's now recommended to inherit the rclcpp::Node class and you can simply log by doing RCLCPP_INFO(this->get_logger(), "My message").
+My question is about the best practice to log in customs classes inside the Node. For example, let's say we have this class :
+class MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    CustomClass custom_class();
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff();
+  }
+}
+
+Which of this 4 options is the recommended way to give CustomClass access to the logger ?
+Option 1 : We give the Node to the CustomClass constructor which save it in some var to be able to log in any function.
+MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    CustomClass custom_class(this);
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff();
+  }
+}
+
+Option 2 : We give the logger to the CustomClass constructor which save it in some var to be able to use it in any function.
+MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    CustomClass custom_class(this->get_logger());
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff();
+  }
+}
+
+Option 3 : We give the node to each CustomClass function if they need to log stuff.
+class MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    CustomClass custom_class();
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff(this);
+  }
+}
+
+Option 4 : We only give the Node's logger to each CustomClass function.
+class MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    CustomClass custom_class();
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff(this->get_logger());
+  }
+}
+
+Any other option ? Does any of this really matter or can we choose any option ?
+Thank you.
+
+Originally posted by Marc Testier on ROS Answers with karma: 203 on 2018-10-03
+Post score: 0
+
+A:
+
+I'd actually recommend option 2 (passing the logger instance given by the node to your custom class), unless your class also needs the node, in which case option 1 is fine (no need to pass both the node and the logger).
+If only a few methods of the custom class need to do logging you might consider option 3 or 4, but again I'd prefer option 4 to option 3, preferring to limit what information you pass into the class to only what you need.
+In all cases, I'll point out that you can "extend" the logger given to the class to add extra namespace if you desire it, see: http://docs.ros2.org/bouncy/api/rclcpp/classrclcpp_1_1_logger.html#a68ab28459973c1072d3ad7a593ac994e
+Also, you might consider taking a function for logging to completely decouple your custom class from ROS primitives altogether. For example:
+MyNodeClass : public rclcpp::Node
+{
+public:
+  MyNodeClass()
+  : Node("my_node_class") {
+    custom_class(
+      [logger = this->get_logger()] (const std::string & msg) -> void {RCLCPP_INFO(logger, msg);}
+    );
+  }
+
+  MyNodeClass::do_stuff(){
+    custom_class.do_stuff();
+  }
+
+  CustomClass custom_class;
+}
+
+Originally posted by William with karma: 17335 on 2018-10-05
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by vadbut on 2019-02-26:
+For option 2, how do I declare and define the logger var on the CustomClass side?
+I tried smth like this but it didn't work:
+Class CustomClass{
+  CustomClass(rclcpp::Logger &logger){
+    this->logger = logger;
+  }
+  private:
+    rclcpp::Logger *logger;
+};
+
+Comment by William on 2019-02-27:
+This:
+struct CustomClass {
+  CustomeClass(rclcpp::Logger logger) : logger_(logger) {}
+private:
+  rclcpp::Logger logger_;
+};
+
+Maybe?
+

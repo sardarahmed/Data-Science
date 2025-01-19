@@ -1,0 +1,68 @@
+Q:
+
+In what way does MoveIt! process time info?
+
+Hello,
+I looked around for an answer to this question on the forum, but unfortunately couldn't find anything.
+I have been trying to tune PID gains so that speed of my custom robot is improved. I move the robot with moveit trajectory planning and so I had a question about the influence of time on moveit motion planning, as I asked here:  https://answers.ros.org/question/352431/how-does-time-influence-moveit-motion-planning/ .
+My concern was that the trajectory planning would somehow be influenced by the amount of time needed to execute the planned motion, which would lead to it messing with my tuning of PID gains. In the question, it was stated
+that OMPL, which I use, does not factor in time.
+However, I later found out that the trajectory planning does in fact use time, as this is processed in the JointTrajectoryPoint message. Now my question is, what is done with this time info; how is it used in trajectory planning? Can the PID gains have any influence on this and vice versa?
+Thanks in advance!
+
+Originally posted by You RQT on ROS Answers with karma: 35 on 2020-05-28
+Post score: 2
+
+A:
+
+In the question, it was stated that OMPL, which I use, does not factor in time.
+
+Which is correct: by default, OMPL will not consider time. It's purely kinematic planning.
+
+However, I later found out that the trajectory planning does in fact use time, as this is processed in the JointTrajectoryPoint message.
+
+Depending on how you define it, there is no trajectory planning in MoveIt (personally I consider planning to be more involved than interpolation or time-parameterisation, but this will depend on who you ask).
+
+Now my question is, what is done with this time info
+
+"inside MoveIt"? Nothing.
+By consumers of the JointTrajectory message? They should use it to determine at which times in the execution of the trajectory the state encoded by each JointTrajectoryPoint should be achieved.
+
+how is it used in trajectory planning?
+
+It isn't.
+
+Can the PID gains have any influence on this and vice versa?
+
+No. Not on the algorithms which actually calculate those timestamp, velocities and accelerations.
+I would again refer you to the Time Parameterization in MoveIt's documentation.
+To make this more than a "link only" answer, I'll quote the relevant parts here (emphasis mine):
+
+MoveIt is currently primarily a kinematic motion planning framework - it plans for joint or end effector positions but not velocity or acceleration. However, MoveIt does utilize post-processing to time parameterize kinematic trajectories for velocity and acceleration values.
+
+and:
+
+MoveIt can support different algorithms for post-processing a kinematic trajectory to add timestamps and velocity/acceleration values. Currently there are three available by default in MoveIt:
+
+Iterative Parabolic Time Parameterization
+Iterative Spline Parameterization
+Time-optimal Trajectory Generation
+
+Summarising: OMPL output is a path. Post-processing via the time-parameterisation algorithms turns that into a trajectory (ie: adds time, velocity and acceleration to each trajectory point).
+None of those algorithms use any information other than the limits configured on each joint (which are taken from your .urdf or .xacro (in combination with and via the config/joint_limits.yaml file in your MoveIt configuration package)) together with the scaling values for those limits (ie: the velocity scaling and the acceleration scaling values).
+The assumption is that you've provided appropriate joint limits to those algorithms, and that the entity responsible for execution of the trajectory is capable of achieving the performance "promised" by those limits.
+So to answer the question which forms the title of this post:
+
+In what way does MoveIt! process time info?
+
+If by "time info" you mean the time_from_start field in each of the JointTrajectoryPoints in a JointTrajectory, then the answer would be: it doesn't.
+MoveIt produces JointTrajectorys. It does not consume them. It never looks at those values, as they are not meant for consumption by MoveIt, but by entities (ie: nodes, drivers, something else) which are capable of executing them (ie: making robots move).
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-05-28
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by You RQT on 2020-05-30:
+Thanks a lot for your elaborate answer! It's really helpful
+

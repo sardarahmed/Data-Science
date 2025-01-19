@@ -1,0 +1,77 @@
+Q:
+
+Dynamic reconfiguration in a loop
+
+Hi,
+I am want to use the dynamic confegiration in a while loop: like the following:
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include "My_pck/Control.h"
+#include <dynamic_reconfigure/server.h>
+#include <My_pck/comm_dynConfig.h>
+#include <sstream>
+
+std::vector<int16_t> Values(9,0);
+
+void paramsCallback(My_pck::comm_dynConfig &config, uint32_t level)
+{
+   Values[0] << (int)config.value_1 ;
+   Values[1] << (int)config.value_2 ;
+}
+
+ int main(int argc, char **argv)
+ {
+   ros::init(argc, argv, "node");
+   ros::NodeHandle n;
+   ros::Publisher pub  = n.advertise<My_pck::Control>("topic1", 1000);
+   ros::Rate loop_rate(50);
+    while (ros::ok())
+    {
+    dynamic_reconfigure::Server<My_pck::comm_dynConfig> param_server;
+    dynamic_reconfigure::Server<My_pck::comm_dynConfig>::CallbackType param_callback_type;
+    param_callback_type = boost::bind(&paramsCallback,  _1, _2);
+    param_server.setCallback(param_callback_type);
+    
+   My_pck::Control Message;
+    
+    Message.values  = Values;
+    pub.publish(Message);
+    ros::spinOnce();
+    loop_rate.sleep();
+   }
+  return 0;
+}
+
+The Configuration file has the following:
+#!/usr/bin/env python 
+PACKAGE = "My_pck"
+from dynamic_reconfigure.parameter_generator_catkin import *
+gen = ParameterGenerator() 
+#gen.add(name, type,Reconfiguration level, Description, default, min, max)
+gen.add("value_1"  , double_t ,0, "1"  , 444 , 0.0, 1024)
+gen.add("value_2", double_t ,0, "2", 454 , 0.0, 1024)
+exit(gen.generate(PACKAGE, "My_pck", "comm_dyn"))
+
+In the wiki, the dynamic reconfiguration is done in the main without while loop. In my case, I used a while loop and it is hard to change the values where they return to the their position when using the scroller and the actual values are always zeros. Any suggistions ?
+
+Originally posted by RSA_kustar on ROS Answers with karma: 275 on 2014-10-29
+Post score: 0
+
+A:
+
+Rather than creating and destroying the dynamic reconfigure server on each loop iteration, you should create it outside of your while loop.
+
+Originally posted by ahendrix with karma: 47576 on 2014-10-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by RSA_kustar on 2014-10-29:
+I did that, it helped me to change the data from the scroll easier. but still all the values are zeros...
+Comment by ahendrix on 2014-10-29:
+You're using the bit-shift operator (<<) instead of the assignment operator ('=').
+Comment by RSA_kustar on 2014-10-29:
+When I used the '=' the value changed to the first one in the scroller and never changed ???
+Comment by RSA_kustar on 2014-10-29:
+Yes it worked now  using the "=" but I changed the data type in the cfg file to int_t... THANKS
+

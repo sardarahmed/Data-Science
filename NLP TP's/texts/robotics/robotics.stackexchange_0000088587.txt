@@ -1,0 +1,79 @@
+Q:
+
+How to remap from geometry_msgs/PoseStamped to move_base_msgs/MoveBaseActionGoal in ROS node
+
+I am writing a node where I subscribe to the topic /move_base_simple/goal which is of message tip geometry_msgs/PoseStamped and I am wanting to publish this information to the topic /move_base/move/goal which is of message type move_base_msgs/MoveBaseActionGoal. I have the following script to try to do what I have described:
+#!/usr/bin/env python
+
+import rospy
+import roslib
+import actionlib
+
+from std_msgs.msg import String, Empty
+from geometry_msgs.msg import PoseStamped
+from move_base_msgs.msg import MoveBaseActionGoal
+
+def callback(data):
+    rospy.loginfo(rospy.get_caller_id() + 'I HEARD %s', data.pose.position)
+    rospy.loginfo(rospy.get_caller_id() + 'I heard %s', data.pose.orientation)
+    pub = rospy.Publisher('move_base/move/goal', MoveBaseActionGoal, queue_size = 10)
+    stuff_to_publish = data
+    pub.publish(stuff_to_publish)
+    
+
+def listener():
+
+    # In ROS, nodes are uniquely named. If two nodes with the same
+    # name are launched, the previous one is kicked off. The
+    # anonymous=True flag means that rospy will choose a unique
+    # name for our 'listener' node so that multiple listeners can
+    # run simultaneously.
+    rospy.init_node('navgoallistener', anonymous=True)
+
+    rospy.Subscriber('move_base_simple/goal', PoseStamped, callback)
+
+    #message = rospy.Subscriber('move_base_simple/goal', PoseStamped, callback)
+    #print message.pose.orientation
+
+    # spin() simply keeps python from exiting until this node is stopped
+    rospy.spin()
+
+"""def talker():
+    pub = rospy.Publisher('move_base/move/goal', MoveBaseActionGoal, queue_size = 10)
+    rospy.init_node('navgoalsetter', anonymous = True)"""
+    
+
+if __name__ == '__main__':
+    listener()
+
+However I am having a problem because the messages are of different type. The relevant documentation for the message types can be found here http://docs.ros.org/diamondback/api/geometry_msgs/html/msg/PoseStamped.html and here http://docs.ros.org/diamondback/api/move_base_msgs/html/msg/MoveBaseActionGoal.html. Basically I am wondering how to populate the header and goal_id section of the move_base_msgs message.
+
+Originally posted by dkrivet on ROS Answers with karma: 19 on 2018-08-20
+Post score: 0
+
+A:
+
+For a typical application, you can just increment up 1 the goal ID, or even just leave it as 0. It's only important if you're trying to track multiple goals through the action server. For a typical navigation application where you have 1 goal at a time or have some knowledge of the state outside of move base (which it looks like you do) this is unnecssary. Its primarily for book keeping.
+You can remap the arguments into the MoveBaseGoal object and then the actionlib_msgs/GoalID just fill in the header and increment the goal_ID by 1 for completion sake.
+
+Originally posted by stevemacenski with karma: 8272 on 2018-08-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-08-21:\
+
+or even just leave it as 0.
+
+it might appear that way, but you'd be violating the contract between clients and servers and then run the risk of undefined and/or unexpected behaviour.
+Even if you only have a single goal active at a time, the message documentation of actionlib_msgs/GoalId ..
+Comment by gvdhoorn on 2018-08-21:
+.. states (from here):
+
+The id provides a way to associate feedback and result message with specific goal requests. The id specified must be unique.
+
+Servers will assume ..
+Comment by gvdhoorn on 2018-08-21:
+.. that is the case, and not all server implementations will be able to handle non-unique goal ids.
+The Python actionlib module has a generator available: goal_id_generator.
+

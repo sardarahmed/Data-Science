@@ -1,0 +1,43 @@
+Q:
+
+Convert from a sensor_msgs::CompressedImage message to IplImage
+
+I'm saving test videos in a JPEG compressed bag file. Then I try to use it as input to a subscriber that listens to the "/camera/image/compressed" topic and convert it to OpenCV's IplImage using the method presented here: http://www.ros.org/wiki/image_transport/Tutorials/SubscribingToImages
+to use it then in my algorithm.
+When save the images in raw format, posting them back in /camera/image topic things work fine, but the bag file is huge. There seems to be a problem with cv_bridge converting sensor_msgs::CompressedImage instead of sensor_msgs::Image...
+Is there a way to solve this problem using cv_bridge? I couldn't figure it out reading the documentation, cv_bridge only refers to uncompressed image converting.
+Thanks in advance.
+
+Originally posted by GeorgeAprilis on ROS Answers with karma: 56 on 2011-05-27
+Post score: 2
+
+A:
+
+Yes I am.
+I managed to solve my problem for now using the republish command of image_transport.
+My code was pretty similar to the tutorial examples. My subscriber declaration:
+_frameSubscriber = image_transport::ImageTransport(_nh).subscribe("/vision/image", 5, &WebVision::grabFrameFromMsg, this);
+
+And implementation:
+void WebVision::grabFrameFromMsg(const sensor_msgs::ImageConstPtr& msg)
+{
+    sensor_msgs::CvBridge bridge;
+    
+    frame = bridge.imgMsgToCv(msg, "bgr8");
+    frameTimestamp = msg->header.stamp;
+    
+    /*rest of the code where I pass the IplImage* frame to my functions*/
+}
+
+So the notion was to save bag files from the camera input when testing, and then pass the "video" as input to the algorithms to test it while offline.
+But CvBridge could only listen to raw image messages and I couldn't afford so much disk space to save long raw videos.
+What I do now is to just run this:
+$ rosrun image_transport republish compressed in:=/vision/image _image_transport:=compressed raw out:=/vision/image
+
+and listen to the republished topic with raw images. It could be better if I could implement the conversion inside the code, but it solves my problem for now.
+Thanks anyway for giving it a try. :)
+
+Originally posted by GeorgeAprilis with karma: 56 on 2011-05-30
+This answer was ACCEPTED on the original site
+Post score: 2
+

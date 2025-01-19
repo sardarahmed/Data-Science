@@ -1,0 +1,91 @@
+Q:
+
+How to XMLRPC Client of another node in C++
+
+Hi!
+I'm trying to get the PID of another nodes running ROS in order to monitor the memory and CPU usage. To do so, I get the name of all the nodes:
+// Get node names
+std::vector<std::string> nodes;
+ros::master::getNodes(nodes);
+
+Afterwards I go node by node getting the URI:
+// Get URI of the node
+XmlRpc::XmlRpcValue args, result, payload;
+args.setSize(2);
+args[0] = "caller_name";
+args[1] = "node_name";
+ros::master::execute("lookupNode", args, result, payload, true);
+
+But can't get the getPid to work, the execute function always returns false.
+// Make new client of node
+std::string uri = result[2];
+XmlRpc::XmlRpcClient* client =
+ros::XMLRPCManager::instance()->getXMLRPCClient(ros::master::getHost(), ros::master::getPort(), uri.c_str());
+
+// Get PID of the node
+XmlRpc::XmlRpcValue request, response;
+request.setSize(1);
+request[0] = "node_name";
+client->execute("getPid", request, response);
+
+The "getXMLRPCClient" function seems to always return a client even if not already existent. The "client->execute" can return false on several ocations, so I don't have any clue how to debug this.
+
+Originally posted by marinamrr on ROS Answers with karma: 31 on 2020-10-07
+Post score: 3
+
+A:
+
+Hi.The following method worked for me.
+  // Make new client of node
+  int port = get_port(static_cast<std::string>(result[2]));
+  XmlRpc::XmlRpcClient* xclient = ros::XMLRPCManager::instance()->getXMLRPCClient(ros::master::getHost(), port, "/");
+
+  // Get PID of the node
+  XmlRpc::XmlRpcValue request, response;
+  xclient->execute("getPid", request, response);
+
+I needed the port to be the number of the node I wanted to manipulate, not the number of the master. get_port is a function that looks like this, for example
+int get_port(std::string uri)
+{
+  int port = 0;
+  bool pre_colon = false;
+  bool start_number = false;
+  for (int i = 0; i < uri.size(); i++)
+  {
+    if (uri[i] == ':')
+    {
+      pre_colon = true;
+    }
+    else
+    {
+      if (pre_colon || start_number)
+      {
+        if (uri[i] >= '0' && uri[i] <= '9')
+        {
+          start_number = true;
+          port = port * 10 + (uri[i] - '0');
+        }
+        else if (start_number)
+        {
+          break;
+        }
+      }
+      pre_colon = false;
+    }
+  }
+
+  return port;
+}
+
+Originally posted by miura with karma: 1908 on 2021-03-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aravindsaiUR on 2021-05-19:
+Be sure to close the client created by the XmlRpc::XmlRpcClient, since it opens a socket for every client created. In case you run this in loop, you could get "Too many files opened" error or "Error:24" especially in linux. Since for each client a socket is created and sockets are defined as file descriptors in linux. This will be a memory leak. So always close an opened client after processing. Releasing the client connection is recommended.
+ros::XMLRPCManager::instance()->releaseXMLRPCClient(xclient);
+
+Comment by miura on 2021-05-19:
+Thank you very much. I learned a lot.
+

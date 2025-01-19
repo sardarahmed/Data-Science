@@ -1,0 +1,90 @@
+Q:
+
+How do I make my meshes appear shaded?
+
+Most of the time when visualizing meshes in RViz they appear edgy, the shading is not good:
+
+How do I make my mesh appear smooth?
+
+Originally posted by VictorLamoine on ROS Answers with karma: 1505 on 2016-02-16
+Post score: 0
+
+A:
+
+A common mistake users tends to do is to subdivide the model to minimize the shading issue, this is NOT good as it increases the poly count of the scene without eliminating the problem!
+The right solution is to tweak the shading properties of the mesh; If you have no idea of what shading is please read this little introduction.
+You need Blender installed and the Collada I/O add-on (this PPA provides a Blender version with Collada support enabled).
+How to fix a mesh:
+
+Import your mesh in blender:
+File > Import > Collada (Default) (.dae)
+Select the mesh by right clicking on it in the 3D view
+Switch to edit mode (Tab):
+Switch to face selection (Ctrl+Tab) and select all faces (A) of the model
+Set the shading of the faces to Smooth:
+
+Exit the edit mode (Tab)
+Add an EdgeSplit modifier:
+
+Tweak the split angle value: lower values means less smoothing but less artifacts, large values (> 40°) will probably create artifacts!
+Apply the modifier when the result satisfies you
+Export the new Collada file
+
+Result after the smoothing:
+
+Python script
+You can use this Python script to do the job for you;
+The script only modifies the selected objects.
+After that you need to individually tweak the split angle value and apply the modifier on each mesh.
+import bpy
+import re
+
+# Applies only on selected objects
+if len(bpy.context.selected_objects) > 0:
+    for obj in bpy.context.selected_objects:
+        if obj.type == 'MESH':
+            bpy.context.scene.objects.active = obj
+            bpy.ops.object.editmode_toggle()
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.remove_doubles()
+            bpy.ops.mesh.faces_shade_smooth()
+            bpy.ops.object.editmode_toggle()
+            bpy.ops.object.modifier_add(type='EDGE_SPLIT')
+
+# Don't forget to tweak the split angle!
+
+Once you are done tweaking the split angle values, select all your meshes again and use this script to apply the EdgeSplit modifier:
+import bpy
+import re
+
+# Apply the EdgeSplit modifier on selected objects
+if len(bpy.context.selected_objects) > 0:
+    for obj in bpy.context.selected_objects:
+        if obj.type == 'MESH':
+            bpy.context.scene.objects.active = obj
+            bpy.ops.object.modifier_apply(apply_as='DATA', modifier="EdgeSplit")
+
+Note that in case something didn't go well, you can easily revert the changes with a Remove doubles in edit mode and switching back to flat shading.
+
+Originally posted by VictorLamoine with karma: 1505 on 2016-02-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2016-02-17:
+Looks good. Can you comment on what the effect might be on the 'correctness' of the geometry? Edge split actually changes your mesh, so if the mesh is used for collision checking, this might need some verification.
+Comment by VictorLamoine on 2016-02-17:
+Edge split only tweaks the vertex normals of the mesh. There is no modification to the mesh (vertices positions) itself. It is just a lightning trick.
+Comment by gvdhoorn on 2016-02-17:
+The documentation seems to suggest something else:
+
+The EdgeSplit modifier splits edges within a mesh.
+
+Also, when testing this on a mesh with a threshold of 30 deg, verts/edges/faces went from 230/684/456 to 429/885/456?
+Comment by gvdhoorn on 2016-02-18:
+Related dicussion: Shaded meshes in RViz, better visualisation.
+Comment by gvdhoorn on 2016-02-23:
+Another question: does this only work for Collada meshes?
+Comment by VictorLamoine on 2016-02-23:
+This won't work for STL meshes as they only support face normals. This should work for OBJ and PLY files but software support might vary. It works with PLY in Blender but not with OBJ (it should).
+

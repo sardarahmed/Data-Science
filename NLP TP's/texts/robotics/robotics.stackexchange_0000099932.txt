@@ -1,0 +1,54 @@
+Q:
+
+ROS2 lookupTransform() - cannot get transform at time now()
+
+I am having issues acquiring transformation at the required time using lookupTransform()
+It works as expected when I use tf2::TimePointZero (i.e. the last transform) but is failing when I use this->get_clock()->now() (i.e. transformation at "now").
+Code snippet:
+  transformStamped = tf_buffer_->lookupTransform(
+    toFrameRel, fromFrameRel,
+    this->get_clock()->now(),
+    50ms);
+
+The exception I handle is as follows:
+Lookup would require extrapolation into the future.  Requested time 1629833266.557150 but the latest data is at time 0.000000, when looking up transform from frame [turtle1] to frame [turtle2]
+
+I actually spawn the turtle2 and definitely it needs some time to broadcast its transform, but the error is always there.
+Full code is available here: https://github.com/kurshakuz/geometry_tutorials/blob/update-listener/turtle_tf2_cpp/src/turtle_tf2_listener.cpp
+It also seems strange to me that the the latest data is at time 0.000000 is never changing.
+Please let me know if you have any ideas.
+
+Originally posted by kurshakuz on ROS Answers with karma: 76 on 2021-08-24
+Post score: 0
+
+A:
+
+Your problem isn't in the subscriber but the broadcaster where you're publishing the transforms with time zero.
+https://github.com/kurshakuz/geometry_tutorials/blob/9e36826d3159885e0a66174966eef16240e3b50a/turtle_tf2_cpp/src/fixed_frame_tf2_broadcaster.cpp#L38-L41
+You create the time object called "now" but you don't set the value to now, you just leave it default initialized which is time zero.
+
+Originally posted by tfoote with karma: 58457 on 2021-08-24
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by kurshakuz on 2021-08-24:
+Thanks a lot! That makes it clear. Should I simply assign the now variable to this->get_clock()->now()?
+Comment by tfoote on 2021-08-24:
+I expect that's what you want to do if you want that variable to represent the current time when publishing.
+Comment by kurshakuz on 2021-08-27:
+Can I ask you a similar question, but based on Python? What I am trying to do is to acquire transform at time now and change the variable at
+https://github.com/kurshakuz/geometry_tutorials/blob/ros2/turtle_tf2_py/turtle_tf2_py/turtle_tf2_listener.py#L67 to now = self.get_clock().now(). But I always get the Could not transform turtle1 to turtle2: Lookup would require extrapolation into the future. error even when I pass the timeout parameter using different values (from 0.05 to 5.0 seconds). Do you have any clue why is that may happen?
+The call is as below:
+                    now = self.get_clock().now()
+                    trans = self.tf_buffer.lookup_transform(
+                        to_frame_rel,
+                        from_frame_rel,
+                        now,
+                        timeout=Duration(seconds=1.0))
+
+Comment by tfoote on 2021-08-27:
+Please ask a new question with enough information to reproduce your problem. If you can make a reduced test case that can show the problem it's easiest to help you. Also look for other similar questions on this forum first. This type of question has been asked many times.
+Comment by kurshakuz on 2021-08-30:
+Do you mind to take a look at https://answers.ros.org/question/385342/timeout-in-lookuptransform-behaves-differently-in-rclcpp-and-rclpy/ ? I added additional explanations there.
+

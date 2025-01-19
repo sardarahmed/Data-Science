@@ -1,0 +1,66 @@
+Q:
+
+likelihood field of map
+
+Hi, I'd like to ask about a convert of a map data.
+Amcl package uses map.pgm with map.yaml.
+However, map.png which is gained by slam_gmapping
+has solid edges to represent obstacles(walls, tables and so on).
+When and where a map data is converted to a likelihood field ?
+(If possible, could you show me the correspond part of source codes?)
+And which parameter is used to determine the likelihood field's standard deviation?
+Thanks in advance.
+
+Originally posted by moyashi on ROS Answers with karma: 721 on 2012-12-05
+Post score: 0
+
+A:
+
+As far as I know, gmapping maintains occupancy values internally. However, the ROS wrapper thresholds them into binary free/occupied values.
+Take a look at this file:
+slam_gmapping.cpp
+Starting at line 625:
+for(int x=0; x < smap.getMapSizeX(); x++)
+{
+  for(int y=0; y < smap.getMapSizeY(); y++)
+  {
+    GMapping::IntPoint p(x, y);
+    double occ=smap.cell(p);
+    assert(occ <= 1.0);
+    if(occ < 0)
+      map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = -1;
+    else if(occ > occ_thresh_)
+    {
+      //map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = (int)round(occ*100.0);
+      map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 100;
+    }
+    else
+      map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 0;
+  }
+}
+
+The default value for occ_thresh_ is 0.25. It appears that if you want the occupancy values, you can simply revert the line which was commented out, and change the code to:
+map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = (int)round(occ*100.0);
+//map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 100;
+
+I have created a ticket here.
+EDIT: response to comment
+I'm not sure whether amcl currently assumes binary values or not.
+With laser sensors, you typically reach saturation probabilities (0 or 1) pretty fast, since lasers have a small uncertainty spread. My intuition is that since the nav stack is mainly developed for laser-equipped ground robots, the binary value is a good approximation.
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2012-12-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by moyashi on 2012-12-06:
+Thank you for your kind answer and creating the ticket !!
+After I change the line, I need to modify amcl package to use likelihood field which doesn't have binary values but 0～255 values don't I ?
+Why do you think nav stack use binary values even though it's less robust ?
+Comment by moyashi on 2012-12-09:
+Thank you for your response.I'd like to be sure whether amcl assumes binary or not. Would you mind if I ask the question in an additional question form which includes url info of this form?
+Comment by Ivan Dryanovski on 2012-12-09:
+sure, sounds like a good idea
+Comment by moyashi on 2012-12-10:
+Thanks a lot. I posted new question here.(http://answers.ros.org/question/50134/can-amcl-pack-use-a-map-data-as-a-likelihood-field/)
+

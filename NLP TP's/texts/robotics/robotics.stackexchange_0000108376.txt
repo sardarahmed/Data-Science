@@ -1,0 +1,37 @@
+Q:
+
+Rotation matrix to Twist command
+
+I want to implement the J+RRT algorithm for which I need to use the Twist command to navigate the robot in Euclidean space.
+First I calculate the difference in rotation matrices from the end-effector frame T1 to the goal frame T2 like so:
+Tdiff * T1 = T2  // * T1^-1
+Tdiff * T1 * T1^-1 = T2 * T1^-1
+Tdiff = T2 * T1^-1
+
+I am using the Frame separated as a rotation and translation.
+Effectively this means that
+T1^-1 = [R1^T -t1; 0 0 0 1]
+
+RPY seems to be given in extrinsic x, y, z angles, which means that I need to convert it to intrinsic angles for the Twist command. This means that the RPY angles that I get from the Tdiff I would need to convert to my R1 rotation frame. Is my thinking correct?
+The code I'm using is this:
+KDL::Rotation inv_src_rot = src.M.Inverse();
+double x, y, z;
+KDL::Rotation diff_rot = tgt.M * inv_src_rot;
+diff_rot.GetRPY(x, y, z);
+twist.rot = src.M * KDL::Vector(x, y, z);
+
+This is the code for the RPY calculation:
+https://github.com/orocos/orocos_kinematics_dynamics/blob/master/orocos_kdl/src/frames.cpp#L237-L260
+EDIT: Right as I posted this I had another idea, which seems to me more correct.
+If my goal is to go towards the goal rotation tgt.M in the end-effector reference frame src.M, it would make sense to calculate the RPY angles from the rotation
+src.M * tgt.M,
+since in this case the extrinsic frame has now become src.M. Now when I calculate RPY it will be the rotation tgt.M given in the src.M frame, if I'm not mistaken?
+KDL::Rotation diff_rot = src.M * tgt.M;
+diff_rot.GetRPY(x, y, z);
+twist.rot = KDL::Vector(x, y, z);
+
+A:
+
+Angular velocities are strongly related to angle-axis description of a 3D rotation.
+Instead of using RPY, just use the angle-axis vector (as in angle times unit axis) of the rotation error (R1.R2^T). Then the angular velocity to drive this vector to 0 is just proportional to the vector (e.g. this is a proportional velocity control in SO(3)).
+

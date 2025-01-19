@@ -1,0 +1,15 @@
+Q:
+
+PID quaternion contoller
+
+I want to control the attitude(roll, pitch, yaw) of a vehicle capable of pitching and rolling. To do this I have created a quaternion PID controller. First I take the current attitude of the vehicle converting it to a quaternion Qc and do the same for the desired attitude with the quaternion Qd. I then calculate the input of my PID controller as Qr = Qc' x Qd. The imaginary parts of the quaternions are then fed as force requests on the roll, pitch, yaw axes of the vehicle. I test on a simulator and the control works but becomes unstable in some cases (request for R: 60 P: 60 Y:60). I also want this to work around singularities (i.e. pitch 90)
+Does anyone know why I get this behavior and if so explain (thoroughly) what I'm doing wrong?
+
+A:
+
+You are using one PID controller to try to drive a quaternion? A quaternion by definition represents three degrees of freedom, roll pitch yaw, and a PID controller is Single Input, Single Output (SISO) controller.
+You're trying to mask a Multiple Input, Multiple Output (MIMO) system by hiding your three variables in a quaternion.
+If the moments of inertia around each primary axis are the same, then you might be able to get by with using one quaternion controller, but the thing to remember is that a PID controller gets tuned, and the PID tuning hides the system dynamics in the gains. A speed controller that works well for a 5kg arm is not going to work well for a 50kg arm because the gains are tuned to the acceleration - the mass gets "built into" the PID gains.
+When you look at something like aircraft, missiles, etc., the moments of inertia around each primary axis are going to be quite different, or could be quite different, and this is where I don't think a quaternion PID controller is going to be successful - there's not "one" mass or moment of inertia at work. A quaternion command that represents a satellite roll won't get the same dynamic response as a quaternion command that represents a satellite yaw unless the moments of inertia about those two axes is the same. The worst-case scenario would be that the moments of inertia are so different that a command that results in a nice, damped response on one axis results in instability on another axis.
+This is where I comment above that it's really a multi-input, multi-output system when you look at a quaternion, and trying to handle it all in a single PID controller is difficult at best and could be a waste of time trying to tune it. The better approach (in my opinion) is to split control to each primary axis, then there's a single moment of inertia, single input, single output. This is where PID controllers can perform well.
+

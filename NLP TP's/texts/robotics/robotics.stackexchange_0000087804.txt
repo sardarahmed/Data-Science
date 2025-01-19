@@ -1,0 +1,29 @@
+Q:
+
+Automatically run tests on ROS build farm for pure cmake project
+
+I'm hosting some pure cmake projects ifopt and towr (not dependent on catkin) on the ROS build farm, for which I generate some unit test in my CMakeLists.txt similar to:
+find_package(GTest)
+add_executable(test my_test.cpp)  
+target_link_libraries(test ${GTEST_BOTH_LIBRARIES} pthread)
+add_test(test test)
+
+I can run these with make test after a non-catkin build, this works fine.
+How can I tell the ROS build farm (which seems to be internally calling  catkin_make run_tests) to run that gtest binary as well after building? (jenkins-log)
+I don't want to catkinize my  project, which would allow me to use catkin_add_gtest. I want to keep allowing the  cd build && cmake .. pure cmake build for users that don't have catkin installed.
+Any help would be greatly appreciated.
+
+Originally posted by Alexander Winkler on ROS Answers with karma: 26 on 2018-07-07
+Post score: 0
+
+A:
+
+The ros_buildfarm first builds a workspace, then builds the tests and runs the tests.
+Since catkin_make_isolated is used which just passes make targets It relies on the CMake packages to have a tests target to build tests as well as a run_tests target to run the tests. For a plain CMake package you need to make sure to create these targets and make sure run_tests actually runs the tests. As you have already experienced implementing a similar logic as provided by catkin to run tests is not straight forward.
+A modified version of the ros_buildfarm (https://github.com/ros-infrastructure/ros_buildfarm/pull/548) used for ROS 2 uses colcon instead of catkin_make_isolated for build the workspace and running the tests. The "big" difference is that it doesn't rely on a specific custom target to exist but runs the tests by invoking ctest instead. That would immediately work for plain CMake package which use CTest. It is unclear though at the moment when or even if the buildfarm for ROS 1 will switch to use this new build tool.
+Maybe you can create a run_tests target in your CMake package which just invokes ctest (just speculating here - haven't tried it)?
+
+Originally posted by Dirk Thomas with karma: 16276 on 2018-07-10
+This answer was ACCEPTED on the original site
+Post score: 1
+

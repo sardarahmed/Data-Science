@@ -1,0 +1,137 @@
+Q:
+
+Run rosparam load in runtime?
+
+Hi ROS Community,
+I am relatively new to ROS, but so far I have managed to solve everything using examples and tutorials online. Now, I want to be able to reload the parameters from a certain .yaml file while the node is running, i.e., I want to run my node with some parameter, edit the yaml file while the node is still running, and then being able to reload the new parameters. So far I have tried to use "rosparam load" in a different terminal, but didn't update the changes.
+The possible solution I see is to read the file by myself using maybe yaml-cpp and use setParam, but it would really be a bit messy to mix the ROS way of handling the yaml file with the manual way. I would be happy to know if this can be done using ROS.
+Thanks!
+
+Originally posted by angel on ROS Answers with karma: 1 on 2017-09-01
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-09-01:
+Just making sure we understand what you want to do: if the node doesn't repeatedly reloads its parameters, setting them 'in runtime' vs using rosparam load .. is not going to change anything. rosparam load .. I believe does what you are asking: it updates parameters on the parameters server ..
+Comment by gvdhoorn on 2017-09-01:
+.. potentially while nodes are running. But it doesn't magically change the values of configuration variables inside nodes. For that, the node must reread the parameters itself.
+But: for dynamically changing parameters, it's better to use dyn_recfg.
+
+A:
+
+[UPDATED ANSWER]
+Hello,
+If you want to update the parameters in run-time, you should use the "dynamic reconfigure".
+Basically, what you need is a parameter file, like below:
+<your_package>/cfg/MyParams.cfg
+#!/usr/bin/env python
+PACKAGE = 'my_dyn_rec'
+
+from dynamic_reconfigure.parameter_generator_catkin import *
+
+gen = ParameterGenerator()
+
+#list of parameters
+gen.add('int_param', int_t, 0, "description for the integer parameter", 50, 0, 100)
+gen.add('str_param', str_t, 0, "description for the string parameter", "Hello world!")
+
+exit(gen.generate(PACKAGE, "my_dyn_rec", "MyParams"))
+
+The node you want to work with the parameters, here is an example:
+<your_package>/src/my_node.cpp
+#include <ros/ros.h>
+
+#include <dynamic_reconfigure/server.h>
+#include <my_dyn_rec/MyParamsConfig.h>
+
+void callback(my_dyn_rec::MyParamsConfig &config, uint32_t level) {
+    ROS_INFO("New values: [%d] - [%s]", config.int_param, config.str_param.c_str());
+}
+
+int main(int argc, char **argv) {
+    ros::init(argc, argv, "my_node");
+    
+    dynamic_reconfigure::Server<my_dyn_rec::MyParamsConfig> server;
+    dynamic_reconfigure::Server<my_dyn_rec::MyParamsConfig>::Callback f;
+    
+    f = boost::bind(&callback, _1, _2);
+    server.setCallback(f);
+    
+    ros::spin();
+    
+    return 0;
+}
+
+Finally, you CMakeLists.txt must be configured. For this example, this should be enough:
+cmake_minimum_required(VERSION 2.8.3)
+project(my_dyn_rec)
+
+find_package(catkin REQUIRED COMPONENTS
+  dynamic_reconfigure
+  roscpp
+  rospy
+)
+
+generate_dynamic_reconfigure_options(
+  cfg/MyParams.cfg
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(my_node src/my_node.cpp)
+
+add_dependencies(my_node ${PROJECT_NAME}_gencfg)
+
+target_link_libraries(my_node
+  ${catkin_LIBRARIES}
+)
+
+You can follow some the tutorials below:
+ROS wiki oficial tutorial:
+http://wiki.ros.org/dynamic_reconfigure/Tutorials
+And a video I created:
+https://youtu.be/YKZkZSVcsnI
+
+Originally posted by marcoarruda with karma: 541 on 2017-09-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-09-11:\
+
+The trick is to use the getParam method inside your loop, if you have, or inside a callback
+
+I've downvoted this. Suggesting people to use getParam(..) inside a loop is really bad advice. The parameter server is not meant for this kind of usage and it incurs quite some overhead ..
+Comment by gvdhoorn on 2017-09-11:
+.. on the whole infrastructure. Dynamically (ie: at runtime) changing parameters is what dynamic_reconfigure was created for.
+Comment by marcoarruda on 2017-09-11:
+Hello gvdhoorn, I agree with you about not being the right way, that's why I advertised at the beginning:
+
+'I believe if you want to update the parameters in run-time, you should use the "dynamic reconfigure"'
+
+Comment by gvdhoorn on 2017-09-11:
+Your post is quite long, and only in one sentence mentions dyn recfg. Then it continues with "there is a work-around". That implies that something is broken, currently not fixed but can still be used / achieved by doing what you then describe in the remainer (~90%) of your answer. This may ..
+Comment by gvdhoorn on 2017-09-11:
+.. be me, but if I were an inexperienced user reading this, it would seem to me that "updating parameters in runtime" can be achieved by implementing (read: copy-pasting) what you show examples of.
+If that was not your intention, then I apologise, and I would suggest you update the wording of ..
+Comment by gvdhoorn on 2017-09-11:
+.. your answer. As it is, the downvote is justified imo.
+Comment by marcoarruda on 2017-09-11:
+But being downvoted for it, I'm sorry but I don't agree. I'm answering the question, with the proper regards.
+Maybe this question should be closed or something like, in order to avoid people trying to answer it. I don't see a way to solve it using rosparam.
+Comment by marcoarruda on 2017-09-11:
+Ok, agreed, the words I used are implying a wrong meaning. I've changed it. Thanks.
+Comment by gvdhoorn on 2017-09-11:\
+
+I don't see a way to solve it using rosparam.
+
+then either don't answer, or post that you don't think it can be done with what the OP wants.
+Mentioning alternatives is fine, but if they go against conventions, best practices or plain normal usage, you have to explicitly mark them as such ..
+Comment by gvdhoorn on 2017-09-11:
+.. as in my experience (future) readers will assume an accepted answer is actually the 'right way' to do things.
+re: downvote: downvotes are used to convey disagreement with the answer posted. You posted an answer I strongly disagreed with, hence the downvote.
+Comment by marcoarruda on 2017-09-18:
+Updated, now showing an example of dynamic reconfigure, to be followed as an example.
+

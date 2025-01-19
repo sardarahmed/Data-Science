@@ -1,0 +1,118 @@
+Q:
+
+Create Dockerfile for ros2 package : ament_cmake error
+
+Hello,
+I try to use docker to develop ros2 packages.
+In this context, I use the minimal_publisher package from https://github.com/ros2/examples as example which has the structure:
+minimal_publisher/
+minimal_publisher/CMakeLists.txt
+minimal_publisher/lambda.cpp
+minimal_publisher/member_function.cpp
+minimal_publisher/not_composable.cpp
+minimal_publisher/package.xml
+minimal_publisher/README.md
+minimal_publisher/Dockerfile #THIS FILE WAS ADDED BY ME
+
+You can find the complete minimum example package on https://github.com/DentOpt/minimal_publisher
+"minimal_publisher/Dockerfile" is the following dockerfile that I added to use to colcon build the package in a ros2 workspace in a docker container:
+FROM ros:crystal
+# install ros build tools
+RUN apt-get update \
+    && apt-get install -y python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+# clone ros package repo
+ENV ROS2_WS  /home/ros2_ws
+RUN mkdir -p ${ROS2_WS}/src/minimal_publisher
+COPY ./ ${ROS2_WS}/src/minimal_publisher
+# build repo
+RUN cd ${ROS2_WS} \
+    && colcon build \
+    && source ${ROS2_WS}/install/setup.bash
+CMD ["bash"]
+
+However, this leads unfortunately to the strange error
+CMake Error at CMakeLists.txt:13 (find_package): By not providing "Findament_cmake.cmake" in CMAKE_MODULE_PATH this project has asked CMake to find a package configuration file provided by
+"ament_cmake", but CMake did not find one.
+
+Could not find a package configuration file provided by "ament_cmake" with any of the following names:
+
+ament_cmakeConfig.cmake
+ament_cmake-config.cmake
+
+Add the installation prefix of "ament_cmake" to CMAKE_PREFIX_PATH or set "ament_cmake_DIR" to a directory containing one of the above files. If "ament_cmake" provides a separate development package or SDK, be sure it has been installed.
+
+If I remove the building process manually from the Dockerfile:
+FROM ros:crystal
+# install ros build tools
+RUN apt-get update \
+    && apt-get install -y python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+# clone ros package repo
+ENV ROS2_WS  /home/ros2_ws
+RUN mkdir -p ${ROS2_WS}/src/minimal_publisher
+COPY ./ ${ROS2_WS}/src/minimal_publisher
+CMD ["bash"]
+
+and run a docker container of the image, I can execute
+cd ${ROS2_WS} \
+        && colcon build \
+        && source ${ROS2_WS}/install/setup.bash
+
+without any error and the package builds perfectly?!
+Do you have any idea what could be the issue?
+Thanks!
+
+Originally posted by JanOr on ROS Answers with karma: 170 on 2019-03-26
+Post score: 3
+
+A:
+
+It looks like you didn't source your ROS installation before running your build.
+If you change:
+RUN cd ${ROS2_WS} \
+    && colcon build \
+    && source ${ROS2_WS}/install/setup.bash
+
+to
+RUN cd ${ROS2_WS} \
+    && . /opt/ros/crystal/setup.sh \
+    && colcon build \
+    && source ${ROS2_WS}/install/setup.bash
+
+I would expect it to work.
+
+and run a docker container of the image, I can execute
+
+When you enter a container, you enter via the entrypoint and the ROS docker images source the workspace in the entrypoint
+HTH,
+
+Originally posted by marguedas with karma: 3606 on 2019-03-26
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by JanOr on 2019-03-27:
+You are completely correct, I thought ros is already sourced in the ros:crystal image.
+I also found that for the source command additional dependencies are necessary.
+So the complete setup can be changed to:
+RUN cd ${ROS2_WS} \
+    && . /opt/ros/crystal/setup.sh \
+    && colcon build \
+    && . ${ROS2_WS}/install/setup.sh
+
+and it works! Thanks a lot
+Comment by marguedas on 2019-03-27:
+Glad it worked!
+
+I also found that for the source command additional dependencies are necessary.
+
+:+1:
+source is a bash command. As dockerfiles are based on sh and not bash, it is better to use . instead of source (and the setup.sh files instead of the setup.bash)
+
+I thought ros is already sourced in the ros:crystal image
+
+sourcing in Dockerfiles has no lasting effect as each RUN command runs in its' own context. So the sourcing needs to happen in the entrypoint.
+For the same reason, the last line of your sample will also have no effect on the following layers or the resulting container.
+&& . ${ROS2_WS}/install/setup.sh
+

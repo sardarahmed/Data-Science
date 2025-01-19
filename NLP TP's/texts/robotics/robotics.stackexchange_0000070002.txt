@@ -1,0 +1,34 @@
+Q:
+
+Bytes in Velodyne Message
+
+I am using matlab_rosbag to read in the Velodyne points from a ROS bag. I see that there are 32 uint8 bytes for each LIDAR return. Some of them are documented as follows: 1 - 4: X, 5 - 8: Y, 9 - 12: Z, 17 - 20: Intensity, 21 - 22: Ring.
+But what are the remaining bytes used for? (13 - 16, and 23 - 32). If there are more useful data in those bytes I would like to make use of them.
+Also I don't know how to interpret Ring -- what is that?
+Thank you very much!
+DM
+
+Originally posted by Morris on ROS Answers with karma: 35 on 2015-10-19
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2015-10-20:
+Not an answer, but would it perhaps be an idea to run the bag file through a quick conversion session with velodyne_pointcloud doing the conversion for you, storing the pointclouds in a new bag and reading that in matlab?
+
+A:
+
+I think you are asking about the /velodyne_points output from velodyne_pointcloud, is that right?
+Those data are published as a PCL point cloud, which is required to be 16-byte aligned. The driver defines a custom PointXYZIR point type in order to add an extra field containing the ring number. The layout is defined in velodyne_pointcloud/point_types.h, with a four-byte float for each of the three coordinates and the intensity, followed by two bytes for the ring number. Unfortunately, the remaining 14 bytes in each entry are just padding, required by PCL to ensure alignment consistent with the use of vector floating point instructions.
+The ring sequence is defined in velodyne_driver/ring_sequence.h. It is a way of representing which laser produced each point in the cloud. Since the actual device laser numbers are somewhat scrambled, the driver re-orders them into a range from zero to N-1, where N is the number of physical lasers. Ring zero is the lower-most laser, ring one is next. Ring N-1 is the upper-most.
+While the PointCloud2 representation is convenient to work with in PCL, it is not at all byte-efficient. For later playback and analysis, I recommend saving the raw /velodyne_packets topic, then using velodyne_pointcloud, on the saved messages.
+If you don't care about the ring number, you can convert the custom PointXYZIR to a standard PCL PointXYZI, which fits neatly into 16 bytes.
+Hope that helps. Let me know if I answered the wrong question...
+
+Originally posted by joq with karma: 25443 on 2015-10-20
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Morris on 2015-10-21:
+Ah, that explains the puzzling output in /velodyne_points.  I'll try saving /velodyne_packets instead.  Thanks very much!
+

@@ -1,0 +1,46 @@
+Q:
+
+Detect when costmap2DROS is updated
+
+I am using a Costmap2DROS object to access a occupancy grid created with gmapping.
+I want to execute some algorithm on the map whenever it gets updated. I figured the easiest way to do this is to have a subscriber to the "/map" topic with a callback that executes the algorithm.
+I am worried about the overhead associated with the subscriber. I don't want the "/map" data to be cached in some queue somewhere, since it is being cached by Costmap2DROS.
+I guess I would want a queue_size = zero.
+I don't want ROS to send the occupancyGrid message to my callback function because I don't need it. I can get the data from Costmap2DROS.
+
+Originally posted by Sebastian on ROS Answers with karma: 363 on 2015-08-07
+Post score: 0
+
+A:
+
+That's an interesting case.
+You could subscribe to the topic_tools::ShapeShifter msg on the map topic, which would AFAIK not deserialize the message automatically.
+Another simple solution would to boost::bind to your subscription callback but discard the _1 argument. Something like:
+class Node
+{
+    init(){
+        nh.subscribe(boost::bind(&Node::mapCb, this))
+    }
+
+    void mapCb(){
+        //do stuff
+    }
+};
+
+I'm not 100% if this would skip the (de)serialization, or merely prevent the shared object from being created.
+
+Originally posted by paulbovbel with karma: 4518 on 2015-08-07
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Sebastian on 2015-08-07:
+Am I supposed to be subscribing to the /map topic directly if I want to do something like this?
+It really seems like costmap2DROS should provide some way of achieving this behavior. Isn't updating after new map data common design decision?
+Comment by paulbovbel on 2015-08-12:
+FYI the costmap's publish and update frequencies are actually separate parameters. If you're looking to insert something into the costmap's update loop, writing a costmap_2d plugin may be the way to go.
+Comment by paulbovbel on 2015-08-12:
+This is the route I went down with frontier_exploration, and I can tell you that it was the wrong approach. Just read the map data from the costmap object periodically, and run your algorithm as needed. If your frequencies are synced, you may OCCASIONALLY get a stale or dropped frame.
+Comment by Sebastian on 2015-08-14:
+Ok, I think I will go with the periodic route, for now at least. Thanks.
+

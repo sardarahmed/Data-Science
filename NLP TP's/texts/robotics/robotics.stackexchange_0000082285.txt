@@ -1,0 +1,132 @@
+Q:
+
+I want to use differentials in ros
+
+My goal was to create TimeStamps to make a simple differentiation. I don't know yet how to use ros::Time.
+This my pd_controller node:
+    #include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <std_msgs/Float32.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Int32.h>
+#include "pd_controller/Int32Stamped.h"
+#include <math.h>
+
+pd_controller::Int32Stamped encoder;
+
+ros::Subscriber encoder_sub;
+ros::Publisher vel_pub;
+geometry_msgs::Twist vel;       
+
+// subscriber from comm encoder
+void encoderCallback(const pd_controller::Int32Stamped::ConstPtr& tk){
+
+//Modify this equation to be the Controller Function
+    // double timelapse[10] = {0};
+   double timelapse = encoder.header.stamp.toSec() -encoder.header.stamp.toSec();
+   double kd = (double(encoder.data) - double(encoder.data))/timelapse;
+   vel.linear.x = float(((encoder.data*234)*5886) + kd);
+   encoder.data = tk->data;
+   encoder.header = tk->header; 
+   vel_pub.publish(vel);
+}
+
+//make publisher for cmd_vel
+
+//create a rotary encoder to send cmd_vel
+
+int main(int argc, char** argv){
+   ros::init(argc, argv, "pd_controller");
+   ros::NodeHandle nh;
+   vel_pub = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+   encoder_sub = nh.subscribe<pd_controller::Int32Stamped> ("comm_encoder", 10, &encoderCallback); 
+        
+
+   ros::spin();
+
+   return 0;
+}
+
+When I run the code I get as output in cmd_vel the value: nan
+How do I properly set a differential equation in ROS????
+I just want after_topic - before_topic divided by the time difference between these topics.
+
+Originally posted by renanmb on ROS Answers with karma: 33 on 2017-08-11
+Post score: 0
+
+A:
+
+If I recall correctly, from your previous question you defined surp::Int32Stamped to be
+Header header
+int32 data
+
+The header portion of your message has a stamp attribute which carries the time, as you know. According to the wiki, the way that you convert from ros::Duration to floating point is by using the toSec() method, not by casting. For example:
+double secs =ros::Time::now().toSec();
+
+ros::Duration d(0.5);
+secs = d.toSec();
+
+Therefore, you should change
+double timelapse = double(encoder.header.stamp) - double(encoder.header.stamp);
+
+to
+double timelapse = encoder.header.stamp.toSec() - encoder.header.stamp.toSec();
+
+But, this raises another issue. Isn't this just going to be zero...
+
+Edit:
+If I'm understanding you correctly, should either use a global (easiest, not necessarily the best way) to keep track of the previous time that the callback was called or use a class and have an attribute that does that.
+I've used the ... for brevity, but here's an example (using a global):
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+
+...
+
+double previous_time;
+
+// subscriber from comm encoder
+void encoderCallback(const surp::Int32Stamped::ConstPtr& tk){
+
+  //Modify this equation to be the Controller Function
+  double timelapse = encoder.header.stamp.toSec() - previous_time;
+  previous_time = encoder.header.stamp.toSec();
+
+...
+
+int main(int argc, char** argv){
+   ros::init(argc, argv, "pd_controller");
+   ros::NodeHandle nh;
+   vel_pub = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+   encoder_sub = nh.subscribe<std_msgs::Int32> ("comm_encoder", 10, &encoderCallback); 
+
+   previous_time = ros::Time::now().toSec();
+
+   ros::spin();
+
+   return 0;
+}
+
+Originally posted by jayess with karma: 6155 on 2017-08-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by renanmb on 2017-08-11:
+I finally understood how Header works. I corrected it few minnutes after I posted here.
+The main issue is how to do a differential in ROS. If I uderstand it everything else that follows will be easy, like integrals, sensor fusion, ...etc.
+Yes, it is 0, and gives me nan
+how do I do it right?
+Comment by jayess on 2017-08-11:
+Can you update your question with that output?
+Comment by renanmb on 2017-08-11:
+Ok, it worked. Now I need to explore how to tweek it, because it is not generating the right output.
+Probably topic for another questions.
+Someone need to write a tutorial on how to create controllers following the Ogata book.
+Teach from PID to LQR and LQG.
+Comment by jayess on 2017-08-11:
+I believe that questions regarding how to write controllers would be out of the scope of this site (as it's not ROS specific). It would be better asked on a site like Stack Overlfow
+Comment by renanmb on 2017-08-13:
+I strongly disagree to you jayess, people who apply ROS has intention in building robots. Controllers are ultimately what enables you go from simple robots to real cool ones. Controllers are extremely important and is very sad the fact there is no tutorial on ROS wiki.
+Comment by jayess on 2017-08-13:
+I agree that controllers are important to robotics and engineering in general. However, this site is for ROS-related questions. There are other sites dedicated to questions about robotics in general such as Robotics Stack Exchange.
+

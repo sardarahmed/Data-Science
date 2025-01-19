@@ -1,0 +1,114 @@
+Q:
+
+tf.Exception thrown while using waitForTransform
+
+Hi everyone! I am a ros beginner and I am using ros indigo and tf 1.11.6.
+I am following the tf tutorials at this site Learning about tf and time (Python)
+But I got an error when I changed the code to use
+listener.waitForTransform("/turtle2", "/carrot1", rospy.Time(), rospy.Duration(4.0))
+
+Here is what i got:
+Traceback (most recent call last):
+  File "/home/sklaw/Desktop/experiment/ros/indigo/tutorials_ws/src/learning_tf/nodes/turtle_tf_listener.py", line 18, in <module>
+    listener.waitForTransform("/turtle2", "/carrot1", rospy.Time(), rospy.Duration(4.0))
+tf.Exception
+
+I tried to look up "tf.Exception" in the documentation of tf, but nothing found.
+so what is wrong with that?
+Any help would be great! Thanks!
+here is the code of the turtle_tf_listener.py:
+#!/usr/bin/env python  
+import roslib
+roslib.load_manifest('learning_tf')
+import rospy
+import math
+import tf
+import geometry_msgs.msg
+import turtlesim.srv
+import sys, traceback
+if __name__ == '__main__':
+    rospy.init_node('tf_turtle')
+    listener = tf.TransformListener()
+    rospy.wait_for_service('spawn')
+    spawner = rospy.ServiceProxy('spawn', turtlesim.srv.Spawn)
+    spawner(4, 2, 0, 'turtle2')
+    turtle_vel = rospy.Publisher('turtle2/cmd_vel', geometry_msgs.msg.Twist,queue_size=1)
+    rate = rospy.Rate(10.0)
+    listener.waitForTransform("/turtle2", "/carrot1", rospy.Time(), rospy.Duration(4.0))
+    while not rospy.is_shutdown():
+        try:
+            now = rospy.Time.now()
+            listener.waitForTransform("/turtle2", "/carrot1", now, rospy.Duration(4.0))
+            (trans,rot) = listener.lookupTransform("/turtle2", "/carrot1", now)
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            continue    
+        angular = 4 * math.atan2(trans[1], trans[0])
+        linear = 0.5 * math.sqrt(trans[0] ** 2 + trans[1] ** 2)
+        cmd = geometry_msgs.msg.Twist()
+        cmd.linear.x = linear
+        cmd.angular.z = angular
+        turtle_vel.publish(cmd)
+        rate.sleep()
+
+Update 1:
+6:29 AM
+Tuesday, April 21, 2015
+Greenwich Mean Time (GMT)
+I used tf 1.11.4 to see if this is related to some bugs of tf 1.11.6, but the same error still exists.(my classmates use tf 1.11.4 and they don't have the problem.)
+And then I found this page: tf wait for transform failure
+Taking the advice from the answer, I added "import time" to the import list, and put a "time.sleep(5)" just before the first waitForTransform.
+Though the program is still not working, this time the error is not at the first waitForTransform. It's at the second one, with more details compared with before:
+Traceback (most recent call last):
+  File "/home/sklaw/Desktop/experiment/ros/indigo/tutorials_ws/src/learning_tf/nodes/turtle_tf_listener.py", line 30, in <module>
+    listener.waitForTransform("/turtle2", "/carrot1", now, rospy.Duration(4.0))
+tf.Exception: Lookup would require extrapolation into the future.  Requested time 1429597531.491660118 but the latest data is at time 1429597531.490922928, when looking up transform from frame [carrot1] to frame [turtle2]
+
+It seems that the waitForTransfrom never waits. So when I added a "sleep(5)" before the first waitForTransfrom, it can survive at runtime because I "manually" make a "wait" happened for the first waitForTransfrom.
+Update 2:
+2:46 PM
+Tuesday, April 21, 2015
+Greenwich Mean Time (GMT)
+This problem has been solved by using the combination of tf 1.11.4 and tf2 0.5.7
+I've tried to use some combinaions like:
+tf 1.11.6 and tf2 0.5.9
+tf 1.11.6 and tf2 0.5.8
+tf 1.11.4 and tf2 0.5.9
+tf 1.11.4 and tf2 0.5.8
+But none of these worked.
+It seems there are some problems between the newest version of tf and tf2.
+
+Originally posted by sklaw on ROS Answers with karma: 3 on 2015-04-12
+Post score: 0
+
+Original comments
+Comment by amp on 2015-04-17:
+Hi, I am also working though the TF tutorials (indigo). I have found the same tf.Exception on the waitForTransform(). I am also struggling to debug this and work out what is going on. I have followed the TF debugging tutorial but I am still stuck.
+Any help on this would be appreciated.
+Paul
+Comment by sklaw on 2015-04-21:
+Some of my classmates have no problem in following the tf tutorial. And they're using tf 1.11.4 while I'm using tf 1.11.6.
+But after I removed the current tf, downloaded version 1.11.4 from github and catkin_make it in my own workspace, the problem still existed. So I think tf is not the cause
+
+A:
+
+Hi, I also just got this error with code that used to work until the end of March.
+If your case is really the same as mine, even if you use Time.now() as parameter for the first waitForTransform this will succede but then lookupTransform will throw an 'Extrapolation into the future' exception. Could you please check?
+UPDATE:
+I think I have found the problem. This happens if one of the frames doesn't exist yet in the TF database. I already opened an issue and I will forward this information to the TF people.
+UPDATE 2:
+The bug must be in TF2 (TF is now implemented as a shim layer over TF2). @sklaw, you were on the right path: you should check out both geometry on the tag 1.11.4 and geometry-experimental 0.5.7. This should give you a working configuration.
+
+Originally posted by marcoesposito1988 with karma: 191 on 2015-04-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sklaw on 2015-04-21:
+I used "rospy.Time.now()" to replace the "rospy.Time()" in the first waitForTransform, but it still reproted the same error at the first waitForTransfrom. Maybe we are not in the same trouble. Thanks anyway...
+Comment by sklaw on 2015-04-21:
+Yes, it works!
+tf 1.11.4 and tf2 0.5.7 is the working combination that my classmates are using.
+And thank you for the generous help and posting the issue to github for more help!!
+Comment by tfoote on 2015-04-21:
+The relevant tickets: https://github.com/ros/geometry/issues/93 https://github.com/ros/geometry_experimental/issues/102
+

@@ -1,0 +1,69 @@
+Q:
+
+Control loop in or outside of main loop
+
+I've been working on some small projects for fun to learn more control theory things and embedded programming. Thank the esp32 and Arduino!
+Either way I've been programming everything entirely in a single loop, for a bit of pseudo code: 
+void loop(){
+    data = get(sensor);
+    pdata = process(data);
+    lqr(pdata);
+    millis(10):
+}
+
+This above code is by no means real code, just a quick example of how my code is designed. I am by no means any kind of programming expert and only really know Arduino styled Wiring and bits of other things to complete small tasks. 
+What I'm unsure of, is it better to buffer/loop sensor data as fast as the micro-controller can and then afterwards only call the controller (LQR in this case) to actuate the system at my calculated discrete period like so:
+void loop(} {
+    unsigned long currentMillis = millis()
+    interval = 10;
+    data = get(sensor);
+    pdata = process(data);
+
+    if (currentMillis - previousMillis >= interval) {
+        previousMillis = currentMillis;
+        lqr(pdata);
+    }
+}
+
+or call everything sequentially as I have been doing.
+I feel as if having everything in the loop being calculated and then actuated sequentially adds extra time (if only microseconds the esp32 is 200~mhz or so) to the loop which isn't accounted for in my controller.
+What is the best method/style for programming an embedded controller. Are both my methods/ideas incorrect?
+
+A:
+
+In simple case it probably doess not matter, but if you have more (and slow) sensors as well as more things to do, the second approach is better, because you can let do sensors do their work (in their HW and their own computing power), collect ressults when they are avaiable and in meantime do many other things.
+(Also pseudocode:)
+#define sensors 100
+#define devices 50
+....
+void setup(){
+   for (int i =0 ; i<sensors; i++){ start(sensor[i]);};
+   for (int i =0 ; i<devices; i++){ open(device[i]);};
+   ....
+   drone.begin();
+}
+void loop(){
+   for (int i =0 ; i<sensors; i++){ 
+        if (sensor[i].have_data()) {
+            data.update(i,sensor[i].read_data());
+        };
+   };
+   for (int i =0 ; i<devices; i++){ 
+        if (device[i].is_free()) {
+             device[i].display_next_funny(message[i]);
+        };
+   };
+   if (data.are_updated()) {
+      drone.update_path(data);
+   };
+   if (drone.not_there_yet()) {
+       drone.follow_planned_path();
+   };
+}
+
+Now your drone is following planned path as fast, as it can, while you read all sensors as fast, as they have some new data for you and show funny messsages on displays, play sounds, blink LEDS etc as fast, as possible. 
+Does not matter, if sensor[0] can provide data 100x per sec and sensor[1] only every other second, does not matter, if LED goes on/off instantly and servo with "radar" need two seconds to make full turn. 
+You just read sensor, when it is available, send new message, when there is free buffer and still you can let your drone react hundred times per second (if there is somehing to do).
+You will probably spend a lot of time just empty cycling the loop(), while waiting for new data arrive, all messages to be displayed and for your drone to move its slow mechanical motors to next step, but it is OK, as you have nothing better to do anyway. 
+On the other hand you can react nearly immediately to any event and still make funny effects in free time.
+

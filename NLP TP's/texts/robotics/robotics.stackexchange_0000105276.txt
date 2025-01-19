@@ -1,0 +1,37 @@
+Q:
+
+`ros2 topic list` from humble throws std::bad_alloc if iron runs on the same network
+
+We experienced that humble ROS executables crash if there are any iron nodes running in the same network. This can be reproduced with running ros2 topic list without any sourced workspace: it returns std::bad_alloc without any further warning. We use fastrtps with default settings.
+A stack trace from the debugger gives
+#0  0x00007ffff62ad265 in __cxa_begin_catch () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#1  0x00007ffff62ae4d3 in __cxa_throw () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#2  0x00007ffff62a27ac in ?? () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#3  0x00007fff72ade915 in ?? () from /opt/ros/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#4  0x00007fff72adeeb7 in rmw_dds_common::msg::typesupport_fastrtps_cpp::cdr_deserialize(eprosima::fastcdr::Cdr&, rmw_dds_common::msg::NodeEntitiesInfo_<std::allocator<void> >&) ()
+   from /opt/ros/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#5  0x00007fff72adf1f7 in rmw_dds_common::msg::typesupport_fastrtps_cpp::cdr_deserialize(eprosima::fastcdr::Cdr&, rmw_dds_common::msg::ParticipantEntitiesInfo_<std::allocator<void> >&) ()
+   from /opt/ros/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#6  0x00007fff72753a39 in ?? () from /opt/ros/humble/lib/librmw_fastrtps_cpp.so
+#7  0x00007fff727049b6 in rmw_fastrtps_shared_cpp::TypeSupport::deserialize(eprosima::fastrtps::rtps::SerializedPayload_t*, void*) () from /opt/ros/humble/lib/librmw_fastrtps_shared_cpp.so
+#8  0x00007fff7242f42a in ?? () from /opt/ros/humble/lib/libfastrtps.so.2.6
+#9  0x00007fff720eced2 in eprosima::fastdds::dds::DataReaderImpl::read_or_take(eprosima::fastdds::dds::LoanableCollection&, eprosima::fastdds::dds::LoanableSequence<eprosima::fastdds::dds::SampleInfo, std::integral_constant<bool, true> >&, int, eprosima::fastrtps::rtps::InstanceHandle_t const&, unsigned short, unsigned short, unsigned short, bool, bool, bool) () from /opt/ros/humble/lib/libfastrtps.so.2.6
+#10 0x00007fff720ed07a in eprosima::fastdds::dds::DataReaderImpl::take(eprosima::fastdds::dds::LoanableCollection&, eprosima::fastdds::dds::LoanableSequence<eprosima::fastdds::dds::SampleInfo, std::integral_constant<bool, true> >&, int, unsigned short, unsigned short, unsigned short) () from /opt/ros/humble/lib/libfastrtps.so.2.6
+#11 0x00007fff726fc3e6 in rmw_fastrtps_shared_cpp::_take(char const*, rmw_subscription_s const*, void*, bool*, rmw_message_info_s*, rmw_subscription_allocation_s*) () from /opt/ros/humble/lib/librmw_fastrtps_shared_cpp.so
+#12 0x00007fff726eb19f in ?? () from /opt/ros/humble/lib/librmw_fastrtps_shared_cpp.so
+#13 0x00007ffff62dc253 in ?? () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#14 0x00007ffff7c94ac3 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:442
+#15 0x00007ffff7d26a40 in clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+
+While we maybe could use different domain IDs for different projects, we'd like to use different ROS distros within the same distributed ROS project (like now, some packages are in a transition phase from humble to iron, but not all are ported yet). The problem is that the topics aren't just not readable, but the nodes crashes immediately.
+
+Should this be possible in principle?
+Are there any changes on purpose, making the different distros incompatible?
+Is it a bug somewhere in the RMW layer or fastrtps?
+
+Any hints would be highly appreciated!
+
+A:
+
+As explained in this issue, there was a change in rmw_fastrtps_cpp on rolling distro causing the unhandled error in humble. The linked PR fixes my issue.
+

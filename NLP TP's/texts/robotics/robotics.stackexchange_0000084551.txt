@@ -1,0 +1,216 @@
+Q:
+
+how to aggregate several PointCloud2 messages into one?
+
+After converting my RPLIDAR's laser messages to PointCloud2 form (using hector_laser_to_pointcloud) I can visualize them in RVIZ and when doing rostopic echo I can see the messages coming through. How can I assemble the scans so I could get a collective cloud as I move my lidar around? I have my transforms set up and everything, thing is I am not sure as to how I can do this. Is there a package to do this?
+
+Originally posted by hanjuku-joshi on ROS Answers with karma: 56 on 2018-01-07
+Post score: 2
+
+A:
+
+I ended up using octomap_server for aggregating the pointcloud messages and used the frame_id as map. I converted laser_assembler to generate PointCloud2 messages, but I'm not sure it works. Regardless, here is the reworked laser_scan_assembler.cpp and periodic_snapshotter.cpp, respectively, for anyone who stumbles upon this thread:
+#include "tf/transform_listener.h"
+#include "tf/message_filter.h"
+#include <ros/ros.h>
+#include "laser_geometry/laser_geometry.h"
+#include "sensor_msgs/LaserScan.h"
+#include "sensor_msgs/PointCloud2.h"
+#include "laser_assembler/base_assembler.h"
+#include "filters/filter_chain.h"
+
+using namespace laser_geometry;
+using namespace std ;
+
+namespace laser_assembler
+{
+
+/**
+ * \brief Maintains a history of laser scans and generates a point cloud upon request
+ */
+class LaserScanAssembler
+{
+public:
+  LaserScanAssembler() : filter_chain_("sensor_msgs::LaserScan")
+  {
+    // ***** Set Laser Projection Method *****
+    private_ns_.param("ignore_laser_skew", ignore_laser_skew_, false);
+
+    // configure the filter chain from the parameter server
+    filter_chain_.configure("filters", private_ns_);
+
+    // Have different callbacks, depending on whether or not we want to ignore laser skews.
+    tf_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(scan_sub_, *tf_, "base_link", 10);
+    tf_filter_->registerCallback( boost::bind(&LaserScanAssembler::scanCallback, this, _1) );
+    skew_scan_sub_ = n_.subscribe("scan", 10, &LaserScanAssembler::scanCallback, this);
+  tf_filter_ = NULL;
+  }
+
+  ~LaserScanAssembler()
+  {
+
+  }
+
+  unsigned int GetPointsInScan(const sensor_msgs::LaserScan& scan)
+  {
+    return (scan.ranges.size ());
+  }
+
+  void ConvertToCloud(const string& fixed_frame_id, const sensor_msgs::LaserScan& scan_in, sensor_msgs::PointCloud2& cloud_out)
+  {
+    // apply filters on laser scan
+    filter_chain_.update (scan_in, scan_filtered_);
+
+    // convert laser scan to point cloud
+      int mask = laser_geometry::channel_option::Intensity +
+             laser_geometry::channel_option::Distance +
+             laser_geometry::channel_option::Index +
+             laser_geometry::channel_option::Timestamp;
+      projector_.transformLaserScanToPointCloud (fixed_frame_id, scan_filtered_, cloud_out, *tf_, mask);
+    return;
+  }
+
+  void scanCallback(const sensor_msgs::LaserScanConstPtr& laser_scan)
+  {
+    if (!ignore_laser_skew_)
+    {
+      ros::Duration cur_tolerance = ros::Duration(laser_scan->time_increment * laser_scan->ranges.size());
+      if (cur_tolerance > max_tolerance_)
+      {
+    ROS_DEBUG("Upping tf tolerance from [%.4fs] to [%.4fs]", max_tolerance_.toSec(), cur_tolerance.toSec());
+    assert(tf_filter_);
+    tf_filter_->setTolerance(cur_tolerance);
+    max_tolerance_ = cur_tolerance;
+      }
+      tf_filter_->add(laser_scan);
+    }
+  }
+
+private:
+  bool ignore_laser_skew_;
+  laser_geometry::LaserProjection projector_;
+  tf::TransformListener* tf_ ;
+  tf::MessageFilter<sensor_msgs::LaserScan>* tf_filter_;
+  message_filters::Subscriber<sensor_msgs::LaserScan> scan_sub_;
+
+  ros::Subscriber skew_scan_sub_;
+  ros::Duration max_tolerance_;   // The longest tolerance we've needed on a scan so far
+  ros::NodeHandle n_;
+  ros::NodeHandle private_ns_;
+
+  filters::FilterChain<sensor_msgs::LaserScan> filter_chain_;
+  mutable sensor_msgs::LaserScan scan_filtered_;
+
+};
+
+}
+
+using namespace laser_assembler ;
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "laser_scan_assembler");
+  LaserScanAssembler pc_assembler;
+  ros::spin();
+
+  return 0;
+}
+
+    #include <cstdio>
+#include <ros/ros.h>
+
+// Services
+#include "laser_assembler/AssembleScans.h"
+#include "laser_assembler/AssembleScans2.h"
+
+// Messages
+#include "sensor_msgs/PointCloud.h"
+#include "sensor_msgs/PointCloud2.h"
+
+/***
+ * This a simple test app that requests a point cloud from the
+ * point_cloud_assembler every 4 seconds, and then publishes the
+ * resulting data
+ */
+namespace laser_assembler
+{
+
+class PeriodicSnapshotter
+{
+
+public:
+
+  PeriodicSnapshotter()
+  {
+    // Create a publisher for the clouds that we assemble
+    pub_ = n_.advertise<sensor_msgs::PointCloud2> ("assembled_cloud", 1);
+
+    // Create the service client for calling the assembler
+    client_ = n_.serviceClient<AssembleScans2>("assemble_scans");
+
+    // Start the timer that will trigger the processing loop (timerCallback)
+    timer_ = n_.createTimer(ros::Duration(1,0), &PeriodicSnapshotter::timerCallback, this);
+
+    // Need to track if we've called the timerCallback at least once
+    first_time_ = true;
+  }
+
+  void timerCallback(const ros::TimerEvent& e)
+  {
+
+    // We don't want to build a cloud the first callback, since we we
+    //   don't have a start and end time yet
+    if (first_time_)
+    {
+      first_time_ = false;
+      return;
+    }
+
+    // Populate our service request based on our timer callback times
+    AssembleScans2 srv;
+    srv.request.begin = e.last_real;
+    srv.request.end   = e.current_real;
+
+    // Make the service call
+    if (client_.call(srv))
+    {
+      pub_.publish(srv.response.cloud);
+    }
+    else
+    {
+      ROS_ERROR("Error making service call\n") ;
+    }
+  }
+
+private:
+  ros::NodeHandle n_;
+  ros::Publisher pub_;
+  ros::ServiceClient client_;
+  ros::Timer timer_;
+  bool first_time_;
+} ;
+
+}
+
+using namespace laser_assembler ;
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "periodic_snapshotter");
+  ros::NodeHandle n;
+  ROS_INFO("Waiting for [build_cloud] to be advertised");
+  ros::service::waitForService("build_cloud");
+  ROS_INFO("Found build_cloud! Starting the snapshotter");
+  PeriodicSnapshotter snapshotter;
+  ros::spin();
+  return 0;
+}
+
+Originally posted by hanjuku-joshi with karma: 56 on 2018-01-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by HedgeHog on 2020-03-06:
+Hi, I am currently doing something similar to yours using a RPlidar A2 and a razor 9dof IMU. Can I check how did you changed your laser_assembler launch file?
+

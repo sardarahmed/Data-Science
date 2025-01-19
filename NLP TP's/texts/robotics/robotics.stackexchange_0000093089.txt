@@ -1,0 +1,126 @@
+Q:
+
+How to bloom with init system integration?
+
+As a package maintainer for things built with catkin and released with bloom, I require the capability to install service "units" with which an init system (systemd, upstart, rc, etc.) may manage my installed programs as daemons. How do I get catkin and/or bloom to install these service units?
+
+Originally posted by rubicks on ROS Answers with karma: 193 on 2019-08-25
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-08-25:
+I believe #q133966 discusses this. #q239969 would be another Q&A.
+If those answer your question, please close this one as a duplicate.
+Comment by rubicks on 2019-08-26:
+@gvdhoorn, almost any file I could place under a debian directory within the package would have to be named for the Debian package to which it contributes --- which is not known until after the bloom. Note also, that the techniques you link do not address non-Debian package formats.
+Comment by gvdhoorn on 2019-08-26:\
+
+which is not known until after the bloom
+
+I'm not sure I completely follow you here, but that is not true: the ROS-pkg-name-to-debian-name conversion is known a priori, so you can anticipate the value used (there is a Q&A here on ROS Answers that discusses it. Can't find it right now though).
+And it's even possible to use template files and/or use pre- and postinstall hooks (#q191779).
+
+Note also, that the techniques you link do not address non-Debian package formats.
+
+well, yes. But afaik there is only support for this sort of thing in the rosdebian generator.
+Perhaps @William can provide some additional insight.
+Comment by rubicks on 2019-08-26:
+@gvdhoorn, could you explain how one might install, say, a udev rule from a package-specific debian directory? Assuming every $ROS_DISTRO needs the same file content, what would you name it?
+Comment by gvdhoorn on 2019-08-26:
+I have a feeling we're not discussing the same thing(s).
+Please provide a concrete MWE that shows what you want to achieve (ie: some example file & directory structure that should work, but you feel doesn't, given the limitations of Bloom).
+
+how one might install, say, a udev rule from a package-specific debian directory
+
+One of the examples linked to from #q133966 appears to do exactly that (here). I'm not sure I grok the "package-specific debian directory" part of your question.
+Comment by rubicks on 2019-08-26:
+@gvdhoorn, here you go: https://github.com/realtime-neil/ros-init-mwe
+Note that the bloomed result, when dpkg-buildpackaged, conspicuously lacks any systemd unit, despite the presence of the foobar.service file.
+Also, I note that vanilla dh_installudev doesn't support the kind of semantics you reference; i.e., it expects files of the form ${package}.udev and not udev as shown in https://github.com/ros-drivers/pointgrey_camera_driver/tree/master/pointgrey_camera_driver/debian . What is this mechanism and where is it documented?
+Comment by rubicks on 2019-08-27:
+I learned something today.
+
+Note for the first (or only) binary package listed in debian/control, debhelper will use debian/foo when there's no debian/package.foo file. However, it is often a good idea to keep the package. prefix as it is more explicit. The primary exception to this are files that debhelper by default installs in every binary package when it does not have a package prefix (such as debian/copyright or debian/changelog).
+
+--- http://man7.org/linux/man-pages/man7/debhelper.7.html , "debhelper config files"
+Comment by nuclearsandwich on 2019-08-27:
+I am not completely sure that we want to recommend the installation of system-wide unit or init scripts via existing package managers since the units could collide with units from upstream or from other rosdistros on the same host. It would make the most sense to me to provide example unit or init files in share/$pkgname/examples which could be copied or symlinked into a location by a system administrator or configuration management utility.
+Comment by rubicks on 2019-08-27:
+@nuclearsandwich , what collision? Even if there were, assuming you can enumerate all values of $ROS_DISTRO, then you could use debian/control.em to declare a conflict with every ros distro except the current.
+Comment by nuclearsandwich on 2019-08-28:\
+
+what collision?
+
+There's nothing that prevents ROS 2 releases from cross-talking so if the same package providing a system-wide is installed from, say crystal and dashing, and both are enabled then you're liable to get responses from both services. When using either ROS distribution.
+In ROS 1 I'm fairly sure that if your service spawns a ROS master and doesn't do so on a custom port both services will try and either use the same ROS master (possibly unsuccessfully) or will fail to start a competing ROS master on the same port. My ROS 1 chops are lacking so I'm not sure what the failure mode would be but I don't expect it to work.
+
+assuming you can enumerate all values of $ROS_DISTRO, then you could use debian/control.em
+
+This is not something that is guaranteed to be known at the time those templates are resolved. The names of future rosdistros are not guaranteed known when packages are first released.
+Comment by nuclearsandwich on 2019-08-28:
+continued from previous comment.  I think explicitly declaring conflicts with sibling packages in other rosdistros contravenes the goal that rosdistros are co-installable. I'm not aware of any examples in the official repositories.. I also don't think that packages in the official repositories should have effects on the global system without user-intervention but I don't know if there's a hard-and-fast rule on that. @tfoote what has been done for service/initscripts in the past?
+Comment by rubicks on 2019-08-28:\
+
+if the same package providing a system-wide is installed from, say crystal and dashing, and both are enabled then you're liable to get responses from both services
+
+@nuclearsandwich yes, that's what I want. But how could they collide? At least in the case of systemd, the service units are named for the ROS distributions for which they are bloomed. This is the case for basically every facility offered by debhelper as it defaults to the implied package name. Can you show me an example of the kind of collision you describe?
+Regarding the problem of as-yet-unknown ROS_DISTRO identifiers, yes, I concede that a debian/rules.em template is a pretty weak tool to effect Conflicts declarations --- but that's only needed if a collision exists.
+Comment by rubicks on 2019-08-28:\
+
+I also don't think that packages in the official repositories should have effects on the global system without user-intervention
+
+I would ask you to consider python-rosdep, python-catkin-tools, python-rosdistro... all packages from the official repository that have effects on the global system without user intervention --- unless you don't consider the installation of executable files into the default $PATH to be such an effect.
+Comment by nuclearsandwich on 2019-08-28:\
+
+I would ask you to consider python-rosdep, python-catkin-tools, python-rosdistro...
+
+That's a fair point, however it's worth noting that these packages are also not specific to any one rosdistro. I won't argue that packages must not affect the global system and I'm not sure if the packages which install udev rules and the like do so in a way that is friendly with multiple rosdistros and the global system or not. But if it were me maintaining packages that provide potential system services, I would provide example units for users to copy rather than installing those services automatically when the user may not need or want them.
+Comment by gvdhoorn on 2019-08-29:\
+
+I would provide example units for users to copy rather than installing those services automatically when the user may not need or want them.
+
+that's indeed how quite a few packages have done these sort of things in the past, and I believe they did that for the reasons @nuclearsandwich gives.
+I can imagine though that if you have more control over the deployment platform than the regular ros_pkg_maintainer->ros_pkg_user relationship allows (which is probably true for @rubicks ), the advantages of automated deployment through .deb pkgs may outway the potential problems.
+Comment by rubicks on 2019-08-29:
+@gvdhoorn, you guess correctly; for the packages I'm charged with maintaining, automated deployment is worth the cost. We could argue the nature of that cost, but I suspect that it is highly contextual.
+Comment by gvdhoorn on 2019-08-29:
+Just think back to this discussion when you get reports from users about .debs not wanting to install due to apt complaining that some package is trying to "overwrite /some/path which is also in package Y", or when nodes refuse or fail to start due to network conflicts, or any of a myriad of potential issues with this approach :)
+Comment by rubicks on 2019-08-29:
+@gvdhoorn luckily for me, bloom & debhelper already do the hard work of path discrimination for all installed artifacts. As for the network socket contention, the goal of supporting multiple concurrent ROS installations never really informed the decision to use TCP 11311 always, by default. Hindsight, amiright?
+Comment by gvdhoorn on 2019-08-29:
+I believe a smiley got lost somewhere, so I added it back in.
+
+As for the network socket contention, the goal of supporting multiple concurrent ROS installations never really informed the decision to use TCP 11311 always, by default.
+
+So how would you write a system where discovery of a central registry is the first thing that network participants should do, before anything else, without using a well-known port on which that registry is listening? "More sophisticated" middlewares like DDS use essentially the same approach.
+Comment by rubicks on 2019-08-29:\
+
+So how would you write a system where discovery of a central registry is the first thing that network participants should do, before anything else, without using a well-known port on which that registry is listening?
+
+I would do exactly what ROS did --- it's the multiple concurrent installations thing I would have avoided.
+
+A:
+
+tldr;
+
+catkin_ws/src/my_project/debian/udev -> /lib/udev/rules.d/60-ros-${ROS_DISTRO}-my-project.rules
+catkin_ws/src/my_project/debian/service -> /lib/systemd/system/ros-${ROS_DISTRO}-my-project.service
+catkin_ws/src/my_project/debian/logrotate -> /etc/logrotate.d/ros-${ROS_DISTRO}-my-project
+
+Explanation follows...
+First the caveats: this trick only works for Debian and Debian-based distributions --- specifically, bloom allows this for the rosdebian and debian generator targets.
+This works because bloom uses debhelper and debhelper has some nice fallback behavior in how it goes looking for files:
+
+Note for the first (or only) binary package listed in debian/control, debhelper will use debian/foo when there's no debian/package.foo file. However, it is often a good idea to keep the package. prefix as it is more explicit. The primary exception to this are files that debhelper by default installs in every binary package when it does not have a package prefix (such as debian/copyright or debian/changelog).
+
+-- http://man7.org/linux/man-pages/man7/debhelper.7.html, "Debhelper Config Files" section
+This association to an implicit package name is useful, say, when you don't know the name of the package for which you want to install artifacts. This is exactly the case for ROS packages targeting a Debian-like OS; i.e., the developer doesn't know the name of the package until after the package is bloomed.
+Better yet, one can use template files. Files within the catkin project debian directory bearing the TEMPLATE_EXTENSION (defined in https://github.com/ros-infrastructure/bloom/blob/master/bloom/generators/debian/generator.py, defaulting to .em) will be expanded via empy. For details, see the contents of https://github.com/ros-infrastructure/bloom/tree/master/bloom/generators/debian/templates .
+In the case where you have a debian/foo and a debian/foo.em, the expansion of the latter overwrites the former.
+Here's a working example that demonstrates the aforementioned techniques:
+https://github.com/realtime-neil/ros-bloom-debhelper
+
+Originally posted by rubicks with karma: 193 on 2019-08-27
+This answer was ACCEPTED on the original site
+Post score: 0
+

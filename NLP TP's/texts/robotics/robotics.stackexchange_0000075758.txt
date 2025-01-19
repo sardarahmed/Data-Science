@@ -1,0 +1,136 @@
+Q:
+
+Get odometry from wheels encoders
+
+Hi all,
+I have a problem to compute odometry from wheel encoders, I mean, i don't have a real problem, I just don't understand a step.
+I  get the ticks from the encoders (they are about 2626 ticks for a full wheel rotation) and I perform the odometry calculation in the following way(of course this is in a loop...i paste just the important lines about the odometry calculation)
+current_time = ros::Time::now();
+double DistancePerCount = (3.14159265 * 0.13) / 2626;
+double lengthBetweenTwoWheels = 0.25;
+
+// extract the wheel velocities from the tick signals count
+deltaLeft = tick_x - _PreviousLeftEncoderCounts;
+deltaRight = tick_y - _PreviousRightEncoderCounts;
+
+omega_left = (deltaLeft * DistancePerCount) / (current_time - last_time).toSec();
+omega_right = (deltaRight * DistancePerCount) / (current_time - last_time).toSec();
+
+v_left = omega_left * 0.065; //radius
+v_right = omega_right * 0.065;
+
+vx = ((v_right + v_left) / 2)*10;
+vy = 0;
+vth = ((v_right - v_left)/lengthBetweenTwoWheels)*10;
+
+double dt = (current_time - last_time).toSec();
+double delta_x = (vx * cos(th)) * dt;
+double delta_y = (vx * sin(th)) * dt;
+double delta_th = vth * dt;
+
+x += delta_x;
+y += delta_y;
+th += delta_th;
+
+geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+
+geometry_msgs::TransformStamped odom_trans;
+odom_trans.header.stamp = current_time;
+odom_trans.header.frame_id = "odom";
+odom_trans.child_frame_id = "base_link";
+
+odom_trans.transform.translation.x = x;
+odom_trans.transform.translation.y = y;
+odom_trans.transform.translation.z = 0.0;
+odom_trans.transform.rotation = odom_quat;
+
+// send the transform
+odom_broadcaster.sendTransform(odom_trans);
+
+// Odometry message
+nav_msgs::Odometry odom;
+odom.header.stamp = current_time;
+odom.header.frame_id = "odom";
+
+// set the position
+odom.pose.pose.position.x = x;
+odom.pose.pose.position.y = y;
+odom.pose.pose.position.z = 0.0;
+odom.pose.pose.orientation = odom_quat;
+
+// set the velocity
+odom.child_frame_id = "base_link";
+odom.twist.twist.linear.x = vx;
+odom.twist.twist.linear.y = vy;
+odom.twist.twist.angular.z = vth;
+
+// publish the message
+odom_pub.publish(odom);
+_PreviousLeftEncoderCounts = tick_x;
+_PreviousRightEncoderCounts = tick_y;
+
+last_time = current_time;
+
+The thing that I don't understand is why i have to multiply vx and vth for 10 (it is a value that i set randomly and seems to work) to make the odometry consistent with the movements of the robot (if i dont multply, the odometry will change very slowly compared to what the robot does in terms of meters done).
+Maybe I'm doing some errors calculating the velocities.
+An help would be very very appreciated, thank you.
+
+Originally posted by dottant on ROS Answers with karma: 185 on 2016-08-12
+Post score: 3
+
+Original comments
+Comment by Ayush Sharma on 2017-04-29:
+My i please know the source from where i can implement the same? I am also trying to retrieve the encoder values but not able to find anything useful so far. Regards
+Comment by akay97 on 2017-05-20:
+Can u please share the whole code for encoders plzz. I am really stuck and can't seem to find any solution ...
+Comment by PG_GrantDare on 2018-11-13:
+Could I ask where you are getting the equations for your v and theta?
+Comment by sajal on 2019-05-30:
+@dottant why have you multiplied vx and vth by 10?
+Comment by dottant on 2019-06-03:
+This topic is old, there's no need to perform that, the formula was wrong cause I had to fix some hardware issue related to the IMU and I completely changed the code introducing a PID control for the velocities commands to the robot which now gives me smooth values and a quite perfect odometry (of course with a little slippage whose value can be seen only after a long time). Just remove the *10 and be sure to have perfect values from the IMU.
+
+A:
+
+omega_left and omega-right is the wheel velocity components already. You do not need to do anything with radius in your v_left and v_right. That is where the error is.
+NOTE: Calculations are fine for a simulation, but in real life you want to actually measure the encoder response to real movement. Your calculations will not account for slippage and slippage could be significant depending on wheels, robot weighting and surface.
+Spin the robot around 10 times to the right and see how many counts on each wheel, then to the left, then 5 meters straight forward, then 5 meters straight back.
+And watch the path - if you send it straight forward does it really go straight? You may need different multipliers for each wheel, or for different directions.
+
+Originally posted by billy with karma: 1850 on 2016-08-12
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Humpelstilzchen on 2016-08-15:
+Factor 10 feels too much for slippage, but I don't see anything wrong with the code either.
+Comment by billy on 2016-08-15:
+Agreed that slippage can't account for 10x. Wasn't meaning to suggest it, just pointing out that for actual robots, you need to measure. The 10x comes from the error I pointed out in his calculation (the error in the calcs actually is more like 15x)
+Comment by Humpelstilzchen on 2016-08-17:
+missed that one, +1
+Comment by novak on 2017-03-13:
+Hi billy,
+Do you have an example taking into account the slippage condition?
+Thank you.
+Comment by billy on 2017-03-13:
+The term slippage is used to capture the idea that motion based on wheels is going to be inaccurate. If this slippage was predictable you could account for it in your motion calculations. So I'll say there isn't a way to do it in code. - continued next comment
+Comment by billy on 2017-03-13:
+Slippage however can be mitigated through the use of additional sensors that provide additional position/movement data. In ROS Navigation stack, Laser scans are used in the AMCL node to generate a correction to account for slippage and other errors. That correction is the map-to-odom transform.
+Comment by billy on 2017-03-13:
+Another sensor that can be used to mitigate slippage is an IMU which can help with rotational errors. Of course there are more such as GPS, cameras, ultrasonic, bumpers that can all be used to make corrections for slippage.  Does that help?
+Comment by novak on 2017-03-13:
+Thank you! I was confused because I thought that it has a specific solution. In my case I will use odometry and IMU data to obtain an estimated position and fuse them through robot_localization module to get an odometry/filtered output.
+Comment by novak on 2017-03-13:
+Now that I know that it has to be inaccurate, I understand the purpose of fuse odometry and IMU data, just to mitigate the slippage produced by the Rover and obtain a better solution.
+Comment by eric_cartman on 2018-07-11:
+@billy I have to do the same thing for a 4 wheel differential drive robot. I was planning on using the average of front-left and rear-left wheel velocities for left velocity and so on but im afraid my system might be inaccurate. Do you know how to calculate the odom-pose and twist on a 4WD robot?
+Comment by billy on 2018-07-11:
+Eric - love the name
+Averaging should work assuming you have a control system that implements electronic gearing or careful positional control so one wheel can't race ahead of the other. Otherwise the weighting (front or back) will impact which wheel slip more...
+Comment by billy on 2018-07-11:
+...I have a 4 wheel tank steer where I mounted the batteries and the motors in line with the rear wheels. This forces the front wheels to slide during turning and leaves the back wheels on the rotation axis. In my case chain drive so only two encoders needed, not four.
+Comment by eric_cartman on 2018-07-11:
+@billy Thanks. I'm not entirely sure what you mean by this-"control system that implements electronic gearing or careful positional control." All 4 of my wheels are actively motor controlled and I will be sending the same velocity commands to both left wheels together and both right wheels together
+Comment by billy on 2018-07-19:
+Eric, I thought about this and my statement is off. If you have good velocity control on 4 wheels, should be fine. I was thinking about the case of one wheel slipping badly on debris, then it would be hard to know if averaging is OK. But if good V control, slip should be minimal, like with e-gearing
+

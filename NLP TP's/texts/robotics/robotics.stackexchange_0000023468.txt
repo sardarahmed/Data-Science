@@ -1,0 +1,27 @@
+Q:
+
+Cascaded PID controller implementation
+
+For a project I am building and programming my own flight controller. I have seen the implementation of a single loop PID controller. But after doing some more research I've found that a cascading PID controller could be used for improved performance.
+For so far I was able to create the single loop PID for the angle stabilization. This PID controller input uses RC values with Euler angles calculated IMU as feedback controller. But when I was thinking about the implementation of the rate stabilization controller, some information I couldn't work out.
+The inner rate stabilization loop should be faster than the outer angle stabilization loop. This way the rate stabilization has a higher refresh rate that should keep the quadcopter more stable.
+If I am using a fixed loop frequency of 400 Hz, and both PID controller are in the same while(1)  loop, there is no speed difference between the inner and outer loop?
+So if this is correct it means to use a cascaded loops both loops should be programmed on an other core (multi core programming)? Or is there a way that cascaded loops should work within the same while(1) loop?
+
+A:
+
+Instead of using multi-core programming, you could employ multi-threading on the one hand, where basically you assign the two loops to two different concurrent tasks. The scheduling of the tasks is generally managed by some services of the underlying operating system.
+Because of concurrency, you ought to pay attention to the exchange of information between the two tasks that must happen in a thread-safe way, by using for example a mutex.
+On the other hand, you could simply partition your while(1) main loop such that if it runs at rate R, you may foresee a subloop as in the following metacode:
+int cnt = 0;
+while (1) {
+  // inner-loop operations at rate R
+  
+  if (cnt++ % 10 == 0) {
+    // outer-loop operations at rate R/10
+  }
+}
+
+Bear also in mind that you could easily let the outer-loop run at the same rate as the inner-loop, hence letting the while(1) run at the fastest rate that is shared between the loops without any ad-hoc subsampling.
+Generally, this approach does not harm, aside from the unnecessarily waste of resources. However, be careful of some usually disregarded pitfalls of increasing control rate.
+

@@ -1,0 +1,93 @@
+Q:
+
+How to implement service in a class in rospy with no args?
+
+I'm trying to implement a service on Kinetic (no args, two return values) but I am getting the error:
+service [/classify_container] responded with an error: error processing request: classify_container() takes exactly 1 argument (2 given)
+
+Where am I going wrong?
+Classification.srv
+---
+string class_name
+float32 confidence
+
+The Service
+from pytorch_ros.srv import Classification
+
+class PytorchNode(object):
+    def __init__(self):
+        classification_service = rospy.Service('classify',
+                                               Classification,
+                                               self.classify_handle)
+                                               
+    def classify_handle(self):
+        # do some stuff
+        # to get the classification
+        # .....
+        
+        # construct msg and return
+        classification_msg = Classification()
+        classification_msg.class_name = self.names[classification]
+        classification_msg.confidence = confidence
+  
+        return classification_msg
+
+The client
+  #!/usr/bin/env python
+  from __future__ import division
+  from __future__ import print_function
+
+  import rospy 
+  from pytorch_ros.srv import Classification
+ 
+  rospy.wait_for_service('classify_container')
+  
+  try:
+      srv_classify_container = rospy.ServiceProxy('classify_container', Classification)
+      classification = srv_classify_container()
+      print(classification.class_name)
+      print(classification.confidence)
+  except rospy.ServiceException as e:
+      print("Service call failed: %s" % e)
+
+Originally posted by LukeAI on ROS Answers with karma: 131 on 2020-07-23
+Post score: 0
+
+A:
+
+Even if your service definition has no fields in the request portion, a request class is still created and your server callback must still adhere to the function signature required of the callback. The signature is described in the API docs. The function should take a request and return a response.
+So your code could be roughly updated as:
+from pytorch_ros.srv import Classification
+from pytorch_ros.srv import ClassificationRequest
+from pytorch_ros.srv import ClassificationResponse
+
+class PytorchNode(object):
+    def __init__(self):
+        classification_service = rospy.Service('classify',
+                                               Classification,
+                                               self.classify_handle)
+
+    def classify_handle(self, request):
+        # do some stuff
+        # to get the classification
+        # .....
+
+        # construct msg and return
+        classification_response = ClassificationResponse()
+        classification_response.class_name = self.names[classification]
+        classification_response.confidence = confidence
+
+        return classification_response
+
+Note: This is very much what is presented in the Writing a Simple Service and Client (Python) tutorial.
+
+Originally posted by jarvisschultz with karma: 9031 on 2020-07-23
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by LukeAI on 2020-07-24:
+thanks, this line from pytorch_ros.srv import ClassificationRequest appears to be redundant?
+Comment by jarvisschultz on 2020-07-27:
+Yes. If you aren't explicitly instantiating a request in the file implementing the server.
+

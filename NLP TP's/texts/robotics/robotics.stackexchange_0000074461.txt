@@ -1,0 +1,60 @@
+Q:
+
+How do I dynamically link an SimpleActionClient to a SimpleActionServer?
+
+I have a node that needs to dynamically discover and link to multiple servers.
+Each of my action servers are publishing/subscribing to the below topics...
+/{link_name}/{node_name}/goal , /{link_name}/{node_name}/result , etc...
+By inquires to the ROS Parameter Server, I can determine what strings to plug in for {link_name} and {node_name}.
+But, my client is having trouble dynamically opening the servers. ServerConnection is a Class that represents a connection to a server. Its header file looks like...
+ServerConnection class { 
+public:
+     ServerConnection( );
+    ~ServerConnection();
+    bool openActionClient(std::string linkNode);
+protected:
+    actionlib::SimpleActionClient<mot_ctl_dvr::CalibrateAction> *actionClient;
+...
+The connection is opened in the openActionClient() method. In the .cpp file...
+bool ServerConnection::openActionClient(std::string linkNode) {
+    // linkNode = "{link_name}/{node_name}" 
+    // <mot_ctl_dvr::CalibrateAction> is the namesace::action name that the servers use.
+    actionClient = new actionlib::SimpleActionClient<mot_ctl_dvr::CalibrateAction>::SimpleActionClient
+(linkNode, true); 
+...
+The compile error is...
+/home/bob/Qt4Projects/robot_calibrator/serverconnection.cpp:40: error: expected type-specifier
+    new actionlib::SimpleActionClient<mot_ctl_dvr::CalibrateAction>::SimpleActionClient
+           ^
+I haven't found any example code that invokes the SimpleActionClient constructor dynamically (using new).
+Has anyone tried to invoke the constructor using this dynamic form?
+What is the secret to coding it?
+
+Originally posted by BobF on ROS Answers with karma: 16 on 2016-06-10
+Post score: 0
+
+A:
+
+I found the solution. The statement should be...
+actionClient = new actionlib::SimpleActionClient<mot_ctl_dvr::CalibrateAction> (linkNode, true);
+
+However, coding the above results in two pages of compiler messages. A close reading of the messages found that
+it wasn't as bad as the volume of messages indicated. There were 3 warning messages and nothing more severe.
+All of the messages were "unused parameter" warnings caused by actionlib included templates. Normally ROS include libraries are clean of these types of warnings, but apparently actionlib missed these.
+The 3 warnings were caused by two actionlib include files...
+/opt/ros/indigo/include/actionlib/enclosure_deleter.h line 60.
+    void oerator() (Member * member_ptr)
+    where member_ptr is not referenced.
+And, /opt/ros/indigo/include/actionlib/managed_list.h line 92.
+    void operator() (void * ptr)
+    where ptr is not referenced.
+I edited my system's copy of these files to suppress the messages by adding...
+"(void) member_ptr;" and "(void) ptr;" to the respective functions.
+
+I delayed reporting resolution of this question until I was sure that my dynamically allocated SimpleActionClient was fully operational and that my fixes weren't masking other errors. The client seems to be working fine.
+These files should be fixed by the developers.
+
+Originally posted by BobF with karma: 16 on 2016-07-09
+This answer was ACCEPTED on the original site
+Post score: 0
+

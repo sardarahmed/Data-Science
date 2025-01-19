@@ -1,0 +1,130 @@
+Q:
+
+Installing groovy from source fails
+
+Hello!
+I'm trying to install ros-groovy from source in an open-nao1.14 virtual machine (a gentoo derivative for NAO). The idea is to be able to then copy&paste the contents of /opt/ros/groovy and associated dependencies and have ROS working on an actual NAO.
+After downloading ros-comm I execute (as per the instructions on the wiki )
+./src/catkin/bin/catkin_make_isolated --install --install-space /opt/ros/groovy
+
+But when the script calls make install installation fails because catkin's
+setup.py cannot recognise the option --install-layout=deb which the script is automatically adding. This is the exact error message:
++ /usr/bin/env PYTHONPATH=/opt/ros/groovy/lib/python2.7/dist-packages:/home/nao/ros/build_isolated/catkin/lib/python2.7/dist-packages:/opt/ros/groovy/lib/python2.7/dist-packages:/opt/ros/pydeps/lib/python2.7/site-packages/ CATKIN_BINARY_DIR=/home/nao/ros/build_isolated/catkin /usr/bin/python /home/nao/ros/src/catkin/setup.py build --build-base /home/nao/ros/build_isolated/catkin install --install-layout=deb --prefix=/opt/ros/groovy --install-scripts=/opt/ros/groovy/bin
+
+usage: setup.py [global_opts] cmd1 [cmd1_opts] [cmd2 [cmd2_opts] ...]
+   or: setup.py --help [cmd1 cmd2 ...]
+   or: setup.py --help-commands
+   or: setup.py cmd --help
+
+error: option --install-layout not recognized
+CMake Error at catkin_generated/safe_execute_install.cmake:4 (message):
+
+  execute_process(/home/nao/ros/build_isolated/catkin/catkin_generated /python_distutils_install.sh)
+  returned error code
+Call Stack (most recent call first):
+  cmake_install.cmake:115 (INCLUDE)
+
+Any ideas on how to get it to compile?
+Thanks!
+Update: Here's the output of the commands requested.
+Calling catkin's build & install command straight from python:
+$ python setup.py build install --install-layout=deb
+usage: setup.py [global_opts] cmd1 [cmd1_opts] [cmd2 [cmd2_opts] ...]
+or: setup.py --help [cmd1 cmd2 ...]
+or: setup.py --help-commands
+or: setup.py cmd --help
+
+error: option --install-layout not recognized
+
+Python version:
+$ /usr/bin/python --version
+Python 2.7.2
+
+Update 2: setup.py instructions
+Common commands: (see '--help-commands' for more)
+
+  setup.py build      will build the package underneath 'build/'
+  setup.py install    will install the package
+
+Global options:
+  --verbose (-v)  run verbosely (default)
+  --quiet (-q)    run quietly (turns verbosity off)
+  --dry-run (-n)  don't actually do anything
+  --help (-h)     show detailed help message
+  --no-user-cfg   ignore pydistutils.cfg in your home directory
+
+Options for 'install' command:
+  --prefix            installation prefix
+  --exec-prefix       (Unix only) prefix for platform-specific files
+  --home              (Unix only) home directory to install under
+  --user              install in user site-package
+                  '/home/nao/.local/lib/python2.7/site-packages'
+  --install-base      base installation directory (instead of --prefix or --
+                  home)
+  --install-platbase  base installation directory for platform-specific files
+                  (instead of --exec-prefix or --home)
+  --root              install everything relative to this alternate root
+                  directory
+  --install-purelib   installation directory for pure Python module
+                  distributions
+  --install-platlib   installation directory for non-pure module distributions
+  --install-lib       installation directory for all module distributions
+                  (overrides --install-purelib and --install-platlib)
+  --install-headers   installation directory for C/C++ headers
+  --install-scripts   installation directory for Python scripts
+  --install-data      installation directory for data files
+  --compile (-c)      compile .py to .pyc [default]
+  --no-compile        don't compile .py files
+  --optimize (-O)     also compile with optimization: -O1 for "python -O", -O2
+                  for "python -OO", and -O0 to disable [default: -O0]
+  --force (-f)        force installation (overwrite any existing files)
+  --skip-build        skip rebuilding everything (for testing/debugging)
+  --record            filename in which to record list of installed files
+
+usage: setup.py [global_opts] cmd1 [cmd1_opts] [cmd2 [cmd2_opts] ...]
+   or: setup.py --help [cmd1 cmd2 ...]
+   or: setup.py --help-commands
+   or: setup.py cmd --help
+
+Originally posted by Miguel S. on ROS Answers with karma: 1114 on 2013-01-11
+Post score: 2
+
+A:
+
+This is strange. Can you please run in catkin:
+$ python setup.py build install --install-layout=deb
+
+and post the result? It should still give an error, but maybe a different one.
+Also tell us the result of
+/usr/bin/python --version
+/usr/bin/python --help install
+
+My current best guess is that you use a very old python version (2.5.x) which does not have the --install-layout option.
+Possibly you can set SETUPTOOLS_DEB_LAYOUT to OFF. Note there is no need for you to run catkin_make_isolated, just using catkin_make (or only cmake and make) should be fine. E.g.:
+src/catkin/bin/catkin_make -DSETUPTOOLS_DEB_LAYOUT=OFF
+
+Update:
+Sorry, what we need is rather the output of
+/usr/bin/python setup.py --help install
+
+when invoked in the catkin folder. But still good to know you have found a solution to make it work....
+Update2: It seems someone else already had the same problem on Gentoo with fuerte:
+https://code.ros.org/lurker/message/20120426.064234.46e82b4e.en.html
+Since as you say the NAo also uses a Gentoo derivative, I think it is likely that there is something in the overall buildchain in Gentoo that behaves differently from Ubuntu, maybe a different cmake version.
+
+Originally posted by KruseT with karma: 7848 on 2013-01-11
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Miguel S. on 2013-01-16:
+I got it to compile by invoking ./src/catkin/bin/catkin_make -DSETUPTOOLS_ARG_EXTRA="" and then calling make install from the build directory
+Comment by KruseT on 2013-01-16:
+Created a ticket here: https://github.com/ros/catkin/issues/314
+Comment by KruseT on 2013-01-16:
+Thanks for log, so for you, python setup.py really does not even offer --install-layout in the help. Weird.
+Comment by Miguel S. on 2013-01-16:
+It may not be a bug after all. The code compiles just fine with ./src/catkin/bin/catkin_make -DSETUPTOOLS_DEB_LAYOUT=OFF on a clean install. It seems catkin_make only updates the cmake variables if you haven't called it before; which is why I thought the command didn't work the first time around.
+Comment by KruseT on 2013-01-16:
+Yes, it's what the ticket said (also what Dirk said in his response).
+

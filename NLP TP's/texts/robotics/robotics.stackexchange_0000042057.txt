@@ -1,0 +1,85 @@
+Q:
+
+Android_core build error
+
+Hi..
+I have a problem building android_core..
+Can anyone help me?
+This is the error i get..:
+    -compile:
+    [javac] Compiling 40 source files to /home/jeppe/ros_workspace/android_core/android_honeycomb_mr2/bin/classes
+    [javac] VisualizationView.java:67: cannot find symbol
+    [javac] symbol  : constructor FrameTransformTree()
+    [javac] location: class org.ros.rosjava_geometry.FrameTransformTree
+    [javac]     frameTransformTree = new FrameTransformTree();
+    [javac]                          ^
+    [javac] VisualizationView.java:126: cannot find symbol
+    [javac] symbol  : method setPrefix(java.lang.String)
+    [javac] location: class org.ros.rosjava_geometry.FrameTransformTree
+    [javac]       frameTransformTree.setPrefix(tfPrefix);
+    [javac]                         ^
+    [javac] Note: VisualizationView.java uses or overrides a deprecated API.
+    [javac] Note: Recompile with -Xlint:deprecation for details.
+    [javac] 2 errors
+
+BUILD FAILED
+/home/jeppe/android-sdk-linux/tools/ant/build.xml:680: The following error occurred while executing this line:
+/home/jeppe/android-sdk-linux/tools/ant/build.xml:693: Compile failed; see the compiler error output for details.
+
+Total time: 2 seconds
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':android_honeycomb_mr2:debug'.
+> Command 'ant' finished with (non-zero) exit value 1.
+
+* Try:
+Run with --stacktrace option to get the stack trace. Run with --info or --debug option to get more log output.
+
+BUILD FAILED
+
+Total time: 6.676 secs
+
+Originally posted by BaronJeppe on ROS Answers with karma: 1 on 2012-07-08
+Post score: 0
+
+A:
+
+Welcome to bleeding-edge development! :)
+I fixed this by creating a NameResolver - here's a patch for VisualizationView.java.
+--- a/android_honeycomb_mr2/src/org/ros/android/view/visualization/VisualizationView.java   Tue Jul 10 21:48:56 2012 -0500
++++ b/android_honeycomb_mr2/src/org/ros/android/view/visualization/VisualizationView.java   Wed Jul 11 13:54:43 2012 -0500
+@@ -27,6 +27,7 @@
+ import org.ros.android.view.visualization.layer.Layer;
+ import org.ros.message.MessageListener;
+ import org.ros.namespace.GraphName;
++import org.ros.namespace.NameResolver;
+ import org.ros.node.ConnectedNode;
+ import org.ros.node.Node;
+ import org.ros.node.NodeMain;
+@@ -64,7 +65,7 @@
+         requestRender();
+       }
+     };
+-    frameTransformTree = new FrameTransformTree();
++    frameTransformTree = new FrameTransformTree(NameResolver.newRoot());
+     camera = new Camera(frameTransformTree);
+     renderer = new XYOrthographicRenderer(frameTransformTree, camera);
+     layers = Lists.newArrayList();
+@@ -123,7 +124,7 @@
+   private void startTransformListener() {
+     String tfPrefix = connectedNode.getParameterTree().getString("~tf_prefix", "");
+     if (!tfPrefix.isEmpty()) {
+-      frameTransformTree.setPrefix(tfPrefix);
++      frameTransformTree = new FrameTransformTree(NameResolver.newFromNamespace(tfPrefix));
+     }
+     Subscriber<tf.tfMessage> tfSubscriber = connectedNode.newSubscriber("tf", tf.tfMessage._TYPE);
+     tfSubscriber.addMessageListener(new MessageListener<tf.tfMessage>() {
+
+After this, my ./gradlew debug finished without an issue, and I could get my Android apps working again.
+
+Originally posted by jamuraa with karma: 218 on 2012-07-11
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,116 @@
+Q:
+
+Confused about loading ros_control and MoveIt! controllers
+
+It seems that MoveIt! expects the controllers.yaml to have controller_list: at the top, like this:
+controller_list:
+  - name: left_vel_based_pos_traj_controller
+    joints:
+      - left_ur5_shoulder_pan_joint
+      - left_ur5_shoulder_lift_joint
+      - left_ur5_elbow_joint
+...
+
+This puts all of the controller parameters in one giant string, with the parameter name controller_list. Then I have trouble loading the ros_control settings because they look for individual parameters. I get errors like:
+
+Could not load controller
+'left_vel_based_pos_traj_controller'
+because the type was not specified.
+Did you load the controller
+configuration on the parameter server
+(namespace:
+'/left_vel_based_pos_traj_controller')?
+
+Does anybody have an example of how you load a controller from controller_list? My best guess so far was:
+  <node name="ros_control_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="controller_list/left_vel_based_pos_traj_controller">
+  </node>
+
+I'm thinking I may need to load 2 nearly-identical yaml files: one for MoveIt!, one for ros_control.
+
+Originally posted by AndyZe on ROS Answers with karma: 2331 on 2019-01-11
+Post score: 3
+
+A:
+
+It looks like MoveIt! and ros_control need separate yaml files. I named the MoveIt! file moveit_controllers.yaml:
+controller_list:
+  - name: left_vel_based_pos_traj_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    joints:
+      - left_ur5_shoulder_pan_joint
+      - left_ur5_shoulder_lift_joint
+      - left_ur5_elbow_joint
+      - left_ur5_wrist_1_joint
+      - left_ur5_wrist_2_joint
+      - left_ur5_wrist_3_joint
+
+The yaml for ros_control. I named it ros_control_controllers.yaml:
+# These controllers should match with what MoveIt! expects (moveit_controllers.yaml).
+# Settings for ros_control control loop
+hardware_control_loop:
+   loop_hz: 125
+
+# Settings for ros_control hardware interface
+hardware_interface:
+   joints:
+     - left_ur5_shoulder_pan_joint
+     - left_ur5_shoulder_lift_joint
+     - left_ur5_elbow_joint
+     - left_ur5_wrist_1_joint
+     - left_ur5_wrist_2_joint
+     - left_ur5_wrist_3_joint
+
+# Publish all joint states ----------------------------------
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 125
+
+# Publish wrench ----------------------------------
+force_torque_sensor_controller:
+   type: force_torque_sensor_controller/ForceTorqueSensorController
+   publish_rate: 125
+
+# Left trajectories
+left_vel_based_pos_traj_controller:
+  action_ns: left_ur5_follow_joint_trajectory
+  type: velocity_controllers/JointTrajectoryController
+  joints:
+    - left_ur5_shoulder_pan_joint
+    - left_ur5_shoulder_lift_joint
+    - left_ur5_elbow_joint
+    - left_ur5_wrist_1_joint
+    - left_ur5_wrist_2_joint
+    - left_ur5_wrist_3_joint
+  constraints:
+    goal_time: 0.6
+    stopped_velocity_tolerance: 0.05
+    shoulder_pan_joint: {trajectory: 0.1, goal: 0.1}
+    shoulder_lift_joint: {trajectory: 0.1, goal: 0.1}
+    elbow_joint: {trajectory: 0.1, goal: 0.1}
+    wrist_1_joint: {trajectory: 0.1, goal: 0.1}
+    wrist_2_joint: {trajectory: 0.1, goal: 0.1}
+    wrist_3_joint: {trajectory: 0.1, goal: 0.1}
+  stop_trajectory_duration: 0.5
+  state_publish_rate:  125
+  action_monitor_rate: 10
+  gains:
+    #!!These values are useable, but maybe not optimal
+    left_ur5_shoulder_pan_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+    left_ur5_shoulder_lift_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+    left_ur5_elbow_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+    left_ur5_wrist_1_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+    left_ur5_wrist_2_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+    left_ur5_wrist_3_joint: {p: 1.2,  i: 0.0, d: 0.1, i_clamp: 1}
+
+Originally posted by AndyZe with karma: 2331 on 2019-01-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by AndyZe on 2020-02-28:
+Adding to my answer, for future sanity. The way ros_control works is:
+A hardware_interface defines read/write functions for each actuator. When one of the default controllers gets loaded, it automatically hooks up with the hw_interface for whatever actuators ("resources") it controls. The user and the robot manufacturer usually shouldn't need to write their own controllers, they can use the default controllers. Somebody will need to write a hardware_interface for each type of robot, though.
+Comment by AndyZe on 2020-04-03:
+If using multiple hardware interfaces of the type (like two position_controllers::JointTrajectoryControllers), namespacing is the way to go. Otherwise one controller will likely crash
+

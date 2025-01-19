@@ -1,0 +1,63 @@
+Q:
+
+How to launch nodelet? (RTABmap)
+
+Hi,
+I came up across remote mapping and RTABmap provides this launch file:
+<launch>
+  <include file="$(find freenect_launch)/launch/freenect.launch">
+     <arg name="depth_registration" value="True" />
+  </include>
+
+  <arg name="rate"  default="5"/>
+  <arg name="approx_sync" default="true" /> <!-- true for freenect driver -->
+
+  <!-- Use same nodelet used by Freenect/OpenNI -->
+  <group ns="camera">
+    <node pkg="nodelet" type="nodelet" name="data_throttle" args="load rtabmap_ros/rgbd_sync camera_nodelet_manager" output="screen">
+      <param name="compressed_rate"  type="double" value="$(arg rate)"/>
+      <param name="approx_sync"      type="bool"   value="$(arg approx_sync)"/>
+
+      <remap from="rgb/image"       to="rgb/image_rect_color"/>
+      <remap from="depth/image"     to="depth_registered/image_raw"/>
+      <remap from="rgb/camera_info" to="rgb/camera_info"/>
+
+      <remap from="rgbd_image"      to="rgbd_image"/>
+    </node>
+  </group>      
+</launch>
+
+What is the camera_nodelet_manager and how can I supply it? For example, if I use ZED camera they supply with the camera_manager:
+https://github.com/stereolabs/zed-ros-wrapper/blob/master/zed_wrapper/launch/zed_camera_nodelet.launch
+But how exactly can I use it?
+
+Originally posted by EdwardNur on ROS Answers with karma: 115 on 2019-04-01
+Post score: 0
+
+Original comments
+Comment by matlabbe on 2019-04-03:
+See this page: https://github.com/stereolabs/zed-ros-wrapper/tree/master/examples/zed_nodelet_example, showing how they start the nodelet manager. If you use the zed launch version without nodelet, launch rgbd_sync as a stanaldone nodelet like this :
+<node pkg="nodelet" type="nodelet" name="data_throttle" args="standalone rtabmap_ros/rgbd_sync" output="screen">
+
+A:
+
+You can see #q304083 for an example.
+This launch file provides the nodelet manager when including freenect.launch. If you look at this file (source code) you will find this :
+<include file="$(find rgbd_launch)/launch/includes/manager.launch.xml">
+      <arg name="name"                value="$(arg manager)" />
+      <arg name="debug"               value="$(arg debug)" />
+      <arg name="num_worker_threads"  value="$(arg num_worker_threads)" />
+</include>
+
+This other launch file load the nodelet manager for you. In the link you gave, the launch file doesn't load any nodelet manager but expect one : zed_nodelet_manager. So if you want to use this launch file, all you have to do is load a manager before like this :
+rosrun nodelet nodelet manager __name:=zed_nodelet_manager
+
+Or by adding this line at the beginning of the launch file you linked :
+< node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager"/>
+
+You need a nodelet manager because nodelets are like plugins, they are loaded at runtime by an executable, this executable being your nodelet manager. This link might help you understand the concept of nodelets.
+
+Originally posted by Delb with karma: 3907 on 2019-04-02
+This answer was ACCEPTED on the original site
+Post score: 0
+

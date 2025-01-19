@@ -1,0 +1,121 @@
+Q:
+
+Integrate a GPS sensor with robot_localization and use move_base node
+
+Hello,
+I’m trying to integrate a GPS sensor to my mobile robot with the robot_localization_node. I have an IMU sensor added to my robot_localization_node but now I have some theoretical questions about how to integrate the GPS.
+I would like to use the output of the robot_localization node to feed the move_base node in order to set some waypoints in GPS coordinates (can be in UTM) and then the robot follow them.
+I’m a bit lost about how to proceed. This is what I think:
+I launch ek_localization_node with this inputs: IMU and wheel_odom. And I remap the output topic to local_odometry. It'll be the local odometry in odom frame. (I must use this topic to input to move_base if I want to navigate in odom frame).
+Then I launch navsat_transform_node with IMU, wheel_odom, and GPS NavSatFix and the output topic in world frame is /odometry/gps. But this topic is publishing only when the GPS signal is received so...
+I launch another ekf_localization node with IMU,Wheel_odom and odom1 (/odometry/gps from navsat_transform node). The output of this node (/odometry/filtered) is in world frame and is what I have to put as input to move_base, right?
+With this configuration I don’t need to use gps_common, right?
+When I launch all, I have to call the service set_pose in order to give some estimation pose in UTM coordinates to /odom in base to /world, isn’t?
+UPDATE 1:
+Thanks Tom. I've taken into account all your comments and here's my robot_localization launch file and my tf tree.
+
+I feed the move_base odometry with the local_odometry returned by my first instance of ekf_localization_node.
+
+As I've my waypoints in UTM coordinates, their should be in utm frame. I can't see the tf of utm frame publishing, but in the source code I see it's /utm.
+
+I think the global planner of move_base_node needs the global frame set to the same frame of the waypoints. So It should be /utm, but when I launch this configuration, move_base_node says this:
+
+[ WARN] [1422876635.213009322]:
+Waiting on transform from
+summit_a/base_footprint to utm to
+become available before running
+costmap, tf error:
+
+I understand that move_base can't find the tf between utm and base_footprint frames. I don't know if it can be because the tf isn't visible by move_base_node or I'm doing something wrong.
+
+(Just to test.) If I set the global frame of the global_panner of move_base_node to summit_a/world it reports me this:
+
+[ERROR] [1422873579.326459610]: The
+goal pose passed to this planner must
+be in the summit_a/world frame.  It is
+instead in the summit_a/utm frame.
+
+(other test) Setting the global frame of global_planner to summit_a/odom:
+
+[ERROR] [1422876188.622192440]: The
+goal pose passed to this planner must
+be in the summit_a/odom frame.  It is
+instead in the utm frame.
+
+So, the global_planner frame of move_base_node needs to be consistent or the same that the frame of the goals. /utm in this case.
+
+(Another idea) Considering how move_base_node works, at first I thought the best way to make the integration of GPS, was that the world frame represent real-world coordinates (UTM) and was the father of frame /odom. Thus the move_base_node receives waypoints respect to frame world in UTM. I understand that for easy viewing in rviz and avoid the problems of continuity, robot_localization_node publishes the transform utm as son of /odom, but I think this can be a little problem for navigation by move_base_node.
+
+UPDATE 2:
+Thanks Tom.
+
+Now I get the tf between /world and /utm. The point was that navsat_transform_node doesn't publish the tf until the GPS signal is nonzero.
+The topic /odometry/gps without child_frame_id defined is meaningless for my purpose,right? Because it isn’t publish constantly if the GPS signal is lost.
+Now my waypoints are in base to the utm frame.
+With which topic I must feed the move_base node? I think the best option is the /odometry/filtered topic from my second instance of ekf_localization_node, isn’t it? It takes into account the output of navsat_transform_node and therefore the GPS position.
+I don't really understand the problem with the heading of IMU, I'm sorry. My IMU hasn’t got compass and it doesn’t provide any kind of orientation data, just the angular velocity and lineal acceleration. In the imu0_config param just the angular velocity in Z is set to true and the stimation of the heading is enough. Is that a problem if I want to integrate the GPS?
+
+Any ideas, corrections or suggestions would be appreciated.
+Best regards and thanks in advance.
+
+Originally posted by ASoriano on ROS Answers with karma: 95 on 2015-01-30
+Post score: 3
+
+Original comments
+Comment by Tom Moore on 2015-02-02:
+Thanks for the update. I'll look into this and get back to you.
+Comment by Tom Moore on 2015-02-03:
+Yeah, I can't make the utm frame the parent of odom, as that would conflict with any other nodes (like amcl) that need to publish a map->odom transform. I need to look at move_base, but in general, if you use tf's transform methods, parentage shouldn't matter.
+Comment by ASoriano on 2015-02-04:
+In response to EDIT 1. Yes, it's still true. My IMU only offers me angular velocity and linear acceleration. Maybe can I use the orientation that the GPS gives me?
+Is it possible do visible the tf odom->utm?
+Thanks.
+Comment by Tom Moore on 2015-02-04:
+Sure, as long as it's being broadcast. Just do this:
+rosrun tf tf_echo odom utm
+
+Comment by Tom Moore on 2015-02-04:
+Also, yes, you can use the GPS heading, but you'd have to have some logic in there to (a) make sure the heading isn't bogus, because it will be until you move, and (b), send out an IMU message with that heading in it (might want to include the roll and pitch from your actual IMU as well).
+
+A:
+
+Ok, so here's your setup as I see it:
+ekf_localization_node instance 1:
+
+Inputs: wheel odometry and IMU
+Relevant parameters: world_frame is set to odom
+Outputs: local_odometry and odom->base_link transform
+
+ekf_localization_node instance 2:
+
+Inputs: wheel odometry, IMU, and transformed GPS data from navsat_transform_node
+Relevant parameters: world_frame is set to map
+Outputs: odometry/filtered and map->odom transform
+
+navsat_transform_node:
+
+Inputs: local_odometry (incorrect, see below), IMU, and raw GPS data
+Outputs: odometry/gps
+
+Additionally, you are using the second instance of ekf_localization_node because you want GPS-integrated data to be available at a faster rate.
+Answers and comments:
+
+Both odom and map are "world frames." When your robot starts, they have the same origin. They will diverge as you move, however.
+As I recall, move_base will let you issue a goal in any frame, but will transform it into a target frame before executing the motion commands. Someone please correct me if this is wrong. If you want to issue goals in UTM coordinates, you're in luck: there's a parameter for navsat_transform_node named broadcast_utm_transform. Set it to true. (I just realized that this wasn't documented properly on the wiki. Sorry about that.) Now you should be able to issue goals in the utm frame.
+It's a minor point, but your odometry input to navsat_transform_node should be your odometry/filtered data from the second instance of ekf_localization_node.
+No, you don't need gps_common per se, but the package should be installed, as I'm using a header file from it.
+You should have no need to use set_pose. The output of navsat_transform_node is in a world-fixed frame that is aligned with your vehicle's start position and orientation. In other words, if your robot is at (4, 2) in the odom frame (ekf_localization_node instance 1), then its position, in a perfect world, would be (4, 2) in the map frame (ekf_localization_node instance 2).
+Make sure your IMU reports in the ENU frame, and that you know what it reads when it points to magnetic north, and then make sure you set the parameters to navsat_transform_node accordingly.
+
+Hope this helps! Let me know how it goes.
+EDIT 1: Quick question: I noticed that in your launch file, you have this:
+  <!--My IMU doesn't have compas-->
+
+Is that still true? If so, that's going to be a problem. You need an IMU that has some knowledge of its orientation relative to north (east, really, but knowing one gives the other).
+EDIT in response to update 2: I'm afraid it's been some time since I used move_base. There may be someone else who's integrated it. My guess is that you want to give it your non-GPS-enabled instance (instance 1) of ekf_localization_node. Assuming move_base requires your current location and a goal location, then I would hope/think it's transforming the current location and goal location into whatever frame it wants to use. However, I think you'll want the position estimate that you give to move_base to be continuous, and your GPS position is subject to discrete jumps. If you used instance 2, then as you got nearer to the goal, your robot might suddenly change course as your GPS jumps around.
+Re: the reason for needing a compass, see this page. navsat_transform_node first transforms GPS data into the UTM coordinate frame. The UTM coordinate frame has its X axis facing east and its Y axis facing north. East and north are, of course, fixed to earth. Now, when your robot starts out, it may be facing, say, northeast (+45 degrees above the east/X axis), and at UTM coordinate (1000, 1000). Let's say you drive forward 10 meters. You would be at UTM position (1007.07, 1007.07) in the UTM coordinates, but in your map (and odom) frame, you should be at (10, 0). The purpose of navsat_transform_node is to output a nav_msgs/Odometry message that has converted your raw GPS location into a position that is consistent with your robot's start position and orientation. In order to do that transform, I need your current heading (+45 degrees above east). The only way to get that heading is through an earth-fixed heading reference, such as from a compass/magnetometer. Otherwise, you won't know which way you're facing with respect to the UTM grid.
+
+Originally posted by Tom Moore with karma: 13689 on 2015-01-30
+This answer was ACCEPTED on the original site
+Post score: 3
+

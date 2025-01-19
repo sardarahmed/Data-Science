@@ -1,0 +1,271 @@
+Q:
+
+Create a simple C++ client Application to control KUKA's Robot-arm LBR iiwa via FRI
+
+Until now I have been programming the robot using Java on KUKA's IDE "KUKA Sunrise.Workbench", what I want to do is control the robot arm via my C++.Net application (I would use a camera or Kinect to get commands). 
+I'm reading the documents provided by Kuka, but as I'm a bit in hurry, I want to understand how a C++ client application (running on my laptop) can send/receive information to/from the robot's controller "KUKA Sunrise Cabinet" (running the server application) via FRI. I still have issues grasping the whole mechanism.
+A simple application (Server/Client) source code with explanation (or a schematic) would be more than helpful .
+
+A:
+
+I have a library called grl which integrates control of a KUKA iiwa in C++. 
+Right now the most reliable mechanism I've found for control is to receive state over FRI, then send state via Java. All the tools necessary to do this are integrated into grl.
+While I've been able to receive state over FRI nicely, sending FRI commands so the robot drives reliably has proven more complicated. I'm close to a working implementation and I have a few simple test applications that move a single joint correctly. Once the bugs are worked out it should be very easy to use, and I'm hopeful it will work well. For a specific function controlling FRI see KukaFRIClientDataDriver.cpp.
+Unfortunately I've found the direct API KUKA provides to be a bit difficult to use as well, so I'm implementing functions that communicate over the underlying protobuf network messages and UDP.
+While this isn't a 100% answer, it is a solution that is 90% of the way to completion.
+Update: FRI based control using grl is now working with the Sunrise Connectivity Suite 1.7. 
+Here is an example of how to use it in the simplest case of KukaFRIClientDataDriverTest.cpp:
+// Library includes
+#include <string>
+#include <ostream>
+#include <iostream>
+#include <memory>
+
+#include "grl/KukaFRI.hpp"
+#include "grl/KukaFriClientData.hpp"
+#include <boost/log/trivial.hpp>
+
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <boost/asio.hpp>
+#include <vector>
+#include <iostream>
+
+using boost::asio::ip::udp;
+
+#include <chrono>
+
+/// @see https://stackoverflow.com/questions/2808398/easily-measure-elapsed-time
+template<typename TimeT = std::chrono::milliseconds>
+struct periodic
+{
+    periodic():start(std::chrono::system_clock::now()){};
+
+    template<typename F, typename ...Args>
+    typename TimeT::rep execution(F func, Args&&... args)
+    {
+        auto duration = std::chrono::duration_cast< TimeT> 
+                            (std::chrono::system_clock::now() - start);
+        auto count = duration.count();
+        if(count > previous_count) func(std::forward<Args>(args)...);
+        previous_count = count;
+        return count;
+    }
+
+    std::chrono::time_point<std::chrono::system_clock> start;
+    std::size_t previous_count;
+};
+
+enum { max_length = 1024 };
+
+int main(int argc, char* argv[])
+{
+
+  periodic<> callIfMinPeriodPassed;
+
+  try
+  {
+    std::string localhost("192.170.10.100");
+    std::string localport("30200");
+    std::string remotehost("192.170.10.2");
+    std::string remoteport("30200");
+
+    std::cout << "argc: " << argc << "\n";
+    if (argc !=5 && argc !=1)
+    {
+      std::cerr << "Usage: " << argv[0] << " <localip> <localport> <remoteip> <remoteport>\n";
+      return 1;
+    }
+
+    if(argc ==5){
+      localhost = std::string(argv[1]);
+      localport = std::string(argv[2]);
+      remotehost = std::string(argv[3]);
+      remoteport = std::string(argv[4]);
+    }
+
+      std::cout << "using: "  << argv[0] << " " <<  localhost << " " << localport << " " <<  remotehost << " " << remoteport << "\n";
+
+    boost::asio::io_service io_service;
+
+    std::shared_ptr<KUKA::FRI::ClientData> friData(std::make_shared<KUKA::FRI::ClientData>(7));
+    std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+
+    BOOST_VERIFY(friData);
+
+    double delta = -0.0001;
+    /// consider moving joint angles based on time
+    int joint_to_move = 6;
+    BOOST_LOG_TRIVIAL(warning) << "WARNING: YOU COULD DAMAGE OR DESTROY YOUR KUKA ROBOT "
+                               << "if joint angle delta variable is too large with respect to "
+                               << "the time it takes to go around the loop and change it. "
+                               << "Current delta (radians/update): " << delta << " Joint to move: " << joint_to_move << "\n";
+
+    std::vector<double> ipoJointPos(7,0);
+    std::vector<double> offsetFromipoJointPos(7,0); // length 7, value 0
+    std::vector<double> jointStateToCommand(7,0);
+
+    grl::robot::arm::KukaFRIClientDataDriver driver(io_service,
+        std::make_tuple(localhost,localport,remotehost,remoteport,grl::robot::arm::KukaFRIClientDataDriver::run_automatically)
+    );
+
+    for (std::size_t i = 0;;++i) {
+
+        /// use the interpolated joint position from the previous update as the base
+        if(i!=0 && friData) grl::robot::arm::copy(friData->monitoringMsg,ipoJointPos.begin(),grl::revolute_joint_angle_interpolated_open_chain_state_tag());
+
+        /// perform the update step, receiving and sending data to/from the arm
+        boost::system::error_code send_ec, recv_ec;
+        std::size_t send_bytes_transferred = 0, recv_bytes_transferred = 0;
+        bool haveNewData = !driver.update_state(friData, recv_ec, recv_bytes_transferred, send_ec, send_bytes_transferred);
+
+        // if data didn't arrive correctly, skip and try again
+        if(send_ec || recv_ec )
+        {
+           std::cout  << "receive error: " << recv_ec << "receive bytes: " << recv_bytes_transferred << " send error: " << send_ec << " send bytes: " << send_bytes_transferred <<  " iteration: "<< i << "\n";
+           std::this_thread::sleep_for(std::chrono::milliseconds(1));
+           continue;
+        }
+
+        // If we didn't receive anything new that is normal behavior,
+        // but we can't process the new data so try updating again immediately.
+        if(!haveNewData)
+        {
+           std::this_thread::sleep_for(std::chrono::milliseconds(1));
+           continue;
+        }
+
+        /// use the interpolated joint position from the previous update as the base
+        /// @todo why is this?
+        if(i!=0 && friData) grl::robot::arm::copy(friData->monitoringMsg,ipoJointPos.begin(),grl::revolute_joint_angle_interpolated_open_chain_state_tag());
+
+        if (grl::robot::arm::get(friData->monitoringMsg,KUKA::FRI::ESessionState()) == KUKA::FRI::COMMANDING_ACTIVE)
+        {
+#if 1 // disabling this block causes the robot to simply sit in place, which seems to work correctly. Enabling it causes the joint to rotate.
+            callIfMinPeriodPassed.execution( [&offsetFromipoJointPos,&delta,joint_to_move]()
+            {
+                    offsetFromipoJointPos[joint_to_move]+=delta;
+                    // swap directions when a half circle was completed
+                    if (
+                         (offsetFromipoJointPos[joint_to_move] >  0.2 && delta > 0) ||
+                         (offsetFromipoJointPos[joint_to_move] < -0.2 && delta < 0)
+                       )
+                    {
+                       delta *=-1;
+                    }
+            });
+
+#endif
+        }
+
+            KUKA::FRI::ESessionState sessionState = grl::robot::arm::get(friData->monitoringMsg,KUKA::FRI::ESessionState());
+        // copy current joint position to commanded position
+        if (sessionState == KUKA::FRI::COMMANDING_WAIT || sessionState == KUKA::FRI::COMMANDING_ACTIVE)
+        {
+            boost::transform ( ipoJointPos, offsetFromipoJointPos, jointStateToCommand.begin(), std::plus<double>());
+            grl::robot::arm::set(friData->commandMsg, jointStateToCommand, grl::revolute_joint_angle_open_chain_command_tag());
+        }
+
+        // vector addition between ipoJointPosition and ipoJointPositionOffsets, copying the result into jointStateToCommand
+        /// @todo should we take the current joint state into consideration?
+
+        //BOOST_LOG_TRIVIAL(trace) << "position: " << state.position << " us: " << std::chrono::duration_cast<std::chrono::microseconds>(state.timestamp - startTime).count() << " connectionQuality: " << state.connectionQuality << " operationMode: " << state.operationMode << " sessionState: " << state.sessionState << " driveState: " << state.driveState << " ipoJointPosition: " << state.ipoJointPosition << " ipoJointPositionOffsets: " << state.ipoJointPositionOffsets << "\n";
+    }
+  }
+  catch (std::exception& e)
+  {
+    std::cerr << "Exception: " << e.what() << "\n";
+  }
+
+  return 0;
+}
+
+Here is the Java side of the application:
+package friCommunication;
+
+import static com.kuka.roboticsAPI.motionModel.BasicMotions.positionHold;
+import static com.kuka.roboticsAPI.motionModel.BasicMotions.ptp;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import com.kuka.connectivity.fri.FRIConfiguration;
+import com.kuka.connectivity.fri.FRIJointOverlay;
+import com.kuka.connectivity.fri.FRISession;
+import com.kuka.roboticsAPI.applicationModel.RoboticsAPIApplication;
+import com.kuka.roboticsAPI.controllerModel.Controller;
+import com.kuka.roboticsAPI.deviceModel.LBR;
+import com.kuka.roboticsAPI.geometricModel.CartDOF;
+import com.kuka.roboticsAPI.motionModel.controlModeModel.CartesianImpedanceControlMode;
+
+/**
+ * Creates a FRI Session.
+ */
+public class FRIHoldsPosition_Command extends RoboticsAPIApplication
+{
+    private Controller _lbrController;
+    private LBR _lbr;
+    private String _hostName;
+
+    @Override
+    public void initialize()
+    {
+        _lbrController = (Controller) getContext().getControllers().toArray()[0];
+        _lbr = (LBR) _lbrController.getDevices().toArray()[0];
+        // **********************************************************************
+        // *** change next line to the FRIClient's IP address                 ***
+        // **********************************************************************
+        _hostName = "192.170.10.100";
+    }
+
+    @Override
+    public void run()
+    {
+        // configure and start FRI session
+        FRIConfiguration friConfiguration = FRIConfiguration.createRemoteConfiguration(_lbr, _hostName);
+        friConfiguration.setSendPeriodMilliSec(4);
+        FRISession friSession = new FRISession(friConfiguration);
+        FRIJointOverlay motionOverlay = new FRIJointOverlay(friSession);
+         try {
+            friSession.await(10, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            // TODO Automatisch generierter Erfassungsblock
+            e.printStackTrace();
+            friSession.close();
+            return;
+        }
+        CartesianImpedanceControlMode controlMode = new CartesianImpedanceControlMode();
+        controlMode.parametrize(CartDOF.X).setStiffness(100.0);
+        controlMode.parametrize(CartDOF.ALL).setDamping(0.7);
+
+        // TODO: remove default start pose
+        // move to default start pose
+        _lbr.move(ptp(Math.toRadians(10), Math.toRadians(10), Math.toRadians(10), Math.toRadians(-90), Math.toRadians(10), Math.toRadians(10),Math.toRadians(10)));
+
+        // sync move for infinite time with overlay ...
+        _lbr.move(positionHold(controlMode, -1, TimeUnit.SECONDS).addMotionOverlay(motionOverlay));
+        //_lbr.moveAsync(ptp(Math.toRadians(-90), .0, .0, Math.toRadians(90), .0, Math.toRadians(-90), .0));
+
+        // TODO: remove default start pose
+        // move to default start pose
+        _lbr.move(ptp(Math.toRadians(10), Math.toRadians(10), Math.toRadians(10), Math.toRadians(-90), Math.toRadians(10), Math.toRadians(10),Math.toRadians(10)));
+
+        // done
+        friSession.close();
+    }
+
+    /**
+     * main.
+     * 
+     * @param args
+     *            args
+     */
+    public static void main(final String[] args)
+    {
+        final FRIHoldsPosition_Command app = new FRIHoldsPosition_Command();
+        app.runApplication();
+    }
+
+}
+

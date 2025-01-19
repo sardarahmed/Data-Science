@@ -1,0 +1,39 @@
+Q:
+
+remove backwards motion completely
+
+Hi all,
+We are trying integrate the TEB Local Planner ros package in our system and customize this package for the physics of our robot.
+Our robot has a restriction that it doesn't move backwards. Are there any way to remove backwards motion completely from planner?. We already have weight_kinematics_forward_drive on max, and still appear backwards motion some time.
+The robot can move forward and rotate in a radius of 0.5 m.
+Modifying weight, we can't get the desired behavior, so we thought modify the source code to customize the planner. Is it possible? Any suggestions about where make the modifications in the code?
+Thanks!
+
+Originally posted by LucasMN on ROS Answers with karma: 21 on 2017-03-16
+Post score: 2
+
+A:
+
+First of all, in the current version, it is not possible to guarantee that the underlying optimizer
+chooses forward solutions only.
+The configuration is much easier for differential-drive robots than for carlike robots.
+Some important notes for selecting a penalty for backward motions (parameter weight_kinematics_forward_drive:
+
+local minima (sensitive w.r.t. initialization): The initial trajectory (especially its orientation part) is very important since our optimizer seeks for the next local minimum. In the case of a differential drive robot, the robot can always turn in place which can be easily handled during optimization. For a car-like robot, the trajectory usually consists of backward and forwards arc segments which introduce further local minima.
+
+feasibility: according to your radius of 0.5 m, I assume that you have a carlike robot. The feasible set of possible configurations is significantly reduced if you prohibit backward motions (especially in cluttered environments).
+You might check Reeds and Chepp curves to get an idea.
+
+However, this does not solve your problem at all. Sometimes it is possible to bypass this behavior, e.g. we could rotate the robot towards the goal before starting the actual trajectory planning. But I prefer to keep the number of additional rules on top of the optimization low if possible. Or we can implement different initialization strategies.
+If you have possible solutions or suggestions in mind, I would be happy to discuss them with in our issue tracker.
+Some side notes: (hard) constraints are currently treated as penalties and giving their corresponding terms appropriate weights might enforce them (extremely large weights can cause slower convergence due to a bad matrix condition).
+However, since the optimization problem size is medium, penalties should be sufficient (maybe we can change the solver backend to some fast sqp or interior point solver someday to handle hard constraints).
+
+Originally posted by croesmann with karma: 2531 on 2017-03-23
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by LucasMN on 2017-03-24:
+Thank you very much Christoph!
+

@@ -1,0 +1,52 @@
+Q:
+
+Arduino /cmd_vel and /odom with Pololu motors w/ encoder
+
+Hi guys,
+I have been struggling with my robot for 3-4 days now. I want to publish to the /cmd_vel topic and then to the /odom topic using the Arduino MEGA connected to 4 Pololu motors with encoders. I have installed rosserial and gone through the tutorials, I have tried modifying ros_arduino_bridge to fit my hardware with no success, so please do not suggest these as solutions :) I have also tried getting the ticks from the motors with a mild success, but nothing useful. I have tested all motors by sending a variety of PWM signals from the MEGA and they seem to function just fine.
+Is it even possible with the motor controllers I am using? I am honestly hoping someone can direct me in the right direction. Everything online is just people linking to the rosserial tutorial page..
+My robot is a 4WD platform with
+
+4 x 20.4:1 Metal Gearmotor 25Dx50L mm LP 12V with 48 CPR Encoder
+Arduino MEGA to control motors and read encoder values
+MAX14870 Single Brushed DC Motor Driver Carrier
+Raspberry Pi 2B as host with ROS Kinetic Kame on Ubuntu Mate 16.04/10
+
+A schematic showing the pinouts of the DC Motor Driver Carrier from the Pololu page
+
+Originally posted by JamesWell on ROS Answers with karma: 136 on 2017-01-31
+Post score: 0
+
+A:
+
+Sorry, have to recommend rosserial. I recommend we focus on the problem you have with it. I use a variant of your motor in a 4wd wild thumper, so short answer: Yes it is possible.
+I'm not yet sure where exactly your problem is, seems to me that there are multiple, we should identify these and solve each in its own question. You should start with sending cmd_vel to your arduino, send raw pwm values first instead of m/s, e.g.
+rostopic pub -1 cmd_vel geometry_msgs/Twist '[255, 0, 0]' '[0, 0, 0.0]'
+
+for max speed forward. Write this value in the OCR register of your arduino.
+To give a short answer for reading the encoders: They use gray code, so use something like this code to decode it:
+  static int8_t last;
+  int8_t new, diff;
+  unsigned char status = (PINA >> 4) & 0x3;
+
+  new = 0;
+  if(status & 0x1)
+        new = 3;
+  if(status & 0x2)
+        new ^= 1;          // convert gray to binary
+  diff = last - new;        // difference last - new
+  if( diff & 1 ){        // bit 0 = value (1)
+        last = new;          // store new as next last
+        enc_delta += (diff & 2) - 1;    // bit 1 = direction (+/-)
+  }
+
+Originally posted by Humpelstilzchen with karma: 1504 on 2017-02-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by JamesWell on 2017-02-01:
+Haha recommending rosserial is totally fine, I just don't want to be linked to the tutorials. I will write a node on the Arduino that will listen to the /cmd_vel topic and write the PWM value to the motors. I hope you can give feedback after I post the code as an edit in the original question.
+Comment by tonybaltovski on 2017-02-06:
+Here is an example I did a while ago
+

@@ -1,0 +1,36 @@
+Q:
+
+Correct use of transformations while using coordinate frames
+
+I would like to understand better the transformations between the frames established in REP-105. I did read the specification but I think I might be misunderstanding something.
+Let me bring one example: Suppose that I'm at the center of the city, where I already SLAM before, and have a previous static map that I could use to localize myself.
+Also, I know the transformation between the origin of this static map and the earth frame (in my case I would work in utm), which would result in traslation + rotation.
+That would allow me to publish this transform as static, instead of using other nodes such as Navsat using GPS information.
+When I imagine the "map" -> "odom" transform, I would understand it, as the transformation between the origin of the map, and the start position of my robot (the wheel's odometry for ex, should be publishing 0s).
+If that make sense, I could publish this tf depending on the position where the robot starts, in order to set the initial pose inside my map.
+Lastly, the odom -> "base_link" tf represents how much did the robot move from the "start point".
+My question is, if I want to swap the map because I'm trying to enter a room, which should be the correct way of doing it?
+I still have the utm -> base_link tf (global position) and I also have the next utm -> map tf to apply. The idea is to maintain the utm -> base_link tf while changing the utm -> map but I could accomplish this task using the map -> odom tf, the odom -> base_link tf or both. Which should be the "best" way to handle this?
+Seeing packages such as AMCL manipulating map -> odom tf, I somehow understand that the important tf is map -> base_link which represents the "local" location of the robot. But I don't know if it would be correct to set again the map->odom tf depending on the new local start position and setting odom -> base_link tf to 0 again, or maintain it and let AMCL deal with it.
+If this doesn't make sense, I would greet someone could enlighten me on this
+Edit 1: As I mentioned at first, let's imagine I have some maps that I could relate as a typical map graph setup. And I want to travel from map_1 to map_2. I would know aproximately where the robot will start on map_2 and moreover, if I have the origin of map_2 on UTM coordinates, I could also get the UTM position of my robot. Obviously this is aproximate but I think it best than nothing. In this case, wouldn't it be interesting to kind of "reset" the odom->base_link tf in order to reduce the error provided by wheel encoders, etc.? Please see this minimal example.
+
+Imagine we also have the utm -> map tf (I should have drawn it but I forgot to do it, sorry for that).
+
+I start in other position than map origin, represented in the map -> odom tf, and as it is my start position, odom -> base_link tf is 0s.
+
+My robot is reaching the end of map_1 where my algorithm could understand that a map swap might be needed, based on the robot's future path if it needs to go to map_2 I could swap to the next map when its close enough, and I could update map -> odom since I somehow have a map graph and can know from where will the robot come. Obviously, I would also need to update the utm -> map tf, but this is static since I have all my maps origin coordinates meassured in utm.
+
+I update the utm -> map tf according to map_2. Since I know where should base_link be on my new map_2, I would have to correct my map -> odom tf, and I could "reset" my odom -> base_link in order to correct offsets from the previous path.
+
+As I understand it, when we are not using earth frame. Where we only have map, odom and base_link, my main focus is to know the map -> base_link tf, since it will represent my position inside my map.
+When there is earth frame, I could have my global position (utm -> base_link), and also my local position (map -> base_link).
+
+A:
+
+You're missing a couple key aspects:
+baselink -> odom transform is the location of the robot (where the robot thinks it is) relative to where it started as calculated by tracking the wheel encoders. This transform is 0,0,0,0,0,0 at the start and starts changing as soon as the robot starts moving.
+map -> odom TF is the correction between the odom location and the map. If the robot starts at the map origin, and the odom has zero error in time, then the odom -> baselink TF is where the robot thinks it is (which is exactly where it is in the map because there is no odom error in this imagined robot) and the map -> odom TF is 0,0,0,0,0,0.
+In reality though, the odom error will increase in time so your localization method (AMCL) will publish a TF that gets added(subtracted) from the odom value to tell you where the robot actually is in the map. As time continues the odom errors can increase forever so the numerical values in the map -> odom TF may get large. After a year of driving a robot around your odom readings may suggest you're in Paris but the map -> odom TF will have slowly been adding a correction throughout the year so you know that you actually never left Burghausen(I'm sorry for that).
+If you don't start at the map origin then that initial TF gets seeded with the correction and the TF is then updated with the needed corrections because the odom error is always changing. Odom is only ever where the robot thinks it is relative to where it started, using only local measurement techniques.
+

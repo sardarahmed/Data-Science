@@ -1,0 +1,58 @@
+Q:
+
+Why is a transform not available after waitForTransform?
+
+Hello ros-users,
+I have strange issue with tf-transforms. I use laser_geometry::LaserProjection to project laser scans to point clouds, but I assume the problem is related to tf. The code-snippet is from the scan callback function.
+if(!gTfListener->waitForTransform(scan->header.frame_id,
+                              "camera",
+                              scan->header.stamp,
+                              ros::Duration(2.0),
+                              ros::Duration(0.01),
+                              &error_msg))
+{
+    ROS_WARN("Warning 1: %s", error_msg.c_str());
+    return;
+}
+try
+{
+    gProjector->transformLaserScanToPointCloud("camera", *scan, cloud, *gTfListener);
+}catch(tf::TransformException e)
+{
+    ROS_WARN("Warning 2: %s", e.what());
+    return;
+}
+
+After a few seconds of running, Warning 2 is raised on the console for like 1 out of 4 scans with this error message:
+
+Warning 2: Lookup would require extrapolation into the future.  Requested time 1412757571.359567610 but the latest data is at time 1412757571.357117891, when looking up transform from frame [laser_link] to frame [camera]
+
+How can this happen, after waitForTransform obviously succeeded (returned true)?
+Thanks in advance,
+Sebastian
+
+Originally posted by Sebastian Kasperski on ROS Answers with karma: 1658 on 2014-10-08
+Post score: 1
+
+Original comments
+Comment by GuillaumeB on 2014-10-08:
+you could try to set a very long time for the duration (the time it should wait) . My computer was slow and it solved the problem
+Comment by Sebastian Kasperski on 2014-10-08:
+Increasing the wait time did not change the behaviour, as waitForTransform already returned true (e.g. didn't timeout)
+
+A:
+
+My assumption about tf was wrong, the solution was indeed related to laser_geometry. As described here, the Projector uses start and end time of the scan and therefore asks for a timestamp in the future.
+So to wait long enough, the call to waitForTransform should be:
+if(!gTfListener->waitForTransform(
+       scan->header.frame_id,
+       "camera",
+        scan->header.stamp + ros::Duration().fromSec(scan->ranges.size()*scan->time_increment),
+        ros::Duration(2.0),
+        ros::Duration(0.01),
+        &error_msg))
+
+Originally posted by Sebastian Kasperski with karma: 1658 on 2014-10-08
+This answer was ACCEPTED on the original site
+Post score: 2
+

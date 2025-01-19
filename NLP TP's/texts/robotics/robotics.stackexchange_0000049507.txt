@@ -1,0 +1,101 @@
+Q:
+
+What is the purpose of CATKIN_DEPENDS?
+
+While looking at this CMakeLists.txt:
+https://kforge.ros.org/geometry/geometry/file/2eee66fd724e/tf/CMakeLists.txt
+https://github.com/ros/geometry/blob/groovy-devel/tf/CMakeLists.txt#L25
+I was wondering the exact meaning of the CATKIN_DEPENDS option of the catkin_package(...) macro was?
+I would expect to see there the same packages as listed in the find_package(...) macro but this does not seem to be the case.
+b) Do we still need to copy python msg and srv manually in the install target?
+Are there any other files or directories that require this special treatment?
+Using ROS Groovy and Ubuntu 12.04.
+Cheers, D.
+
+Originally posted by dejanpan on ROS Answers with karma: 1420 on 2013-03-18
+Post score: 21
+
+Original comments
+Comment by William on 2013-03-19:
+For part b, you should probably make a separate question. But while you are could you explain what you mean? Are you asking if you need to manually install the .msg and .srv files? or the resulting generated code?
+Comment by dejanpan on 2013-03-19:
+@William: maybe not even worth a separate question. Looking at the last 4 lines of this: https://kforge.ros.org/geometry/geometry/file/2eee66fd724e/tf/CMakeLists.txt I was wondering if we still need to manually copy srv and msg dirs into PYTHON_INSTALL_DIR? It was a total random discover for me...
+Comment by William on 2013-03-19:
+Looking at that issue it looks like that problem was fixed, and those last few lines are no longer needed.
+Comment by William on 2013-03-19:
+https://github.com/ros/genmsg/issues/10
+Comment by dejanpan on 2013-03-19:
+That is how it looked to me too though I do not understand much of the code. But now I verified it and the dirs still do not get installed for my packages. How do I know if that patch was released?
+Comment by Dirk Thomas on 2013-03-19:
+The reference patch to genmsg has been released long time before groovy was release. I just checked out the geometry repository, removed the manual install lines and ran "catkin_make install" and the files are getting installed correctly.
+
+A:
+
+To answer part A of your question...
+DEPENDS and CATKIN_DEPENDS are how you can tell catkin which of your package's dependencies should be passed along to packages which find_package(...) your package.
+For example, lets say you find_package(Boost REQUIRED) and in one of your installed headers you #include <boost/function.hpp>. In order for a dependent package to build and link your header they need to have Boost's include directory in the their include path and they need to link against Boost's libraries. They should get that dependency from you since you expose it in your header, i.e. they should not have to find_package(Boost REQUIRED) just because they are building against your package, and do not otherwise use Boost.
+The fact that your package depends on Boost is an implementation detail. Therefore when some find_package(...)'s your package they should get the dependency on Boost "for free". The way this works is that you put DEPENDS Boost in your catkin_package(...) call. Internally, catkin will find_package(Boost) and add ${Boost_LIBRARIES} to ${your_pkg_LIBRARIES} and add ${Boost_INCLUDE_DIRS} to ${your_pkg_INCLUDE_DIRS}.
+I should note that catkin will take the exact thing you give it and try to find_package(...) it and then try to use the _LIBRARIES and _INCLUDE_DIRS variables for that package. This assumption about find_package(...) layout does not always hold, as CMake does not enforce this. For example, when find_package(...)ing Python: find_package(PythonLibs REQUIRED) results in variables like PYTHON_INCLUDE_PATH, and find_package(OpenGL REQUIRED) results in OPENGL_INCLUDE_DIR. Aside from case of the variable prefixes, the actual prefixes differ (PythonLibs -> PYTHON), and the suffixes are non-standard (PYTHON_INCLUDE_PATH and OPENGL_INCLUDE_DIR vs *_INCLUDE_DIRS). In this case you need to pass the include dirs variable to catkin_package(...) explicitly using the INCLUDE_DIRS option and the libraries using the LIBRARIES option.
+The CATKIN_DEPENDS option is exactly like that DEPENDS option, but you must put catkin packages only in that list. The benefit for sorting your catkin depends into a separate option is that catkin can do additional checks and warn you of potentially incorrect practices.
+Finally, a simple example CMakeLists.txt:
+cmake_minimum_required(VERSION 2.8.3)
+project(foo)
+
+find_package(Boost REQUIRED
+  COMPONENTS
+  system
+  thread
+)
+
+find_package(PythonLibs REQUIRED)
+find_package(OpenGL REQUIRED)
+
+find_package(catkin REQUIRED
+  COMPONENTS
+  rosconsole
+  roscpp
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${OPENGL_INCLUDE_DIR}
+  ${PYTHON_INCLUDE_PATH}
+)
+
+catkin_package(
+  INCLUDE_DIRS include ${OPENGL_INCLUDE_DIR}
+  LIBRARIES foo ${OPENGL_LIBRARIES}
+  CATKIN_DEPENDS roscpp
+  DEPENDS Boost
+)
+
+...
+
+In this example you can see that I find_package(Boost...) and pass it along in the DEPENDS section because it generates compliant CMake variables. I find_package(PythonLibs...) and use it internally but do not pass it along as it is not in any of my exposed headers. I find_package(OpenGL...) but since it does not make compliant CMake variables I pass it along explicitly to INCLUDE_DIRS and LIBRARIES. Finally I find_package(catkin...rosconsole roscpp), I use both internally, but maybe I only use rosconsole in my .c* files and therefore I do not need to pass it along, so in the CATKIN_DEPENDS variable I just put roscpp.
+One final example, if a package uses a dependency like Boost directly they should make sure that they find_package(...) it explicitly and that they do not just implicitly depend on it being there from another package. An example where this occurs is that if a package foo exports Boost as a dependency and a package bar depends on foo, but also uses Boost internally then bar will compile fine without an explicit dependency on Boost. But later foo might decide to refactor and remove its dependency on Boost. Now bar will fail to compile as it does not have the implicit dependency on Boost via foo anymore.
+
+Originally posted by William with karma: 17335 on 2013-03-19
+This answer was ACCEPTED on the original site
+Post score: 44
+
+Original comments
+Comment by dejanpan on 2013-03-19:
+Great answer, thx a lot Will.
+Comment by William on 2013-03-19:
+This seems to be a common misunderstanding surrounding catkin and chaining dependencies. I might post it in the wiki, or rework it as a tutorial.
+Comment by Javier V. Gómez on 2016-01-26:
+This is very helpful. However, regarding your example,why INCLUDE_DIRS does not have ${PYTHON_INCLUDE_PATH}, CATKIN_DEPENDS does not have rosconsole? And why DEPENDS does not have OpenGL or PythonLibs?
+Comment by kotoko on 2016-08-09:
+Thank you so much for the in depth explanation! Just one quick question, the example assumes OpenGl is used in header files, right?
+Comment by OMC on 2017-01-16:
+It definitely should be in the CMakeLists wiki. This answer is a wiki itself. Thanks a lot!
+Comment by mcamurri on 2019-01-10:
+I'm still not convinced. You do find_package for Boost because your header refer to it. But the library foo will have a target_link_library for Boost later on, otherwise it would not compile. There should be no need to do the same for a package which links against foo.
+Comment by mcamurri on 2019-01-10:
+Or are you just saying that CATKIN_DEPENDS and DEPENDS should contain the only libraries which appear in headers which are not included and compiled inside the package itself (e.g. a header only library)? Would I need to specify any dependency if there are no libraries declared?
+Comment by peci1 on 2019-03-08:
+If I have a Python-only package without generated messages, should I add something to CATKIN_DEPENDS? I know practically that I can leave it empty, but the question is if it is correct also "theoretically". Also, do Python-only packages only need <exec_depend> tags in package.xml? Overall, I'm missing some good documentation for Python-only packages on the Wiki. E.g. here the wiki suggests to add <build_depend>python-numpy, but is it really needed?
+Comment by AlecPath on 2021-02-15:
+@mcamurri I have the same question as you. It seems like if library X of project foo has a public dependency on library external_sys_library then it shouldn't be necessary to list external_sys_library in the DEPENDS section.
+

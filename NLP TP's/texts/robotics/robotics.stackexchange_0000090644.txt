@@ -1,0 +1,195 @@
+Q:
+
+How to read data from txt file python
+
+I have a python script which reads data from 4 txt files and stores the values in 4 numpy arrays. I put the txt files in the same directory with my python node, but when I run the node the files cannot be located and I get the error:
+
+IOError: [Errno 2] No such file or directory: 'xdot.txt'
+
+That works when I run the code on a python IDE, but I don't know where is the problem here. I am new to ROS and I use ROS Kinetic, Python 2.7.12 on Ubuntu 16.04 LTS. Thank you in advance.
+#!/usr/bin/python
+
+import rospy
+import serial
+import time
+from std_msgs.msg import String
+from decimal import Decimal
+import numpy as np
+from scipy.integrate import odeint, solve_ivp
+import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+
+xdot_list = []
+ydot_list = []
+xdotdot_list = []
+ydotdot_list = []
+
+with open('xdot.txt', 'r') as filehandle:
+    filecontents = filehandle.readlines()
+
+    for line in filecontents:
+        current_place = line[:-1]
+        xdot_list.append(current_place)
+
+xdot = np.array(xdot_list, dtype=np.float32) 
+
+with open('ydot.txt', 'r') as filehandle:
+    filecontents = filehandle.readlines()
+
+    for line in filecontents:
+        current_place = line[:-1]
+        ydot_list.append(current_place)
+
+ydot = np.array(ydot_list, dtype=np.float32) 
+
+with open('xdotdot.txt', 'r') as filehandle:
+    filecontents = filehandle.readlines()
+
+    for line in filecontents:
+        current_place = line[:-1]
+        xdotdot_list.append(current_place)
+
+xdotdot = np.array(xdotdot_list, dtype=np.float32) 
+
+with open('ydotdot.txt', 'r') as filehandle:
+    filecontents = filehandle.readlines()
+
+    for line in filecontents:
+        current_place = line[:-1]
+        ydotdot_list.append(current_place)
+
+ydotdot = np.array(ydotdot_list, dtype=np.float32) 
+
+Originally posted by Spyros on ROS Answers with karma: 51 on 2019-02-25
+Post score: 0
+
+A:
+
+I put the txt files in the same directory with my python node, but when I run the node the files cannot be located and I get the error:
+
+IOError: [Errno 2] No such file or directory: 'xdot.txt'
+
+That works when I run the code on a python IDE, but I don't know where is the problem here.
+
+The problem is in the difference in working directory when running the script directly versus using roslaunch or rosrun.
+See #q235337 for more info on that.
+In short: don't use relative paths, but absolute ones. To avoid hard-coding paths specific to your own PC, use ROS parameters with substitution args.
+
+Edit:
+
+I checked the links you pointed out. In my occasion, it is not a problem to use an absolute path to open the file.
+
+Absolute paths are not the problem. The problem would be to embed paths that are only valid on your own machine in your code. That is never a good idea.
+
+But which is the recommended way to do it in ROS applications in general?
+
+If you want to keep things relative to package locations, you could use either something like rospkg or the substitution args I mentioned earlier. If you have the option, I'd go for the substitution args (as you avoid adding another dependency to your program).
+
+Edit2:
+
+I have my 4 files in the path:  ~/catkin_ws/src/usb_rs232/scripts in the usb_rs232 package. So the command would be:
+
+rosrun usb_rs232 serial_connection.py _arg_name:=$(rospack find usb_rs232)~/catkin_ws/src/usb_rs232/scripts
+
+No.
+The command would be (provided you have an actual ROS parameter in your Python script called arg_name):
+rosrun usb_rs232 serial_connection.py _arg_name:=$(rospack find usb_rs232)/scripts
+
+There's no need to repeat the path. $(rospack find usb_rs232) returns the path to $HOME/catkin_ws/src/usb_rs232, but without hard-coding it. The /scripts part would be appended to that. So in the end, arg_name gets the value $HOME/catkin_ws/src/usb_rs232/scripts assigned to it. You can then retrieve that in your script using rospy.get_param('arg_name') and use it as a base path, relative to which you could then open your 4 files.
+
+Edit 3:
+
+I changed my code to:
+
+rospy.get_param('arg_name')
+
+with open('arg_name/xdot.txt', 'r') as filehandle: 
+
+with the same command and I get the error:
+
+KeyError: 'arg_name'
+
+This is starting to become more of a Python question and not so much a ROS question, but: that's not how this works.
+rospy.get_param(..) returns a str object, so you'll have to store that somewhere. Then, you should use that str and prefix it to the filename to get a valid path.
+Something like the following should work:
+base_dir = rospy.get_param('~arg_name')
+with open(base_dir + '/xdot.txt', 'r') as filehandle:
+    ...
+
+Note: you only need to retrieve arg_name once. And you'll probably want to add some error checking for when the user hasn't actually set arg_name to a legal/proper value.
+I would actually recommend to do something like this though:
+base_dir = rospy.get_param('~arg_name')
+with open(os.path.join(base_dir, 'xdot.txt'), 'r') as filehandle:
+    ...
+
+as that would be both more sane and portable (see os.path.join(..)).
+
+Edit 4:
+
+File "/opt/ros/kinetic/lib/python2.7/dist-packages/rospy/client.py", line 465, in get_param 
+
+  return _param_server[param_name] #MasterProxy does all the magic for us
+File "/opt/ros/kinetic/lib/python2.7/dist-packages/rospy/msproxy.py", line 123, in __getitem__
+  raise KeyError(key)
+KeyError: arg_name
+
+This is basically rospy telling you that it cannot find the parameter.
+Two things:
+
+parameters set using _name:=value syntax of rosrun are private parameters
+your script does not initialise a node (I don't see rospy.init_node(..))
+
+If you don't initialise a node, you cannot access private parameters (as private parameters are always private to a node: no node -> no parameters).
+To retrieve a private parameter, you need to prefix the parameter name with a ~. So arg_name becomes ~arg_name.
+I've also updated the code snippets in my earlier edits to show this.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-02-25
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Spyros on 2019-02-26:
+Thanks for the response. I checked the links you pointed out. In my occasion, it is not a problem to use an absolute path to open the file. But which is the recommended way to do it in ROS applications in general?
+Comment by Spyros on 2019-02-26:
+the substitution args can be applied with rosrun with the same way the do with roslaunch ? I prefer to use rosrun but I am a bit lost in the documentation of substitution args. How can this be applied with rosrun?
+Comment by gvdhoorn on 2019-02-26:
+With rosrun it's no longer a substitution arg, as those are roslaunch specific.
+But rospack find can be used on the command line, so something like this should work:
+rosrun your_pkg your_script _arg_name:=$(rospack find pkg_with_txt_file)/path/to/file.txt
+
+Comment by Spyros on 2019-02-26:
+how can this work for several txt files that open in the same script? (4 in my case). The files are in the same directory.
+Comment by gvdhoorn on 2019-02-26:
+Pass the path to a directory instead of a file?
+Comment by Spyros on 2019-02-26:
+it doesn't seems to work. I have already done it with absolute path, I just wanted to know my alternatives. But it is not really convenient to type all the path every time I run the node
+Comment by gvdhoorn on 2019-02-26:\
+
+it doesn't seems to work.
+
+If you can show us what "doesn't work", perhaps we can help.
+
+But it is not really convenient to type all the path every time I run the node
+
+well, that is what roslaunch would be for.
+Comment by Spyros on 2019-02-26:
+I have my 4 files in the path:  ~/catkin_ws/src/usb_rs232/scripts in the usb_rs232 package. So the command would be: rosrun usb_rs232 serial_connection.py _arg_name:=$(rospack find usb_rs232)~/catkin_ws/src/usb_rs232/scripts ?
+Comment by Spyros on 2019-02-26:
+I changed my code to:
+rospy.get_param('arg_name')
+with open('arg_name/xdot.txt', 'r') as filehandle: 
+
+with the same command and I get the error:
+KeyError: 'arg_name'
+
+Comment by Spyros on 2019-02-27:
+File "/opt/ros/kinetic/lib/python2.7/dist-packages/rospy/client.py", line 465, in get_param
+return _param_server[param_name] #MasterProxy does all the magic for us
+File "/opt/ros/kinetic/lib/python2.7/dist-packages/rospy/msproxy.py", line 123, in getitem
+raise KeyError(key)
+KeyError: arg_name
+Comment by Spyros on 2019-02-27:
+thanks for the patience. I still don't know what I am doing wrong here.
+Comment by Spyros on 2019-02-27:
+Now it works fine!I was initializing the node after the reading of the txt files. So I changed the order of my code and the node runs without errors. I will keep both methods in mind (absolute path and path set from command line) for future work. Thanks a lot for the help!!!
+

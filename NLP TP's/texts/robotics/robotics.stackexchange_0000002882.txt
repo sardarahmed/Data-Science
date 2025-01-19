@@ -1,0 +1,52 @@
+Q:
+
+How do I add an external library to the Rock Framework?
+
+The Rock framework already includes a lot of software libraries. However, I would like to add an existing external library so that I can use it for my component development. What is the preferred way of doing that?
+
+A:
+
+You should keep as a guideline that you should NOT modify the external package. If you have to, it should be in a way that can in the end be integrated upstream (i.e. be sent as a patch to the original developers and integrated there).
+First thing: what name to give to the package ?
+ - do NOT use the external/ category. This is deprecated and no new packages should be added to it
+ - instead, find a proper category to put it in. The basename (the name of the package inside the category) is probably easy to derive from the library's own name or the name of the device it drives (if it is a device driver, Rock has special rules for device driver names, devicetype_devicename as e.g. imu_xsens).
+Ideally, the external package follows standard practice: uses a standard build system such as CMake or autotools and provides an install target. It can be  added to the autoproj configuration like any other package. Ideally, a manifest file should be added in the package set in the manifests/
+If the package does NOT follow these practices, then you will unfortunately have to get your hands dirty. You will have to create a special autobuild handler that handles your package manually. There are examples for these in the rock package set
+import_package 'drivers/aria' do |pkg|
+  def pkg.do_build
+    # Perform install steps
+    # Use run('build', Autobuild.tool(:command_name), 'argument', 'to', 'the', 'command') to run an external command
+    # For instance
+    #   run('build', Autobuild.tool(:make))
+    # FileUtils.install to copy files
+  end
+
+  def pkg.do_install
+    # Perform install steps
+    # Use run('install', Autobuild.tool(:command_name), 'argument', 'to', 'the', 'command') to run an external command
+    # FileUtils.install to copy files
+    # Files should be installed in the prefix path returned by #prefix
+  end
+
+  def pkg.do_pkgconfig
+    pkgconfig_dir     = File.join(prefix, 'lib', "pkgconfig")
+    FileUtils.mkdir_p pkgconfig_dir
+    # Generate a proper pkg-config file that you install in
+    # pkgconfig_dir
+    # A good way is to save a template file in the package
+    # set directly and generate the file using ERB
+  end
+
+  pkg.post_install do
+    pkg.progress_start "building %s" do
+      pkg.do_build
+    end
+    pkg.progress_start "installing %s" do
+      pkg.do_install
+    end
+    pkg.progress_start "generating pkgconfig file for %s" do
+      pkg.do_pkgconfig
+    end
+  end
+end
+

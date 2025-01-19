@@ -1,0 +1,86 @@
+Q:
+
+Not getting expected performance from kalman filter+mahalanobis distance
+
+I am using a 1D lidar in one of my projects and it returns the distance it measures, in millimeters (mm). At some point in time, it gives garbage values that go as high as 10,000 or higher, when the value is expected to be under 200.
+To mitigate such such outliers, I though of using a Kalman filter. Although it is something new to me, I used this MEDIUM blog as a start and tried modifying his code to suit my case.
+I have the following data
+. The visible peaks are the noise I added.
+I create a live kalman filter as:
+import numpy as np
+import math
+from numpy import  dot
+from numpy.linalg import inv
+
+class kf():
+    def __init__(self):
+        ### Defining filter
+        #Transition Matrix
+        self.F = np.array([[1.0]])
+        #Observation Matrix
+        self.H = np.array([[1.0]])
+        #Process Noise Covariance
+        self.Q = np.array([[0.09]])  # how much I trust the model
+        #Measurement Noise Covariance
+        self.R = np.array([[0.2*0.2]])
+        # Control action Matrix
+        self.B = np.array([1])
+        #Control input
+        self.U = np.array([1])
+
+        #Covariance Matrix
+        self.P = 1.0
+
+        self.x_old = 100.0
+
+    def filter(self, y):
+        x_old = self.x_old
+        F = self.F
+        B = self.B
+        U = self.U
+        P = self.P
+        Q = self.Q
+        H = self.H
+        R = self.R
+        I = np.identity(1)
+        """
+        Prediction
+        """
+        x = dot(F, x_old) + dot(B, U)
+        P = dot(F, dot(P, F.T)) + Q
+
+        """
+        Innovation
+        """
+        e = y - H*x
+        S = dot(H, dot(P, H.T)) + R
+
+        """
+        Mahalanobis distance approximation
+        """
+        MD = math.sqrt(e*e)/S
+        #Weighted MD
+        MDw = 1/(1+(math.exp(-MD) + 0.9))
+        #New Measurement Noise Covariance
+        R = np.array([[4*MDw]]) # bigger the R, the lesser the trust the system will have on the sensor measurement.
+        #Kalman gain
+        K = dot(P, dot(H.T, inv(S)))
+        """
+        Update
+        """
+        x_new = x + dot(K, dot(e,K))
+        self.x_old = x_new
+        self.P = dot(I - dot(K,H), P)
+
+        return x_new, x
+
+And run as instance of this class each time I read the lidar value. The results are, (ignore the blue plot)
+
+I expected the filter to not be so severly affected by the outliers, I am new to this field and hence tried playing with the tunable parameters but to no gain :/
+Where am I going wrong ? Is there any other non-computation-intense method for filtering data in real time ?
+
+A:
+
+You are calculating the new R, but you're not using it. You just replace the new R with the line R = self.R.
+You are not removing the outliers, because you are ditching that result!
+

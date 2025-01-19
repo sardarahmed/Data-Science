@@ -1,0 +1,82 @@
+Q:
+
+Finding Mass/Inertia Matrix of a robot
+
+Hi I am trying to model my humanoid robot. The general EoM is
+$M(q)\ddot{q}+C(q,\dot{q})+G(q)=U$
+I know $M(q)$ is Inertia matrix which depends on joint positions $\textbf{q}$. However, I am having difficulty to find this matrix for my robot.
+I searched on internet and found that in order to find the inertia matrix I have to use the relation between the kinetic energy of the robot and inertia matrix. Is it right? I don't know how these two quantities are related to each other.
+
+A:
+
+The inverse dynamics of a robot is given by the relationship 
+$\tau = D^{-1}(q, \dot{q}, \ddot{q})$
+where $\tau \in \mathbb{R}^N$ is a vector of the required torque per joint and $q \in \mathbb{R}^N$ is a vector of joint coordinates.  The function is a complex mixture of trig terms and robot kinematic and inertial parameters.  Over the years various algorithms have been developed to compute it, most notably the recursive Newton-Euler algorithm (Luh, Walker and Paul 1983) which is $O(N)$.
+Orin and Walker 1982 showed how the $D^{-1}(\cdot)$ algorithm can be used to compute $M$, $C$ and $G$ terms and this has complexity $O(N^3)$.  Featherstone's articulated body method has complexity $O(N)$ but for $N<9$ has no advantage over the Orin and Walker method.
+To make this tangible, here's an example using my Robotics Toolbox for MATLAB. We start by defining a model of a Puma560 robot (this model has full kinematic and inertial parameters)
+>> mdl_puma560
+
+which defines a SerialLink object called p560
+>> p560
+p560 = 
+
+Puma 560 [Unimation]:: 6 axis, RRRRRR, stdDH, fastRNE            
+ - viscous friction; params of 8/95;                             
++---+-----------+-----------+-----------+-----------+-----------+
+| j |     theta |         d |         a |     alpha |    offset |
++---+-----------+-----------+-----------+-----------+-----------+
+|  1|         q1|          0|          0|     1.5708|          0|
+|  2|         q2|          0|     0.4318|          0|          0|
+|  3|         q3|    0.15005|     0.0203|    -1.5708|          0|
+|  4|         q4|     0.4318|          0|     1.5708|          0|
+|  5|         q5|          0|          0|    -1.5708|          0|
+|  6|         q6|          0|          0|          0|          0|
++---+-----------+-----------+-----------+-----------+-----------+
+
+we can examine the inertial parameters of link 1
+>> p560.links(1).dyn
+Revolute(std): theta=q, d=0, a=0, alpha=1.5708, offset=0
+  m    = 0          
+  r    = 0           0           0          
+  I    = | 0           0           0           |
+         | 0           0.35        0           |
+         | 0           0           0           |
+  Jm   = 0.0002     
+  Bm   = 0.00148    
+  Tc   = 0.395      (+) -0.435     (-)
+  G    = -62.61     
+  qlim = -2.792527 to 2.792527
+
+where m is the link mass, r is the centroid of the link wrt the link frame, I is the link inertia, Jm is the motor armature inertia, Bm is motor viscous friction, Tc is Coulomb friction and G is the gearbox ratio.
+We'll pick a random joint angle and velocity vector
+>> q = rand(1,6); qd = rand(1,6);
+
+and now can compute the M, C and G terms
+>> M = p560.inertia(q)
+M =
+    2.7694   -0.6330   -0.0746    0.0011    0.0007    0.0000
+   -0.6330    4.3572    0.3227   -0.0006    0.0002    0.0000
+   -0.0746    0.3227    0.9380   -0.0007    0.0010    0.0000
+    0.0011   -0.0006   -0.0007    0.1925    0.0000    0.0000
+    0.0007    0.0002    0.0010    0.0000    0.1713    0.0000
+    0.0000    0.0000    0.0000    0.0000    0.0000    0.1941
+
+>> C = p560.coriolis(q, qd)
+C =
+   -0.2524   -0.1852    0.1824   -0.0014    0.0013   -0.0000
+    0.1388   -0.3675   -0.5775    0.0002   -0.0035    0.0000
+   -0.0055    0.2099   -0.0002   -0.0006   -0.0025    0.0000
+   -0.0005   -0.0002   -0.0000    0.0000    0.0004   -0.0000
+    0.0012    0.0016    0.0012   -0.0004   -0.0000   -0.0000
+   -0.0000    0.0000    0.0000    0.0000    0.0000         0
+
+>> g = p560.gravload(q)
+g =
+   -0.0000   14.7643   -7.4059    0.0114   -0.0205         0
+
+A:
+
+Finding the Mass, Coriolis and Gravity Matrix for a robot, which is basically forward dynamics of the robot. Now, they are two very well-known techniques to solve this, mentioned in the Robotics Handbook as well as Robot modeling and Control book by Spong - 1) the Euler-Lagrange formulation that basically uses the kinetic and potential energy you're talking about, to derive the complete system dynamics and 2) the recursive Newton-Euler approach that recursively computes forces and corresponding torques on the end-effector and the joints respectively to obtain the dynamic equation. The final dynamic equation obtained in either of the approaches can be rearranged and compared with the standard equation you have mentioned in your question to obtain the MCG matrices. 
+However, both the approaches get difficult as the DOFs increase. Also, avoiding reinventing the wheel, I would suggest defining the URDF of the robot correctly with all individual link inertia tensors, COMs and the kinematic chain and then use the Orocos KDL library to directly obtain the MCG matrices. KDL already has implementations for general kinematics and dynamics principles and is pretty easy to use.
+The KDL::ChainDynParam is the class class you should be looking to use. 
+

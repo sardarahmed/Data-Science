@@ -1,0 +1,125 @@
+Q:
+
+Converting a 2D array of bits to a connectivity map (Code Debugging)
+
+I'm working on an robot that would be able to navigate through a maze, avoid obstacles and identify some of the objects (Boxes in which it has to pot the balls)  in it. I have a monochromatic bitmap of the maze, that is supposed to be used in the robot navigation.
+Up till now, I have converted/read the bitmap image of the maze into a 2D array of bits. Right now I am writing a code that should convert the 2D array (that represents the maze) into a connectivity map so that I could apply a path planning algorithm on it. Mr. @Chuck has helped me by providing a code in MATLAB. i have converted that code into C++, however the code isn't providing the right output. Kindly see the code and tell me what I am doing wrong.
+I am sharing the link to the 2D array that has been made, the MATLAB code, and my code in C++ to convert the array into a connectivity map.
+Link to the 2D array:-
+https://drive.google.com/file/d/0BwUKS98DxycUZDZwTVYzY0lueFU/view?usp=sharing
+MATLAB CODE:-
+Map = load(map.mat);
+nRows = size(Map,1);
+nCols = size(Map,2);
+mapSize = size(Map);
+N = numel(Map);
+Digraph = zeros(N, N);
+
+for i = 1:nRows
+  for j = 1:nCols
+    currentPos = sub2ind(mapSize,i,j);
+    % left neighbor, if it exists
+    if (j-1)> 0
+      destPos = sub2ind (mapSize,i,j-1);
+      Digraph(currentPos,destPos) = Map(currentPos)*Map(destPos);
+    end
+    % right neighbor, if it exists
+    if (j+1)<=nCols
+      destPos = sub2ind (mapSize,i,j+1);
+      Digraph(currentPos,destPos) = Map(currentPos)*Map(destPos);
+    end
+    % top neighbor, if it exists
+    if (i-1)> 0
+      destPos = sub2ind (mapSize,i-1,j);
+      Digraph(currentPos,destPos) = Map(currentPos)*Map(destPos);
+    end
+    % bottom neighbor, if it exists
+    if (i+1)<=nRows
+      destPos = sub2ind (mapSize,i+1,j);
+      Digraph(currentPos,destPos) = Map(currentPos)*Map(destPos);
+    end
+  end
+end
+
+Code in C++:-
+int **digraph = NULL;
+digraph = new int *[6144];
+
+for (int i = 0; i < 6144; i++)
+{
+    digraph[i] = new int[6144];
+}
+
+for (j = 0; j < 96; j++)
+{
+    for (z = 0; z < 64; z++)
+    {
+        currentPos = sub2ind[j][z];
+        digraph[currentPos][currentPos] = 0; //------NEW ADDITION-----------
+
+    if ((z - 1) >= 0)
+        {
+            destPos = sub2ind[j][z - 1];
+            digraph[currentPos][destPos] = bitarray[j][z] * bitarray[j][z - 1];
+        }
+
+    if ((z + 1) < 64)
+        {
+            destPos = sub2ind[j][z + 1];
+            digraph[currentPos][destPos] = bitarray[j][z] * bitarray[j][z + 1];
+        }
+
+    if ((j - 1) >= 0)
+        {
+            destPos = sub2ind[j - 1][z];
+            digraph[currentPos][destPos] = bitarray[j][z] * bitarray[j - 1][z];
+        }
+
+    if ((j + 1) < 96)
+        {
+            destPos = sub2ind[j + 1][z];
+            digraph[currentPos][destPos] = bitarray[j][z] * bitarray[j + 1][z];
+        }
+    }
+
+}
+
+ofstream connectivityMap;
+connectivityMap.open("diGraph.txt");
+
+for (int l = 0; j < 100; l++) // printing only 100 elements
+{
+    for (int k = 0; k < 100; k++)
+    {
+        connectivityMap << digraph[l][k] << " ";
+    }
+}
+
+A:
+
+What is the problem you're having with the file?
+The only two things I notice off the bat are that you aren't outputting an endline character between rows on your output stream and that it looks like you're initializing the digraph variable in an odd manner. As I mentioned previously, it's been a long time since I've used c++, but could you not just call int digraph[6144][6144] = {0};?
+For the endline character,
+for (int l = 0; j < 300; l++) // printing only 300 elements
+{
+    for (int k = 0; k < 300; k++)
+    {
+        connectivityMap << digraph[l][k] << " ";
+    }
+//End the line when you're done outputting rows
+connectivityMap << endl;
+}
+
+Lastly, note that you're only outputting the first 300 columns of the first 300 rows - you're looking at the upper left 300x300 portion of the digraph. digraph[a][b] will equal 1 if a and b are connected; as you have a straightforward map this means it will equal 1 if they are neighbors and neither is a wall.
+:EDIT:
+I think I see most of the problems you're having with this.
+
+Here is the map image I made from your map text file. Note that you have a lot of pixels in the map, but it's really a low-resolution map that has been blown up.
+
+Here is a map image I made that is functionally equivalent but much smaller in resolution. Instead of having 6144 points, the small map has 84. I'm not sure how the black squares with the white 'X's should be treated, so I counted them as walls, though I think it would probably make more sense if they were paths and your start/end position. You should replace the 0's with 1's in those locations if this is the case.
+
+You are getting entries on the diagonal in your digraph because your map is very basic. Point 1 connects to point 2, point 2 to 3, then 3 to 4, etc., so you wind up with 1's (path exists) on the diagonals. Matlab has a function called imwrite that you can use to generate images from matrices; I used this function to generate the digraph images below.
+
+Aside from the scale, the small digraph and large digraph have the same data regarding path connectivity. If you want to avoid keeping such a large, sparse matrix (it's all zeros on the upper/lower triangles because you don't have any paths from start to the middle of the map or start to finish!) then you can check out some of the other methods of map representation in this document on creating directed graphs.
+Lastly, here's a link to the Matlab script I wrote to generate the images and digraphs.
+

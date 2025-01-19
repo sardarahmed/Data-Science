@@ -1,0 +1,77 @@
+Q:
+
+how to use tf listener
+
+Hello everyone.
+I didn't understand very well how to use tf,although I've read all the tutorials.
+I try to explain briefly: I use stage to simulate a robot that find some objects with a laser.Then I use a function findCoords to find the coords in the map of the objects found by the robot.Now i want to transform the point give by this function with tf,so what I made is to declare the listener as global variable,then do all the stuff and then in findCoords I do `listener.transformPoint("blabla",point,pointNew)
+then I compile and it gives no error but when i run it gives this error:
+[FATAL] [1335431661.314896028]: You must call ros::init() before creating the first NodeHandle
+[FATAL] [1335431661.314990035]: BREAKPOINT HIT
+file = /tmp/buildd/ros-electric-ros-comm-1.6.6/debian/ros-electric-ros-comm/opt/ros/electric/stacks/ros_comm/clients/cpp/roscpp/src/libros/node_handle.cpp
+line=151
+
+how can I solve this?
+
+Originally posted by ldima on ROS Answers with karma: 122 on 2012-04-25
+Post score: 1
+
+Original comments
+Comment by ldima on 2012-04-26:
+thanks markymark for answering,however i have called ros::init in the main..the structure is like this:tf::TransformListener listener as global variable,the function for coords is called from lasercallback and main
+Comment by joq on 2012-04-26:
+People need a lot more detail to help debug this. Can you demonstrate the problem in a small program?
+Comment by MarkyMark2012 on 2012-04-26:
+I'm only guessing here - but is sounds like a scoping issue - but as joq says...code please.
+
+A:
+
+it didn't fit in comment space,so i'm writing here..
+I try to give an example,what I'm doing is:
+#include <ros/ros.h>
+#include <tf/tf.h>
+#include <tf/transform_listener.h>
+"others include..."
+
+tf::TransformListener listener; //as global variable
+ros::Publisher pubLaser;
+"others global variables..."
+
+void findCoords(const sensor_msgs::LaserScanPtr dataFromLaser){
+   //in this function I have to transform,so i do the stuff and then..
+   listener.transformPoint("base_link",point,newPoint);
+   //where point,newPoint are StampedPoint
+}
+
+void laserCallback(const sensor_msgs::LaserScan::ConstPtr& fromLaser){
+   //do stuff...
+   findCoords(data);
+}
+
+int main(int argc,char** argv){
+   ros::init(argc,argv,"name");
+   ros::NodeHandle nh;
+   ros::Subscriber laser=nh.subscribe("base_scan",10,laserCallback);
+   pubLaser=nh.advertise<sensor_msgs::LaserScan>("from_Laser",100);
+   ros::spin();
+   return 0;
+}
+
+If i run it without the part of tf it works,but i didn't figure out how to make it run with tf,it gives me the error i said in the first post.
+
+Originally posted by ldima with karma: 122 on 2012-04-26
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by MarkyMark2012 on 2012-04-26:
+The tf::TransformListener listener; will be being instanciated before main() is called - I don't know for certian but I expect your listener member needs ros::init(argc,argv,"name") to have been called first. Move tf::TransformListener listener inside main and pass by reference to your methods
+Comment by ldima on 2012-04-26:
+but findCoords is called from laserCallback,how can I pass listener to it?thanks
+Comment by MarkyMark2012 on 2012-04-26:
+Simply implement tf::TransformListener listener as a pointer: tf::TransformListener* pListener = NULL; Then after ros::init(...) do pListener = new (tf::TransformListener); and in your callback have pListener->transformPoint("base_link",point,newPoint);
+Comment by ldima on 2012-04-26:
+oh..yes thanks...i'm completely out today..anyway it works :) thanks markymark
+Comment by Souvik Basak on 2022-01-01:
+please marks the answer as correct so that it will be easier for others to see the highlighted answer
+

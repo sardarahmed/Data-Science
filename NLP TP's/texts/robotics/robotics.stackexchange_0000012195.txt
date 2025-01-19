@@ -1,0 +1,60 @@
+Q:
+
+Orocos KDL issue with Rotation (matrix) - Inverse Kinematics
+
+I have a problem with the Orocos IK solver, especially with the KDL::Rotation matrix input. 
+I try to call my KDL IK solver with a normal vector and a rotation. If I use the example values for the rotation everything went well. But as I tried to use my "own" orientation, the IK solver didn't find a solution.
+ KDL::Vector vektor(0.457101 , -0.629513, -0.627317); 
+ KDL::Rotation rotation(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0); //myValues
+ KDL::Frame end_effector_pose(rotation, vektor);
+
+ rc=kdl_solver.CartToJnt(origin,end_effector_pose,result);
+
+As you can see it's a simple identity matrix -> no rotation -> in my opinion it should work. Anyway, if I try to call it with any other rotation matrix, it doesn't find a solution.
+Just in case of 
+KDL::Rotation rotation(-0.0921467,0.939391, 0.330232, 0.925128, 0.203433,-0.32055,-0.368302,0.275969,-0.887803);
+
+it terminates with a valid solution. These values are test values from my robot.
+Do I have a wrong comprehension of the rotation matrix ?
+Thank you very much for your time
+Devel
+EDITE:
+With .msg communication it works. I have no idea why ?
+Does anyone know how the following lines construct the rotation matrix ??
+geometry_msgs::PoseStamped pose_msg_in = pose_stamp; 
+tf::Stamped<tf::Pose> transform;     
+tf::Stamped<tf::Pose> > transform_root;
+tf::poseStampedMsgToTF(pose_msg_in, transform); 
+
+tf_listener.transformPose(root_name, transform, transform_root);
+
+KDL::Frame F_dest;  tf::transformTFToKDL(transform_root, F_dest);
+
+int ik_valid = ik_solver_pos->CartToJnt(jnt_pos_in, F_dest, jnt_pos_out);
+
+Or is the matrix related to something? I get the feeling that I miss a important information.
+
+SOLVED: Sorry, for the delay. Shahbaz answer was totally right. I simply overestimated the capabilities of my robot. The position was not reachable. After using Moveit(visualisation), it became clear that the orientation is not possible for the robot at that position (x,y,z). THANKS
+
+A:
+
+The vector and rotation together define the pose of the end-effector, which means its position and orientation. There are 6 degrees of freedom here (presumably), so you can think of the position as a point and the orientation as a direction (I'm avoiding "vector" to avoid confusion):
+ |
+ |
+ |       P .-----> O
+ |
+ |             
+ +--------------------------
+
+Where:
+
+P is the position of the end-effector (defined with vector in your example)
+O is the orientation of the end-effector (defined with rotation in your example)
+
+So, what does the identity mean for the rotation matrix? It means the end-effector has the same orientation as a predefined original orientation. This could be different per robot. Let's say the original orientation has z upwards and x westwards.
+What you are asking the solver is to solve IK for the end-effector at a given position and pointing upwards. As the function fails, it's clear that such a pose is unreachable by the robot.
+
+Do I have a wrong comprehension of the rotation matrix ?
+
+Can't tell without knowing what your comprehension of the rotation matrix is! But the rotation matrix as I said defines the orientation based on some original orientation. The identity matrix is not a magic matrix where everything should work.
+

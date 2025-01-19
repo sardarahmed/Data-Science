@@ -1,0 +1,94 @@
+Q:
+
+Awkward shell outputs for launching many nodes using a configuration file
+
+I'm launching multiple nodes of unknown count using a configuration file that I provide to the backend launcher. So far, I appear to have no issues accomplishing this.
+However, calling ros2 node list and ros2 topic list afterwards makes it seem one of my nodes to "vanish". The node still runs on my screen, and manages to publish its associated topics. Should I be worried?
+
+I'll post a screenshot, and the minimal working example constructed in Foxy using the talker.py example from the tutorials.
+Let's begin with the file tree, which is quite straightforward:
+└── dummy
+    ├── config
+    │   └── talker.yml
+    ├── dummy
+    │   ├── __init__.py
+    │   ├── __pycache__
+    │   └── talker.py
+    ├── launch
+    │   ├── talker.launch.xml
+    │   ├── talker_mux.launch.py
+    │   └── talker_start.launch.xml
+    ├── package.xml
+    ├── resource
+    ├── setup.cfg
+    ├── setup.py
+    └── test
+7 directories, 15 files 
+(I suppressed __pycache__, etc. folder contents)
+
+Here, you can see 3 different launch files and a YAML file.
+One little modification I've made to talker.py is to print its namespace rather than "Hello World".
+talker.yml: just namespace and count
+ns: "dummy"
+count: 6
+
+talker.launch.xml: simple xml launchfile for the node only
+<launch>
+    <node pkg="dummy" exec="talker" name="talker"/>
+</launch>
+
+talker_start.launch.xml: calls the python backend launcher
+<launch>
+    <!-- Run the python launcher for multi-robot setups -->
+    <include file="$(find-pkg-share dummy)/launch/talker_mux.launch.py"/>
+</launch>
+
+talker_mux.launch.py: Calls multiple talker nodes by assigning variable namespaces to launchfiles in a for-loop. Most involved part of this launch sequence.
+#!/usr/bin/env python3
+import os
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription, GroupAction
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+from launch_ros.actions import PushRosNamespace
+
+def generate_launch_description():
+    launch_actions = []
+    pkg_name = 'dummy'
+    launch_file = 'talker.launch.xml'
+    
+    # sniff parameters from YAML to get namespace and robot count (needs to be installed, modify setup.py or CMakeLists.txt accordingly)
+    # path: <workspace_path>/install/<pkg_name>/share/<pkg_name>/config/talker.yml 
+    dir = get_package_share_directory(pkg_name) + '/config/talker.yml'
+    with open(dir, 'r') as file:
+        params = yaml.safe_load(file)
+    
+    robot_ns = params['ns']
+    robot_count = params['count']
+    print(f"Initializing multi-robot launch...\nNamespace:{robot_ns}, #: {robot_count}")
+
+    # ref: <https://docs.ros.org/en/humble/How-To-Guides/Launch-file-different-formats.html>
+    for i in range(robot_count):
+        launch_actions.append(
+            GroupAction(
+                actions=[
+                    PushRosNamespace(f'{robot_ns}{i}'),
+                    IncludeLaunchDescription(
+                        XMLLaunchDescriptionSource(                    
+                            os.path.join(get_package_share_directory(pkg_name),f'launch/{launch_file}')
+                        )
+                    ),
+                ]
+            )
+        )
+
+    return LaunchDescription(launch_actions)
+
+Here's what happens when you call talker_start.launch.xml. Somehow /dummy2/talker is missing, but it still publishes its own topic.
+
+A:
+
+I still don't know the specifics of this problem, but after upgrading to Humble I seem to not have this issue anymore.
+I'll mark this as answered.
+

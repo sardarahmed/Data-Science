@@ -1,0 +1,96 @@
+Q:
+
+"Unable to connect to move_group" when running another machine
+
+I wanted to controll my RobotArm via Rviz, followed a tutorial and everything works fine.
+In the end: I ran rviz on an external device with the Rosmaster sitting on the robot itself.
+For testing purposes i used the intern Rosmaster and then to try it for "real" i got to connect to the Rosmaster of the Robot "export ROS_MASTER_URI = http: //hostname:11311")".
+Everything is the same except that when i run the demo.launch on the "real" Rosmaster i got:
+[ERROR] [1629309314.819565696]: Unable to connect to move_group action server 'move_group' within allotted time (30s)
+
+I already checkt the connection: both machines are connected to the internet via eth0. Both can be pinged. They also can ping each other(Hostname and IP works) and both can get access to them via ssh(Hostname and IP works).
+The ROS_MASTER_URI is definitive the same.
+There is no time difference between the machines (same timezone).
+I've also checked the docs wiki/ROS/NetworkSetup and wiki/ROS/Tutorials/MultipleMachines.
+That's it. Nothing more shows up or happens and i am not able to find something that helps.
+If you do have have any questions about my setup. I'll try to answer asap.
+External Device (Virtual Machine):
+
+Ubuntu 16.04.7 LTS
+ROS PARAMETERS
+
+/rosdistro: kinetic
+/rosversion: 1.12.17
+Network connection: Bridged
+
+Robot (Raspberry Pi 4 B):
+
+Ubuntu 16.04.7 LTS
+ROS PARAMETERS
+
+/rosdistro: kinetic
+/rosversion: 1.12.17
+
+Thanks,
+Kiwi
+
+Originally posted by Kiwi_gamer01 on ROS Answers with karma: 3 on 2021-08-20
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-08-20:
+Since you don't mention it: you've checked wiki/ROS/NetworkSetup  and  wiki/ROS/Tutorials/MultipleMachines?
+Comment by Kiwi_gamer01 on 2021-08-20:
+yeah i've run threw this pages.
+Comment by gvdhoorn on 2021-08-20:
+Ok. So that all worked? Without having to set ROS_IP or ROS_HOSTNAME anywhere? Bi-directional rostopic echo etc?
+Comment by Kiwi_gamer01 on 2021-08-20:
+I seems that connected finally because when i look at (rostopic echo /rosout)
+this comes up(definitive not what the host is showing):
+https://pasteboard.co/KgLu8Lo.png (image of /rosout on VM)
+Comment by gvdhoorn on 2021-08-20:
+Right. So:
+
+do not post screenshots of terminals. It violates the support guidelines and is also unnecessary: it's all text, so just copy-paste it into your original question text as an update (use the edit button/link to edit)
+please perform the test as described in the multi-machine terminal (using talker and listener), or run rostopic echo /chatter on the first host and rostopic pub -r1 /chatter std_msgs/String 'ping' on the second. Then switch the roles (ie: pub on the second host, and echo on the first)
+
+Don't use random topics, and be very clear about what you're running where.
+Additionally: please update your question with the values of ROS_IP, ROS_HOSTNAME and ROS_MASTER_URI for all involved hosts.
+
+Edit: I'm getting a feeling I understand why things don't work for you, but you should have run into that when doing the test (which you claim you've done), so I'm going to wait for you to report the result of the test.
+Comment by Kiwi_gamer01 on 2021-08-20:
+Ok, no matter which machine I run the pub or echo on, the listener does not receive anything.
+Also no error is showing up.
+Comment by gvdhoorn on 2021-08-20:
+I've posted an answer.
+You do agree with me that this problem should have shown up if you'd run the tests described on the wiki pages I linked in an earlier comment?
+Comment by Kiwi_gamer01 on 2021-08-20:
+Yeah fully
+
+A:
+
+In the image you shared earlier we see this:
+
+I expect the fact you set ROS_HOSTNAME to localhost is the cause of your problems.
+localhost will resolve to 127.0.0.1, which is the loopback IP. No host can contact another host on that IP.
+If your Pi tries to reach your VM, it will be told it can do that on localhost. But the Pi's localhost is not the VM's localhost. So it tries to connect to itself and that will obviously fail.
+I believe the networking and multi-machine tutorials are pretty clear: set that variable only if needed, and if you set it, make sure to set it to a hostname that all involved hosts can resolve.
+Unfortunately that was ambiguous, as ping localhost will obviously work on all hosts. It just won't work when trying to connect to remote hosts.
+I suggest setting ROS_HOSTNAME to the actual hostname of your machines (so not localhost) and trying again. If that doesn't work, unset ROS_HOSTNAME and set ROS_IP to the IP address of the machines.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-08-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Kiwi_gamer01 on 2021-08-20:
+It worked, when i unset the HOSTNAME and only used the IP.
+Thank you @gvdhoorn
+Comment by gvdhoorn on 2021-08-20:
+Please make sure you're not using DHCP.
+if you are, your IP may change the next time you boot up your Pi or VM and whatever you've configured ROS_IP with could become incorrect. That would again lead to connection problems.
+Using DHCP is fine, but then you'd have to make an IP reservation for your two host or use ROS_HOSTNAME and make sure your hostnames can be resolved by all involved hosts.
+Comment by Kiwi_gamer01 on 2021-08-20:
+I've already sorted everything out.
+Thanks
+

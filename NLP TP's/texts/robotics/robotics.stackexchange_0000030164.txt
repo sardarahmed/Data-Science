@@ -1,0 +1,47 @@
+Q:
+
+How to fill a sensor_msgs/image without a memcpy?
+
+Hi,
+i am writing a ros driver for our deepsea tyzx stereo camera. I try to adapt the driver for firewire camera, and i need an advice for this part of the code :
+right_image_.data.resize(image_size);
+memcpy(&right_image_.data[0],  DSIF->getRImage(), image_size);
+
+right_image_ is a sensor_msg/Image , whose field data is a vector<uint_8,...>
+image_size is the size of the image returned by my camera proprietary driver, and DSIF->getRImage() is a pointer to this image.
+My question is :
+Is it possible to avoid a memcpy with something like creating a vector with a custom allocator using directly the pointer returned by DSIF->getRImage() as data and image_size as size, plus type if needed, and then use set_data_vec() fuction of the image message ?
+
+Originally posted by Nicolas Turro on ROS Answers with karma: 11 on 2011-03-08
+Post score: 1
+
+Original comments
+Comment by Eric Perko on 2011-03-11:
+What's your use case that you want to avoid the memcpy? Seems like if you had th ROS image and the Driver image sharing data, the driver's framerate could become dependent on how quickly you could publish ROS images (i.e. you'd have to lock to avoid the changing the driver frame while publishing).
+Comment by emrainey on 2016-11-02:
+Ideally they would have a nodelet receiving the sensor_msgs::Image in a callback so the serialization would be skipped. However the initial copy from the driver is still wasted cycles. They aught to be able to create a custom allocator.
+
+A:
+
+Hi Nicolas,
+It's possible to avoid that memcpy, but probably not useful.
+Consider what happens in detail when you publish your image message to a separate node:
+
+You mempcy the data to a sensor_msgs/Image message.
+When you publish the sensor_msgs/Image, ROS serializes its fields into a buffer for inter-process transport - another memcpy.
+The subscriber node populates another sensor_msgs/Image by deserializing the received buffer. If the nodes are on the same machine (subscribed over loopback), I believe the kernel optimizes this pretty well, but it's another memcpy or two.
+
+It's possible to reduce the first two steps to a single memcpy by defining your own custom image type, that simply points to the DSIF->getRImage() data, and registering it with roscpp using message traits. Essentially, your custom type pretends to be sensor_msgs/Image (by registering the same MD5 sum) and serializes to exactly the same over-the-wire format as sensor_msgs/Image, so any subscribing nodes can't tell the difference. I can point you to examples of this if you want.
+However, after doing all that we're still talking about IPC and 2-3 memcpy's at best. Another issue is that you can't directly use image_transport to provide compressed topics anymore, because image_transport currently understands only sensor_msgs/Image.
+A different approach is to write your camera driver and processing nodes as nodelets, and load them all in the same process. In that case you skip the serialization bottleneck (steps 2 and 3) entirely. The driver publishes a shared_ptr<sensor_msgs::Image>, and that gets passed directly to the in-process subscriber nodelets. You still pay the cost of the initial memcpy, but that's it.
+There's a tutorial on porting nodes to nodelets that needs a little love, but gives you the idea. For a complete example of nodelet-ized camera driver, see Diamondback camera1394.
+So my advice is: live with the memcpy, and consider turning your driver into a nodelet if (and only if) message serialization is causing performance problems.
+
+Originally posted by Patrick Mihelich with karma: 4336 on 2011-04-01
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Asomerville on 2011-05-12:
+Side note: The memcopy for interprocess transport won't happen between nodelets if boost::shared_ptr is used.
+

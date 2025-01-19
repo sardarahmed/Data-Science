@@ -1,0 +1,63 @@
+Q:
+
+Batteries lose functionality
+
+In Webots: I want my little robot drive to a fully charged charger (green pointlight and cylinder) and drain its energy. While the battery loses energy it should change its color.
+It works as long as I stay in the Webots Tour setup of the battery device. I can make changes of the bot and the arena. Everything works. But as soon as I introduce a second robot or just close Webots and open it again the light and shape stays green when my robot comes into contact. This happened every time over multiple different worlds. Every time I introduce the battery to a new robot Webots crashes and afterwards the charger is not working anymore. Or I close the program in the battery setup and after reopening it does not change the colors. So I don't know what my mistake is.
+I use R2023a because I use Python. My Robot has 50/100/30 and the Charger nodes have 100/100/3. When I introduce a new robot or battery and change the second number it crashes. I even deinstalled and reinstalled Webots. All the same.
+I safe in the red initial state and when I run than It changes to the green initial state. And not because it charged fully. Because the initial values in the nodes changes that when I reset the simulation the initial values are green again.
+My output
+The Charger loses its energy but does not change the color.
+
+World file
+Controller.py
+
+A:
+
+The "gradual" appearance change of the Charger node that is used in the default "battery.wbt" world and in your world uses the initial color value of the Charger first child node to determine the color change when loosing energy.
+Here is the documentation of the "gradual" field from the Charger node documentation:
+
+gradual: defines the behavior of the indicator. If set to TRUE, the indicator displays a progressive transition between its original color and the emissiveColor specified in the Charger node, corresponding to the present level of charge.
+
+In the default "battery.wbt" world file, the emissiveColor of the Charger.Trasform.Shape.appearance and the color of the Charger.Trasform.PointLight are set to red (1 0 0). This is the important settings that makes the Charger color change when charging a battery and loosing energy.
+It seems that you modified and saved the default "battery.wbt" after running the simulation, so these initial settings were lost.
+Here is the Charger structure you should use:
+Charger {
+  translation -0.43 0.43 0
+  rotation 0 0 1 -1.570795
+  children [
+    Transform {
+      translation 0 0 0.15
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0 1 0
+            transparency 0.7
+            roughness 0.2189099510000001
+            metalness 0
+            emissiveColor 1 0 0   # this field should be set to a different color than Charger.emissiveColor
+          }
+          geometry DEF CHARGER_GEOM Cylinder {
+            height 0.3
+            radius 0.2
+            subdivision 24
+          }
+        }
+        PointLight {
+          attenuation 0 0 12
+          color 1 0 0  # this field should be set to a different color than Charger.emissiveColor
+          intensity 0.53
+        }
+      ]
+    }
+  ]
+  name "charger0"
+  battery [
+    100, 100, 4
+  ]
+  radius 0.2
+}
+
+I could also reproduce the crash when adding battery values while running the simulation. I'm now inspecting and fixing it.
+Disclaimer: I am a Webots developer working at Cyberbotics.
+

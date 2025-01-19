@@ -1,0 +1,35 @@
+Q:
+
+How can I use the Arduino PID library to drive a robot in a straight line?
+
+I would like to create an Arduino based robot with 2 wheels, quadrature encoders on each wheel, a H-bridge driver chip (or motor controller) and a caster.  I want to use the PID library to ensure the speed is proportional to the distance to travel.  
+At a conceptual level, (assuming the motors do not respond identically to PWM levels) how can I implement the PID control so that it travels in a straight line and at a speed proportional to the distance left to travel? 
+
+A:
+
+Specifics
+Looking at the PID Basic Example I think that you just need to instantiate two copies of PID controller, one for each wheel, encoder and pwm:
+PID leftPID(&InputLeft, &OutputLeft, &SetpointLeft,2,5,1, DIRECT);
+PID rightPID(&InputRight, &OutputRight, &SetpointRight,2,5,1, DIRECT);
+
+Then, in your loop() equivalent, you just read both encoders, pass each encoder value to the relevant PID and finally write out both PWM values.
+For now SetpointLeft and SetpointRight can actually point at the same value, but defining them separately like this allows you to add the capability to turn later.
+Concepts
+While this may work for the basic case, whether it is enough really depends on how accurate you need your straight line to be.
+Dead reckoning
+Given that you have encoders on each wheel, if you run two PID loops and compare each wheels' following error, then you can potentially calculate your maximum abbe error over the distance, assuming your wheels don't slip. If that error is smaller than your requirements, then dead reckoning is all you need.
+If your wheels are prone to slipping however, then you may have hidden following error that your control system can't detect and you will need some way to detect a slip or calculate position independently of your wheel encoders and then use higher level software to correct demanded wheel positions/velocities to maintain a straight line.
+Relative position determination
+As John suggests, you may be able to use an accelerometer to determine position, but given their accuracy and the effect of accumulated errors over time, you may be better off using the accelerometer data to detect and correct for wheel slippage.
+In mobile robotics, Kalman filtering techniques are commonly used to fuse the data from multiple sources, such as an accelerometer and the wheel encoders to better determine current position.
+Whatever you do with relative position determination however, over time the position you believe yourself to be in will drift away from your actual physical position.
+Absolute position determination
+The only way to get around this is to have a reference point outside of your vehicles frame of reference.
+A roomba for instance generally uses dead reckoning for moving around a room, but whenever it needs to dock, it looks for a beam of infra-red light sent out by the charging dock. As the roomba randomly moves through that beam, it detects it, locks onto the beam and follows it back to its source. In combination with it's bump sensors, it can position itself accurately on the charging contacts.
+For your robot, it might have a home position, where it can move back to and detect that it is at that known location. At that point it knows exactly where it is and can report how far it's calculated position is from it's actual position.
+Another option, if you need your robot to travel in a straight line over hundreds of meters would be to switch to a different technique, such as adding an Arduino GPS shield.
+A combination of techniques
+Ultimately, depending on your accuracy requirements, you may need to use a combination of these techniques.
+If a guide beam is possible, you may be able to do what you want very simply with an invisible line following technique. If you need to move in any arbitrary straight line in an constrained area, then like the roomba you may be able to use a pair of guide beams (at right angles to each other) to allow you to correct your synthesised position in one Cartesian axis every time the robot passes one of the beams.
+There are lots of options here, and what you chose will depend on what you need.
+

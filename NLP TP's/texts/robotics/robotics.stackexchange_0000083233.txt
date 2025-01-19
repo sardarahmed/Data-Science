@@ -1,0 +1,52 @@
+Q:
+
+How can I implement a smooth "manual move" with Ros-industrial
+
+Hello,
+I'm searching how to implement a regular "manual" move with ros-industrial, and probably moveit.
+By manual move, I mean that when a user press a button, the robot end-effector start moving in a single axis, and when he release it, the robot stop. (The movement on every industrial robot UI I guess (I only know UR and KUKA))
+I currently did that, but in a "not smooth" way, like: when he press a button, and until he release it, I publish once each ms on a topic that I want it to go x cm more on that axis. but dues to accelerations, the robot don't do it smoothly.
+I also tried like this: on the press event, I call a service so the robot start to go to a far point on this axis, and until I release the button, I publish each ms on a topic to say that I want it to continue, if it didn't receive this topic in time, the robot stop. Problem here was that I can't really define the "far" point, because it's related to the current position, and on the robot articulations (I think I can't, not sure)
+Is there something I'm missing ?
+Hope you can help, thank you!
+
+Originally posted by matEhickey on ROS Answers with karma: 15 on 2017-10-10
+Post score: 0
+
+A:
+
+tl;dr: this is probably not something you should try to use (the standard interfaces of) MoveIt for, as it does much, much more than simple interpolation and that takes time. In addition, MoveIt (in its default configuration) was not designed for this kind of use, which is why you run into the issues you describe.
+Typical approach: use any of the kinematics plugins available (KDL, Trac IK, Bio IK) to solve IK at a suitable rate and send those directly to your controller. Alternative: use the velocity control interface (if available on your controller and ROS driver) and use the Jacobian.
+
+First: I think this isn't really a "ROS-Industrial" thing other than industrial robots being involved. It's more a motion planning and robot interfacing issue (I do understand why you tagged it with ros-industrial though).
+As for an answer and possible approach: this is certainly possible, but 1) is not something that MoveIt was designed for, 2) will need a little manual work and 3) will require a good interface to the motion controller of the robot you're trying to do this with.
+re: not design for: MoveIt has a predominantly pipeline based architecture, which receives a motion request (go from A to B), asks a planning plugin to come up with a joint space path (not a trajectory), checks it for collisions, converts it to a trajectory and then returns the result. There is no feedback here, and no concept of a Cartesian space (at least in how it interacts with OMPL and in the default cases, other than the start and end pose). Additionally, the (perhaps implicit) assumption is that trajectories start at 0-velocities (and accelerations, etc) and end with them. These characteristics make the default interfaces you have to MoveIt rather unsuitable for a jogging (ie: continuous motion in Cartesian space).
+(there is something called trajectory replacement, but that is not a MoveIt concept per se, and will not change the way MoveIt deals with planning requests)
+re: good interface to your robot: many industrial robots don't actually have an external motion interface that will allow you to do anything like this. The two brands you mention (KUKA (RSI: 250 Hz joint space position control) and UR (125 Hz joint space and Cartesian control)) are some exceptions to this, so provided you can come up with the appropriate input to those external motion interfaces, ROS controlled jogging is possible to implement.
+re: implementing something like this: there are quite some older questions (and answers) about this: a good one with some background is probably #q74776. Another example is #q245390. And finally, #q69757 (note the response by one of the original authors of MoveIt: "if you already know where you want to go, and you only want to move in a straight line, then the motion planning that MoveIt does is not what you want"). This post on moveit-users discusses a similar question as well.
+The typical conclusion of these questions is that trying to use the full planning pipeline of MoveIt (and its output) is probably not the best / most efficient / most performant way to go about this. Instead, IK solvers are used to compute IK for incrementally updated poses and the results are send to controllers directly (through drivers if possible).
+
+I currently did that, but in a "not smooth" way, like: when he press a button, and until he release it, I publish once each ms on a topic that I want it to go x cm more on that axis. but dues to accelerations, the robot don't do it smoothly.
+
+If MoveIt was still involved here, I don't think that 'ms' time scales are reasonable. Planning takes time. I also don't know of any external motion interface on KUKAs or URs that supports a kHz update rate.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-10-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by matEhickey on 2017-10-10:
+Thanks a lot for this precise answer, indeed I was wrong on my need to use moveit, I only wanted the IK-solver part. Your answer will sure help me! Thank you again !
+Comment by gvdhoorn on 2017-10-10:
+Well, I wouldn't conclude you were 'wrong'. It is possible, but not with some manual 'massaging' of MoveIt into a shape where it can do something like this. But it wouldn't be 'standard MoveIt' with the motion-plan request interface as you'd typically use it.
+Comment by v4hn on 2017-10-10:
+I prefer to point new-comers to the RobotState class instead of telling them to use the low-level kinematics_base plugins directly. This provides a better abstraction in my opinion.
+Comment by v4hn on 2017-10-10:
+Also, I would very much welcome a general jogging module as a move_group capability, but (sadly) we don't have something like that at this moment.
+Comment by gvdhoorn on 2017-10-10:
+@v4hn: certainly. Good suggestion.
+Comment by gvdhoorn on 2017-10-10:
+@v4hn: I have it on my list of student-projects. But so far no interest :(
+Comment by v4hn on 2017-10-10:
+same here :-)
+

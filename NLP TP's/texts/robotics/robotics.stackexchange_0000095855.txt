@@ -1,0 +1,42 @@
+Q:
+
+ros2 throttle logs
+
+I am trying to use logging statements like the following:
+RCLCPP_INFO_THROTTLE(...)
+in my code (C++, ROS2 Eloquent).  I am used to the ROS1 syntax in which you specify a duration (as a float or double) and the print statement gets printed every so often.  I found the code documentation for these here:
+http://docs.ros2.org/latest/api/rclcpp/logging_8hpp.html
+Here's what I tried in my code:
+RCLCPP_INFO_THROTTLE(this->get_logger(), this->get_clock(), std::chrono::seconds(10), "Print statement here");
+I am not clear on what to pass in for the clock and duration arguments.  Are these supposed to be std::chrono clock/duration or rcpcpp::clock?  I'm finding the documentation of clocks in ROS2 in general to be confusing and haven't found a good tutorial.  Any help would be appreciated (I'm going to do my own throttling for now because this is proving difficult).
+
+Originally posted by Neil Johnson on ROS Answers with karma: 33 on 2020-05-14
+Post score: 3
+
+A:
+
+I was struggling with exactly this also this morning and I found the following to work (assuming this is a rclcpp::Node):
+auto& clk = *this->get_clock();
+RCLCPP_INFO_THROTTLE(this->get_logger(),
+                     clk,
+                     5000,
+                     "Hello world");
+
+clock argument
+The source of RCLCPP_INFO_THROTTLE: http://docs.ros2.org/eloquent/api/rclcpp/logging_8hpp.html#a53cee4093804b13f31cb1516087400eb
+You can see here that the clock argument is used in a lambda capture and then inside the lambda. Due to this, the macro evaluation will result in this->get_clock(), which is not valid. As a workaround, I store the actual Clock (not the Clock::SharedPtr) in the clk variable and pass that along.
+duration argument
+2 levels deeper you can find the usage of duration: http://docs.ros2.org/eloquent/api/rcutils/logging__macros_8h.html#ae33a3cea9859fb46168396b09a7514b5
+Here you can see that the duration is converted to the standard rcutils_duration_value_t using the macro RCUTILS_MS_TO_NS, which is a multiplication by 1000LL * 1000LL. So 5000 means 5000 milliseconds.
+
+Originally posted by Mbuijs with karma: 247 on 2020-05-15
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Neil Johnson on 2020-05-15:
+Thanks for getting back to me so quickly! Your recommendation works great. Is there a good place to add this documentation? We want to adopt ROS2, but there are a lot of convenience functions and capabilities that we were used to using in ROS1 that are a lot less convenient in ROS2 (ros::Time and throttling among them). If all users have to dig into the source code that deep to get things working, I think it's going to be pretty discouraging to new users (and old users who aren't ready to adopt the new ways of C++11/14, etc).
+Comment by Mbuijs on 2020-05-25:
+Not sure about where to add this in documentation.
+Regarding the C++11/14 aspect: I would recommend anyone to jump to C++14 or even C++17 as soon as possible, as it brings a lot of new functionality that just works great out of the box. I find cppreference.com a great resource for making the step.
+

@@ -1,0 +1,94 @@
+Q:
+
+Different cmd_vel msgs to multiple robots on Gazebo
+
+I'm trying to control multiple robots on Gazebo. Right now I'm using turtlebot for that purpose, and have succeeded in spawning multiple robots and making those robots move with the same/single /turtlebot_node/cmd_vel message so that all of them move in the same way.
+However, I want to give different cmd_vel to each robot so that each one moves differently. Any idea would be appreciated. I know the topic in use is specified in turtlebot_gazebo_plugins/src/gazebo_ros_create.cpp, but still I haven't figured out how to apply to my purpose.
+Turtlebot is preferred but other robots are fine too as long as they meet my request and teleop source code is available, since for now I'm only interested in controlling feature of robots. Also, though I prefer permanent solution, ad-hoc way is fine this time. Thanks.
+How I am advertising a msg:
+nodeHandleInstance_.advertise<geometry_msgs::Twist>("/turtlebot_node/cmd_vel", 1);
+
+Environment: Ubuntu 11.04, ROS electric
+
+Update 10/12/2011) Although I tried @karthikdesingh 's suggestion, I still can't control multiple robots separately, or I even can't control any robot with it unfortunately. Robot nodes successfully publish the separate messages with the namespace at the beginning of the topic name, but gazebo is not subscribing to any of them, which I suppose necessary (I'm not sure about this though), and instead it still subscribes to the normal /turtlebot_node/cmd_vel. Here's gazebo's subscription copied from rxgraph's side window (crowd{ 1, 2 } are the namespaces I assigned):
+/gazebo
+Subscriptions: 
+ * /crowd1/set_update_rate [unknown type]
+ * /gazebo/set_model_state [unknown type]
+ * /gazebo/set_link_state [unknown type]
+ * /crowd2/set_hfov [unknown type]
+ * /crowd1/set_hfov [unknown type]
+ * /clock [rosgraph_msgs/Clock]
+ * /turtlebot_node/cmd_vel [unknown type]
+ * /crowd2/set_update_rate [unknown type]
+
+Now I'm wondering it might depend on the behavior of the node? Here's the code of the node: http://pastebin.com/7mNprFqu
+Two .launch files in use (that are called from parent .launch file): http://pastebin.com/WKD2mBi6 and http://pastebin.com/GKDA4uMh
+
+Update 10/18/2011) As in the comment area in the selected answer, I assume the root cause is that in the launch file I didn't surround the subscriber node by group tag.
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2011-10-11
+Post score: 3
+
+A:
+
+As you are spawning the robots successfully, i think you can define namespace of each bot in the launch file separately. Having done this you should publish the cmd_vel to each bot with separate topics which get created according to their namespace in launch file. Below is example of launch file i used.
+<launch>    
+    <group ns="Robot">
+        <node pkg="velocity_obstacle" name="rosaria" type="robot_node" output="screen">
+        <param name="port" value="10.2.36.7"/>
+        </node>
+    </group>
+    <group ns="Obstacle1">
+        <node pkg="velocity_obstacle" name="rosaria" type="robot_node" output="screen">
+        <param name="port" value="10.2.36.6"/>
+        </node>
+    </group>
+</launch>
+
+And publishers as below
+robot_vel_pub = n.advertise<geometry_msgs::Twist>("Robot/rosaria/cmd_vel", 1000);
+obs1_vel_pub = n.advertise<<geometry_msgs::Twist>("Obstacle1/rosaria/cmd_vel", 1000);
+
+For the updated question:
+I guess the mistake is in the launch file.
+You have the param section and node section written separately (I don't know their significance here and their effects) in the following way
+<group ns="XXX">
+      <param xxxxxxxxxxxxxxxxx /> #param closed here
+      <node xxxxxxxxxxxxxxxxxx /> #node closed here
+      <node xxxxxxxxxxxxxxxxxx /> #node closed here
+</group> #group closed here
+
+If you want a param specific to a node then you should have something like the below
+<group ns="XXX>
+      <node xxxxxxxxxxxxxxxxxx> #node not closed here
+      <param xxxxxxxxxxxxxxxxx /> #param closed here but still in node which is not closed
+      </node> #node closed here
+</group> #group closed here
+
+Hope this helps a bit in debugging your issue. Though i am not sure if this is your problem.
+
+Originally posted by karthik with karma: 2831 on 2011-10-11
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by 130s on 2011-10-18:
+Although I haven't tested yet, I think I detected the root cause; in my launch files, I only surrounded by group tag the nodes that are NOT subscribing to the topic published (what makes my case complicated is that it seems the subscriber node is not explicitly launched in launch file). Thanks!
+Comment by karthik on 2011-10-13:
+I feel any issues caused should be related to the launch file. Try doing just for a single robot whose namespace is changed by you to "crowd1". If you are able to correct it for this then you will be able to do it for 2 robots.
+Comment by 130s on 2011-10-13:
+Thx for keeping the interest! I spawn 2 robots with the .launch files of which I pasted the links above, then run a new node of which the link of the code is also pasted. I've just realized I don't have a "robot node" in the .launch files, instead the nodes in those files are for spawning &  sensors
+Comment by karthik on 2011-10-13:
+Could you specify your structure like i did in my previous comment?
+Comment by 130s on 2011-10-13:
+@karthikdesingh thanks. Parameter location might not be relevant looking at the result I'm seeing. I've been trying every possible combination of all related configurations but not good at all..
+Comment by karthik on 2011-10-13:
+My structure is like this. I have a robot node which is rosaria. I instantiate 2 bots of rosaria using this launch file. I have a controlling node where i give the velocities to the instantiated bots using the mentioned publishers. I dont get the redundancy.
+Comment by 130s on 2011-10-13:
+@karthikdesingh thanks. Doesn't the way you do publish a msg with redundancy like "Robot/Robot/rosaria/cmd_vel" ? That's what happens to me
+Comment by karthik on 2011-10-12:
+You are welcome. I updated my answer. Hope it helps. But i am not sure if that is what is wrong in your approach.
+Comment by 130s on 2011-10-12:
+@karthikdesingh thank you! Although it really looks good, I still don't get what I want as I updated the original question body.
+

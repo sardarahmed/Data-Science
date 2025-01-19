@@ -1,0 +1,52 @@
+Q:
+
+How should emergency stops be wired?
+
+Emergency stops are obviously a good idea on most robots, how should they be wired?  What systems should be killed immediately, and what should stay working?
+
+A:
+
+Emergency stops are a safety feature, normally found on industrial equipment.
+They should be used when the robot has a potential to hurt humans or cause harm to other assets. This generally depends on the weight of the robot, and the power of the motors (speed at which the robot moves).
+For example, a 1kg robot is too light to cause much damage. Conversely if it is 50kg, it could cause some damage. Similarly, a 5kg flying robot which moves very quickly could be dangerous.
+You will want to mount an emergency stop on the robot, and possibly also another one off the robot (although this is a more difficult configuration). The safe way of wiring an emergency stop is in a normally closed manner. That means that the switch is normally closed, and the two terminals are connected. By connecting one end to logical 1, and pulling the other end to logical 0 through a resistor, it can be used to determine the state of the emergency stop.
+If the emergency stop is triggered, the switch will open, and the signal will be pulled to logical 0 (0 volts).
+This will normally feed into a relay controlling the power to the robot.
+Note that another safety requirement of emergency stops is that resetting an emergency stop should not start up the robot again. Turning it back on should require both resetting the emergency stop, and subsequently pressing the on switch.
+EHow has a diagram showing how this should be wired:
+http://www.ehow.com/how-does_5151421_do-emergency-stop-buttons-work.html
+
+As Mark Booth pointed out, to further increase robustness, you should use the normally open switch as well. To do this, connect this signal (with a pull down resistor), to the STOP signal of a relay (http://en.wikipedia.org/wiki/Relay_logic).
+
+The systems that should be killed should include all actuators. This means anything that can move. If you have a computer on board, you may be able to separate its power to another system to avoid sudden loss of power. However, you will want to ensure that it is not powering any actuators directly (eg. USB).
+
+For low power applications, you might try to save on space by skipping the relay, and wire the emergency stop in series with your main power source (batteries). Don't do this. There are two problems:
+
+This would violate the safety principle that resetting the emergency stop should not by itself turn on the power again.
+All the current will be flow through your emergency stop. There are emergency stops rated up to 10A (others are rated only 5A). Your application will probably require more current
+
+If an emergency stop is required on your robot, it is probably large enough to have the space for relays.
+
+A:
+
+In addition to the points that ronalchn makes, if you have a safety critical system, the E-Stop selected should use at least a 4-wire interface rather than a simpler two wire interface.
+The E-Stop should then have two internal switches, one normally closed, the other normally open (like one of these OMRON options, see A22E-M-11-EMO
+ and A22E-M-11-EMS on p2 of the datasheet). Activating the E-Stop both opens the NC(Normally closed) switch and closes the NO(Normally open) switch.
+The reason for this is redundancy.
+One failure mode of a two wire normally closed e-stop circuit is that the wires get shorted, thus opening the NC switch would do nothing. This could happen in a situation where a cable is crushed, the insulation displaced and the now bare wires touch each other.
+If you decide to wire your E-stop in the opposite way though, with a normally open circuit then one of its failure mode is that the e-stop wire gets cut, thus closing the NO switch would do nothing. This could happen in a situation where a cable is caught between two surfaces or where movement pulls a cable out of its socket.
+The risk of these failure modes means that neither on their own are sufficient.
+By including both NC and NO E-Stop circuits, you virtually eliminate this risk, since either E-Stop circuit registering an E-Stop condition would cause an overall E-Stop condition. There is an exceedingly small chance that the NC circuit could be shorted at the same time as the NO circuit is disconnected, but any safety system worth its salt would make the window of opportunity for this vanishingly small (i.e. transistor switching rates).
+
+On the subject of what to kill on an E-Stop, in my opinion you should kill everything which can move and everything which could cause damage (such as a laser).
+My experience is with industrial robotics though, where the mechanics are typically designed so that it is inherently safe to kill the power at any time. Axes are designed such that motors aren't acting against gravity without significant gearing (for example SCARA robots, where most of the axes are in a horizontal plane) or are designed such that  in an E-Stop condition the motors are shorted, bringing them to an abrupt stop.
+
+A:
+
+What to cut out is not always a simple matter
+One complication arises when the actuators actually need power in order to remain safe. For example: a back-drivable or compliant robot arm had picked up a heavy object, and is using motor power to hold the object in the air. If you kill the power, the weight of the object will bring the arms crashing down, and either breaking the object, the robot, or a person.
+One way to implement cut out
+In the above case, rather than cutting actuator power, it might be wise to send a message to all actuators to go into a safe mode. Exactly what that means depends on the nature of the robot and the particular actuator. They might stop, or simply go into a lower power mode where they fall down slowly.
+Another way to implement cut out
+In the Shadow Robot Hand, the sensing system, bus and actuators are all powered from the same 48v supply line. The sensors and actuators each have their own regulators, each with their own Unver-Voltage Lockout setting. The actuators cut out at 25v, while the sensors cut out at 9v. When an emergency stop happens, the power supply line is taken down to 18v, which causes the actuators' power supply to cut out, while maintaining the power to the sensors and communication bus.
+

@@ -1,0 +1,80 @@
+Q:
+
+Groovy navigation setup fails under Hydro
+
+I have a set of navigation parameters that works perfectly under Groovy but when I switch to Hydro on the same machine and try to use the same parameters in backward-compatibility mode (i.e. by making no changes at all to my YAML files), I run into two problems:
+
+The (simulated) robot now has a lot of trouble getting to a goal even in an obstacle-free environment.  It tends to overshoot the goal location and do a lot of rotation around the goal.
+
+While this is happening, I get a fairly constant stream of messages in the move_base terminal window similar to the following:
+[ WARN] [1384802549.335952797]: Map update loop missed its desired rate of
+3.0000Hz... the loop actually took 0.7676 seconds
+[ WARN] [1384802549.336363131]: Control loop missed its desired rate of 3.0000Hz... the loop actually took 0.8910 seconds
+[ WARN] [1384802550.183853582]: Map update loop missed its desired rate of 3.0000Hz... the loop actually took 0.5146 seconds
+[ WARN] [1384802550.184482242]: Control loop missed its desired rate of 3.0000Hz... the loop actually took 0.8481 seconds
+
+etc.
+I have posted this as an issue on the ros-planning/navigation Github but so far without solution.
+My setup is Ubuntu 12.04 with both Groovy and Hydro Debian installations.  I am running a "fake TurtleBot" using the Arbotix package which basically assumes that the robot's odometry is perfect so it's a nice way to test the navigation parameters in an ideal enviroment.
+My navigation parameters and move_base launch file can be found at the following links:
+
+base_local_planner_params.yaml
+costmap_common_params.yaml
+local_costmap_params.yaml
+global_costmap_params.yaml
+fake_move_base_blank_map.launch
+fake_move_base.launch
+
+And my blank map is defined by the two files:
+
+blank_map.yaml
+blank_map.pgm
+
+Any ideas on how to get his working in Hydro would be greatly appreciated!
+--patrick
+UPDATE 1:  To reproduce the problem, follow these steps:
+First install the arbotix package and the rbx1 stack:
+$ sudo apt-get install ros-hydro-arbotix
+$ cd ~/ros_workspace (or wherever your rosbuild workspace lives)
+$ git clone https://github.com/pirobot/rbx1
+$ cd rbx1
+$ git checkout hydro-experimental
+$ rosmake rbx1
+$ rospack profile
+
+Now test moving the fake Turtlebot around the four corners of a square:
+$ roscore
+$ roslaunch rbx1_bringup fake_turtlebot.launch
+$ roslaunch rbx1_nav fake_move_base_blank_map.launch
+$ rosrun rviz rviz -d `rospack find rbx1_nav`/nav.rviz
+$ rosrun rbx1_nav move_base_square.py
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2013-11-26
+Post score: 1
+
+Original comments
+Comment by David Lu on 2013-11-26:
+Can you link to the fake turtlebot package so I can try this?
+Comment by Pi Robot on 2013-11-26:
+Hi @David Lu - I have posted details on how to reproduce as an Update above.  Regarding the mangled "git clone" line in the update, I don't know how to escape the tags.  It should be 'git clone https://github.com/pirobot/rbx1'
+Comment by fergs on 2013-11-26:
+Is there data coming from anywhere? It seems that the costmap update should take almost no time if there is no data...
+Comment by Pi Robot on 2013-11-26:
+@fergs - No data that I'm aware of.  The blank map is static and I'm not simulating any sensor data.  What topic should I check to see if there is some weird data coming from somewhere?
+Comment by Pi Robot on 2013-11-26:
+I forgot to push a commit to the hydro-experimental branch of rbx1 after posting Update 1 above.  Please do a git pull in rbx1 to get the proper files if you cloned it before the time stamp on this comment.
+Comment by David Lu on 2013-11-27:
+I have replicated the error and am puzzled. So far I am content to blame the bad driving on the update rate problems, but that's just conjecture. I'm not sure yet why the update rates are so problematic either. Will look into it more.
+Comment by Pi Robot on 2013-11-27:
+Thanks for taking the time to replicate.  I'm glad to know it's not just me!  I'm curious to see what the problem turns out to be.
+Comment by David Lu on 2013-11-27:
+For reference, I made a chart with the command velocities in the two scenarios. http://imgur.com/s2lY3Qu
+
+A:
+
+So it looks like the problem all along was I had set vx_samples and vtheta_samples too high.  In Groovy, setting these parameters to 50 and 200 in base_local_planner_params.yaml worked well in the case of the fake TurtleBot.  In Hydro, values this high appear to cause the update rate problems and the erratic robot behavior.  Setting vx_samples=8 and vtheta_samples=20 like I do for the real TurtleBot seems to have solved the problem.  Sorry for the wild goose chase.
+
+Originally posted by Pi Robot with karma: 4046 on 2013-12-05
+This answer was ACCEPTED on the original site
+Post score: 1
+

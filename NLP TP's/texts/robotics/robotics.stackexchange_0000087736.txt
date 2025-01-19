@@ -1,0 +1,96 @@
+Q:
+
+Ros::ok() return true with dead roscore in node started as root
+
+Hello,
+I am trying to kill my node started as root.
+In my case, my node need to be started as root to access some hardware (gpio).
+So I added sudo -E as a launch-prefix to my node.
+When I ctrl+c my launchfile, the roscore died but node my node (probably due to the fact that the signal SIGTERM is not forwarded to program started as root). But I was expecting ros::ok() to return false or even ros::isShuttingDown() to return true, but no.
+In this case as a normal user or as root rosnode list return ERROR: Unable to communicate with master!, so the master is dead but my node doesn't know about this.
+<launch>
+  <node name="test_node" pkg="test_pkg" type="test_node" launch-prefix="sudo -E" />
+</launch>
+
+and a simple node to test it:
+#include <ros/ros.h>
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "test_node");
+    ros::NodeHandle nh;
+    ros::NodeHandle nh_p("~");
+    ros::Rate rate(10);
+    while (ros::ok()) {
+        ros::spinOnce();
+        // do stuff
+        rate.sleep();
+        std::cerr<<"ros is ok"<<std::endl;
+        if(ros::isShuttingDown())
+          std::cerr<<"shutdown is called"<<std::endl;
+    }
+    std::cerr<<"program exit properly"<<std::endl;
+    //free acess to hardware
+    return 0;
+
+Maybe this way is not the good one to kill a node started as root, I am open to any suggestion.
+Thanks for your help.
+
+Originally posted by GuillaumeB on ROS Answers with karma: 312 on 2018-07-04
+Post score: 0
+
+Original comments
+Comment by mgruhler on 2018-07-05:
+my suggestion would be to allow non-root users to acces the GPIOs. What platform are you using? You can do this either via udev, by adding yourself to a specific group (e.g. dialout) or by making the GPIO world-read-writeable. So I'd suggest one or two.
+About your problem, I cannot help there.
+Comment by gvdhoorn on 2018-07-05:\
+
+But I was expecting ros::ok() to return false or even ros::isShuttingDown() to return true
+
+ros::ok() returns whether the process local ROS objects are in an OK (enough) state. Not whether the master is still up.
+isShuttingDown() returns whether the local node has been requested ..
+Comment by gvdhoorn on 2018-07-05:
+.. to stop (using rosnode kill .. fi, or by a roslaunch server instance after ctrl+c).
+The problem here is that a regular user cannot ask processes from other users to terminate using signals, as it doesn't have the right permissions.
+Does the node shutdown if you use rosnode kill?
+Comment by GuillaumeB on 2018-07-05:
+@mgruhler I am using a raspberry pi 3 (Ubuntu ARM) and pigpio. And I haven't found any way to use pigpio without root.
+Comment by GuillaumeB on 2018-07-05:
+@gvdhoorn thanks for the explaination I didn't knew about this.
+rosnode kill return ERROR: Unable to communicate with master! as normal user or as root.
+The only way I found to kill the process was to send a SIGTERM signal as root.
+Maybe I could check if the master is still alive.
+Comment by mgruhler on 2018-07-05:
+@GuillaumeB there are many questions about GPIO and RPi on this site. Check out #q278090 and the link therein, or #q229435
+Comment by gvdhoorn on 2018-07-05:\
+
+rosnode kill return ERROR: Unable to communicate with master!
+
+did you do this after you ctrl+c-ed everything already? If so, that would make sense.
+Comment by GuillaumeB on 2018-07-05:
+Yes, after the ctrl+c.
+I just tried the other way around and it worked. I can use rosnode kill before the ctr+c
+Comment by GuillaumeB on 2018-07-05:
+A solution to my problem could be to start a node next to the one with sudo, catch the ctrl+c and call the rosnode kill my_root_node. But it sound ugly
+Comment by gvdhoorn on 2018-07-06:
+Afaict from some of the Q&As that @mgruhler posted, it should be possible to use GPIO on RPis without sudo. That would immediately solve your problem.
+Comment by GuillaumeB on 2018-07-08:
+Unfortunately, I could find anything about the lib I use pigpio
+
+A:
+
+As the node was started as root it was not possible for it to catch ctrl+c
+I could use rosnode kill to kill the node but in my case I wanted the node to die after ctrl+ced my Launchfile.
+So I had two options:
+
+Find a way to run Pigpio with a non-root user
+
+Find a way to kill the node started as root with the ctrl+c of the launchfile
+
+I didn't find any way to use Pigpio without root, so I went for the second option.
+I created a second node in the same package that was publishing a topic (with an empty msg) and added it to the launchfile (without sudo for this one).
+In the node started as Root I added a subscriber for this topic. And if I am not receiving anything for 1 second I just exit the node, thus releasing the access to GPIO.
+
+Originally posted by GuillaumeB with karma: 312 on 2018-07-12
+This answer was ACCEPTED on the original site
+Post score: 0
+

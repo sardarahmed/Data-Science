@@ -1,0 +1,77 @@
+Q:
+
+What is the difference between velocity and effort?
+
+I am writing a hardware interface for my 4 wheel differential robot and I came up with this tutorial:
+https://github.com/ros-controls/ros_control/wiki/hardware_interface
+I understood everything except I am confused with the effort variable. Is that the PWM to the motor from 0 to 100%? If yes, why does the interface need veloicty variable?
+Does it mean that the controller handles PID? By reading the velocity and effort from the motor it finds the optimal effort to send to obtain a specific cmd_vel?
+
+Originally posted by EdwardNur on ROS Answers with karma: 115 on 2019-04-05
+Post score: 1
+
+A:
+
+The controllers in ROS control are described by the type of control input they receive and the type of control output they produce. So a velocity effort controller will receive desired velocity commands, monitor the joints position and produce the effort (force or torque) commands needed for the joint to achieve the desired velocity.
+You are correct that the controllers almost certainly use PID to perform this control loop.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2019-04-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by EdwardNur on 2019-04-06:
+@PeteBlackerThe3rd So the diff_drive_controller requires VelocityJointInterface and JointStateInterface. The velocityJoint only outputs cmd_vel and JointState receives pos (which I believe are the meters from encoders), vel and effort. So how does it calculate PID if it outputs only cmd_vel? It does not seem to output effort
+Comment by gvdhoorn on 2019-04-06:
+I believe some things are getting conflated here @EdwardNur.
+
+The velocityJoint only outputs cmd_vel
+
+Assuming velocityJoint should actually read JointVelocityController, then no, it doesn't "output cmd_vel". It implements a control loop that takes in a velocity setpoint (in rad/sec) and computes either a delta-v or a delta-effort to bring the current state to the desired one (ie: the setpoint).
+
+JointState receives pos (which I believe are the meters from encoders), vel and effort.
+
+Are you referring to the JointStateController? That is not a controller (unfortunately named). It's a class that reads data from the hardware_interface (or really: joint handle), transforms that into a JointState message which it publishes.
+
+So how does it calculate PID if it outputs only cmd_vel? It does not seem to output effort
+
+none of the controllers here "output cmd_vel".
+The diff_drive_controller subscribes to cmd_vel and consumes Twists.
+Comment by EdwardNur on 2019-04-06:
+@gvdhoorn I am getting confused now. I thought that controllers like diff_drive_controller take input from cmd_vel and output the m/s speed for each individual wheels.
+Also, from this code https://github.com/eborghi10/my_ROS_mobile_robot/blob/e04acfd3e7eb4584ba0aab8a969a74d6c30eed34/my_robot_base/include/my_robot_hw_interface.h
+It seems that it only gets current velocity and position (encoders in meters) and outputs the desired velocity for each wheel back to the hardware. Am I right? So it does not perform PID anywhere
+Comment by gvdhoorn on 2019-04-06:\
+
+I thought that controllers like diff_drive_controller take input from cmd_vel and output the m/s speed for each individual wheels.
+
+yes, that is what it does.
+But you wrote:
+
+The velocityJoint only outputs cmd_vel
+
+and that is incorrect.
+
+Also, from this code https://github.com/eborghi10/my_ROS_m...
+
+the code you link to implements a hardware_interface. That does not do any control, but only provides an interface to the hardware. ros_control controllers use such interfaces to communicate with your hardware. So the control would happen in the controller.
+Comment by EdwardNur on 2019-04-06:
+@gvdhoorn Yes my bad, interface there outputs only double and not rosmsgs cmd_vel.
+Ok I get it now, so you are saying that I can write my controller so it can actually output the actual PWM number instead of m/s and this is my choice? So the hardware interface reads those numbers and sends it to the actual hardware?
+Comment by gvdhoorn on 2019-04-06:
+No, that's not what I'm writing at all.
+If using diff_drive_controller, you don't need to write your own controller.
+You "just" need to write a compatible hardware_interface implementation (ie: one that exposes your joint state with a JointStateInterface (for state) and a VelocityJointInterface (for commands)).
+Your hardware_interface will be responsible for converting incoming setpoints into corresponding PWM duty-cycles (per joint, so nothing to do with cmd_vel) and for converting encoder ticks into position or velocity in units that ROS expects.
+Comment by EdwardNur on 2019-04-06:
+@gvdhoorn that is what I mean, hardware interface will receive data in the format of double or float and I would then convert that into PWM using PID.
+What I mean about the controller is that I can write my controller that essentially takes cmd_vel and based on my parameters outputs to the hardware interface the double variable with PWM values.
+Comment by gvdhoorn on 2019-04-06:\
+
+hardware interface will receive data in the format of double or float and I would then convert that into PWM using PID.
+
+this makes little sense to me. Conversion of SI units to PWM duty cycle is (typically) a single linear conversion. There is no PID involved.
+Unless you intend to run a lower-level PID controller to make sure that your velocity setpoints are being reached.
+Comment by EdwardNur on 2019-04-06:
+@gvdhoorn but am I correct saying that with my hardware_interface I simply need to provide velocity and position (encoder ticks presented in meters) and no effort as diff_drive_controller does not seem to use effort. After which, the diff_drive_controller will provide required velocities to each joint?
+

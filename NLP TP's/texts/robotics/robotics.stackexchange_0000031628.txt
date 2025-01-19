@@ -1,0 +1,63 @@
+Q:
+
+Robot not following path in Nav. Stack
+
+Hi community. I'm setting up the navigation stack in my own robot. As I see in a REP, the tf tree is the next:
+map -> odom -> chassis_footprint -> chassis -> others (wheels, lasers, ...)
+Well, the robot it's represented correctly in rViz (for this, first I launch the robot in gazebo, next I launch the nav. stack and finally I launch the rViz) and furthermore if I set a 2D Goal the robot make a correct path, although the robot doesn't follow it.
+
+In addition, if I change the fixed frame - target frame in the rViz to anything that isn't the chassis (like /odom, /map, /chassis_footprint) the robot is saw like this:
+
+I think that there be a problem in the tf, but rViz not give any error, although I must say that some frames "jumps" in a rare way.
+My tf's are the next:
+In tf_broadcaster:
+broadcaster.sendTransform(tf::StampedTransform(tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0.0,0.0,0.0)),ros::Time::now(), "map", "odom"));
+broadcaster.sendTransform(tf::StampedTransform(tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0.0,0.0,0.0)),ros::Time::now(),"chassis_footprint", "chassis"));
+broadcaster.sendTransform(tf::StampedTransform(tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0.12,0.0,0.285)),ros::Time::now(),"chassis", "hokuyo_laser_link"));
+
+In the odometry node:
+//since all odometry is 6DOF we'll need a quaternion created from yaw
+geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(robot_pose_pa_);
+
+//first, we'll publish the transform over tf
+geometry_msgs::TransformStamped odom_trans;
+odom_trans.header.stamp = current_time;
+odom_trans.header.frame_id = "odom";
+odom_trans.child_frame_id = "chassis_footprint";
+
+odom_trans.transform.translation.x = robot_pose_px_;
+odom_trans.transform.translation.y = robot_pose_py_;
+odom_trans.transform.translation.z = 0.0;
+odom_trans.transform.rotation = odom_quat;
+
+//send the transform over /tf
+odom_broadcaster.sendTransform(odom_trans);
+
+What is happening and what I'm doing incorrectly? I am very new in the tf's and any idea is appreciated. Thanks!
+
+Originally posted by mbj on ROS Answers with karma: 197 on 2011-05-16
+Post score: 0
+
+A:
+
+Hello,
+To me, your problem comes either from wrong parameters for the base controller, and/or a wrong odometry.
+Could you post your config files for navigation? Check also the twist part of the odometry message, it must be expressed in the local frame of the robot.
+Another problem could be that move_base does not output the velocity command on the right topic.
+It could also be that your base driver is not working. Did you try controlling your roboy with a joystick or pr2_teleop pr2_teleop_keyboard? That way you could make sure that your base driver is correct and accepts velocity commands.
+You should also have a look at this post, which contains a detailed guide to navigation issues.
+I hope this helps
+Raph
+
+Originally posted by raphael favier with karma: 1382 on 2011-05-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by raphael favier on 2011-05-30:
+Hey, glad to see you solved your pbl. Thx for the feedback.
+Comment by mbj on 2011-05-30:
+Hello Raphael.
+Effectively, the navigation stack expected to receive the speeds on "cmd_vel" topic and I was sending it to another topic. I solved this remapping the correct topics in the move_base.launch. Now, everything is solved, even the tf issue!
+Thanks.
+

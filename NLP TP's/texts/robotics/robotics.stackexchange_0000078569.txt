@@ -1,0 +1,113 @@
+Q:
+
+Using ROS subscribers in Unreal Engine
+
+Hi, Has anyone had any experience with using ROS subscribers inside the Unreal Engine?
+My Unreal game will crash as soon as ros::NodeHandle.spinOnce() is called.
+My Header: TestingSubs.h
+#pragma once
+#include <ros.h>
+#include <time.h>
+#include <baxter_core_msgs/EndpointState.h>
+#include "Components/ActorComponent.h"
+#include "TestingSubs.generated.h"
+
+UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+class WALLCLIMBING_API UTestingSubs : public UActorComponent
+{
+    GENERATED_BODY()
+
+public: 
+    // Sets default values for this component's properties
+    UTestingSubs();
+
+    // Called when the game starts
+    virtual void BeginPlay() override;
+    
+    // Called every frame
+    virtual void TickComponent( float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction ) override;
+    
+    void StartUp();
+    
+    void MyCallback(const baxter_core_msgs::EndpointState& msg);
+    char *ros_master = "192.168.1.120";
+    ros::NodeHandle MyNode;
+};
+
+My cpp: TestingSubs.cpp
+#include "WallClimbing.h"
+#include "TestingSubs.h"
+
+// Sets default values for this component's properties
+UTestingSubs::UTestingSubs()
+{
+    // Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
+    // off to improve performance if you don't need them.
+    bWantsBeginPlay = true;
+    PrimaryComponentTick.bCanEverTick = true;
+}
+
+// Called when the game starts
+void UTestingSubs::BeginPlay()
+{
+    Super::BeginPlay();
+    StartUp();
+}
+
+// Called every frame
+void UTestingSubs::TickComponent( float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction )
+{
+    Super::TickComponent( DeltaTime, TickType, ThisTickFunction );
+    MyNode.spinOnce();
+}
+
+void UTestingSubs::MyCallback(const baxter_core_msgs::EndpointState& msg)
+{
+    UE_LOG(LogTemp, Warning, TEXT("Callback was called"));
+}
+
+void Callback(const baxter_core_msgs::EndpointState& msg)
+{
+    UE_LOG(LogTemp, Warning, TEXT("Callback was called"));
+}
+
+void UTestingSubs::StartUp()
+{
+    MyNode.initNode(ros_master);
+    ros::Subscriber< baxter_core_msgs::EndpointState > Mysub("/robot/limb/right/endpoint_state/", &Callback);
+    MyNode.subscribe(Mysub);
+}
+
+Any suggestions of how I could subscribe from within Unreal would be greatly appreciated.
+**Edit: image of debug added.
+
+Originally posted by dbliam on ROS Answers with karma: 11 on 2017-01-25
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-01-26:
+Minor, but: we don't really close questions if they are answered. Accepting the correct answer makes it much more obvious from the question listing that it has been answered.
+We do close questions that are spam, outdated, etc.
+Comment by dbliam on 2017-01-26:
+Oops. Thank you for pointing that out, noted for future instances. Thanks again for your help.
+Comment by gvdhoorn on 2017-01-26:
+No problem. Not a big thing, just something to keep in mind.
+
+A:
+
+The reason this code was crashing was that
+ros::Subscriber< baxter_core_msgs::EndpointState > Mysub("/robot/limb/right/endpoint_state/", &Callback);
+
+was being declared within one of the public functions, this was leading to it falling out of scope when the callback tried to use it, I believe. The fix for me was to make this ros::subscriber a global variable.
+
+Originally posted by dbliam with karma: 11 on 2017-01-26
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Ruben Alves on 2017-03-01:
+Hi @dblian,
+where did you touch in order to be able to use ROS on your Unreal Project?
+I've tried CMakeLists.txt of the Unreal Project but was not enough.
+I'm using Ubuntu, BTW, but the process you have followed should work on both OS.
+

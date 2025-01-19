@@ -1,0 +1,112 @@
+Q:
+
+sensor_msgs/Range
+
+I have a simple sonar sensor running to an Arduino Mega ADK. On the Arduino I have the following code patched together from rosserial_arduino tutorials and the code specific to my sensor:
+#include <ros.h>
+#include <ros/time.h>
+#include <sensor_msgs/Range.h>
+#include <Ultrasonic.h>
+
+ros::NodeHandle nh;
+
+sensor_msgs::Range range_msg;
+ros::Publisher pub_range( "/ultrasound", & range_msg);
+
+char frameid[] = "/ultrasound";
+int inMsec;
+
+#define TRIGGER_PIN  48
+#define ECHO_PIN     49
+
+Ultrasonic ultrasonic(TRIGGER_PIN, ECHO_PIN);
+
+void setup()
+  {
+  nh.initNode();
+  nh.advertise(pub_range);
+  
+  range_msg.radiation_type = sensor_msgs::Range::ULTRASOUND;
+  range_msg.header.frame_id =  frameid;
+  range_msg.field_of_view = 0.1;  // fake
+  range_msg.min_range = 0.0;
+  range_msg.max_range = 6.47;
+  }
+  
+long range_time;
+
+void loop()
+  {
+  long microsec = ultrasonic.timing();
+
+  inMsec = ultrasonic.convert(microsec, Ultrasonic::IN);
+    
+  //publish the adc value every 50 milliseconds
+  //since it takes that long for the sensor to stablize
+  if ( millis() >= range_time ){
+    int r =0;
+
+    range_msg.range = inMsec;
+    range_msg.header.stamp = nh.now();
+    pub_range.publish(&range_msg);
+    range_time =  millis() + 50;
+  }
+    
+  nh.spinOnce();
+}
+
+I know it is publishing as rostopic list shows .ultrasound as one of the running topics. As I expect based on the line
+range_msg.radiation_type = sensor_msgs::Range::ULTRASOUND;
+it is publishing a Range and that is confirmed by running rostopic type ultrasound.
+My subscriber, however, refuses to read this because of the Range type. Here's the code:
+#!/usr/bin/env python
+
+import rospy
+from std_msgs.msg import String
+
+def callback(data):
+    rospy.loginfo(rospy.get_name() + ": I heard %s" % data.data)
+
+def listener():
+    rospy.init_node('listener', anonymous=True)
+    rospy.Subscriber("ultrasound", Range, callback)
+    rospy.spin()
+
+if __name__=='__main__':
+    listener()
+
+based on the simple publisher and subscriber tutorials.
+However, when I run it, the error message tells me
+Traceback (most recent call last):
+     rospy.Subscriber("ultrasound", Range, callback)
+NameError: global name 'Range' is not defined
+
+I tried changing it to rospy.Range and got
+rospy.Subscriber("ultrasound", rospy.Range, callback)
+AttributeError: 'module' object has no attribute 'Range'
+
+I understand the error, but have no idea how to fix it. Can I get a gentle-ish shove in the right direction?
+
+Originally posted by richkappler on ROS Answers with karma: 106 on 2014-01-03
+Post score: 1
+
+Original comments
+Comment by mukut_noob on 2016-04-08:
+Hello mate, I am thinking of doing the same but as you have included the file Ultrasound.h, I am asking that this file contains the code that gets the raw data from the sensor?
+
+A:
+
+Try adding from sensor_msgs.msg import Range to your Python node with the subscriber.
+
+Originally posted by Thomas D with karma: 4347 on 2014-01-03
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by richkappler on 2014-01-03:
+That did the trick, thanks for the answer!
+Comment by Kellya on 2014-01-04:
+It work for me (y)
+Comment by mukut_noob on 2016-04-09:
+Hello mate, I am thinking of doing the same but as you have included the file Ultrasound.h, I am asking that this file contains the code that gets the raw data from the sensor?
+

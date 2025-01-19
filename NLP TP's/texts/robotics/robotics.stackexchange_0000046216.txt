@@ -1,0 +1,137 @@
+Q:
+
+reference gazebo-plugin in urdf-description
+
+Hi,
+I'm writing my first description of an robot using urdf. To control the joints i tried to write a plugin for gazebo following the tutorials (simulator_gazebo/Tutorials/GazeboPluginIntro and plugins/model_manipulation_plugin). The Problem is, it seems that gazebo doesn't load my plugin. I think it's because of my urdf-file.
+It looks like this:
+<?xml version="1.0"?>
+<robot name="pnp-robot">
+ <link name="base">
+        .
+        .
+        .
+  <!--some link-definitions-->
+        .
+        . 
+        .
+ 
+ <joint name="base_turntable" type="continuous">
+        .
+        .
+  <!--some joint-definitions-->
+        .
+        .
+<!--reference the Model-Plugin-->
+ <gazebo>
+   <plugin filename="lib/libpnp_robot.so" name="Controll_Plugin" />
+    <base_turntable>base_turntable</base_turntable>
+    <y_first_motor_first_arm>y_first_motor_first_arm</y_first_motor_first_arm>
+    <first_arm_y_sec_motor>first_arm_y_sec_motor</first_arm_y_sec_motor>
+ </gazebo>
+
+</robot>
+
+When I start the Gazebo and spawn the model, everything is displayed, but the links should be in an other Position if the plugin is running. There also should be an output on my console, but there is nothing.
+Does someone have an idea?
+Thanks a lot!
+Georg
+
+Originally posted by Gjaeger on ROS Answers with karma: 36 on 2012-11-30
+Post score: 1
+
+A:
+
+I think i solved the Problem, i just changed the plugin-statement to:
+<gazebo>
+ <controller:pnp-robot name="controller" plugin="/home/user/workspace_ros/pick_place/pnp_robot/lib/libpnp_robot.so">
+ <base_turntable>base_turntable</base_turntable>
+ <y_first_motor_first_arm>y_first_motor_first_arm</y_first_motor_first_arm>
+ <first_arm_y_sec_motor>first_arm_y_sec_motor</first_arm_y_sec_motor>
+ </controller:pnp-robot>
+</gazebo>
+
+at least, i got some outputs even if it doesn't change the position of my joints.
+So I think there must be another problem in my plugin-code:
+#include "gazebo.hh"
+#include "boost/bind.hpp"
+#include "common/common.hh"
+#include "physics/physics.hh"
+#include <stdio.h>
+
+namespace gazebo
+{
+    class Controll_Plugin : public ModelPlugin
+    {
+    
+        private: physics::ModelPtr model;
+        private: event::ConnectionPtr updateConnection;
+        
+        private: physics::JointPtr turntable;
+        private: physics::JointPtr first_arm;
+        private: physics::JointPtr sec_arm;
+
+    public : void Load(physics::ModelPtr model, sdf::ElementPtr sdf)
+    {
+        this->model = model;
+        if(this->LoadParams(sdf))
+        {
+            this->updateConnection = event::Events::ConnectWorldUpdateStart(boost::bind(&Controll_Plugin::OnUpdate, this));
+        }   
+    }
+    
+    public: bool LoadParams(sdf::ElementPtr sdf)
+    {
+        if(this->findJointByParam(sdf, this->turntable, "base_turntable") &&
+            this->findJointByParam(sdf, this->first_arm, "y_first_motor_first_arm") &&
+            this->findJointByParam(sdf,this->sec_arm, "first_arm_y_sec_motor"))
+        {
+            return true;        
+        }
+        else
+            return false;
+    }
+
+    public: bool findJointByParam(sdf::ElementPtr sdf, physics::JointPtr &joint, std::string param)
+    {
+        std::cout << "findJointByParam" << std::endl;
+        if(!sdf->HasElement(param))
+        {
+            return false;
+        }
+        else
+        {
+            joint = this->model->GetJoint(sdf->GetElement(param)->GetValueString());
+
+            if(!joint)
+                return false;
+        }
+
+        return true;
+    }
+
+    public: void OnUpdate()
+    {
+        std::cout << "onUpdate" << std::endl;
+        this->turntable->SetAngle(2, 120);
+        this->first_arm->SetAngle(0, 120);
+        this->sec_arm->SetAngle(2, 120);
+    }
+
+};
+
+GZ_REGISTER_MODEL_PLUGIN(Controll_Plugin)
+} 
+
+It would be great, if anyone can help me!
+Thanks a lot
+Georg
+
+Originally posted by Gjaeger with karma: 36 on 2012-12-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Lorenz on 2012-12-01:
+Please read the support guidelines before posting. Do not create answers for comments, discussion or updates. Instead, either edit your original post or use the comment functionality.
+

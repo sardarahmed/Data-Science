@@ -1,0 +1,84 @@
+Q:
+
+declare nested parameter
+
+How do I declare nested variables or lists of key value pairs in ROS2 dashing?
+E.g for a yaml structure like
+tag_lists:
+    base: 9
+    object: 14
+
+tag_lists is the known parameter name which contains a list of mappings from strings ("base", "object") to integers (9, 14).
+I used to read these nested structures by:
+static const std::string tag_list_prefix = "tag_lists";
+auto parameters_and_prefixes = list_parameters({tag_list_prefix}, 10);
+for (const std::string &name : parameters_and_prefixes.names) {
+    const int id = get_parameter(name).get_value<int>();
+    tracked_tags[id] = name.substr(tag_list_prefix.size()+1, name.size());
+}
+
+I.e. the parameter tag_lists is a namespace with optional sub-parameters that are determined at runtime.
+And how would I declare a parameter like:
+tag_lists:
+    base:
+        id: 9
+        size: 0.1
+    object:
+        id: 14
+        size: 0.2
+
+that maps from strings ("base", "object") to a list of known parameters ("id", "size")?
+
+Originally posted by Christian Rauch on ROS Answers with karma: 214 on 2019-06-16
+Post score: 3
+
+A:
+
+You can either declare them one at a time, e.g.:
+int base_id = node->declare_parameter("tag_lists.base.id").as_int();
+double base_size = node->declare_parameter("tag_lists.base.size").as_double();
+int object_id = node->declare_parameter("tag_lists.object.id").as_int();
+double object_size = node->declare_parameter("tag_lists.object.size").as_double();
+
+Or you can declare more than one at a time (http://docs.ros2.org/dashing/api/rclcpp/classrclcpp_1_1Node.html#a70012f2efbed147a2710343856acace5), so long as they have the same type (not the case in your example), e.g. for this yaml:
+robot1:
+     laser_topic: /scan
+     camera_topic: /left_camera
+     tf_frame: robot1
+
+You could declare them like this:
+std::vector<std::string> params = node->declare_parameters("robot1", {
+  {"laser_topic", "default_scan"},
+  {"camera_topic", "default_image"},
+  {"tf_frame", "default_world"},
+});
+
+But, if you don't know the names ahead of time, then you can have the node automatically declare all of the parameters in the yaml file (we consider them to be overrides, so we refer to those as "parameter overrides") with this option:
+http://docs.ros2.org/dashing/api/rclcpp/classrclcpp_1_1NodeOptions.html#a094ceb7af7c9b358ec007a4b8e14d40d
+Ideally, we'd have a version of declare_parameters which didn't require a default value and that could take/return ParameterValue objects so that you could use it with a heterogeneous list of parameters (mixing int and float in your case). But we don't have that right now. But you could create a helper function in the meantime, our declare_parameters is quite simple:
+https://github.com/ros2/rclcpp/blob/2bee266adf5b35c3c80b1e5b7224c0e3bdd8f2a8/rclcpp/include/rclcpp/node_impl.hpp#L262-L302
+EDIT1:
+Also, if you want you can get the parameter overrides (combined from the yaml files and the programmatic parameter overrides from the NodeOptions) via the NodeParameters API. You can get it from the node with get_node_parameters_interface() and then get the overrides with get_parameter_overrides(), e.g.:
+auto node_parameters_iface = node->get_node_parameters_interface();
+std::map<std::string, rclcpp::ParameterValue> & parameter_overrides =
+  node_parameters_iface->get_parameter_overrides();
+
+And then you could iterate of that how ever you like.
+
+Originally posted by William with karma: 17335 on 2019-06-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Christian Rauch on 2019-06-20:
+Yes, one problem is that base and object are not known in advance.
+I tried to circumvent this with a structure like:
+tag_lists:
+  - frame: base
+    id: 9
+  - frame: object
+    id: 14
+
+But the parser expects that all values are of the same type:
+Failed to parse yaml params file '[configuration].yaml': Sequence should be of same type. Value type 'integer' do not belong at line_num [line with "id: 9"], at /tmp/binarydeb/ros-dashing-rcl-yaml-param-parser-0.7.5/src/parser.c:931
+

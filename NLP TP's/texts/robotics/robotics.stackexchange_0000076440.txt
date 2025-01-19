@@ -1,0 +1,56 @@
+Q:
+
+How to enter the callback function only whenever a topic is updated but otherwise keep doing something else?
+
+Hello folks,
+I'm still a beginner here and I'm trying to implement a node that checks if a certain topic is updated.
+I need it to be like:
+Whenever the topic updates->do something then return.
+Otherwise-> keep doing something else.
+Could that be possible?
+
+Originally posted by violets on ROS Answers with karma: 3 on 2016-09-22
+Post score: 0
+
+A:
+
+You don't say whether you're using roscpp (C++) or rospy (Python). I'll assume the latter, but the answer is mostly the same for both.
+Subscribers and their callbacks operate in their own thread. The "main" code operates in its own thread as well. Generally, your main loop does thing periodically, using data that may have been updated by the callbacks. Of course, the callbacks can do work when they are called as well, but often the data in the incoming messages needs to be used in the main loop.
+If your callback does not provide data to the main loop. Just do your work in your callback. The main loop won't be affected. Your callback shouldn't take too much time, though, or incoming messages might start to be dropped.
+def myCallback(self, msg):
+    ... do something with msg.data ...
+
+If your callback provides data used by the main loop. Just save the data away and let the main loop use the data in its next iteration. You can also set a flag variable indicating that the data has changed, of course.
+def MyNodeClass:
+
+    def init(self):
+        self.value = None
+
+    def main(self):
+        rospy.Subscriber("some_topic", Int16, self.myCallback)
+        self.rate = float(rospy.get_param('~rate', 10.0))
+        rate = rospy.Rate(self.rate)
+        while not rospy.is_shutdown():
+            ... do something with self.value ...
+            rate.sleep()
+
+    def myCallback(self, msg):
+        self.value = msg.data
+        ... optionally do more stuff (but do not take too long in a callback) ...
+
+if __name__ == '__main__':
+    try:
+         node = MyNodeClass().main()
+    except rospy.ROSInterruptException:
+        pass
+
+You can get fancier, of course, and use locks to wake up the main thread immediately upon getting a message. But your needs might be simpler: if the callback and the main code don't need to interact, then it's trivial.
+
+Originally posted by Mark Rose with karma: 1563 on 2016-09-22
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by violets on 2016-09-22:
+That's exactly what I needed to know, thank you so much!!
+

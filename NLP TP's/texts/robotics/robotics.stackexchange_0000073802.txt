@@ -1,0 +1,57 @@
+Q:
+
+Costmap2d parameters tuning: costmap overlap at the entrance of door
+
+I'd like to upload an image to illustrate the situation, but I'm not allowed yet.
+Here is the situation: I am trying to tune the costmap parameters, in order to make the robot able to go through a door. Right now, the costmap (the inflation of obstacles) at the door almost overlaps, leaving not enough room for the robot to go through, and thus the robot thinks it is impossible to go through the door.
+I tried decreasing inflation_radius as well as robot_radius but no luck. It seems that the costmap inflation is not changed at all. I read the costmap_2d documentation, and think that if I can reduce the inscribed radius then the costmap would not overlap, but not sure where to set it.
+What parameters are relevant here and how to tune them?
+I really appreciate any help!
+
+Originally posted by zkytony on ROS Answers with karma: 178 on 2016-05-06
+Post score: 0
+
+Original comments
+Comment by IanCol on 2016-05-07:
+Hi kaiyu, you could upload your picture to a photo host such as Imgur and then link to it if you want. How are you launching the "move_base" node? some examples of your code could help. The "inflation_radius" parameter in the costmap yaml file is supposed to work.
+
+A:
+
+I faced the same problem and solved it just now.
+So basically, you have to launch the move_base package and provide the parameters there.
+For an example, let's take the amcl_demo.launch in your turtlebot_navigation package. In it, you can see move_base launched by including a move_base.launch.xml file.
+ <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
+    <arg name="custom_param_file" value="$(arg custom_param_file)"/>
+ </include>
+
+Now let's inspect that launch file.
+<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find turtlebot_navigation)/param/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/dwa_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/move_base_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/global_planner_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/navfn_global_planner_params.yaml" command="load" />
+    ...
+
+Multiple yaml files are loaded into the move base as parameters. The $(find turtlebot_navigation)/param/local_costmap_params.yaml file is one of them which contains the common parameters for both the global and local cost maps.
+In it, you can see
+#cost_scaling_factor and inflation_radius were now moved to the inflation_layer ns
+inflation_layer:
+    enabled:              true
+    cost_scaling_factor:  5.0  # exponential rate at which the obstacle cost drops off (default: 10)
+    inflation_radius:     0.3  # max. distance from an obstacle at which costs are incurred for planning paths. !!!Was 0.5 (Janindu)
+
+When I was trying to move in a corridor, Turtlebot got stuck because the inflation_radius was set to 0.5m and the robot didn't have any space to move. When I changed it to 0.3m and relaunched my amcl_demo.launch, it worked like a baby.
+Don't know what your setup is but if you follow along these lines, you should be able to fix it. If not, just let me know. Willing to help more.
+
+Originally posted by janindu with karma: 849 on 2016-05-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by zkytony on 2016-05-19:
+Thanks! Yea, I am also importing parameters from outside files. I was just unaware that there were two launch files that use these parameters (but in different files), and one overrides the other.
+

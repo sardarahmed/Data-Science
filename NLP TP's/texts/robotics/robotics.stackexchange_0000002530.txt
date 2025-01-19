@@ -1,0 +1,51 @@
+Q:
+
+Help sending serial command to Roomba
+
+I have a Raspberry Pi hooked up to a Roomba 560's serial port. While going over the spec, I noticed movement controls weren't as simple as I expected. I can't send bytes larger than 255, but, according to the spec, to go straight I have to send 8000. How does this work?
+EDIT: My solution was the following three functions:
+import serial
+import time
+
+def start():
+    #Open serial connection
+    global ser
+    ser = serial.Serial('/dev/ttyUSB0', 115200)
+    # this is the defualt Roomba baud rate
+    # Start SCI - puts into safe mode
+    ser.write(chr(128))
+    # Enable the safe mode
+    ser.write(chr(131))
+    # this is required or the command may fail
+    time.sleep(1)
+
+# This makes the serial command fit the big-endian notation
+def make4(num):
+    num = num[2:]
+    z2a = 4-len(num)
+    for q in range(z2a):
+        num = '0' + num
+    return '\\x'+num
+
+def move(vel, rad):
+    # Init move command
+    ser.write(chr(137))
+
+    # velocity
+    vhex = hex(vel)
+    vhex = make4(vhex)
+
+    #radius
+    vrad = hex(rad)
+    vrad = make4(vrad)
+
+    # send to roomba
+    ser.write(vhex)
+    ser.write(vrad)
+
+A:
+
+The spec says hex 8000 as in hexadecimal (which I usually write in C/Python notation as 0x8000). Each byte is exactly two hexadecimal digits. So you can break 0x8000 into 0x80 and 0x00 and send them separately, which correspond to decimal numbers 128 and 0.
+You also have to know which to send first (referred as little-endian vs big-endian). The spec says [radius high byte] [radius low byte], so high byte comes first (big-endian).
+Therefore send the sequence [128, 0] in order to transmit hex 8000.
+

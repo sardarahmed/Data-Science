@@ -1,0 +1,48 @@
+Q:
+
+Confirm my understanding on BLDC motors
+
+This question assumes an ideal system with 100% efficiency.
+Lets say I have this propeller which if spun at 1000 RPM in water will need a 48 Watt motor to drive it.
+So I get a 1000 Kv 16V motor and a gear reduction of 1:16 so now it will spin at 1000 RPM and thus will use 48 watts of power.
+That means that the ESC will be using 3 Amp to power the motor.
+Now if I power the ESC with 48V instead of 16V and set it to 33% instead of 100% 
+The effective voltage on the motor is still 16V and the motor will still use 48W, but since the ESC is getting 48V it will use 1 Amp not 3.
+So I want to choose a brush-less motor for an ROV propeller that will need 200W of power at 1000RPM and the voltage applied to the ESC varies between 12V and 48V.
+So I choose a motor and gearbox that when 10V (headroom to allow the motor to slow down a little and still maintain enough speed to drive the prop) is applied to it, it spins at 1000RPM and it has max power of 300W.
+Then in the control system I have Voltage and current sensors in the ESC and I drive the motor at constant power mode.
+The system would now what voltage is the ESC running at and vary the PWM signal till reaching wanted power.
+Is this right or am I missing something?
+
+A:
+
+Now if i power the ESC with 48V instead of 16V and set it to 33% instead of 100% The effective voltage on the motor is still 16V and the motor will still use 48W, but since the ESC is getting 48V it will use 1 Amp not 3.
+
+This is not a good mental model. Perhaps you are mixing the instantaneous voltages seen by the inverter switching with the smoother currents experienced by the windings due to their inductance? The following is a typical rough model:
+$V_{ESC}-V_{emf}=L_{motor}\frac{dI}{dt}+R_{motor}I$
+The voltage is changing at the switching frequency and the current must be changed from positive to negative as the poles of the motor rotate.
+Keep in mind that the supply voltage  will not be nicely constant. It will drop (greatly if poorly designed) when you drive the motors.
+Design Approach
+All that said, when dealing with the system level, I think it's good that you are using power as your design variable. Power translates across electrical-mechanical systems well.
+There are energy losses throughout the system. Enough that you should be careful to mention for each power value, where in the system it is. (eg output of the gearbox, output of the motor, output of the esc, input to the esc).
+You need 200W at the propeller (I'll assume you have accounted for losses when delivering  propeller energy to the water). $1000RPM\implies\frac{200W}{105 Rad/sec} \implies 1.9 Nm$ of torque ($P = \tau\omega$) delivered by the gearbox. More due to losses. Let's say 2.3Nm (An uneducated guess).
+At 85% efficiency for a 16:1 gear you need 235W at the motor output. $200W/.85$
+(side note, nobody uses the same units for velocity constants which is really annoying. Google tells me that hobby motors like to use Kv for units of RPM/V so I'm going to go with that. )
+Torque constants and velocity constants are the same number with units of $Nm/Amp$ and $V/(Rad/Sec)$. Our $1000\frac{RPM}{V}\implies105\frac{Rad/Sec}{V}\implies0.0095Nm/Amp$
+Estimating the torque required:
+$\frac{2.3Nm}{16\times.85}=.17Nm$ Motor Torque$
+Taking the motor as a system, Power out = Power in - Losses,
+$P_{in}=IV$, $P_{loss}=I^2R+{other}$, $P_{out}=\omega\tau$, and $\tau=IK$ where $K$ is the torque (velocity) constant.
+$P_{in}=P_{loss}+P_{out}$
+$IV = I^2R + \omega IK \implies V=IR+\omega K \implies V=IR+V_{emf}$
+You can compare this equation to the typical rough model from the start and see that we have arrived at the same point, with some differences due to ignoring different parts of the system.
+So we need $16000RPM/(1000RPM/V)=16V$ to counteract back-emf, plus some Volts for our motor losses. 
+12V is your minimum design voltage so that motor won't work.
+If you really need a 12V minimum voltage, you can see that you need higher Kv motor. Make sure it has enough torque as well. The torque listed in the datasheet is unlikely to be for the RPM you need, so it is not useful when designing. Resistance is more constant (it changes as the motor heats up) and is a better motor characteristic to use when designing. You can use the equations above to calculate what R needs to be for a given voltage.
+
+Is it possible to use a 12v motor with a 48v bus by limiting the voltage
+
+Yes. You don't need to limit the voltage. But for your 200W output design goal you said you will controlling the voltage and current. The controlled voltage will be about 12v.
+You can see from the equations that saying a motor is an X volt motor or Y amp motor has no clear meaning because those are things you are changing and controlling. Better to specify the motor constant K, the winding resistance R, and the inductance L. 
+If you are looking at hobby outrunner motors and they say it is a 12v motor, what they really mean is that 12v will be  enough to overcome back-emf during typical RPMs needed to fly a typical propeller in air. That same "12v" motor will not necessarily have enough torque to drive a propeller in water.. Easier to just choose a motor with a K and R that fits your needs.
+

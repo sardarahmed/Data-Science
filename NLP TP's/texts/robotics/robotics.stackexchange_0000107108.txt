@@ -1,0 +1,47 @@
+Q:
+
+How to get a topic name in a callback function (Python, Ros2)
+
+I have two cameras subscribing camera1/image_raw and camera2/image_raw respectively. And both subscribers call image_callback when they received any topic. I want to show camera1 image in window1 and camera2 image in window2 while using the same callback function.
+So, in the callback function, I would like to determine the topic name (or which subscriber executed the callback function) and if it is camera1, show it in window1 and otherwise in window2.
+But, I can't figure out how to determine which subscriber executed the callback in python. Can anyone help me out with this problem? Thank you!
+
+A:
+
+The easiest way is going to be to have two separate callback functions which wrap some common set of code. You can make this a lot cleaner using python's lambda function feature. For example, in ROS 1:
+import rospy
+from std_msgs.msg import String
+
+def callback(data, source):
+    rospy.loginfo(f"I heard {data.data} from {source}")
+
+def listener():
+    rospy.init_node('listener', anonymous=True)
+    rospy.Subscriber("chatter_1", String, lambda data: callback(data, 1))
+    rospy.Subscriber("chatter_2", String, lambda data: callback(data, 2))
+    rospy.spin()
+
+if __name__ == '__main__':
+    listener()
+
+and in ROS 2:
+import rclpy
+from std_msgs.msg import String
+
+def callback(data, source):
+    rospy.loginfo(f"I heard '{data.data}' from {source}")
+
+def listener():
+    rclpy.init()
+    node = rclpy.create_node('listener')
+
+    node.create_subscription(String, 'chatter_1', lambda msg: callback(msg, 1), 10)
+    node.create_subscription(String, 'chatter_2', lambda msg: callback(msg, 2), 10)
+
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    listener()
+

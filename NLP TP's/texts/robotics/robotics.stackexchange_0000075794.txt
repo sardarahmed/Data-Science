@@ -1,0 +1,48 @@
+Q:
+
+Add OpenCV window as panel to RViz
+
+The kinect_tracking node finds a specific point inside the picture and paints it into each frame. I do create the Window with openCV like:
+cv::Mat img;
+namedWindow("kinect_tracking Depth Matrix in CV_8UC1", cv::WINDOW_NORMAL);
+cv::imshow("kinect_tracking Depth Matrix in CV_8UC1", img);
+cv::waitKey(3);
+
+Now Rviz is highly customizable and can be used stripped down as a 3d view panel. I dont want to dig that deep, as rviz shows the picture via the add button, but the specific point that the node painted into the picture is missing, as both use the same input. 
+What are your suggestions to get the painted cv::Mat into Rviz without publishing it on a topic again? I would write a plugin if neccessary but dont see a way to get the cv::Mat in the node directly to Rviz. Maybe I should modify the Image panel, but where to start (this looks pretty rough)
+
+EDIT
+This is what I ended up with, nice:
+cv::Mat dImg8Flipped;
+// edit image ....
+// publish
+pubImg.publish(cv_bridge::CvImage((*cv_ptr).header, sensor_msgs::image_encodings::TYPE_8UC1, dImg8Flipped).toImageMsg());
+
+I do get various options compressed, parameters, raw etc. what seems to be done automatically by cv_bridge. mmh. 
+
+Originally posted by user23fj239 on ROS Answers with karma: 748 on 2016-08-14
+Post score: 0
+
+A:
+
+Since you don't want to do into the details, I'll keep this simple:
+You can't get anything into rviz without publishing it as a ROS topic.
+It's very easy to publish markers, if you want to extend your visualization into 3D. Markers are visible in both the 3D view and the Camera view (but not the Image view)
+rviz doesn't do much 2D visualization other than displaying images, so if you want to visualize detections on a 2D image, you'll have to draw them onto the image and then republish the image. Publishing images from cv::Mat isn't hard either.
+For those who are interested in the details:
+rviz is written with the QT windowing framework and the OGRE 3D framework, so the widgets and toolbars in rviz are all QT widgets, and the 3D displays are implemented in OGRE. I don't think there's a good way to use an OpenCV window as a QT widget, but there are probably adapters for converting a cv::Mat into an image type that can be natively displayed in a QT widget.
+rviz is only intended as a visualizer, with the goal of separating the visualization from the logic of your program. Because rviz is only a visualizer, I don't recommend doing any significant processing (such as detection, tracking, etc) in your rviz plugin.
+So, since you shouldn't do your detection in rviz, it should still be a separate ROS node. You could do it a few ways:
+
+You could publish the detection as a marker and display it in 3D along with your sensor data, and overlaid on your image with the Camera view.
+You could also draw your marker on the image and publish the modified image, and view that in rviz.
+If you really want to write an rivz plugin, you could define a custom detection type, publish that message, and write a new version of the image plugin that subscribes to images and detections, and implements just the drawing logic.
+
+Originally posted by ahendrix with karma: 47576 on 2016-08-14
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by user23fj239 on 2016-08-15:
+Second version sounds right. The pure 3D option is confusing with some jumping PCL points. So drawing and republishing with vision_common and image_common sounds good. The marker is already existant.
+

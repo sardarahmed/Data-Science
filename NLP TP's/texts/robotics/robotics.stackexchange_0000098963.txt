@@ -1,0 +1,143 @@
+Q:
+
+Costmap2DROS object is not correctly created
+
+Hi
+I have created a node to run navFn using costmap_2d without move_base, as in this link: http://lists.ros.org/lurker/message/20100408.052450.ba663427.en.html (was http://ros-users.122217.n3.nabble.com/Navigation-planning-without-move-base-td705795.html)
+
+I wonder where to start to set up a
+simple navigation that runs without
+move_base, in particular a global path
+planner. For a start, a simple A* on a
+static map should suffice. From what
+I've read, costmap_2d and navfn should
+provide the right functionality, but
+do they without a running robot? They
+seem to be tightly coupled with
+move_base and constant sensor updates.
+...
+
+I created a package: ros_global_planners_experiment
+under src:
+ros_global_planners_experiment_node.cpp
+#include <ros/ros.h>
+#include <costmap_2d/costmap_2d_ros.h>
+#include <navfn/navfn_ros.h>
+
+int main (int argc, char** argv)
+{
+  ros::init(argc, argv,"ros_global_planners_experiment_node");
+  
+
+  ros::NodeHandle n("~");
+  
+  tf::TransformListener tf(ros::Duration(10));
+  costmap_2d::Costmap2DROS willow_garage_costmap("willowgarage_costmap", tf);
+  ROS_INFO("Costmap2d node started ...");
+
+  navfn::NavfnROS navfn;
+  navfn.initialize("my_navfn_planner", &willow_garage_costmap);
+
+  ros::spin();
+  return 0;
+}
+
+under launch: I created two launch files:
+ros_experiment.launch
+<launch>
+  <param name="/use_sim_time" value="false"/>
+
+    <arg name="map_file" default="$(find rosbot_navigation)/maps/willowgarage-refined.yaml"/>
+    <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
+
+    <node pkg="tf" type="static_transform_publisher" name="map_to_base_link" args="0 0 0 0 0 0 /map base_link 100" />  
+
+   <node pkg="costmap_2d" type="costmap_2d_markers" name="voxel_visualizer">
+    <remap from="voxel_grid" to="costmap/voxel_grid"/>
+  </node> 
+
+  <node name="rviz" pkg="rviz" type="rviz" />
+
+  <node pkg="ros_global_planners_experiment" type="ros_global_planners_experiment_node" name="ros_global_planners_experiment_node" >
+    <rosparam file="$(find ros_global_planners_experiment)/launch/ros_experiment_params.yaml" command="load" />
+  </node>
+
+</launch>
+
+ros_experiment_params.yaml
+global_frame: /map
+robot_base_frame: base_link
+update_frequency: 5.0
+publish_frequency: 1.0
+
+static_map: true
+
+map_type: costmap
+
+transform_tolerance: 0.3
+obstacle_range: 2.5
+max_obstacle_height: 2.0
+raytrace_range: 3.0
+footprint: [[-0.325, -0.325], [-0.325, 0.325], [0.325, 0.325], [0.46, 0.0], [0.325, -0.325]]
+
+footprint_padding: 0.01
+inflation_radius: 0.55
+cost_scaling_factor: 10.0
+lethal_cost_threshold: 100
+
+In terminal:  roslaunch ros_global_planners_experiment ros_experiment.launch
+In Rviz:
+Map ==> choosing Topic  /map ==> display willow garage map
+
+Map ==> choosing Topic  /ros_global_planners_experiment_node/willowgarage_costmap/costmap ==> empty squqre, I cannot see willow garage costmap with obstacles?
+
+Also, the ROS_INFO("Costmap2d node started ..."); is not shown !
+
+Originally posted by Eman.m on ROS Answers with karma: 65 on 2021-04-30
+Post score: 0
+
+A:
+
+I think you have failed to set up the cost map. if you change the yaml file as follows, the map should appear.
+Point
+
+Indicate that it is a willowgarage_costmap setting.
+Indicate that you want to use the map topic in plugins and static_layer
+
+ros_experiment_params.yaml
+willowgarage_costmap:
+    global_frame: /map
+    robot_base_frame: base_link
+    update_frequency: 5.0
+    publish_frequency: 1.0
+
+    static_map: true
+
+    map_type: costmap
+
+    transform_tolerance: 0.3
+    obstacle_range: 2.5
+    max_obstacle_height: 2.0
+    raytrace_range: 3.0
+    footprint: [[-0.325, -0.325], [-0.325, 0.325], [0.325, 0.325], [0.46, 0.0], [0.325, -0.325]]
+
+    footprint_padding: 0.01
+    inflation_radius: 0.55
+    cost_scaling_factor: 10.0
+    lethal_cost_threshold: 100
+
+    plugins:
+        - {name: static_layer, type: "costmap_2d::StaticLayer"}  
+    static_layer:
+        map_topic: "map"    
+
+Originally posted by miura with karma: 1908 on 2021-05-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Eman.m on 2021-05-01:
+Many Thanks. It works!
+Comment by miura on 2021-05-01:
+Good. Congratulations.
+

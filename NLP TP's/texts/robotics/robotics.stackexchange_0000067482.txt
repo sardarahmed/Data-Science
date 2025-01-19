@@ -1,0 +1,95 @@
+Q:
+
+Usb_cam ignoring camera_frame_id
+
+I have a launch file for starting a stereo USB camera:
+<launch>
+    <arg name="device_left" default="/dev/video1" />
+    <arg name="device_right" default="/dev/video2" />
+    <arg name="width" default="320" />
+    <arg name="height" default="240" />
+    <arg name="format" default="yuyv" />
+    <group ns="raw_stereo">
+        <node name="left" pkg="usb_cam" type="usb_cam_node" output="screen">
+            <param name="video_device" value="$(arg device_left)" />
+            <param name="image_width" value="$(arg width)" />
+            <param name="image_height" value="$(arg height)" />
+            <param name="pixel_format" value="$(arg format)" />
+            <param name="camera_frame_id" value="left_camera" />
+            <param name="io_method" value="mmap" />
+            <param name="camera_info_url" type="string" value="file://$(find stereo_slam_test)/config/usb1-config-left.yml" />
+        </node>
+        <node name="right" pkg="usb_cam" type="usb_cam_node" output="screen">
+            <param name="video_device" value="$(arg device_right)" />
+            <param name="image_width" value="$(arg width)" />
+            <param name="image_height" value="$(arg height)" />
+            <param name="pixel_format" value="$(arg format)" />
+            <param name="camera_frame_id" value="right_camera" />
+            <param name="io_method" value="mmap" />
+            <param name="camera_info_url" type="string" value="file://$(find stereo_slam_test)/config/usb1-config-right.yml" />
+        </node>
+    </group>
+</launch>
+
+However, when I run this, I get the warnings:
+[ WARN] [1431313131.230893149]: [head_camera] does not match name left_camera in file ~/git/stereo_slam_test/src/stereo_slam_test/config/usb1-config-left.yml
+[ INFO] [1431313131.230983626]: Starting 'head_camera' (/dev/video1) at 320x240 via mmap (yuyv) at 30 FPS
+[ INFO] [1431313131.273715224]: camera calibration URL: ~/git/stereo_slam_test/src/stereo_slam_test/config/usb1-config-right.yml
+[ WARN] [1431313131.275529366]: [head_camera] does not match name right_camera in file ~/git/stereo_slam_test/src/stereo_slam_test/config/usb1-config-right.yml
+
+Why is it using the "head_camera" frame id for both cameras when I explicitly set it to "left_camera" and "right_camera" in my launch file?
+Edit: The output of rosparam get /raw_stereo:
+left:
+  camera_frame_id: left_camera
+  camera_info_url: file:///home/chris/git/stereo_slam_test/src/stereo_slam_test/config/usb1-config-left.yml
+  image_height: 240
+  image_raw:
+    compressed: {format: jpeg, jpeg_quality: 80, png_level: 9}
+    compressedDepth: {depth_max: 10.0, depth_quantization: 100.0, png_level: 9}
+    theora: {keyframe_frequency: 64, optimize_for: 1, quality: 31, target_bitrate: 800000}
+  image_width: 320
+  io_method: mmap
+  pixel_format: yuyv
+  video_device: /dev/video1
+right:
+  camera_frame_id: right_camera
+  camera_info_url: file:///home/chris/git/stereo_slam_test/src/stereo_slam_test/config/usb1-config-right.yml
+  image_height: 240
+  image_raw:
+    compressed: {format: jpeg, jpeg_quality: 80, png_level: 9}
+    compressedDepth: {depth_max: 10.0, depth_quantization: 100.0, png_level: 9}
+    theora: {keyframe_frequency: 64, optimize_for: 1, quality: 31, target_bitrate: 800000}
+  image_width: 320
+  io_method: mmap
+  pixel_format: yuyv
+  video_device: /dev/video2
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2015-05-10
+Post score: 0
+
+A:
+
+From reading the usb_cam documentation and source code, your configuration looks correct. After running your launch file, you should be able to confirm that the desired parameters are being set correctly by running rosparam get /raw_stereo
+
+Originally posted by ahendrix with karma: 47576 on 2015-05-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Cerin on 2015-05-11:
+I am. But where is this "head_camera" name coming from and why does it complain if I use a different name than that? Is that hard-coded in usb_cam?
+Comment by ahendrix on 2015-05-11:
+head_camera appears to be the default camera frame name in the usb_cam node.
+Comment by Cerin on 2015-05-11:
+But then why doesn't camera_frame_id override it?
+Comment by ahendrix on 2015-05-11:
+I don't know. As suggested in my answer, please run rosparam get /raw_stereo and include the output in your question.
+Comment by Cerin on 2015-05-11:
+Sorry, I've appended the output. It seems the camera_frame_id is being set, even though it does not match the camera name in the yml files.
+Comment by ahendrix on 2015-05-11:
+There appears to be an undocumented camera_name parameter; try setting that to the name of your camera. See: https://github.com/bosch-ros-pkg/usb_cam/blob/bce395a9a543f89830668977b227ddf77c84fc17/nodes/usb_cam_node.cpp#L96
+Comment by Cerin on 2015-05-11:
+Thank you! That was it.
+Comment by ahendrix on 2015-05-11:
+Ok. I've updated the documentation on the wiki page.
+

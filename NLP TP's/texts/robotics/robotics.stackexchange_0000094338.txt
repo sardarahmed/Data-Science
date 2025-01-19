@@ -1,0 +1,87 @@
+Q:
+
+Tuning PID package strange behavior
+
+Hello everyone,
+I'm working with a self made differential drive robot prototype, using ROS Kinetic.
+The rover is equipped with a Raspberry Pi 3 where ROS runs, an Arduino 2 to read from the encoders (hall sensor) and to control two DC motors.
+The bot works fine with navigation, I managed to tune a smooth pid control using ros pid package but the problem that I've encountered is that the pid starts losing the settings over time; if in the first minutes it behave smoothly and with almost zero overshooting (except some spike caused by the noisy and cheap encoders), after some time it starts to detune alone without changing any parameters. Here are three pics attached to understand better (black line is the set point for both the motors, red for the left motor and cyan for the right one):
+
+minute [0.0 to 3.0]
+
+minute [18.0 to 20.0]
+
+minute [33.0 to 35.0]
+After turning off the raspberry everything works fine again but degenerate again over time.
+Here is the launch of the pid:
+<launch>
+  <node name="controller" pkg="pid" type="controller" ns="left_wheel" output="screen" >
+      <param name="node_name" value="left_wheel_pid" />
+      <param name="Kp" value="0.27" />
+      <param name="Ki" value="2.2" />
+      <param name="Kd" value="0.01" />
+      <param name="upper_limit" value="70" />
+      <param name="lower_limit" value="-70" />
+      <param name="windup_limit" value="100" />
+      <param name="max_loop_frequency" value="50.0" />
+      <param name="min_loop_frequency" value="50.0" />
+      <param name="setpoint_timeout" value="0.1" />
+      <remap from="state" to="/rover1/vel_measured_left" />
+  </node>
+
+  <node name="controller" pkg="pid" type="controller" ns="right_wheel" output="screen" >
+      <param name="node_name" value="right_wheel_pid" />
+      <param name="Kp" value="0.27" />
+      <param name="Ki" value="2.2" />
+      <param name="Kd" value="0.01" />
+      <param name="upper_limit" value="70" />
+      <param name="lower_limit" value="-70" />
+      <param name="windup_limit" value="100" />
+      <param name="max_loop_frequency" value="50.0" />
+      <param name="min_loop_frequency" value="50.0" />
+      <param name="setpoint_timeout" value="0.1" />
+      <remap from="state" to="/rover1/vel_measured_right" />
+   </node>
+</launch>
+
+First I was thinking about some misunderstanding related to the unit of the windup limit (actually I still don't understand if it refers to time or samples), but changing the parameters hasn't varied the behavior.
+Instead, using 2 different values for the setpoint_timeout parameter of each motor, something changes so maybe this could be the core. I tried to set also setpoint_timeout=0 but obviously the pid doesn't work.
+Are there any solution or I just have to use a brutal method like auto kill and reopen the pid node every X minutes?
+Thank you for your time, any suggestions or advice is very well accepted!
+EDIT 1: So as @davekroezen suggested I checked the behavior of the control_effort, as you can see in the image it starts resonating with the vel_measured around the setpoint.
+
+That is actually the exact same behavior of a non tuned pid, even If the pid is tuned when it starts.
+I also checked the temperature of the raspberry over time (as @billy suggested), but it's stable around 67 celsius degrees.
+EDIT 2: I tried to solve turning off the pid via pid_enable topic set to "false" and then re-enabling it, but nothing changed. So I tried to kill both the controller node and re-launching them but again nothing changed; can this underline that the bug is in the arduino code? I mean, the queue size of the encoders reading is set to 1, so that can't be the cause of the delay between reading and controlling, but I'm not sure about it.
+
+Originally posted by doctor_zerios on ROS Answers with karma: 31 on 2020-01-09
+Post score: 0
+
+Original comments
+Comment by davekroezen on 2020-01-10:
+What is the control_effort produced by the controller? You now focus on the controller, but it could actually be the input to the controller (vel_measured) which is to blame here. looking at the control effort you can hopefully see if the controller or the state starts to deviate first and how the controller responds.
+Comment by davekroezen on 2020-01-10:
+As for windup, that is basically a limit for the integrator part of the PID controller
+Comment by billy on 2020-01-11:
+it's definitely a weird problem. My first guess would be the Raspberry Pi slowing down due to over heating and the control updates becoming further apart.  Investigate that. Anything that takes 30 minutes to happen should make you consider temp.
+Comment by doctor_zerios on 2020-01-13:
+@davekroezen @billy thank you for you suggestions, I updated the question
+Comment by AndyZe on 2020-01-13:
+Maybe check the CPU load with top (or whatever the RPi equivalent is). Displaying the plots puts a very heavy load on the CPU, maybe that's the cause.
+To check if the PID package is the cause, you could install the PID package on a regular PC and run the demo for 30 minutes or more. That would make me feel more confident.
+
+A:
+
+After checking the CPU usage, which is stable to 46% with 2 vnc opened (the graph is plotted by the ros master, which is a regular pc) I tried changing PID parameters as @AndyZe suggested.
+Well I solved everything setting the Kd term from 0.01 to 0 and leaving Kp and Ki terms same as before. All the spikes in the control_effort, which I thought were generated by the encoder itself, are now disappeared and the pid works smoothly and stably over time.
+
+Then I tried to modify the parameters to fine tune the PID as @AndyZe suggested, but I found no local minimum with a Kp higher than the Ki, the motors keep oscillating around the setpoint, with very small convergence. I changed the windup_limit too, but lowering it to 10 create a phase shift between the desired and the commanded velocity, which doesn't stabilize on the desired value from a certain point.
+The new setting which can promptly follow the setpoint are: Kp = 0.4, Ki = 5.5, Kd = 0.0.
+I think the reason behind this strange tuning parameters should be sought in this specific hardware configuration:
+the combination of Arduino poor time handling and a low step encoder introduces fast varying measurements due to the large quantization step; the faster measurements are taken the greater quantization step becomes. Using a filter to take an average of the speed introduces delay which again lead to oscillation and instability.
+In the end, the integral component of the PID uses values from past measurements to correct the error, acting like a filter which introduces lower delay and which lower the gap between measurements.
+
+Originally posted by doctor_zerios with karma: 31 on 2020-01-14
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,48 @@
+Q:
+
+Why does AMCL post-date tf (~transform_tolerance)?
+
+A comment in the code says
+
+    // We want to send a transform that is good up until a
+
+    // tolerance time so that odom can be used
+
+And the wiki page says
+
+~transform_tolerance (double, default: 0.1 seconds)
+Time with which to post-date the transform that is published, to indicate that this transform is valid into the future.
+
+I still don't understand why AMCL needs to pretend to be able to see the future.
+
+Originally posted by Stephan on ROS Answers with karma: 1924 on 2015-10-08
+Post score: 1
+
+A:
+
+I've been trying to understand this for quite some time already, please correct me if I am wrong.
+The whole tf tree is as "old" as the oldest tf update from any frame in the entire tree. For example:
+odom -> base_link transform updates at frequency of 100hz (encoder + imu), but
+map -> odom is only updated with frequency of 10hz (amcl).
+Position of the robot in the map frame has update frequency of 10hz (so amcl is the bottleneck).
+Now if the amcl algorithm update takes 1s to compute new position, our tf broadcaster will not publish anything for 1s (since it's computing a new update and amcl run in the same loop as tf broadcaster). Therefor we need to stamp map->odom transform "in the future" (aprox as much as it takes for amcl algorithm to calculate new position update).
+Otherwise, we would introduce a lag in the system due to this amcl processing time, and map->base_link tf will not be updated.
+Am I missing something in my reasoning?
+Is there any way to make a map->odom tf always true until new measurement comes in?
+
+Originally posted by Chrisando with karma: 41 on 2018-07-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Stephan on 2018-07-30:
+That could explain it. When looking up the "latest" map->base_link, the TF library looks for the latest common time of map->odom and odom->base_link. So if map->odom is old (not future-dated), we don't get the most recent odom->base_link in that lookup.
+Comment by skyofyao@gmail.com on 2019-10-14:
+Great explanation. One supplement: the assumption to the TF transform map->odom is: it's stable, as it shouldn't change much in a short time. So it is OK for the AMCL node to publish such a "predicted" transformation.
+Comment by Rufus on 2020-05-05:
+The way to make a transform valid until updated is to use a static transform broadcaster.  The reason AMCL does not use it is unclear to me.
+Comment by gvdhoorn on 2020-05-05:
+Most likely because it was not available at the time the AMCL wrapper nodes were written?
+Comment by N.N.Huy on 2022-09-14:
+Why didn't they use ros::Time::now() ?
+

@@ -1,0 +1,113 @@
+Q:
+
+Covering Up Ultrasonic Sensor
+
+I'm using a basic trig/echo Ultrasonic Sensor with an Arduino Uno. I get accurate readings until I cover the sensor at which point I receive very large numbers. Why is this?
+Program
+int trigPin = 8;
+int echoPin = 9;
+float pingTime;
+float targetDistance;
+const float speedOfSound = 776.5; // mph
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+}
+
+void loop() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2000);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(15);
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(10);
+
+  pingTime = pulseIn(echoPin, HIGH);
+  pingTime /= 1000000; // microseconds to seconds
+  pingTime /= 3600; // hours
+  targetDistance = speedOfSound * pingTime; // miles
+  targetDistance /= 2; // to from target (averaging distance)
+  targetDistance *= 63360; // miles to inches
+
+  Serial.print("distance: ");
+  Serial.print(targetDistance);
+  Serial.println("");
+
+  delay(100);
+}
+
+Example Output
+I moved my hand from 10" away until I cover the sensor
+10.20 distance: // my hand is 10" away from the sensor
+10.01 distance:
+9.51 distance:
+8.71 distance:
+7.85 distance:
+6.90 distance:
+5.20 distance:
+4.76 distance:
+3.44 distance:
+2.97 distance:
+1.65 distance:
+1211.92 distance: // my hand is now pressed up against the sensor
+1225.39 distance:
+1197.16 distance:
+1207.43 distance:
+1212.66 distance:
+1204.60 distance:
+
+EDIT
+I changed the amounts from inches to milimeters to get a more precise reading. I held the sensor ~100mm from a granite counter-top and quickly lowered it until the tabletop covered the front of the sensor.
+distance: 103.27 // 100mm from tabletop
+distance: 96.50
+distance: 79.84
+distance: 76.72
+distance: 62.66
+distance: 65.78
+distance: 54.85
+distance: 47.04
+distance: 44.95
+distance: 38.71
+distance: 28.81
+distance: 25.69
+distance: 27.08
+distance: 25.17
+distance: 27.77
+distance: 22.04 // sensor continues toward table but values start to increase when they would logically decrease ??
+distance: 23.95
+distance: 26.73
+distance: 28.81
+distance: 46.52
+distance: 2292.85 // sensor is now flush against tabletop
+distance: 2579.59
+distance: 2608.75
+distance: 2595.56
+distance: 2591.57
+distance: 2583.75
+distance: 2569.87
+distance: 2570.91
+distance: 2600.07
+distance: 30579.64 // extreme high & low values with sensor is same place against tabletop
+distance: 37.66
+distance: 30444.43
+distance: 37.66
+distance: 30674.23
+distance: 38.71
+
+A:
+
+You said it yourself: you're using an echo-based ultrasonic sensor. 
+Imagine this: you are a sensor looking at a piece of fiber optic cable. From far enough away, you see the cable as an object. You can determine how far away it is because you are looking at it. 
+The cable gets closer and you continue looking at the object until, at some point, it becomes coupled to you and you now begin to look through the cable. 
+I would imagine the same thing is happening with your hand. In time of flight sensors there's usually some "turn on" time that delays turning on the receiver to prevent the transmitter from directly driving the receiver. This turn on time corresponds with some minimum distance, inside which an object cannot be detected. 
+At your skin there is an interface, where some of the sound is reflected and some of the sound is absorbed. This is like a window or a two-way mirror. Depending on some properties (acoustic impedance mismatch), the percentage of sound energy that gets absorbed varies, but some always gets absorbed. 
+So, your hand gets closer, and the sensor sees your hand as an object. At some point you pass the minimum threshold, and the sensor no longer detects the reflection at the air/skin interface. It still listens for an echo, though, but now all the remaining sound energy is inside you.
+You are now akin to a (crappy) fiber optic cable - the sound is free to bounce around inside you, reflecting off of whatever doesn't have the same acoustic impedance as your skin. Every time it hits an interface (skin/muscle, muscle/bone, etc.), some energy is absorbed and some is reflected. This is exactly how a medical ultrasound works. 
+At some point the sound waves scatter back to the point where they entered, and pass back through your skin and that's when the echo is recorded. The scattered path length is the distance you are seeing. 
+I would bet the value would change based on what part of your arm you use (not that I would recommend doing it).
+Also,  FYI, ultrasound jelly exists to help match acoustic impedances to minimize reflection and get more sound energy into the body. 
+

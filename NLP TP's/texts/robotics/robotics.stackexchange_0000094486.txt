@@ -1,0 +1,174 @@
+Q:
+
+[Qt ROS plug-in] Cannot import self-defined messages
+
+Hi everyone,
+I'm trying to develop a GUI for a project to command easily a robot. I've made my own self-defined messages and tested them and everything works fine. The thing is that when I try to use this message on my user_interfacepackage (I've created it by using catkin_create_qt_create user_interface command on my ws_dir/src file), the compiler cannot find project_msgs/my_msg.h. I left here the configuration of my CMakeList.txt file and my package.xml file, because I do not know what I am doing wrong.
+CMakeList.txt:
+##############################################################################
+# CMake
+##############################################################################
+cmake_minimum_required(VERSION 2.8.0)
+project(user_interface)
+
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
+
+##############################################################################
+# Catkin
+##############################################################################
+
+# qt_build provides the qt cmake glue, roscpp the comms for a default talker
+find_package(catkin REQUIRED COMPONENTS qt_build roscpp) #project_msgs
+
+#find_package(Qt REQUIRED Core Widgets)
+#set(QT_LIBRARIES Qt5::Widgets)
+include_directories(${catkin_INCLUDE_DIRS})
+# Use this to define what the package will export (e.g. libs, headers).
+catkin_package(INCLUDE_DIRS include
+               LIBRARIES user_interface
+               CATKIN_DEPENDS qt_build
+                              roscpp
+                              project_msgs
+               DEPENDS system_lib)
+
+##############################################################################
+# Qt Environment
+##############################################################################
+# this comes from qt_build's qt-ros.cmake which is automatically 
+# included via the dependency call in package.xml
+rosbuild_prepare_qt4(QtCore QtGui) # Add the appropriate components to the component list here
+
+##############################################################################
+# Sections
+##############################################################################
+file(GLOB QT_FORMS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ui/*.ui)
+file(GLOB QT_RESOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} resources/*.qrc)
+file(GLOB_RECURSE QT_MOC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS include/user_interface/*.hpp)
+
+QT4_ADD_RESOURCES(QT_RESOURCES_CPP ${QT_RESOURCES})
+QT4_WRAP_UI(QT_FORMS_HPP ${QT_FORMS})
+QT4_WRAP_CPP(QT_MOC_HPP ${QT_MOC})
+
+##############################################################################
+# Sources
+##############################################################################
+file(GLOB_RECURSE QT_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS src/*.cpp)
+
+##############################################################################
+# Binaries
+##############################################################################
+add_executable(user_interface ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_FORMS_HPP} ${QT_MOC_HPP})
+add_dependencies(user_interface ${catkin_EXPORTED_TARGETS})
+target_link_libraries(user_interface ${QT_LIBRARIES} ${catkin_LIBRARIES})
+install(TARGETS user_interface RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+package.xml :
+<?xml version="1.0"?>
+<package>
+  <name>user_interface</name>
+  <version>0.1.0</version>
+  <description>
+         user_interface
+      </description>
+  <maintainer email="*********@******">*******</maintainer>
+  <author>********</author>
+  <license>BSD</license>
+  <!-- <url type="bugtracker">https://github.com/stonier/qt_ros/issues</url> -->
+  <!-- <url type="repository">https://github.com/stonier/qt_ros</url> -->
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>qt_build</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>libqt4-dev</build_depend>
+  <build_depend>project_msgs</build_depend>
+  <run_depend>qt_build</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>libqt4-dev</run_depend>
+  <run_depend>project_msgs</run_depend>
+ 
+</package>
+
+ROS Version: Kinetic (Ubuntu 16.04)
+EDIT 1
+project_msgs\CMakeLists.txt :
+cmake_minimum_required(VERSION 2.8.3)
+project(project_msgs)
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
+
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  std_msgs
+  message_generation
+  #geometry_msgs
+)
+
+################################################
+## Declare ROS messages, services and actions ##
+################################################
+## Generate services in the 'srv' folder
+add_service_files(
+  FILES
+  my_msg.srv
+)
+
+## Generate added messages and services with any dependencies listed here
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+###################################
+## catkin specific configuration ##
+###################################
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES project_msgs
+  CATKIN_DEPENDS roscpp
+                 rospy
+                 std_msgs
+                 message_runtime
+                 #geometry_msgs
+  DEPENDS system_lib
+)
+
+###########
+## Build ##
+###########
+
+## Specify additional locations of header files
+## Your package locations should be listed before other locations
+include_directories(
+# include
+  ${catkin_INCLUDE_DIRS}
+)
+
+Originally posted by drodgu on ROS Answers with karma: 59 on 2020-01-24
+Post score: 0
+
+A:
+
+You don't specify in your CMakeLists.txt that your package user_interface needs the package project_msgs. You have to specify it using find_package :
+find_package(catkin REQUIRED COMPONENTS qt_build roscpp project_msgs)
+
+Originally posted by Delb with karma: 3907 on 2020-01-24
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by drodgu on 2020-01-24:
+Thank you for answering so quickly! And I've get this error message on compilation Project 'user_interface' tried to find library 'project_msgs'.  The library is neither a target nor built/installed properly.  Did you compile project 'project_msgs'? Did you find_package() it before the subdirectory containing its code is included? And the package is already compiled because I've use it on another package to test it. I've have all the packages under the same ws_application/src file.
+Comment by Delb on 2020-01-24:
+You said in your question that your message was propperly defined but that might not be the case, can you show the CMakeLists.txt of the package project_msgs please ?
+Comment by drodgu on 2020-01-25:
+Yes, I will edit the question in order to include the CMakeLists.txtof project_msgpackages.
+Comment by Delb on 2020-01-28:
+From #q210301 : you should remove the line LIBRARIES project_msgs since you don't create the library project_msgs.
+Comment by drodgu on 2020-01-28:
+Thank you so much, it works!
+

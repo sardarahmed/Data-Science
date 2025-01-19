@@ -1,0 +1,58 @@
+Q:
+
+rosbag and parameters dump with unique timestamp in filename
+
+Dear all,
+my problem is the following:
+I want to save a rosbag file and dump at the same time the content of the parameter server on a file.
+I want the file and the rosbag to have exactly the same time appendix.  This is a similar problem to this but not quite the same because it doesn't involve setting the timestamps into parameter server values.
+I couldn't find a way to save the timestamp string into an arg, however the following code kind of works for the parameters:
+<launch>
+  <arg name="time_now" value="`date +'%Y-%m-%d-%H-%M-%S'`" />
+  <rosparam command="dump" param="/robot_description" file="robot_description_$(arg time_now).yaml" />
+  <node name="rosbag" pkg="rosbag" type="record"
+          args="-O robot_$(arg time_now).bag /chatter "/>
+</launch>
+
+The output says something like:
+running rosparam dump robot_description_`date +'%Y-%m-%d-%H-%M-%S'`.yaml /robot_description
+
+but the filename is correct.
+However,
+when it comes to the rosbag part, the command is not understood, and in particular it believes +'%Y-%m-%d-%H-%M-%S' is a topic to log instead of the argument of date.
+I know I could exploit the automatic appending of the string from rosbag, but there is a tiny chance the two string would be different.
+I've tried to execute a fake node with a bash script inside that sets up an environment variable to be captured with $(env ...) but it didn't work out.
+I've tried to use python and $(eval ...), but I couldn't get to work because I cant import and use time in the same line.
+I understood that param are inaccessible from a launchfile (you can only set them but not get) unless you do dirty tricks with launch-prefix.
+Is there another way (please don't tell me the only way is to create a Python script to run the rosbag)?
+
+Originally posted by mcamurri on ROS Answers with karma: 102 on 2019-06-14
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-06-14:
+I haven't really looked into this, but does this have to be started from a .launch file? A simple shellscript could do this easily (and shell scripts can be started from .launch files as well).
+Comment by mcamurri on 2019-06-14:
+you mean, calling the ROS commands (i.e., rosparam dump, rosbag, etc.)  in a bash script and then calling the bash script from the launchfile? That might work but unfortunately it's a code shared among many people and I'm pretty sure they would not accept such change. Previously the launchfile simply had a fixed name for the yaml files and an appendix for the rosbag node.
+
+A:
+
+I'm not sure if there are other constraints surrounding this, but one way is to make the time_now argument configurable on the command line:
+<launch>
+  <arg name="time_now" default="temp" />
+  <rosparam command="dump" param="/robot_description" file="robot_description_$(arg time_now).yaml" />
+  <node name="rosbag" pkg="rosbag" type="record"
+        args="-O robot_$(arg time_now).bag /chatter "/>
+</launch>
+
+and then call it like so (I saved the above in a file called test.launch):
+roslaunch test.launch time_now:=$(date +%Y-%m-%d-%H-%M-%S)
+
+Originally posted by tryan with karma: 1421 on 2019-06-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mcamurri on 2019-06-20:
+This answer wins. Thanks!
+

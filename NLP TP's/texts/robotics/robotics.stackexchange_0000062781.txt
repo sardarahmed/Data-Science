@@ -1,0 +1,105 @@
+Q:
+
+robot_localization adjusting launch file
+
+Hello,
+I have a bagfile of a drive with a vehicle around a building. Inside there is a visual odometry topic (nav_msgs/Odometry Message), an IMU topic (sensor_msgs/Imu Message), a GPS topic (sensor_msgs/NavSatFix Message and remapped via gps_common nav_msgs/Odometry Message ) and a Wheel Odometry topic (nav_msgs/Odometry Message).
+I would like to fuse the data with the package robot_localization. After working with it for a while I encountered some
+things which I am not sure about.
+
+The Wheel Odometry topics frame_id is a local navigation frame which has no available transformation to my bodyframe (base_link) or my odom frame. Therefore linear and angular velocities are expressed in this local navigation frame rather than in  body coordinates. (I don' t know why this is). Also there are no values given for
+pose and twist covariance (zeros) and Z-position, z-velocity, velocity over roll and pitch remain zero the entire time.
+
+Can I fuse this wheel odometry in "robot_localization" and how would that be done?
+I think about remapping the topic to a new topic adding the covariance info. Do I have to set
+<param name="odom0_differential" value="true" /> 
+
+for the wheel odometry? What would be good values for the covariance matrix?
+
+My visual odometry topic is computed via "viso2ros", there are static covariance matrices for pose and twist.
+In the solution of the filter I can see (rviz displaying the odometry/filtered topic) that the computed solution follows rather strictly the visual odometry. I figure the covariance values should be increased. Could that be?
+
+What would be the settings in the launch file for my configuration (as described above),
+where odom0=wheelodometry, odom1=visual_odometry, odom2=gps (xsens, only x,y,z available plus covariances) and imu0=xsens.
+
+Blockquote
+
+<rosparam param="odom0_config">[false, false, true, false, false, true, false,  false, true, false, false, true] </rosparam>
+<rosparam param="odom1_config">[true, true, false, true, true, false,  true,  true, true, false, false, true]</rosparam>
+<rosparam param="odom2_config">[true, true, false, false,  false, false, false,  false, false, false, false, false ]</rosparam>
+<rosparam param="imu0_config">[false, false, false, true,  true,  false, false, false, false, true,  true,  false ]</rosparam>
+
+<param name="odom0_differential" value="true"/>
+<param name="odom1_differential" value="false"/>
+<param name="odom2_differential" value="false">
+<param name="imu0_differential" value="false"/>
+
+The odom and world-frame are called "utm". I am glad for any help!
+Update: I receive the warnings:
+
+"Could not obtain transform from wheel_odometry to utm. Error was "wheel_odometry passed to lookupTransform argument source_frame doesnot exist."
+
+"Could not obtain transform from gpsfix to utm. Error was " lookup would require extrapolation into the future."
+
+Originally posted by mister_kay on ROS Answers with karma: 238 on 2014-09-23
+Post score: 1
+
+Original comments
+Comment by Tom Moore on 2014-09-23:
+My response to this is going to be lengthy, but I need a bit more info: is this robot meant to operate in 2D or 3D?
+
+A:
+
+(@mister_kay was kind enough to provide me with a bag file, so some of my response will relate to that data.)
+There are some changes you need to make to your launch files and also some changes you need to make to your sensor data.
+First, just so we're on the same page, it appears from plotting your GPS data in Google Earth that you started facing more or less directly north, then drove forward a bit, made a left turn, and then carried on going straight and turning left until you sort of completed a square. Please let me know if this is incorrect.
+Assuming I'm correct, though:
+
+First, your wheel odometry data. Do you have access to the node that generates it? I would change its frame_id to "odom," fix its velocities so they're in base_link (or in your case, mustang_base), and then make sure to fill out the child_frame_id with that value. More importantly, however, you need to fix your orientation data. If you watch the output of your wheel odometry message, you will see that your yaw angle (once converted from a quaternion) is turning right after each leg, i.e., the value decreases. However, we know from the GPS data that the robot actually turned left. See REP-103. When you turn left, your yaw angle should increase, and turning right should result in a decrease.
+
+The Z, roll, pitch, and their respective velocities will remain zero, as this information is probably coming just from wheel encoders, which simply measure wheel rotations and therefore cannot measure 3D pose and velocity variables.
+As for the covariances, you should give them non-zero values. robot_localization can handle zero covariances, but it does so by changing them to a small positive value. This means that the measurements from any data source with zero covariances will be "trusted" too much by the filter.
+If for whatever reason you are unable to modify the velocity data, I would configure your odometry data this way (after you fix the sign of your yaw data, of course):
+<param name="odom0" value="wheel_odometry"/>
+<rosparam param="odom0_config">[true, true, true, false, false, true, false,  false, false, false, false false]</rosparam>
+<param name="odom0_differential" value="true"/>
+
+The same goes for your visual odometry data. Its yaw velocity angle seems to be negated. Also, for some reason, its data is reported in the UTM frame. There are other issues with your UTM frame handling that are causing some grief, but for now, I would report this data in the frame_id = odom frame, with its child_frame_id set to mustang_base. It's possible that the reason your state estimate followed the visual odometry so closely is that you wheel odometry couldn't be transformed into the correct frame, and was being ignored.
+
+<param name="odom1" value="wheel_odometry"/>
+<rosparam param="odom1_config">[false, false, false, false, false, false, true,  true, true, true, true, true]</rosparam>
+<param name="odom1_differential" value="false"/>
+
+Your GPS data looks to be very close to what I would expect to see, except that it goes in the opposite (read: correct) direction after it makes the first turn. Once your odometry headings are correct, this should work out. Here are the settings I'd use:
+
+<param name="odom2" value="gps_odom"/>
+<rosparam param="odom2_config">[true, true, true, false, false, false, false,  false, false, false, false, false]</rosparam>
+<param name="odom2_differential" value="false"/>
+
+Your IMU data (/my_odometry2imu/imu_data) has no angular velocity, so those values can be false in its config. Also, it appears to be increasing in the wrong direction as well. Here are the settings I'd use once it's corrected:
+
+<param name="imu0" value="/my_odometry2imu/imu_data"/>
+<rosparam param="imu_config">[false, false, false, true, true, true, false,  false, false, false, false, false]</rosparam>
+<param name="imu0_differential" value="true"/>
+
+Not sure how you intended to have your tf tree looking, but for your application, if you plan on fusing GPS data with your state estimate (which I don't necessarily recommend - see the map/odom/base_link/world frame parameters on the wiki page), then I would say that you want to have your top-level frame just be odom. odom will have to children: base_link and utm. The odom->base_link transform is generated by ekf_localization_node, and the odom->utm transform is generated by utm_transform_node.
+
+I know this all seems like a lot, so let's do this:
+
+For every sensor you have, verify that it is generating output that is consistent with REP-103. The coordinate frames are right-handed, so yaw should increase counter-clockwise. Also, check your frame_ids. Two sensors that are producing odometry data can both have odom as their frame_id, and base_link (or mustang_base in your case) as their child_frame_id. You needn't use different frame_id values for each odometry sensor (with the exception of the UTM data), as you'll just have to run a bunch of static_transform_publishers to broadcast identity transforms between them. Don't put any data in the utm frame yourself. The only input odometry data that should be in that frame is the GPS (UTM) data.
+Add each sensor to ekf_localization_node's launch file one-at-a-time. If necessary, do each one in isolation, verify that the output is what you want, and then start adding multiple sensors.
+
+Once you've done those, you can ask further questions here if you are still having trouble and we'll sort them out. This post is getting to be a tome. :)
+
+Originally posted by Tom Moore with karma: 13689 on 2014-09-23
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by mister_kay on 2014-09-24:
+Thank you very much for your help. Your effort is highly appreciated! I will try to fix the diff. sensor settings. The thing is that mustang_base(base_link) as well as the frame "utm" is referenced in a North-East-Down system. Therefore when driving a left curve the angular vel. around z is negative
+Comment by Tom Moore on 2014-09-24:
+I believe +X is east in the UTM grid and +Y is north. Z points up out of the ground, making the coordinate frame right-handed (at least, that's what utm_odometry_node appears to produce). In any case, robot_localization (and ROS itself) assume a right-handed coordinate frame.
+Comment by mister_kay on 2014-09-26:
+That is a good point. It occured to me too, that the "utm_odometry_node" in gps_common has the coordinate frame structue you described. This structure differs from "our" North, East Down system. There are still a lot of things which I have to think about ...
+

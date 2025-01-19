@@ -1,0 +1,99 @@
+Q:
+
+How to turn laser scan to point cloud map
+
+Hello,
+I'm fairly new to ROS and was wondering if there was a way to convert a ".bag" laser scan file into a point cloud map. I have successfully run the "laser.bag" scan file, provided by ROS, in Rviz. Now I am curious to know how to turn this "laser.bag" file into a 3D map.
+Thanks you for your time,
+Tyler
+
+Originally posted by tyler258 on ROS Answers with karma: 93 on 2011-09-16
+Post score: 6
+
+A:
+
+One quick way to do this would be to use the laser_geometry node. It provides functionality for converting laser scans directly into PointCloud or PointCloud2 messages in the frame of your choice. That's what I use, and it's quite simple to do. I hope this helps.
+EDIT: To use this functionality, you could do something like this:
+In the class definition:
+#include <ros/ros.h>
+#include <tf/transform_listener.h>
+#include <laser_geometry/laser_geometry.h>
+
+class My_Filter {
+     public:
+        My_Filter();
+        void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
+     private:
+        ros::NodeHandle node_;
+        laser_geometry::LaserProjection projector_;
+        tf::TransformListener tfListener_;
+
+        ros::Publisher point_cloud_publisher_;
+        ros::Subscriber scan_sub_;
+};
+
+My_Filter::My_Filter(){
+        scan_sub_ = node_.subscribe<sensor_msgs::LaserScan> ("/scan", 100, &My_Filter::scanCallback, this);
+        point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud2> ("/cloud", 100, false);
+        tfListener_.setExtrapolationLimit(ros::Duration(0.1));
+}
+
+In the callback function:
+void My_Filter::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan){
+    sensor_msgs::PointCloud2 cloud;
+    projector_.transformLaserScanToPointCloud("base_link", *scan, cloud, tfListener_);
+    point_cloud_publisher_.publish(cloud);
+}
+
+And the main:
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "my_filter");
+
+    My_Filter filter;
+
+    ros::spin();
+
+    return 0;
+}
+
+Where "base_link" is the frame that you'd like to see all the scans in, *scan is the reference to the incoming laser scan, cloud is the sensor_msgs::PointCloud2 that you'd like to be your output (this can also be a regular sensor_msgs::PointCloud), and tfListener_ is your transform listener.
+You must also add the following to your manifest.xml:
+<depend package="laser_geometry"/>
+<depend package="tf"/>
+<depend package="sensor_msgs" />
+
+That's how I build my LaserScans into point clouds. I can provide a more specific example if you need it.
+EDIT: I have updated the code snippets such that if you paste all of the code into a .cpp file, build the file, and run it, it will work 100%. You should change "/scan" to the topic that your laser publishes, and you should change "/cloud" to the topic you wish to view the cloud on. In Rviz, add a new PointCloud2 visualizer and point it to the topic you chose for "/cloud" and it should work. This node also assumes that there is a tf from the frame of the laser to the target frame ("base_link" in this example).
+
+Originally posted by DimitriProsser with karma: 11163 on 2011-09-16
+This answer was ACCEPTED on the original site
+Post score: 21
+
+Original comments
+Comment by acp on 2011-12-05:
+How a tf from based_laser to based_link can be achieved?
+Comment by DimitriProsser on 2011-09-26:
+Just some advice, I wouldn't rename "/cloud" to "/base_link" because that could get confusing. You want "/cloud" to be the name of data stream, not the frame that it's in. To see it in Rviz, add a new PointCloud2 and link it to "/cloud" or whatever you've named it.
+Comment by tyler258 on 2011-09-26:
+Okay, I got the code running but I'm still having trouble publishing it in Rviz. The laser scan data I have publishes to tilt_scan. So I replaced "/scan" with "/tilt_scan" and I replaced "/cloud" with "/base_link" but this is still not working.  Also, how do I get access to this new map?
+Comment by tyler258 on 2011-09-23:
+Would you mind providing the more specific example I would appreciate it. Right now I have my .cpp file set up, more or less, just like the example you provided. Now once I run the .cpp file, I run "rosbag play my_laser_data.bag" but I can't anything to show up in rviz.
+Comment by tyler258 on 2011-09-21:
+Could you explain how to call the transformLaserScanToPointCloud() function in the laser_gemoetry class?
+Comment by AG1617 on 2013-05-14:
+Running 12.04 and groovy, the following error comes up: /opt/ros/groovy/include/laser_geometry/laser_geometry.h:46:22: fatal error: Eigen/Core: No such file or directory
+Any help?
+Comment by Bernhard on 2013-06-05:
+I had the same problem as you AG1617, you'll have to edit the file manually and fill in the correct path, usually the file is somewhere here /usr/include/eigen3/Eigen/core
+Comment by RSA_kustar on 2014-07-20:
+what is the difference between the target frame and frame id ?? the frame id for the /scan topic in my case is laser0_frame. So should it be the target frame or not ?
+Comment by Mudassir Khan on 2014-07-31:
+for /opt/ros/groovy/include/laser_geometry/laser_geometry.h:46:22: fatal error: Eigen/Core: No such file or directory try http://answers.ros.org/question/185948/eigencore-on-ros-hydro/
+Comment by Tooght on 2016-11-30:
+Hi .I followed the above steps but it didn't work.
+CMakeFiles/My_Filter.dir/src/My_Filter.cpp.o: In function My_Filter::My_Filter()': My_Filter.cpp:(.text+0x84): undefined reference to tf::Transformer::DEFAULT_CACHE_TIME'
+My_Filter.cpp:(.text+0x88): undefined reference to `tf::Transformer::DEFAULT
+Comment by lounis on 2018-02-21:
+Hi D. I came here as I want convert laserscans into pointcloud2. I've laserScans stored in a bag. I tried ur code. The error I get is with the difference in timestamps between laserscans, the bag (generated later on) and current time (tf's). I tried wth sim time but didnt work. Any help is wlcm.10x
+

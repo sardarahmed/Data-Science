@@ -1,0 +1,61 @@
+Q:
+
+pass parameters of xacro file in another xacro file
+
+I have this cameras.urdf.xacro file:
+<?xml version="1.0"?>
+<robot name="origins">
+     <link name="$(arg tf_prefix_camera1)_pose_frame"/>
+     <link name="$(arg tf_prefix_camera2)_link"/>
+
+     <joint name="$(arg tf_prefix_camera1)_to_$(arg tf_prefix_camera2)" type="fixed">
+       <parent link="$(arg tf_prefix_camera1)_pose_frame"/>
+       <child link="$(arg tf_prefix_camera2)_link"/>
+       <origin xyz="0.009 0.021 0.027" rpy="0.000 -0.018 0.005"/>
+     </joint>
+</robot>
+
+So, this file has parameters tf_prefix_camera1 and tf_prefix_camera2. And i want to include this file in another xacro file and set this parameters. how can i do it?
+<xacro:include filename="$(find realsense2_camera)/urdf/mount_t265_d435.urdf.xacro tf_prefix_camera1:=t265 tf_prefix_camera2:=d435" />
+
+like this?
+
+Originally posted by june2473 on ROS Answers with karma: 83 on 2019-08-23
+Post score: 0
+
+A:
+
+You are not that far from the correct solution you just need some adjustments :
+
+Your cameras.urdf.xacro should actually use some macros to receive the parameters :
+   <?xml version="1.0"?>
+   <robot name="camera" xmlns:xacro="http://ros.org/wiki/xacro">
+   <xacro:macro name="camera" params="tf_prefix_camera1 tf_prefix_camera2">
+       <link name="${tf_prefix_camera1}_pose_frame"/>
+          <link name="${tf_prefix_camera2}_link"/>
+
+       <joint name="${tf_prefix_camera1)_to_${tf_prefix_camera2)" type="fixed">
+            <parent link="${tf_prefix_camera1}_pose_frame"/>
+            <child link="${tf_prefix_camera2}_link"/>
+         <origin xyz="0.009 0.021 0.027" rpy="0.000 -0.018 0.005"/>
+       </joint>
+   </xacro:macro>
+   </robot>
+
+The important parts here are xmlns:xacro="http://ros.org/wiki/xacro" to properly use the macro and to define the macro camera like a function, i.e. specifying its arguments (here its params).
+Note also that it's not like in the launch files, $(arg ARG) you just need brackets around the name of your param.
+
+In your other file you just need :
+ <?xml version="1.0"?>
+ <robot name="camera" xmlns:xacro="http://ros.org/wiki/xacro">
+ <xacro:include filename="$(find YOUR_PKG)/urdf/cameras.urdf.xacro"/>
+ <camera tf_prefix_camera1="t265" tf_prefix_camera2="d435"/>
+ </robot>
+
+In your example you didn't include cameras.urdf.xacro but another urdf file is this a copy/paste mistake ?
+To call the macro you have previously defined, you just need a tag with the name of your macro and simply assign a value to your parameters. That will simply copy and paste everything from the camera.urdf.xacro file between the <xacro> tag (so everything except the 2 first lines and the last one) and replace the paramaters with their value.
+
+Originally posted by Delb with karma: 3907 on 2019-08-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

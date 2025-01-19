@@ -1,0 +1,32 @@
+Q:
+
+Can nodes from different ROS 2 distributions communicate compatibly?
+
+Do all nodes passing messages need to be from the same ROS 2 release to reliably communicate? Can a node compiled for and running say the Bouncy release on one machine safely send messages to a node compiled and running say the Dashing release on another machine? Do releases reserve the right to break compatibility so it would be unwise to mix releases running in one system? Or do the releases remain compatible with each other as long as they are communicating over DDS?
+
+Originally posted by peterpolidoro on ROS Answers with karma: 49 on 2020-01-09
+Post score: 3
+
+A:
+
+For clarity I'm going to alias releases to distributions for my answer as releases is an overloaded term.
+Nodes from different ROS distibutions are not expected to reliably communicate. The reason for the different distributions is to allow us to have the opportunity to change compatibility.
+Having DDS on both sides is not enough to guarantee compatibility. The conventions building on top of DDS can and does change between distributions. There's how we use different DDS components as well as the message types that may change between distributions.
+In practice all recent ROS 2 distributions will generally not communicate as we're still adding features and making improvements at the core from distribution to distribution. But from experience with ROS 1 over time as the core matures the rate of change will drop and people have been able to communicate between nodes of different distributions when they have tested it as long as the protocols and messages they're using have not changed. This is not supported but can be found to work sometimes. Designing a system to rely on that compatibility is not recommended as there are no guarantees.
+
+Originally posted by tfoote with karma: 58457 on 2020-01-09
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by peterpolidoro on 2020-01-10:
+Thank you. It makes sense that you would want to be able break compatibility between distributions. I was hoping that perhaps if the message definitions remained the same then nodes from different distributions would still be able to exchange data, but I get that guaranteeing compatibility would be way too restrictive for development.
+That means, unfortunately, that large heterogeneous systems may get stuck on very old distributions to guarantee that all nodes remain compatible. No nodes would be able to upgrade until it is possible for every node to upgrade. Client libraries or node implementers that are very slow to upgrade will hold entire systems back. For example, Matlab ROS nodes are currently restricted to Bouncy until the next Matlab release. So any node that needs to have the option of communicating with Matlab will upgrade limited by the pace of one proprietary company.
+How insane/inefficient would it be to have some sort of rosbridge between ROS 2 distributions?
+Comment by tfoote on 2020-01-10:
+It's not completely crazy. We have the ros1_bridge which is able to bridge between ROS 1 and ROS 2. A similar approach could be done for ROS 2 to ROS 2. The level of efficiency would likely be highly dependent on how much effort is put in, as well as how similar the two distros are.
+A technical challenge is that ROS 2 distributions will have the same namespaces, so likely you'll want to do something like run the bridge over shared memory so that you can compile the Dashing and Bouncy bridge ends separately and not worry about the symbols colliding.
+In ROS 1 we already have a method for aliasing the datatypes between rosdistros (bag migration rules) we'll need an equivalent for that already for rosbag2. Depending on how that's implemented you might be able to leverage that same work for rosbag2 to use the rosbag backend to connect to two different distros and have republish hooks. I'm kind of spitballing here, and it's likely complicated, but there's several potential approaches.
+Comment by Dirk Thomas on 2020-01-10:
+At least in C++ a bridge between different ROS 2 distros is not possible atm because the symbols are the same and can't coexist in a single binary. That was one major reason why rclcpp and roscpp have different namespaces.
+

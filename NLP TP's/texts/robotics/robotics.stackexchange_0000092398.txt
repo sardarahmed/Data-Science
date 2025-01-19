@@ -1,0 +1,48 @@
+Q:
+
+ros nodes vs ros timers?
+
+Hi,
+I'm would like to set up two loops at different frequencies on a system (like raspberry pi3). I'm trying to decide the optimal way to set up my code with the least latency in data transfer between the two loops and least computation. Here are two options I thought of,
+
+Two different ros-nodes each with different loop rates and using ros-msgs to communicate between these loops.
+-With the ros-nodes options, the loop rates are pretty consistent but there is latency in the data transfer.
+
+A class with two functions run at different loop rates using ros::Timers. Class variables used to transfer the data between the functions.
+-Using the ros::Timers, even though no latency in the data transfer, loop rates are not quite consistent.
+
+What is the better option, or are there any other better options? Is multi-threading a better option?
+Also, it is possible to share data between two ros-nodes without using rosmsgs/rosservice but by sharing variables/pointers between them?
+Thank you
+
+prasanth
+
+Originally posted by praskot on ROS Answers with karma: 257 on 2019-07-07
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-07-08:
+To avoid an xy-problem: what is it that you actually want to do (ie: why do you feel you need "two loops at different frequencies")?
+Comment by PeteBlackerThe3rd on 2019-07-08:
+I would have thought a single node with two timers and multi-threaded spinner would be best. You'd have to make sure your mutexes were setup sensibly so that blocking didn't effect your loop rate too much.
+Comment by praskot on 2019-07-08:
+@gvdhoorn: I'm setting up a control architecture with two-different loops, an inner loop running (high frequency) and an outer loop (with lower frequency).
+@PeteBlackerThe3rd: thank you, will give it a try.
+Comment by gvdhoorn on 2019-07-08:
+In that case, you might want to consider a single loop with a divider for the lower-frequency one.
+That would avoid: scheduling jitter due to multi-threading, use of locks, potential for aliasing and some other complexities that come with multithreading.
+But it all depends on what the frequencies and the data-dependencies are.
+Comment by praskot on 2019-07-08:
+I am looking at 100-200Hz for outer loop and 800-1000Hz for the inner loop.
+
+A:
+
+To summarise the discussion, if you can ensure that the inner loops frequency will be an integer factor of the outer loops frequency then the solution recommended by @gvdhoorn is the best way to go, it will ensure timing is always consistent. If you cannot ensure an integer factor then using two timers and a multi-threaded spinner, this will be able to keep the timing more consistent than a single thread.
+You will need to ensure that mutexes do not block access to any shared memory areas for too long or they may throw off the timing accuracy by delaying one of the timer callbacks.
+To answer your final question, there is no mechanism I know of for two ros nodes (separate OS processes) to communicate via shared pointers. However ROS nodelets were designed for exactly this purpose, they are essentially plugin objects that can be loaded and run by the nodelet manager meaning they are executing within the same process so can share the same memory space. ROS will automatically take advantage of this to accelerate message passing. However in your case nodelets would be an overly complicated solution, I'd recommend a single node instead.
+Hope this makes sense.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2019-07-09
+This answer was ACCEPTED on the original site
+Post score: 2
+

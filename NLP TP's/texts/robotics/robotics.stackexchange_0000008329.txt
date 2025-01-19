@@ -1,0 +1,38 @@
+Q:
+
+Filtering IMU angle discontinuities
+
+I try to measure Euler angles from an IMU, but some discontinuities happens during measurement, even in vibrationless environment, as shown in the images below. 
+Can someone explain which type of filter will be the best choice to filter this type discontinuities?
+
+A:
+
+Here are my two suggestions for dealing with this problem:
+Use a median filter, which replaces each value of your signal with the median of the values in a small window around each one. Here is some pseudo-code, where x is your original signal, y is the filtered signal, N is the number of points in your signal, and W is the number of points in the median filter window.
+for (k = 1 to N) {
+    y[k] = median of samples x[k-W+1] to x[k]
+}
+If you are using MATLAB then you can use the function medfilt1 to do this, or the function median to make your own filter (see this), whereas if you are using a language like C++ then you may need to write your own functions (see this).
+The other option is to simply check the magnitude of the change in the signal and reject any sample whose change is beyond some threshold. Something like this:
+if (abs(x[k] - y[k-1]) > threshold) {
+    y[k] = x[k-1]
+} else {
+    y[k] = x[k]
+}
+EDIT: 
+Taking a look at your data, it looked suspiciously like an angle wrapping issue, but around 180 deg instead of 360 deg. The spikes disappear if you double the signal then apply an angle wrap (using MATLAB's wrapToPi for example). The plot below shows the doubled signal in blue and the doubled signal after wrapping in red.
+
+Here is the code I used:
+sensorData = dlmread('sensor.txt');
+t = sensorData(:,1);
+x = sensorData(:,2);
+
+x2 = 2*x;
+y = wrapToPi(x2*(pi/180))*(180/pi);
+
+figure
+hold on;
+plot(t,x,'k','linewidth',2);
+plot(t,x2,'b','linewidth',2);
+plot(t,y,'r','linewidth',2);
+

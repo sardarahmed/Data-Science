@@ -1,0 +1,194 @@
+Q:
+
+Error when initializing trac_ik on Noetic
+
+Hi!
+I have used TRAC-IK on ROS Melodic and Kinetic and everything works fine.
+However, when I ported the same code to ROS Noetic, I found that TRAC-IK could not be initialized, i.e., I got this error
+ Signal: SIGSEGV (Segmentation fault)
+
+when running to
+  TRAC_IK::TRAC_IK tracik_solver(chain_start, chain_end, urdf_param, timeout, eps);
+
+To make sure it wasn't an error in my code, I ran test.cpp  separately and ran into the same problem.
+I'm not sure what is causing this error, or if I'm missing the installation of other libraries. But for now, my code builds fine.
+Looking forward any reply!
+Thanks!
+
+Originally posted by JohnDoe on ROS Answers with karma: 3 on 2022-11-15
+Post score: 0
+
+A:
+
+I believe the error is coming due to an incorrect installation of  trac_ik. To answer you completely, I tested it in ROS Noetic and found it working. Please see below:
+
+Install trac_ik: Please install from pre-built binaries as shown below:
+ $ sudo apt install ros-noetic-trac-ik
+
+Install dependency to run an example: We do not need this package. But here, I want to run an example to confirm trac_ik.
+ $ sudo apt install ros-noetic-pr2-description 
+
+Run example: The pr2_arm.launch uses TRAC_IK::TRAC_IK tracik_solver(chain_start, chain_end, urdf_param, timeout, eps)
+ ravi@dell:~$ roslaunch trac_ik_examples pr2_arm.launch 
+ ... logging to /home/ravi/.ros/log/a428d09e-64be-11ek-b98a-bhc0cd415369/roslaunch-dell-13219.log
+ Checking log directory for disk usage. This may take a while.
+ Press Ctrl-C to interrupt
+ Done checking log file disk usage. Usage is <1GB.
+
+ started roslaunch server http://dell:36633/
+
+ SUMMARY
+ ========
+
+ PARAMETERS
+  * /robot_description: <?xml version="1....
+  * /rosdistro: noetic
+  * /rosversion: 1.15.14
+  * /trac_ik_tests/chain_end: r_wrist_roll_link
+  * /trac_ik_tests/chain_start: torso_lift_link
+  * /trac_ik_tests/num_samples: 1000
+  * /trac_ik_tests/timeout: 0.005
+  * /trac_ik_tests/urdf_param: /robot_description
+
+ NODES
+   /
+     trac_ik_tests (trac_ik_examples/ik_tests)
+
+ auto-starting new master
+ process[master]: started with pid [13259]
+ ROS_MASTER_URI=http://localhost:11311
+
+ setting /run_id to a428d09e-64be-11ek-b98a-bhc0cd415369
+ process[rosout-1]: started with pid [13284]
+ started core service [/rosout]
+ process[trac_ik_tests-2]: started with pid [13287]
+ [ INFO] [1668500629.439007277]: Using 7 joints
+ [ INFO] [1668500629.440011185]: *** Testing KDL with 1000 random samples
+ [ INFO] [1668500629.440163447]: 0% done
+ [ INFO] [1668500630.509473437]: 90% done
+ [ INFO] [1668500630.632576062]: KDL found 859 solutions (85.9%) with an average of 0.0011914 secs per sample
+ [ INFO] [1668500630.632594903]: *** Testing TRAC-IK with 1000 random samples
+ [ INFO] [1668500630.632938700]: 0% done
+ [ INFO] [1668500631.733434004]: TRAC-IK found 955 solutions (95.5%) with an average of 0.0010914 secs per sample
+ [trac_ik_tests-2] process has finished cleanly
+ log file: /home/ravi/.ros/log/a428d09e-64be-11ek-b98a-bhc0cd415369/trac_ik_tests-2*.log
+ ^C[rosout-1] killing on exit
+ [master] killing on exit
+ shutting down processing monitor...
+ ... shutting down processing monitor complete
+ done
+
+Note
+Please read below if you get the following error with pr2_arm.launch file
+RLException: Invalid <param> tag: Cannot load command parameter [robot_description]: no such command [['/opt/ros/noetic/share/xacro/xacro.py', '/opt/ros/noetic/share/pr2_description/robots/pr2.urdf.xacro']]. 
+
+Param xml is <param name="robot_description" command="$(find xacro)/xacro.py '$(find pr2_description)/robots/pr2.urdf.xacro'"/>
+The traceback for the exception was written to the log file
+
+Please change xacro.py to xacro at line#8 of /opt/ros/noetic/share/trac_ik_examples/launch/pr2_arm.launch file as suggested here.
+Update
+With "chain_start", "chain_end", as "base_link", and "tool0" respectively, the IK test of kuka lbr iiwa robot using trac_ik works smoothly. Below is the kuka_lbr_iiwa.launch file:
+<?xml version="1.0"?>
+<launch>
+  <arg name="num_samples" default="1000" />
+  <arg name="chain_start" default="base_link" />
+  <arg name="chain_end" default="tool0" />
+  <arg name="timeout" default="0.005" />
+
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find kuka_lbr_iiwa_support)/urdf/lbr_iiwa_14_r820.xacro'" />
+
+  <node name="trac_ik_tests" pkg="trac_ik_examples" type="ik_tests" output="screen">
+    <param name="num_samples" value="$(arg num_samples)" />
+    <param name="chain_start" value="$(arg chain_start)" />
+    <param name="chain_end" value="$(arg chain_end)" />
+    <param name="timeout" value="$(arg timeout)" />
+    <param name="urdf_param" value="/robot_description" />
+  </node>
+</launch>
+
+This is how, I executed it:
+$ roslaunch trac_ik_examples kuka_lbr_iiwa.launch 
+... logging to /home/ravi/.ros/log/648856b2-655b-11ed-b98a-bfc0cd455360/roslaunch-dell-115393.log
+Checking log directory for disk usage. This may take a while.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+xacro: in-order processing became default in ROS Melodic. You can drop the option.
+started roslaunch server http://dell:44651/
+
+SUMMARY
+========
+
+PARAMETERS
+ * /robot_description: <?xml version="1....
+ * /rosdistro: noetic
+ * /rosversion: 1.15.14
+ * /trac_ik_tests/chain_end: tool0
+ * /trac_ik_tests/chain_start: base_link
+ * /trac_ik_tests/num_samples: 1000
+ * /trac_ik_tests/timeout: 0.005
+ * /trac_ik_tests/urdf_param: /robot_description
+
+NODES
+  /
+    trac_ik_tests (trac_ik_examples/ik_tests)
+
+auto-starting new master
+process[master]: started with pid [115433]
+ROS_MASTER_URI=http://localhost:11311
+
+setting /run_id to 648856b2-655b-11ed-b98a-bfc0cd455360
+process[rosout-1]: started with pid [115460]
+started core service [/rosout]
+process[trac_ik_tests-2]: started with pid [115467]
+[ INFO] [1668567873.100935324]: Using 7 joints
+[ INFO] [1668567873.102060585]: *** Testing KDL with 1000 random samples
+[ INFO] [1668567873.107102190]: 0% done
+[ INFO] [1668567874.109234688]: 30% done
+[ INFO] [1668567875.367298698]: 70% done
+[ INFO] [1668567876.307079837]: KDL found 400 solutions (40%) with an average of 0.00320388 secs per sample
+[ INFO] [1668567876.307104300]: *** Testing TRAC-IK with 1000 random samples
+[ INFO] [1668567876.307449347]: 0% done
+[ INFO] [1668567876.837260447]: TRAC-IK found 996 solutions (99.6%) with an average of 0.000525585 secs per sample
+[trac_ik_tests-2] process has finished cleanly
+log file: /home/ravi/.ros/log/648856b2-655b-11ed-b98a-bfc0cd455360/trac_ik_tests-2*.log
+^C[rosout-1] killing on exit
+[master] killing on exit
+shutting down processing monitor...
+... shutting down processing monitor complete
+done
+
+Originally posted by ravijoshi with karma: 1744 on 2022-11-15
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by JohnDoe on 2022-11-15:
+Thank you for your reply and detailed explanation. I followed your instructions and was able to see the same verification results.
+However, this is not what I want.
+When I run test.cpp via C++ in IDE and launch the robot description in another terminal, I get the error mentioned above, which does not happen with the ROS Melodic.
+I am using the kuka lbr iiwa robot. For the main function of my test.cpp, I just changed the following parameters based on the sample.
+nh.param("chain_start", chain_start, std::string("base_link"));
+nh.param("chain_end", chain_end, std::string("tool0"));
+nh.param("urdf_param", urdf_param, std::string("/robot_description"));
+
+Besides, the rest is exactly the same as the original test.cpp.
+Would you please try to call trac-ik in this way?
+Thanks!
+Comment by ravijoshi on 2022-11-15:
+Please see the "Update" section in my answer above. Basically, it works fine with your parameters as well. However, in your computer, most probably the trac_ik is broken. Please install it as mentioned in the answer above.
+Comment by JohnDoe on 2022-11-15:
+Thank you for your patient response, which I greatly appreciate.
+I have tried all your instructions and everything goes well. However, I found the problem when I was trying to share a minimally reproducible example for you.
+For my original project, there are many components in the find_package of CMakeList, e.g. kdl_parser, trac_ik_lib, nlopt, visualization_msgs, and so on.
+For the minimal reproducible example project, I just included kdl_parser and trac_ik_lib, and I found that the error encountered above disappeared.
+Through repeated testing, I found that in ROS Noetic, the nlopt lib and trac_ik_lib conflict with each other, which causes the error I raised in the question and does not occur with ROS Melodic.
+Anyway, thanks for the guidance and I was able to find this problem in my attempt.
+PS: I installed nlopt and trac_ik_lib by sudo apt-get install ros-noetic-****.
+Comment by ravijoshi on 2022-11-15:
+I am glad that you made it work. Sometime, creating a " minimally reproducible example" helps to filter the issue, as you did. BTW, the nlopt is automatically installed when using sudo apt install ros-noetic-trac-ik. So, you don't need to worry about it. Otherwise, you have to install libnlopt-dev and libnlopt-cxx0. I have tested both approaches in Noetic (Ubuntu 20.04 LTS) and found working.
+Finally, if this answer helped you to found the issue and the problem is resolved, may I request you to (1) upvote, and (2) mark this answer as accepted? Please look at the top left corner of this above above.
+Comment by JohnDoe on 2022-11-16:
+No problem, I've marked this as the answer.
+Thanks again for your kindness!
+

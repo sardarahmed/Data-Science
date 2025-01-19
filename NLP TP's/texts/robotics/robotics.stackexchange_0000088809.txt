@@ -1,0 +1,126 @@
+Q:
+
+How to set the inflation of the costmap to represent a rectangle robot?
+
+Hi everyone,
+I looked at this page but I don't understand how to configure the costmap to represent a rectangular robot. This question is a follow-up to this one where I got a solution from David Lu which allows me to use global_planner alone to plan a path in a map (from an imported image).
+[UPDATE]
+As pavel92 advised me, I defined footprint and inflation_radius and it works fine. First, I thought it didn't work because the map resolution was too low and I couldn't see any difference because the obstacles remained rectangular, so I switched the resolution from 1 to 0.1 and made the map 10 times bigger.
+First, I was confused with the meaning of the inflation_radius, but I found this explanation.
+Here is the code:
+map.yml
+image: map_obstacle400.png
+resolution: 0.1
+origin: [0.0, 0.0, 0.0]
+occupied_thresh: 0.65
+free_thresh: 0.196
+negate: 0
+
+map.png
+
+roslaunch file
+<launch>
+  <node name="gp" pkg="global_planner" type="planner" output="screen">
+  <rosparam>
+  costmap:
+    footprint: [[-2.5, -1.65], [-2.5, 1.65], [2.5, 1.65], [2.5, -1.65]]
+    inflater_layer:
+      inflation_radius: 0.7
+    plugins:
+      - {name: 'static_layer', type: 'costmap_2d::StaticLayer'}
+      - {name: inflater_layer, type: "costmap_2d::InflationLayer"}
+  </rosparam>
+  </node>
+  <node name="static_tf" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 /map /base_link 100"/>
+  <node name="map_srv" pkg="map_server" type="map_server" args="/home/loic/Desktop/ROSAnswers2/map.yml"/>
+</launch>
+
+call to /gp/make_plan
+rosservice call /gp/make_plan "start:
+  header:
+    seq: 0
+    stamp:
+      secs: 0
+      nsecs: 0
+    frame_id: '/map'
+  pose:
+    position:
+      x: 5.0
+      y: 5.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+goal:
+  header:
+    seq: 0
+    stamp:
+      secs: 0
+      nsecs: 0
+    frame_id: '/map'
+  pose:
+    position:
+      x: 30.0
+      y: 30.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0"
+
+rviz
+(run after the launch file, it show the map and the footprint, the path shows up after the /gp/make_plan call as expected)
+
+Originally posted by Hug on ROS Answers with karma: 66 on 2018-08-31
+Post score: 0
+
+A:
+
+Take a look at the navstack robot configuration tutorial. Here under the Costmap Configuration you can see the common configuration for both global and local costmaps. Parameters such as the footprint of the robot usually go under the costmap_common_params.yaml  file. Here you can set the footprint parameter represent the robot as a polygon in both global and local costmaps. Example:
+footprint: [[-0.5, -0.33], [-0.5, 0.33], [0.5, 0.33], [0.5, -0.33]]
+
+I would advise using move base and using the planner plugins as parameters there. Here is an example of husky navigation that you can check out. 
+In your case you can try putting the footprint parameter in your launch file:
+<launch>
+  <node name="gp" pkg="global_planner" type="planner" output="screen">
+  <rosparam>
+  costmap:
+    footprint: [[-0.5, -0.33], [-0.5, 0.33], [0.5, 0.33], [0.5, -0.33]]
+    plugins:
+      - {name: 'static_layer', type: 'costmap_2d::StaticLayer'}
+  </rosparam>
+  </node>
+  <node name="static_tf" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 /map /base_link 100"/>
+  <node name="map_srv" pkg="map_server" type="map_server" args="/home/my_name/Desktop/path-planning/maps/map.yml"/>
+</launch>
+
+where you will enter the values for your robot's footprint.
+
+Originally posted by pavel92 with karma: 1655 on 2018-08-31
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Hug on 2018-09-06:
+Thank for the advice, sorry for responding so late. Unfortunately, it doesn't change the path. I think there is something else to do to make it work. I updated my question.
+Comment by pavel92 on 2018-09-06:
+Ok so you got the footprint to work. The problem that u have now is that the global plan is too close to the obstacle right? As I can see from your RViz image, the inflation is not added. You will have to add the inflation layer as a plugin. This should add the 0.55 inflation around the obstacle
+Comment by pavel92 on 2018-09-06:
+It should be something like this.
+plugins:
+     - {name: 'static_layer', type: 'costmap_2d::StaticLayer'}
+    - {name: inflater_layer, type: "costmap_2d::InflationLayer"}
+
+This should add the inflation around the obstacle and the global plan should be near it instead near the obstacle
+Comment by pavel92 on 2018-09-06:
+Also forgot to mention that you should also put the inflation_radius under the inflation layer:
+inflater_layer:
+  inflation_radius: 0.55
+
+Note that this is a workaround since the global planner does not take into account the footprint. That is usually done by the local planners
+Comment by Hug on 2018-09-07:
+I managed to make it work. The resolution I was using was too low, so i couldn't see any difference. I updated my question. Thanks a lot!
+

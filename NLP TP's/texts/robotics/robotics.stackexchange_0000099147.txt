@@ -1,0 +1,89 @@
+Q:
+
+error: reference to ‘_1’ is ambiguous
+
+I'm trying to use the pcl_conversion functions in my ros2 subscriber node. Here is my code:
+#include
+
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+
+#include "pcl_conversions/pcl_conversions.h"
+
+using std::placeholders::_1;
+#define BOOST_BIND_NO_PLACEHOLDERS
+
+class RobotVisioin : public rclcpp::Node
+{
+  public:
+    RobotVisioin() : Node("robot_vision")
+    {
+      subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "/camera/depth/color/points", 10, std::bind(&RobotVisioin::topic_callback, this, _1));
+    }
+
+  private:
+    void topic_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) const
+    {
+      RCLCPP_INFO(this->get_logger(), "I heard: '%s'", msg->data);
+    }
+
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
+};
+
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<RobotVisioin>());
+  rclcpp::shutdown();
+  return 0;
+}
+
+But i'm getting below error:
+/home/ubuntu/turtlebot/src/robot_vision_cpp/src/robot_vision.cpp: In constructor ‘RobotVisioin::RobotVisioin()’:
+/home/ubuntu/turtlebot/src/robot_vision_cpp/src/robot_vision.cpp:17:88: error: reference to ‘_1’ is ambiguous
+   17 |       "/camera/depth/color/points", 10, std::bind(&RobotVisioin::topic_callback, this, _1));
+      |                                                                                        ^~
+In file included from /usr/include/boost/bind/bind.hpp:2356,
+                 from /usr/include/boost/bind.hpp:22,
+                 from /usr/include/boost/signals2/slot.hpp:15,
+                 from /usr/include/boost/signals2/connection.hpp:24,
+                 from /usr/include/boost/signals2/signal.hpp:22,
+                 from /usr/include/boost/signals2.hpp:19,
+                 from /usr/include/pcl-1.10/pcl/io/boost.h:64,
+                 from /usr/include/pcl-1.10/pcl/io/file_io.h:42,
+                 from /usr/include/pcl-1.10/pcl/io/pcd_io.h:44,
+                 from /opt/ros/foxy/include/pcl_conversions/pcl_conversions.h:72,
+                 from /home/ubuntu/turtlebot/src/robot_vision_cpp/src/robot_vision.cpp:6:
+/usr/include/boost/bind/placeholders.hpp:46:38: note: candidates are: ‘constexpr const boost::arg<1> boost::placeholders::_1’
+   46 | BOOST_STATIC_CONSTEXPR boost::arg<1> _1;
+      |                                      ^~
+In file included from /opt/ros/foxy/include/rclcpp/context.hpp:19,
+                 from /opt/ros/foxy/include/rclcpp/contexts/default_context.hpp:18,
+                 from /opt/ros/foxy/include/rclcpp/executor.hpp:32,
+                 from /opt/ros/foxy/include/rclcpp/executors/multi_threaded_executor.hpp:25,
+                 from /opt/ros/foxy/include/rclcpp/executors.hpp:21,
+                 from /opt/ros/foxy/include/rclcpp/rclcpp.hpp:146,
+                 from /home/ubuntu/turtlebot/src/robot_vision_cpp/src/robot_vision.cpp:3:
+/usr/include/c++/9/functional:211:34: note:                 ‘const std::_Placeholder<1> std::placeholders::_1’
+  211 |     extern const _Placeholder<1> _1;
+      |                                  ^~
+make[2]: *** [CMakeFiles/robot_vision_cpp.dir/build.make:63: CMakeFiles/robot_vision_cpp.dir/src/robot_vision.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:78: CMakeFiles/robot_vision_cpp.dir/all] Error 2
+make: *** [Makefile:141: all] Error 2
+
+Environment:
+ros2 foxy, ubuntu 20.
+
+Originally posted by dinesh on ROS Answers with karma: 932 on 2021-05-29
+Post score: 1
+
+A:
+
+You need to move #define BOOST_BIND_NO_PLACEHOLDERS to before your #include statements.
+When you include a header from a library that links against Boost (such as PCL), it checks to see if a BOOST_BIND_NO_PLACEHOLDERS macro exists. There is a condition in one of the Boost header files that optionally brings in Boost's placeholder types if this macro wasn't found. However, to disable this condition you need to define the macro before including any headers that bring in Boost headers.
+
+Originally posted by jschornak with karma: 340 on 2021-06-01
+This answer was ACCEPTED on the original site
+Post score: 8
+

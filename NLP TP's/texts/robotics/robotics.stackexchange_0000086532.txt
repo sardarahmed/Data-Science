@@ -1,0 +1,72 @@
+Q:
+
+ROS2 equivalent of ros::package::getPath
+
+Is there a ROS2 API with similar functionality to ros::package::getPath
+
+Originally posted by GregB on ROS Answers with karma: 111 on 2018-04-12
+Post score: 11
+
+Original comments
+Comment by William on 2018-06-01:
+@GregB can you accept and answer or ask for more clarification? Thanks!
+
+A:
+
+The closest equivalent to what ros::package::getPath() returns in ROS 1 is what we call the package's "share directory", which is essentially the package's "install prefix" plus a standard (FHS based) relative path of share/<package name>. This is where we put the package.xml and where you should install architecture independent resources like images, launch files, config files, etc...
+So, as an example, if your package is called foo and you installed to /home/user/my_ros2_ws/install, then the package share directory would be /home/user/my_ros2_ws/install/share/foo. But to get to that path you need to know (at runtime) where the package was installed to.
+In ROS 2 this information is provided by the resource index:
+https://github.com/ament/ament_cmake/blob/master/ament_cmake_core/doc/resource_index.md
+This index is populated at compile time (rather then by crawling the filesystem at runtime as in ROS 1).
+This index can be queried in various ways, but it can be used to get the installation prefix of a package (i.e. something like /opt/ros/ardent/ or ~/my_ros2_ws/install/), if it is installed on the system.
+Once you know that you can easily add the relative share directory path to the install prefix yourself.
+However, there are convenience API's in both C++ and Python to get the "share directory" of a package directly:
+Python
+API:
+https://github.com/ament/ament_index/blob/d9f7f2783dedc5687a5bdaf3ce5252dce5c073c5/ament_index_python/ament_index_python/packages.py#L56-L69
+Example:
+from ament_index_python.packages import get_package_share_directory
+# may raise PackageNotFoundError
+package_share_directory = get_package_share_directory('my_package_name')
+
+C++
+API:
+https://github.com/ament/ament_index/blob/d9f7f2783dedc5687a5bdaf3ce5252dce5c073c5/ament_index_cpp/include/ament_index_cpp/get_package_share_directory.hpp#L25-L33
+Example:
+#include <ament_index_cpp/get_package_share_directory.hpp>
+// may throw ament_index_cpp::PackageNotFoundError exception
+std::string package_share_directory = ament_index_cpp::get_package_share_directory("my_package_name");
+
+Command-line
+With the command line you can only get the package install prefix right now, but it would be simple to add the share directory as well.
+Docs (only in -h for now):
+% ros2 pkg prefix -h
+usage: ros2 pkg prefix [-h] package_name
+
+Output the prefix path of a package
+
+positional arguments:
+  package_name  The package name
+
+optional arguments:
+  -h, --help    show this help message and exit
+
+Example:
+% ros2 pkg prefix rclcpp
+/Users/william/ros2_ws/install_debug
+
+I made an issue to add the share directory to the command line tool, help welcome :)
+https://github.com/ros2/ros2cli/issues/89
+
+Originally posted by William with karma: 17335 on 2018-04-12
+This answer was ACCEPTED on the original site
+Post score: 15
+
+Original comments
+Comment by lexi on 2021-03-04:
+Is there a way to get the src directory? This method makes it so that you have to rebuild every time you update a config which kind of defeats the purpose of a config sometimes.
+Comment by kyubot on 2022-07-07:
+I agree. I need the source directory of the package rather than installed package. Any ideas?
+Comment by William on 2022-07-27:
+You should never reference the src directory of another package. It is fragile and will never work on the buildfarm. Instead you should install resources from that package and reference that package's install folder.
+

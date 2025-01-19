@@ -1,0 +1,82 @@
+Q:
+
+Why rviz crash when using robot_upstart?
+
+Hi everyone, really need some help in getting rviz to work with robot_upstart. I'll try to describe the issue and what I have tried as detailed as possible.
+
+Requirement:
+
+I would like to make an integrated roslaunch that start when the robot computer boot/turned on. My integrated roslaunch file includes these ROS nodes:
+
+Arduino rosserial node (USB connected)
+HMI node that is based on QT (touchscreen HDMI connected)
+Hokuyo LiDAR using urg_node (USB connected)
+Rviz node which received data from hokuyo lidar for Lidar reading
+QR code reading node (using USB Webcam)
+
+Specifications:
+
+ROS Melodic
+Ubuntu 18.04
+Jetson Xavier AGX
+Arduino Due
+
+Issue
+
+When I boot up the robot computer, every node except for rviz working as I intended. Note that I already tested the roslaunch before implementing the robot_upstart and the rviz node CAN work with the lidar. It can display live update from lidar reading.
+I used multiple steps and tutorial to implement robot_upstart in the robot computer.
+First, I follow the step from this tutorial https://roboticsbackend.com/make-ros-launch-start-on-boot-with-robot_upstart/ . I used this command to install my roslaunch to become:
+rosrun robot_upstart install agv_slam/launch/agv_main.launch --job agv_uia  --symlink
+
+However, this only allow my ros nodes to be run in the background only. So no display at all from my HMI node and camera node. I then tried these steps: https://github.com/Khalaf90/robot_upstart and https://stackoverflow.com/questions/67859236/ros-rviz-issues-when-starting-using-robot-startup. This tutorial basically ask me to modified my roslaunch service which is named as agv_uia and this service file in produced from the robot_upstart command. I did as the tutorial did and below is my service file:
+sudo nano /lib/systemd/system/YourServiceName.service
+
+This is the agv_uia.service file:
+[Unit]
+Description="bringup agv_uia"
+After=network.target
+After=display_manager.service
+Wants=display_manager.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment="XAUTHORITY=/run/user/1000/gdm/Xauthority"
+Environment="/home/mic-710aix"
+Environment="XDG_RUNTIME_DIR=/home/mic-710aix/catkin_ws/tmp"
+ExecStart=/usr/sbin/agv_uia-start
+
+[Install]
+WantedBy=multi-user.target
+
+Even when I edited this, RVIZ still can't worked with robot_startup. The error that I got was:
+rviz crashed with SIGABRT in__gnu_cxx::__verbose_terminate_handler()
+
+Originally posted by dual-swordsman on ROS Answers with karma: 17 on 2022-06-17
+Post score: 0
+
+A:
+
+Hi all,
+I just want to update that I already solved this. Apparently, there is a syntax error for home environment. Below is a working service file to implement robot upstart with launch file, QT generated interface and RVIZ.
+[Unit]
+Description="bringup agv_uia"
+After=network.target
+After=display_manager.service
+Wants=display_manager.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment="XAUTHORITY=/run/user/1000/gdm/Xauthority"
+Environment="HOME=/home/mic-710aix"
+Environment="XDG_RUNTIME_DIR=/home/mic-710aix/catkin_ws/tmp"
+ExecStart=/usr/sbin/agv_uia-start
+
+[Install]
+WantedBy=multi-user.target
+
+Originally posted by dual-swordsman with karma: 17 on 2022-08-01
+This answer was ACCEPTED on the original site
+Post score: 0
+

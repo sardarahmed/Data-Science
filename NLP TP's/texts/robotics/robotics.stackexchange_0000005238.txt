@@ -1,0 +1,32 @@
+Q:
+
+joint compatibility branch and bound (JCBB) data association implementation
+
+I would like to implement the joint compatibility branch and bound technique in this link as a method to carry out data association. I've read the paper but still confused about this function $f_{H_{i}} (x,y)$. I don't know exactly what they are trying to do. They compared their approach with The individual compatibility nearest neighbor (ICNN). In the aforementioned method we have this function $f_{ij_{i}} (x,y)$. This function simply the inverse measurement function or what they call it in their paper the implicit measurement function. In Laser sensor, given the observations in the polar coordinates, we seek via the inverse measurement function to acquire their Cartesian coordinates. In ICNN, every thing is clear because we have  this function $f_{ij_{i}} (x,y)$, so it is easily to acquire the Jacobian $H_{ij_{i}}$ which is 
+$$
+H_{ij_{i}} = \frac{\partial f_{ij_{i}}}{\partial \textbf{x}}
+$$ 
+For example in 2D case and 2D laser sensor,  $\textbf{x} = [x \ y \ \theta]$ and the inverse measurement function is 
+$$
+m_{x} = x + rcos(\phi + \theta) \\
+m_{y} = y + rsin( \phi + \theta )
+$$
+where $m_{x}$ and $m_{y}$ are the location of a landmark and 
+$$
+r = \sqrt{ (m_{x}-x)^{2} + (m_{y}-y)^{2}} \\
+\phi = atan2\left( \frac{(m_{y}-y)}{(m_{x}-x)} \right) - \theta
+$$
+Using jacobian() in Matlab, we can get $H_{ij_{i}}$. Any suggetions?
+
+A:
+
+Suppose you have three measurements (1, 2, and 3) and four landmarks (a, b, c, d). The joint compatibility is a measure of how well a subset of the measurements associates with a subset of the landmarks. 
+For example, what is the joint compatibility of (1b, 2d, 3c)? First we construct the implicit measurement functions $f_{ij_i}$ for each correspondence ($f_{1b_1}$, $f_{2d_2}$, $f_{3c_3}$). The joint implicit function $f_{\mathcal{H}_i}$ is simply the vector of the implicit measurement functions; i.e.,
+$$
+f_{\mathcal{H}_i} := \begin{bmatrix} f_{1b_1} \\ f_{2d_2} \\ f_{3c_3}\end{bmatrix}
+$$
+This function is linearized in (5) in the linked paper (this requires the Jacobians  of $f_{\mathcal{H}_i}$ with respect to the state and measurement). Equation (9) calculates the covariance of $f_{\mathcal{H}_i}$ and (10) uses this covariance, along with expected value of $f_{\mathcal{H}_i}$ (that is, $h_{\mathcal{H}_i}$) to calculate the joint compatibility (or more specifically, the joint Mahalanobis distance) of this particular set of associations. The Mahalanobis distance forms a chi-square distribution, and the confidence of the association is checked against a threshold (which is dependent on the dimension of the distribution; in this case, it is three).
+What I described above is how you check a single set of associations. The real trick is how to check "all" (you don't usually need to check all of them) of the possible associations and pick the one that (a) has the maximum likelihood, AND (b) maximizes the number of associations. The reason why you want to maximize the number of associations is because (from the paper):
+"The probability that a spurious pairing is jointly compatible with all the pairings of a given hypothesis decreases as the number of pairings in the hypothesis increases."
+The "branch and bound" part of JCBB is how you efficiently traverse through the search space to find the best set of associations.
+

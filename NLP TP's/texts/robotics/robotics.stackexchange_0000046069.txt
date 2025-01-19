@@ -1,0 +1,103 @@
+Q:
+
+An algorithm question about SLAM
+
+Hi, this is a SLAM algorithm concept question.
+There are 2 things I know:
+
+There are 2 kinds of maps we usually use - Occupancy grid map and Feature map. (Occupancy grid map divide the map into grids. and Feature map needs to convert sensor readings to landmarks.)
+
+There are some algorithms we usually use on SLAM. Such as EKF, Particle Filter. I have read some articles about the algorithms above. They often refer their input data as "landmarks".
+
+The question is. If I use these algorithms (EKF, PF), do I always have to convert my sensor data into landmarks first, even when I am using grid map?
+I mean, my sensor readings are from a range finder. If I have to convert those data, I need to build a procedure to interpreter those data into landmarks, (such as walls and corners, etc) right?
+Then, if the procedure is not well designed. there might be some landmarks I cannot recognize. Then my robot will act abnormal, is this correct?
+Thx in advance.
+
+Originally posted by NYC on ROS Answers with karma: 11 on 2012-11-25
+Post score: 1
+
+Original comments
+Comment by NYC on 2012-11-27:
+Thanks a lot for your answers. These are very helpful. Thank you.
+
+A:
+
+Frankly speaking, I think you have to read a whole lot more to get a better idea of the problem.
+A couple links from amazon (in no particular order: just easily spotted and cheap)
+Introduction-Autonomous-Mobile-Intelligent-Robotics
+FastSLAM-Scalable-Simultaneous-Localization-Robotics
+Now onto your specific question.
+Every entity that has no navigate an environment has to accomplish multiple tasks:
+
+path finding
+obstacle avoidance
+map construction
+localization
+
+PATH FINDING
+There are a number of algorithms (from the well known A* and D* to the most esoteric ones) but these all depend on the way you represent the navigation map (which may be different from say the real-time map, or the obstacle map: you may have different resolution maps for different tasks).
+The simplest theory is this: your map is a connected graph, the algorithm tries to find the shortest path between two nodes. This way the hardest part, the one that determines where a node effectively is, is moved outside the path planning and into the map construction.
+The key point here being what and where is a node. The amount of nodes heavily depends on the algorithm for the path planning: some algorithms have very short expansions (meaning they wander very short distances from nodes, trying to stay near them) so you need lots of nodes to cover the environment (grid maps are often used here), other algorithms have much wider expansions, so you can have fewer nodes representing the area (voronoi expansions and medial axis can be used when you can wander far from nodes).
+OBSTACLE AVOIDANCE
+The task of avoiding obstacles may be complicated ad-libitum.
+Meaning you can go from bumpers (like the first Roombas) up to multiple stereo-cameras and laser range finders (like the autonomous cars developed by Google or for the Darpa Urban Challenge <-check it out!)
+For most applications a laser ranger (Hokuyo and SICK are the most famous manufacturers) is the default choice: such a sensor gives you a distance reading across a circular sector up to 270°, with resolutions up to 0.25°, at frequencies up 40Hz and distances up 80 m.
+The key point though is how you process your data.
+In fact you have to decide how you categorize an obstacle -meaning how you determine what sequence of data is effectively an obstacle, and what properties an obstacle can have- and after that how this categorization affects the path planning and/or map building.
+The simplest (but still working) obstacle avoidance is the VFH(+ or *) method: this is the simplest method still doing some kind of data coalescence. Otherwise an even simpler method would be: get as far away from the nearest obstacle.
+More sophisticated methods involve determining some characteristics of the obstacle (like dimensions, shape, orientation) and placing it in the map, to allow the planner to plan a path around the obstacle.
+But again this depends on the kind and resolution of the map: for example if your planning algorithm runs on a low resolution grid map, you may even not put obstacles in it: an obstacle would only be a temporary perturbation in the calculated trajectory, you go along with the perturbation (the OA algorithm driving you away from the path) and then you rejoin the path when the perturbation has ended.
+Instead if you do 6D mapping and planning, everything goes in the map and the hardest part becomes Shape Detection in the data cloud and registration.
+MAP CONSTRUCTION
+The map construction is at times so easy and so hard.
+Basically it's really easy: you sample your sensor, transform the readings with the transformation matrix pertaining to the robot and sensor poses (Denavit-Hartemberg: kinematic chains) and put the output of these operations on the map.
+So far is the theory.
+Reality has to cope with many different problems:
+
+sensor imperfection: noise on range readings, noise on angles, reflective surfaces, echos...
+odometry errors: integral errors on position and orientation
+
+This often means that you can't take those readings and transformations as gold and it's here that a lot of filtering goes on.
+The Kalman family of filters has one main feature: it melds different sources of data with different uncertainties granting you the best possible result of what you have in your hands.
+On of the biggest uses is to augment the positioning accuracy of the onboard sensors:
+attitude is obtained by accelerometers augmented with gyroscopes (and eventually magnetometers), position is obtained by odometry augmented with GPS.
+But this kind of filter can work with any flow of data, as Mac told you above it's a method and it's really generic: you could even filter two maps with a Kalman, it's just up to your implementation (and the significance of the covariance matrices).
+I have digressed a bit, getting back to the point: the key factor in map building is the accuracy of the absolute positioning of the robot with respect to the environment.
+Essentially how sure you are of where you are in relation with the world.
+Except that if you don't know the world, as you are mapping it, how would you know precisely where you are in it?
+LOCALIZATION
+Localization is just what the name says: determining the location of the robot in relation to the external world.
+There are many methods and these strictly depends on the kind of structure you use for your experiment (structured world, unstructured world, heavily/lightly structured world...).
+Even the same lab may be heavily or lightly structured or even unstructured.
+
+Structured: you have (lots of) external (relative to the robot) means to augment some/any/all robot senses
+Unstructured: the robot depends exclusively on the internal sensors it has
+
+For example physical landmarks are external localization aids: thus if you use physical landmarks (coloured patches on the ground or on the walls, rfids, wifi networks... whatever) you are in a structured environment.
+Conversely if you robot runs free in the woods it is an unstructured environment.
+I already did something confusing: I talked about landmarks, but a landmark is something you recognize on the map, so weren't I talking about LOCALIZATION and not MAPPING?
+Yes but they are closely intertwined.
+You can't localize without a map and you can't map without a location.
+That's why all the SLAM family of algorithms is so cool nowadays (and because we have the computing power to run them). SLAM stands for Simultaneous Localization And Mapping.
+Since you have to do both, it's stupid doing this in two separate and mutually unaware algorithms: let's use a single big one that can take advantage of knowing both sides.
+So you run your scans and confront the readings with the actual map: some data is going to help you understand where you are, some other is going to add to the current map.
+This kind of localization though is fairly advanced and is heavily based on statistics (most of it Bayesian) and thus statistical filters (particle filters for example). Theoretically a Kalman could do something for SLAM (as Kalman is a statistical filter too) but the performance would be much worse then a dedicated filter: as  said above Kalman can fuse two streams, while particle filters can work with a limitless number of particles thus allowing for a much finer precision in the end result.
+Have a look at www.openslam.org for the freely available SLAM algorithms.
+So SLAMs are used in very unstructured environments, where localizations is quite hard, so if you want to start easy on experimenting, it would be better to use a heavily structured environment (external positioning, like GPS, or cameras or... you name it) and thus alleviating at least one of the problems.
+Now this is but a generic introduction to the range of problems you're going to meet in Robotics, it's the proverbial can of worms: I have barely moved the lid.
+Opening it is up to you.
+Good luck!
+ADDENDUM
+I just noticed you highlighted a part of your question.
+Regarding the Kalman family, it should all be clear.
+Regarding the Particle Filters family I don't have that much experience, but as far as I know the DP-SLAM algorithm for example (freely available on the openslam site) doesn't use features.
+Features are quite hard to manage, and are often left for 3D positioning (see pointcloud library at www.pointclouds.org): if you are doing 2D then features are most often used as landmarks, but this again depends on the structure.
+Doing landmark recognition in unstructured environments is something still only for humans (or thereabouts): robots still find it quite hard to recognize the Tour Eiffel, Reichstag, Space Needle or... :P
+If you really intend to explore feature recognition then you have to experiment with the representation. For example in office buildings corners appear as triangles in an XY plot where X is angle and Y is distance as read from the sensor; while doors are either scarcely visible (when closed) or rectangular discontinuities.
+But this is heavily related to the environment being indoor offices, if you move to the outside of a campus who knows what you can find? (well MIT knows for sure!)
+
+Originally posted by Claudio with karma: 859 on 2012-11-26
+This answer was ACCEPTED on the original site
+Post score: 7
+

@@ -1,0 +1,113 @@
+Q:
+
+Visual and collision geometry misaligned in Gazebo 1.0
+
+I recently updated to fuerte and attempted to simulate the same robot model that I was using in Electric. It is defined in URDF and is loaded using spawn_model. Even though this model works fine in the fuerte version of RViz, it is completely broken in the new version of Gazebo (i.e. all of the collision and visual geometries are in the wrong places).
+I haven't been able to diagnose the issue, but I have found a minimal example that breaks. Load the following model into Gazebo and view collision geometry. Even though I didn't modify any of the origins in the URDF, there is a huge offset between the two models. This becomes even buggier if you add non-zero <origin/>s inside the collision and geometry nodes.
+I am able to simulate the PR2 fine, e.g. pr2_wg_world.world in the pr2_gazebo package, so I am not sure what I am doing wrong.
+Skeleton URDF Example
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="test">
+    <xacro:property name="robot_weight" value="90.0"/>
+
+    <link name="base_link">
+        <inertial>
+            <mass value="${robot_weight}"/>
+            <inertia ixx="1.000" ixy="0.000"  ixz="0.000"
+                                 iyy="28.500" iyz="0.000"
+                                              izz="34.800"/>
+        </inertial>
+        <collision>
+            <geometry>
+                <box size="0.83 0.60 0.25"/>
+            </geometry>
+        </collision>
+        <visual>
+            <geometry>
+                <box size="0.83 0.60 0.25"/>
+            </geometry>
+        </visual>
+    </link>
+</robot>
+
+Screenshot of the Problem in Gazebo (debs)
+
+Screenshot of the Problem in Gazebo (svn)
+
+Edits:
+
+Edit 1: Nothing changes if I add <origin xyz="0 0 0" rpy="0 0 0"/> to the <geometry/> elements.
+Edit 2: This may only be a problem in how Gazebo 1.0 renders the collision model. It's behaving as if the collision model is correct, even though it's rendering in the wrong position.
+Edit 3: It's broken in a different way using the SVN version of Gazebo. See above. The output of urdf2model appears to be correct, so I think it's a bug in Gazebo.
+Edit 4: I fixed the issues with the collision model by modifying how I called spawn_model. It is only buggy if I pass a non-zero offset (e.g. -z 0.5).
+
+Originally posted by mkoval on ROS Answers with karma: 524 on 2012-04-27
+Post score: 3
+
+Original comments
+Comment by hsu on 2012-04-27:
+which release of simulator_gazebo are you using?  I suspect this might have been a bug that should be fixed in the newer releases.
+Comment by mkoval on 2012-05-04:
+I am using the latest debs as of 5/4, version 1.6.7-s1336006714~oneiric, and am having the same problem. Also, the visual geometry is also translated or rotated incorrectly. Should I try building gazebo_simulator from source?
+Comment by mkoval on 2012-05-04:
+Just finished testing it using the SVN version (r39364). It's still broken, but is now broken in a different way (see above). Do you know of a known-good SVN revision of the stack that I could use?
+Comment by mkoval on 2012-05-04:
+After a lot more testing, I found that the issue was spawning the model with a non-zero z-offset (e.g. spawn_model with -z 0.5). This is apparently broken in Fuerte. However, I am still having issues where my STL mesh is rendering in a different location than in RViz.
+Comment by mcevoyandy on 2012-05-04:
+I loaded the file up and I get the collision geometry over the box. Only difference is that I commented out your xacro parameter and hard coded it.  Also, I have no problems in gazebo when spawning my own models with offsets, so not sure that spawn_model is really your problem...
+Comment by mcevoyandy on 2012-05-04:
+Just reread your other comment.  How are you generating your STL?  Solidworks? Sounds like you might have a coordinate system problem.  CS used to model vs. CS used to export STL vs. CS used in urdf, etc.
+Comment by mkoval on 2012-05-05:
+Could you post the exact series of commands you're using to launch gazebo and spawn the model? I am not sure why I am having the strange behavior shown in the screenshots. Re: the STL file, I believe you are correct. How can I export the model from SolidWorks so it works in both RViz and Gazebo?
+
+A:
+
+Here's everything I did:
+Not sure how to check gazebo version, but
+simulator_gazebo/gazebo/Makefile.gazebo.tarball
+has
+FILENAME = gazebo-r88428637a5be.tgz
+the urdf as I modified it:
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="test">
+    <!--xacro:property name="robot_weight" value="90.0"/-->
+
+    <link name="base_link">
+        <inertial>
+            <mass value="90"/>
+            <inertia ixx="1.000" ixy="0.000"  ixz="0.000"
+                                 iyy="28.500" iyz="0.000"
+                                              izz="34.800"/>
+        </inertial>
+        <collision>
+            <geometry>
+                <box size="0.83 0.60 0.25"/>
+            </geometry>
+        </collision>
+        <visual>
+            <geometry>
+                <box size="0.83 0.60 0.25"/>
+            </geometry>
+        </visual>
+    </link>
+</robot>
+
+from the folder with the urdf file:
+$ roslaunch gazebo_worlds empty_world.launch
+(new window)
+$ rosrun gazebo spawn_model -file mkoval.urdf -urdf -model test
+
+For the SolidWorks file, make sure you have a coordinate system placed where you want it to be in Rviz/Gazebo.  When you go to export, there should be an option to select a coordinate system.  Make sure you select the right one.  An easy way to check it to reimport the *.stl and see where SolidWorks shows the CS.
+
+Originally posted by mcevoyandy with karma: 235 on 2012-05-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mkoval on 2012-05-06:
+I am not sure what changed, you are absolutely correct...it's now rendering correctly. I double-checked the CS in SolidWorks, but it still renders differently between Gazebo and RViz. Upon closer inspection, it looks like the origin is correct (i.e. STL) in RViz and wrong in Gazebo.
+Comment by mkoval on 2012-05-24:
+It turns out the STL file was fine. Gazebo 1.0 doesn't handle rotations correctly if I specify them on an  in the  tag. Instead of rotating around visual origin, it seems to rotate about the link's origin. I fixed it by introducing a dummy joint/link to contain the mesh.
+Comment by Stefan Kohlbrecher on 2012-05-25:
+I think I'm having a similar problem. Ticketed here: https://kforge.ros.org/gazebo/trac/ticket/59
+

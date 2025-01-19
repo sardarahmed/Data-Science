@@ -1,0 +1,50 @@
+Q:
+
+ros2 add arguments to callback
+
+Hi,
+I am trying to add an argument to a ROS2 subscriber callback.
+The main objective was to print the name of the topic from inside the callback, so I tried to follow this ROS1 example, but it's not working.
+These are the relevant parts of my code
+Creation of the subscriber
+rclcpp::Subscription<std_msgs::msg::Header>::SharedPtr subscriber =  this->create_subscription<std_msgs::msg::Header>(
+  topic_name, 
+  std::bind(&MultiNode::topic_callback, this, std::placeholders::_1, topic_name));
+
+Callback implementation
+void MultiNode::topic_callback(const std_msgs::msg::Header::SharedPtr msg, std::string topic_name)
+{
+    std::cout<< topic_name<<std::endl;
+}
+
+I get a very long sequence of errors which boils down to
+error: no matching function for call to ‘rclcpp::AnySubscriptionCallback<std_msgs::msg::Header_<std::allocator<void> >, std::allocator<void> >::set(std::_Bind<std::_Mem_fn<void (MultiNode::*)(std::shared_ptr<std_msgs::msg::Header_<std::allocator<void> > >, std::__cxx11::basic_string<char>)>(MultiNode*, std::_Placeholder<1>, std::__cxx11::basic_string<char>)>)’
+   any_subscription_callback.set(std::forward<CallbackT>(callback));
+
+Originally posted by alsora on ROS Answers with karma: 1322 on 2018-11-13
+Post score: 2
+
+Original comments
+Comment by lucasw on 2018-11-14:
+See also #q289207
+
+A:
+
+That's actually a known bug already.
+https://github.com/ros2/rclcpp/issues/273
+We wrap each callback in a datatype called AnyCallback. The problem is as follows:
+if you just call:
+auto fcn = std::bind(callback_func, std::placeholders::_1, topic_name);
+
+That fcn instance is of type std::_Bind<std::_Mem_fn<void (MultiNode::*)(std::shared_ptr<std_msgs::msg::Header_<std::allocator<void> > >, std::__cxx11::basic_string<char>)>(MultiNode*, std::_Placeholder<1>, std::__cxx11::basic_string<char>)> and thus has two arguments.
+Our custom AnyCallback requires though only one argument. So there is no call to wrap the callback with two arguments. That's all just to explain the error message you're getting.
+Now, std::bind can actually be assigned to any type of std::function. Which is maybe weird, but works :)
+so you can call what William suggested:
+std::function<void(const std_msgs::msg::String::SharedPtr msg)> fcn = std::bind(callback_func, std::placeholders::_1, topic_name);
+
+And this has correctly set only one argument, even though the second argument is still getting passed into the callback.
+
+Originally posted by Karsten with karma: 643 on 2018-11-13
+This answer was ACCEPTED on the original site
+Post score: 4
+

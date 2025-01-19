@@ -1,0 +1,147 @@
+Q:
+
+Error message "Failed status on line 98: 1. Aborting" while running zephyr host emulator
+
+This is my first time setting up a micro-ROS and a ROS 2 dev environment, so I suspect there may be something obvious that I'm missing.
+I'm attempting to run the Zephyr host emulator example in the micro-ROS tutorial here with ROS2 humble.
+Effectively, I've installed micro_ros_setup, created/configured/built the firmware and installed micro_ros_agent. Then, when I run the zephyr app I see the error listed in the title, and I don't see any change in the output of the micro-ROS agent.
+What I think I'm encountering is that the Zephyr app is unable to reach the micro-ROS agent, thus the "Failed status" error message.
+From a third terminal I can see the port with netstat, so I don't believe this is a firewall issue since the host emulator and micro-ros agent are both running on the same machine.
+$ sudo netstat -tulpn | grep 8888
+udp        0      0 0.0.0.0:8888            0.0.0.0:*                           78240/micro_ros_age
+
+Inspecting the source code at firmware/zephyr_apps/apps/ping_pong/src/main.c, line 98, it appears as though rclc_support_init() is failing.
+    // create init_options
+    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+Additionally, should I see a node running and new topics listed when I run the micro-ROS agent? I'm seeing neither and I wonder if that's the reason:
+$ ros2 topic list
+/parameter_events
+/rosout
+
+$ ros2 node list
+
+Zephyr Tutorial
+Below is a summary of Zephyr micro-ROS tutorial to show where I'm at and how I got here.
+Start with micro_ros_setup
+source /opt/ros/humble/setup.bash
+
+# install micro_ros_setup in new workspace
+git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup
+
+# rosdep & pip
+sudo apt update && rosdep update
+rosdep install --from-paths src --ignore-src -y
+sudo apt-get install python3-pip
+
+# build micro_ros_setup and source it
+colcon build
+source install/local_setup.bash
+
+Then the firmware workspace
+# create fw ws
+ros2 run micro_ros_setup create_firmware_ws.sh zephyr host
+
+# configure build 
+ros2 run micro_ros_setup configure_firmware.sh ping_pong --transport udp --ip 127.0.0.1 --port 8888
+
+# build it
+ros2 run micro_ros_setup build_firmware.sh
+
+Next, the micro-ROS agent
+# create agent ws
+ros2 run micro_ros_setup create_agent_ws.sh
+
+# build it
+ros2 run micro_ros_setup build_agent.sh
+
+source install/local_setup.bash
+
+Then I setup 2 terminals, terminal 1 running the micro-ROS agent and terminal 2 running the Zephyr app.
+Terminal 1:
+$ source /opt/ros/humble/setup.bash
+$ source install/local_setup.bash
+$ ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+[1704166624.989047] info     | UDPv4AgentLinux.cpp | init                     | running...             | port: 8888
+[1704166624.989864] info     | Root.cpp           | set_verbose_level        | logger setup           | verbose_level: 4
+
+Terminal 2
+$ source /opt/ros/humble/setup.bash
+$ source install/local_setup.bash
+$ ros2 run micro_ros_setup flash_firmware.sh
+Flashing firmware for zephyr platform host
+WARNING: Using a test - not safe - entropy source
+*** Booting Zephyr OS build zephyr-v2.6.0  ***
+Failed status on line 98: 1. Aborting.
+
+A:
+
+There's nothing better than spending time to summarize and articulate your question/problem and stumbling upon the solution shortly after.
+It turns out that the firmware configure step has a critical message:
+$ ros2 run micro_ros_setup configure_firmware.sh ping_pong --transport udp --ip 127.0.0.1 --port 8888
+Configuring firmware for zephyr platform host
+Configured UDP mode.
+Please check firmware/zephyr_apps/microros_extensions/microros_transports.h
+for configuring IP and port before build.
+
+In firmware/zephyr_apps/microros_extensions/microros_transports.h, buried in preprocessor #if/#elif directives there's a set of default transport parameters, one of which specifies the IP address of the micro-ros agent, which in my case was the incorrect one 192.168.1.100.
+#if defined(MICRO_ROS_TRANSPORT_SERIAL)
+    #define MICRO_ROS_FRAMING_REQUIRED true
+    // Set the UART used for communication. e.g. {.fd = 0} leads to UART_0 being used.
+    static zephyr_transport_params_t default_params = {.fd = 0};
+#elif defined(MICRO_ROS_TRANSPORT_UDP)
+    #define MICRO_ROS_FRAMING_REQUIRED false
+    static zephyr_transport_params_t default_params = {{0,0,0}, "192.168.1.100", "8888"};
+#elif defined(MICRO_ROS_TRANSPORT_SERIALUSB)
+    #define MICRO_ROS_FRAMING_REQUIRED true
+    static zephyr_transport_params_t default_params;
+#endif
+
+Changing that to 127.0.0.1 before building fixed my issue:
+    static zephyr_transport_params_t default_params = {{0,0,0}, "127.0.0.1", "8888"};
+
+Proceeding to build and run the firmware shows working output!
+# build
+$ ros2 run micro_ros_setup build_firmware.sh
+
+# run
+$ ros2 run micro_ros_setup flash_firmware.sh
+Flashing firmware for zephyr platform host
+WARNING: Using a test - not safe - entropy source
+*** Booting Zephyr OS build zephyr-v2.6.0  ***
+Ping send seq 1734063590_1823552900
+Ping send seq 2118534989_1823552900
+Ping send seq 1332252450_1823552900
+...
+
+In addition, micro_ros_agent outputs:
+ ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+[1704199501.102410] info     | UDPv4AgentLinux.cpp | init                     | running...             | port: 8888
+[1704199501.102956] info     | Root.cpp           | set_verbose_level        | logger setup           | verbose_level: 4
+[1704199502.843766] info     | Root.cpp           | create_client            | create                 | client_key: 0x176AC30B, session_id: 0x81
+[1704199502.843832] info     | SessionManager.hpp | establish_session        | session established    | client_key: 0x176AC30B, address: 127.0.0.1:13752
+[1704199502.855327] info     | ProxyClient.cpp    | create_participant       | participant created    | client_key: 0x176AC30B, participant_id: 0x000(1)
+[1704199502.855720] info     | ProxyClient.cpp    | create_topic             | topic created          | client_key: 0x176AC30B, topic_id: 0x000(2), participant_id: 0x000(1)
+[1704199502.856105] info     | ProxyClient.cpp    | create_publisher         | publisher created      | client_key: 0x176AC30B, publisher_id: 0x000(3), participant_id: 0x000(1)
+[1704199502.856837] info     | ProxyClient.cpp    | create_datawriter        | datawriter created     | client_key: 0x176AC30B, datawriter_id: 0x000(5), publisher_id: 0x000(3)
+[1704199502.857028] info     | ProxyClient.cpp    | create_topic             | topic created          | client_key: 0x176AC30B, topic_id: 0x001(2), participant_id: 0x000(1)
+[1704199502.857303] info     | ProxyClient.cpp    | create_publisher         | publisher created      | client_key: 0x176AC30B, publisher_id: 0x001(3), participant_id: 0x000(1)
+[1704199502.857844] info     | ProxyClient.cpp    | create_datawriter        | datawriter created     | client_key: 0x176AC30B, datawriter_id: 0x001(5), publisher_id: 0x001(3)
+[1704199502.858045] info     | ProxyClient.cpp    | create_topic             | topic created          | client_key: 0x176AC30B, topic_id: 0x002(2), participant_id: 0x000(1)
+[1704199502.858254] info     | ProxyClient.cpp    | create_subscriber        | subscriber created     | client_key: 0x176AC30B, subscriber_id: 0x000(4), participant_id: 0x000(1)
+[1704199502.859027] info     | ProxyClient.cpp    | create_datareader        | datareader created     | client_key: 0x176AC30B, datareader_id: 0x000(6), subscriber_id: 0x000(4)
+[1704199502.859370] info     | ProxyClient.cpp    | create_topic             | topic created          | client_key: 0x176AC30B, topic_id: 0x003(2), participant_id: 0x000(1)
+[1704199502.859639] info     | ProxyClient.cpp    | create_subscriber        | subscriber created     | client_key: 0x176AC30B, subscriber_id: 0x001(4), participant_id: 0x000(1)
+[1704199502.865308] info     | ProxyClient.cpp    | create_datareader        | datareader created     | client_key: 0x176AC30B, datareader_id: 0x001(6), subscriber_id: 0x001(4)
+
+And a ros2 node is listed:
+$ ros2 node list
+/pingpong_node
+
+Along with 2 new topics
+$ ros2 topic list
+/microROS/ping
+/microROS/pong
+/parameter_events
+/rosout
+

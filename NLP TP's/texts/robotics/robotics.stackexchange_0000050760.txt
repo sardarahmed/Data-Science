@@ -1,0 +1,73 @@
+Q:
+
+PCL SACSegmentation - setAxis and setModelType has no effect in Output
+
+I want to estimate the ground plane present in the pointcloud and remove it. I used the plane model segmentation tutorial for that.
+Instead of removing the ground plane it removes the vertical planes(wall) in the pointcloud.
+I changed the axis perpendicular to which the plane is estimated but get the same result..
+This is the code :-
+  Eigen::Vector3f axis = Eigen::Vector3f(0.0,1.0,0.0);
+
+  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+  // Create the segmentation object
+  pcl::SACSegmentation<pcl::PointXYZI> seg;
+   seg.setAxis(axis);
+
+  seg.setOptimizeCoefficients (true);
+
+  seg.setModelType (pcl:: SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setDistanceThreshold (0.5);
+
+  seg.setInputCloud (cloud);
+  seg.segment (*inliers, *coefficients);
+
+When I input a stream of pointclouds through ROS, I get Model coefficients as :-
+Model coefficients: 0.980676 0.00643671 0.195532 0.127706
+Model coefficients: 0.0974007 -0.00814183 0.995212 2.64382
+Model coefficients: 0.0235566 -0.997725 -0.0631705 4.7102
+Model coefficients: 0.0404465 -0.999113 -0.0117141 4.65797
+
+ie sometimes it removes ground plane and at some other instant it removes walls... the coordinate system in the pointcloud is
+x axis -> forward
+y axis -> right
+z axis -> up
+
+Now since ground plane is along x-z plane perpendicular to y axis I set the Axis as (0.0,1.0,0.0) so that according to PCL api
+ground_plane perpendicular to y axis be removed... but as i said only at some instants it is removed and at other instants vetical planes (wall) gets removed...
+I tried all possibilities of (1,0,0) ,(0,1,0),(0,0,1) but it has NO EFFECT in the output result...The same result I mentioned above is obtained...
+Also changed ModelType to SACMODEL_PERPENDICULAR_PLANE ,  SACMODEL_PARALLEL_PLANE ,still no desired result
+Please pour in your suggestions where I am going wrong..
+
+Originally posted by KarthikMurugan on ROS Answers with karma: 15 on 2013-04-29
+Post score: 1
+
+A:
+
+I think you need to also set the eps_angle parameter.
+If you check the source code for sac_model_parallel_plane.hpp, you'll see that the axis is only used in the isModelValid() function.  And, even then, only when eps_angle_ > 0.  Looking in sac_model_parallel_plane.h, we see that eps_angle_ is initialized to 0.  So, unless you explicitly set this parameter, the model will effectively ignore the parallel-to-axis constraint.
+Try adding this:
+seg.setEpsAngle(  30.0f * (M_PI/180.0f) );
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-04-30
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by KarthikMurugan on 2013-04-30:
+Thank you Jeremy.. So is the angle parameter signify angle tolerance of plane with the axis or its normal with the axis??? (as it is in this : http://docs.pointclouds.org/trunk/classpcl_1_1_s_a_c_segmentation.html )
+Comment by Jeremy Zoss on 2013-04-30:
+Read the PCL documentation for setEpsAngle() at the link you provided.  It is: "maximum allowed difference between the model NORMAL and the given axis in radians".  So, the "axis" parameter is the expected plane normal vector, and "epsAngle" is the allowable variation for a plane to count as "valid"
+Comment by KarthikMurugan on 2013-05-01:
+Thank u Jeremy.... tat worked!!! now only the ground plane gets removed...
+but Still at some instants nothing  gets removed... do you know wat could be the reason behind it... I tried values for epsAngle from 20 to 45 ....any rectification to be made ??
+Comment by KarthikMurugan on 2013-05-01:
+Also what is the difference between SACMODEL_PERPENDICULAR_PLANE and SACMODEL_PARALLEL_PLANE... I get the same result for both!!!
+Comment by Jeremy Zoss on 2013-05-01:
+Your questions are fairly specific to PCL, and are not really ROS-related.  You should try addressing these questions to the PCL user's list: pcl-users@pointclouds.org.
+Comment by dmngu9 on 2015-04-22:
+hi i have the same problem. In my pointcloud, the wall is a dominant plane, everytime i tried to extract the ground (set axis method) it still gives me the wall. How did you solve your problem
+Comment by daviddoria on 2015-12-02:
+I also have the same problem. It should return a plane that is within the 'epsAngle' of the specified 'axis' even if one doesn't fit well, right? It seems like what is happening is that there are 0 inliers in the model that is found (which should be an error condition?).
+

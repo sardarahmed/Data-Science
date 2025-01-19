@@ -1,0 +1,28 @@
+Q:
+
+The relationship between point cloud maps and graph maps
+
+I am most familiar with SLAM maps that are point clouds, usually in the form of a vector like $<x,y,\theta,f_{1x},f_{1y},...,f_{nx},f_{ny}>$.  I also understand how to create a map like this using an EKF.
+Today I came across a .graph file format, which as you would expect consists of vertices and edges in the format:
+VERTEX2 id x y orientation
+EDGE2 observed_vertex_id observing_vertex_id forward sideward rotate inf_ff inf_fs inf_ss inf_rr inf_fr inf_sr
+I know that there's a connection between matrices and graphs (an adjacency matrix for example).  But it's not clear to me how this graph format of a map is equivalent to a point cloud map that I'm familiar with.  
+What is the relationship?  Are the vertices both poses and landmarks? Are they in a global reference frame? How is this created from say velocity information and a range/bearing sensor?  Is there a transformation between a graph map and a point cloud?  
+
+A:
+
+As it says in the description of the file format, it is for graph based SLAM approaches. These work on minimizing the error of a pose constraint network. You can think of it this way: There are a number of reference frames (your vertices) and then you have knowledge on the transformation between these frames. These transformations are associated with an uncertainty. Pose graph optimization frameworks like e.g. TORO, HogMan, G2O and so on will then give you the maximum likelihood of your vertex positions, given the constraints.
+In practical robot terms, this usually means:
+
+Each robot pose $p_k$ at time $k$ has its own reference frame and hence vertex
+Depending on you approach, you can also add landmarks as vertices. You don't have to however. 
+Whenever you get new information on the relation between two poses, you add that to the constraint graph. E.g. your odometry will give you a transform between $p_k$ and $p_{k+1}$. 
+If your approach works landmark based, you add transformations to your landmarks. If you only know the position to your landmark, you set a high uncertainty on the rotation information of your transformation. 
+If your approach does not know about landmarks, e.g. you have large pointclouds that you match with ICP, you can add the ICP results to your constraint graph.
+
+The pose constraints are usuall stored as sparse matrices of size $n \times n$ where $n$ is the number of vertices (again robot poses and landmarks) in your graph. 
+The file format itself provides initial guesses for the position of the vertices with the VERTEX2 (for 2D models) and VERTEX3 (for 3D models). You can't mix the two. 
+Constraints are added so that you specify the transform between the reference frames (vertices) given by from_id and to_id. The transform is given by either EDGE2 and EDGE3 as translation and rotation in euler angles, as well as the information matrix of the uncertainty. In this case the information matrix is the inverse of the covariance matrix for the transform vector $[x\, y \, z\, \text{roll}\, \text{pitch}\, \text{yaw}]$. 
+Depending on your framework, usually one of the vertices is grounded in a global reference frame. 
+Graph based pose graph optimizers are considered SLAM backends. How you generate the constraints e.g. from you range data is a front-end problem. There is a nice overview in these lecture notes.
+

@@ -1,0 +1,124 @@
+Q:
+
+Unable to subscribe to Openni_launch - dataset doesn't have x-y-z coordinates
+
+Hello all,
+I am trying to write a simple program that subscribes to openni_launch's /camera/depth_registered/points topic. The code I have written publishes on another topic some extracted planes. Essentially I would like my program to take data from the kinect, extract the planes, and then publish these.
+So far, I have used a .pcd file to get my program to publish the planes but when I try to implement this with real-time data I am unable to correctly subscribe to the openni node. What I tried to do was use the simple subscription program on the ROS.org website and combine this with my publisher/indice-extractor.
+My code complies fine, but then when I  try to run I obtain this output:
+PointCloud before filtering: 0 data points.
+[pcl::VoxelGrid::applyFilter] Input dataset doesn't have x-y-z coordinates!
+Failed to find a field named: 'x'. Cannot convert message to PCL type.
+terminate called after throwing an instance of 'pcl::InvalidConversionException'
+what():  Failed to find a field named: 'x'. Cannot convert message to PCL type.
+From this I understand that my PointCloud cloud_blob contains no data. But when I output in the callback function there is data.
+Here is the top of my code up to the point where it crashes:
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
+
+void callback(const PointCloud::ConstPtr& cloud_blob)
+{
+  printf ("Cloud: width = %d, height = %d\n", cloud_blob->width, cloud_blob->height);
+  BOOST_FOREACH (const pcl::PointXYZRGB& pt, cloud_blob->points)
+    printf ("\t(%f, %f, %f)\n", pt.x, pt.y, pt.z);
+}
+
+int
+main (int argc, char** argv)
+{
+ // INITIALIZE ROS
+  ros::init (argc, argv, "SUB_IND_PUB");
+  ros::NodeHandle nh;
+  ros::Publisher pub = nh.advertise<PointCloud> ("pubIndices", 1);
+
+  sensor_msgs::PointCloud2::Ptr cloud_blob (new sensor_msgs::PointCloud2);
+  sensor_msgs::PointCloud2::Ptr cloud_filtered_blob (new sensor_msgs::PointCloud2);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_p (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_f (new pcl::PointCloud<pcl::PointXYZ>);
+
+ros::Subscriber sub = nh.subscribe<PointCloud>("/camera/depth_registered/points", 1, callback);
+  ros::spinOnce ();
+
+  std::cerr << "PointCloud before filtering: " << cloud_blob->width * cloud_blob->height << " data points. " << std::endl;
+
+  // Create the filtering object: downsample the dataset using a leaf size of 1cm
+  pcl::VoxelGrid<sensor_msgs::PointCloud2> sor;
+  sor.setInputCloud (cloud_blob);
+  sor.setLeafSize (0.01f, 0.01f, 0.01f);
+  sor.filter (*cloud_filtered_blob);
+
+Thank you for any help or enlightenment!
+Cheers,
+Martin
+
+Originally posted by MartinW on ROS Answers with karma: 464 on 2012-07-24
+Post score: 0
+
+A:
+
+Hi Martin!
+I see several issues in your approach. Fristly: inside the main function you declare
+sensor_msgs::PointCloud2::Ptr cloud_blob (new sensor_msgs::PointCloud2);
+
+and I guess that you are expecting that the callback writes the information on it, but be aware that this variable is out of the scope of the callback! So it will never get written!
+Also: You expect a const PointCloud::ConstPtr& cloud_blob in your callback but the topic /camera/depth_registered/points is of type sensor_msgs::PointCloud2
+One more: You use ros::spinOnce() which will run the ros control loop only once, this does not guarantee that a point cloud would be received during that time.
+Your code should look something like this (I haven't tried to compile, it is just an example)
+//Define the publisher and the output point cloud here 
+//so it can be accessed from inside the callback 
+//(if you are familiar with OOP you can do this much more elegantly)
+ros::Publisher pub;
+sensor_msgs::PointCloud2 output;
+
+void callback(const sensor_msgs::PointCloud2ConstPtr& input)
+{
+  //Inside the callback should be all the process that you want to do with your point cloud and at the end publish the results.
+  printf ("Before filtering Cloud: width = %d, height = %d\n", input->width, input->height);
+
+  // Do some processing to the point cloud
+  pcl::VoxelGrid<sensor_msgs::PointCloud2> sor;
+  sor.setInputCloud (input);
+  sor.setLeafSize (0.01f, 0.01f, 0.01f);
+  sor.filter (output);
+  printf ("After filtering Cloud: width = %d, height = %d\n", output.width, output.height);
+
+  //Publish the results
+  pub.publish(output);
+}
+
+int
+main (int argc, char** argv)
+{
+// INITIALIZE ROS
+  ros::init (argc, argv, "SUB_IND_PUB");
+  ros::NodeHandle nh;
+  pub = nh.advertise<PointCloud> ("pubIndices", 1);
+
+  ros::Subscriber sub = nh.subscribe<PointCloud>("/camera/depth_registered/points", 1, callback);
+
+  //This will run until you shutdown the node
+  ros::spin();
+
+  return 0;
+}
+
+I hope you find it helpful.
+
+Originally posted by Martin Peris with karma: 5625 on 2012-07-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by MartinW on 2012-07-25:
+Hey Martin!
+Thank you for your insight, I will begin working with this immediately and I will post any updates (and potential problems)!
+I am new to the ROS system, pcl library and c++ coding like this :) So any help is good help!
+Cheers,
+Comment by MartinW on 2012-07-25:
+I am getting a strange error that I can't really decipher, the code looks simple enough and I don't understand :S
+error: invalid initialization of reference of type ‘const boost::shared_ptr<const sensor_msgs::PointCloud2_std::allocator<void > >&’ from expression of type ‘const boost::shared_ptr
+Comment by Pep Lluis Negre on 2013-04-14:
+Yes, this is because you are passing a constant pointer to the setInputCloud() method. You should call this method in that way:PointCloud cloud = *input;  sor.setInputCloud(cloud.makeShared());
+Comment by Martin Peris on 2013-04-15:
+Yup, Pep Lluis Negre is right. Sorry, I coded that example "on the fly"
+

@@ -1,0 +1,108 @@
+Q:
+
+[ROS2] Close all threads when using CTRL-C
+
+Hi all!
+In my project I'm spawning a thread which contains a while loop, simply like so:
+std::thread worker([this]() { this->ballotCheckingThread(); });
+std::unique_lock<std::mutex> lock(this->candidate_mutex_);
+
+where the thread code is like this
+void ballotCheckingThread() {
+    while (!this->checkVotingCompleted() && !this->checkForExternalLeader()) {
+        // Simulate some delay between checks
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    // Notify the first thread to stop waiting
+    cv.notify_all();
+}
+
+Unfortunately, when I use CTRL-C to terminate the node, this thread remains hanging and I have to manually kill it.
+Right now in the main function I'm doing this:
+int main(int argc, char *argv[]) {
+    std::cout << "Starting  node..." << std::endl;
+    setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+    rclcpp::init(argc, argv);
+
+    rclcpp::Node::SharedPtr node = std::make_shared<myNode>();
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+
+    try {
+        executor.spin();
+    } catch (std::exception& e) {
+        std::cout << "rclcpp shutting down..." << std::endl;
+        rclcpp::shutdown();
+        return 0;
+    }
+
+}
+
+but I guess that's not enough. Is there a standard way to do this?
+
+Originally posted by slim71 on ROS Answers with karma: 18 on 2023-07-17
+Post score: 0
+
+A:
+
+In the end, I've found a solution.
+Using a global variable std::weak_ptr<MyNode> MyNode::instance_;, I've initialized it in the main and registered it as a signal handler:
+// Set the instance pointer to the shared pointer of the main node
+MyNode::setInstance(node);
+// Register the signal handler for SIGINT (CTRL+C)
+signal(SIGINT, MyNode::signalHandler);
+
+before adding and spinning the node.
+I had to add some function to the node, of course:
+class MyNode : public rclcpp::Node {
+    public:
+        std::atomic<bool> is_terminated_ {false};
+        void stopThread();
+        void startThread();
+        static void signalHandler(int signum);
+        static std::shared_ptr<MyNode> getInstance();
+        static void setInstance(rclcpp::Node::SharedPtr instance);
+    private:
+        std::thread helping_thread_;
+        static std::weak_ptr<MyNode> instance_; // Weak pointer to the instance of the node
+}
+
+void MyNode::setInstance(rclcpp::Node::SharedPtr instance) {
+    instance_ = std::static_pointer_cast<MyNode>(instance);
+}
+
+std::shared_ptr<MyNode> MyNode::getInstance() {
+    return instance_.lock();
+}
+
+void MyNode::signalHandler(int signum) {
+    // Stop the thread gracefully
+    std::shared_ptr<MyNode> node = getInstance();
+        if (node) {
+            node->stopThread();
+        }
+
+    rclcpp::shutdown();
+}
+
+void MyNode::startThread() {
+    if (!this->helping_thread_.joinable()) {
+        this->helping_thread_ = std::thread(&MyNode::spawnedThread, this);
+    }
+}
+
+void MyNode::stopThread() {
+    if (this->helping_thread_.joinable()) {
+        this->is_terminated_ = true;
+        this->helping_thread_.join();
+    }
+}
+
+where spawnedThread is the main function used in the additional thread.
+I don't really like using global variables and such, but for now this works as intended.
+
+Originally posted by slim71 with karma: 18 on 2023-07-20
+This answer was ACCEPTED on the original site
+Post score: 0
+

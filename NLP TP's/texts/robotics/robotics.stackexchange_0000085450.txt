@@ -1,0 +1,38 @@
+Q:
+
+laserscan to pointcloud timestamp issue
+
+Dear all,
+I want to convert laserscans (sick lms511) to pointcloud2. I have found a topic on how to perform this conversion here :
+https://answers.ros.org/question/11232/how-to-turn-laser-scan-to-point-cloud-map/?comment=283322#post-id-283322
+My problem is that my laserscans are saved in a rosbag file that was generated from original data (csv) using a third party software. As a consequence, when I use the solution above (transformLaserScanToPointCloud) I get an error due to the difference in timestamps (the laserscans are older than bagtime which is also older than current time).
+I tried to fix this issue with the creation of a new rosbag file and setting sim time to false in order to ignore sim time. This did not fix the issue. Then I've repeated this operation with sim time = true, unfortunately I still have the same error.
+Please, can you help me with this issue ?
+Thanks.
+
+Originally posted by lounis on ROS Answers with karma: 11 on 2018-02-21
+Post score: 0
+
+A:
+
+I assume there isn't a dependence on changing tf frames and you are transforming into a frame that is fixed relative to the scanner.  It sounds like the root of your problem is that the LaserScan header timestamps in your bag are much different than the bag timestamps of the messages (perhaps your csv had timestamps in it that were blindly put into the headers by the third party tool).
+In that case you should be able to overwrite the timestamp of the replayed data with the current ros time.  You could either re-record that into a new bag or do it live as it is about to be transformed into a point cloud, just set the scan->header.stamp = ros::Time::now() - fraction of a second offset, or do a tf lookup to see the most recent time the transform is available and use that timestamp.  (unless setExtrapolationLimit() works?  The example code in your link is old)
+The re-recording is sort of the reverse of http://wiki.ros.org/rosbag/Cookbook#Rewrite_bag_with_header_timestamps - rewrite the header stamps with the bag stamps instead.
+It could look like this (untested):
+import rosbag
+with rosbag.Bag('output.bag', 'w') as outbag:
+    for topic, msg, t in rosbag.Bag('input.bag').read_messages():
+        if msg._has_header:
+            msg.header.stamp = t
+        outbag.write(topic, msg, t)
+
+sim time should then work with the output bag.
+
+Originally posted by lucasw with karma: 8729 on 2018-02-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by lounis on 2018-02-22:
+Regarding the tf frames : AFAIK the function transformLaserScanToPointCloud requires a tf between base_link and a fixed frame. Since the only data I've access to are the laserscans, I can only create a tf between the scan's local frame (in the case of the bag I have it is named /map) and base_link.
+

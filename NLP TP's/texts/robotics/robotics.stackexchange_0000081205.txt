@@ -1,0 +1,137 @@
+Q:
+
+What is causing my callback functions to not function?
+
+I'm trying to collect image data and save in to a file however, fwrite and cout are giving garbage values when I check the values from my "buffer". In order find out if this from the result of conversion data lost, I added command line outputs to let me know when my callbacks are being called. After adding the terminal outputs, it has become apparent there is an issue with my callback functions because the whole code would evaluate without doing any of the couts in my callbacks. Is there a structure issue that I'm missing? I running with rosrun.
+    //Global Variables
+float currentOrientationAngle;
+
+std::vector<uint8_t> rgbImage(480*680*3);
+
+std::vector<uint8_t> depthImage(480*640);
+
+//ROS Callback Function
+void odometryCallback(const nav_msgs::Odometry& msg)
+{
+    std::cout << "Odometry Callback" << std::endl;
+    float currentOrientationPosition = msg.pose.pose.orientation.z;
+    currentOrientationAngle = 180 + (currentOrientationPosition * 180);
+    std::cout << currentOrientationAngle << std::endl;
+}
+
+//ROS Callback Function
+void depthImageCallback(const sensor_msgs::Image& msg)
+{
+    std::cout<< "Depth Callback" << std::endl;
+    depthImage = msg.data;
+    std::cout << depthImage[50] << std::endl;
+    
+}
+
+//ROS Callback Function
+void imageCallback(const sensor_msgs::Image& msg)
+{
+    std::cout<< "Image Callback" << std::endl;
+        rgbImage = msg.data;
+    std::cout << rgbImage[50] << std::endl;
+}
+
+int main(int argc, char **argv)
+{
+     std::cout << "Starting....." << std::endl;
+
+    FILE * imageLogFile = fopen("imageDataLog.txt", "wb+");
+    FILE * depthLogFile = fopen("depthDataLog.txt", "wb+"); 
+        FILE * orientationLogFile = fopen("orientationDataLog.txt","wb+");
+    
+        //ROS Variables
+        ros::init(argc, argv, "rosLogger");
+        ros::NodeHandle n;
+        ros::Subscriber odometrySub = n.subscribe("/odometry/filtered", 60, odometryCallback);
+        ros::Subscriber depthImageSub = n.subscribe("/camera/depth_registered/image_raw", 60, depthImageCallback);
+        ros::Subscriber imageSub = n.subscribe("/camera/rgb/image_color", 60, imageCallback);
+    ros::spinOnce();
+
+    int frameCount = 1;
+    
+    //Record from ROS nodes
+    while (frameCount <= 5)
+    {
+        /**
+        * Format is:
+        * int64_t: Orientation
+        * int32_t: depthSize
+        * int32_t: imageSize
+        * depthSize * unsigned char: depth_compress_buf
+        * imageSize * unsigned char: encodedImage->data.ptr
+        */
+        int imageSize = rgbImage.size();
+        int depthSize = depthImage.size();
+        
+        std::cout << std::endl << imageSize << std::endl;
+        uint8_t imageBuffer[imageSize];
+        uint8_t depthBuffer[depthSize];
+        
+        //Buffer frames
+        for(int i = 0; i < imageSize; i++) 
+        {
+            imageBuffer[i] = rgbImage[i];
+            //std::cout << static_cast<unsigned>(imageBuffer[i]) << std::endl;
+            //sleep(1);
+        }
+
+        for(int i = 0; i < depthSize; i++)
+        {
+            depthBuffer[i] = depthImage[i]; //depthImage.data[i];
+        }
+
+        fwrite(&currentOrientationAngle, sizeof(float),1,orientationLogFile);
+        
+        //fwrite(&depthSize, sizeof(int32_t), 1, logFile);
+        //fwrite(&imageSize, sizeof(int32_t), 1, logFile);
+        fwrite(depthBuffer, sizeof(uint8_t),sizeof(depthBuffer),depthLogFile);
+        
+        fwrite(imageBuffer, sizeof(uint8_t),sizeof(imageBuffer),imageLogFile);
+
+        frameCount++;
+        ros::spinOnce();
+    }
+    
+    fclose(orientationLogFile);
+    fclose(depthLogFile);
+    fclose(imageLogFile);
+    
+    std::cout << "Done!" << std::endl;
+
+    return 1;
+}
+
+Originally posted by bhampshire1 on ROS Answers with karma: 3 on 2017-06-08
+Post score: 0
+
+Original comments
+Comment by Thomas D on 2017-06-08:
+It would help to have more information about how you are running your code: rosrun or roslaunch? There are many times when ROS will suppress print statements from going to the terminal, that could be the case here.
+Comment by Thomas D on 2017-06-08:
+Formatting your code (use the 101010 button) would make it easier for you to get help.
+Comment by bhampshire1 on 2017-06-08:
+I'm using rosrun.
+
+A:
+
+Maybe there is a chance that your while loop is finishing before any messages come in to trigger the callbacks?
+A quick way to test this would to be put a 1 second sleep in the while loop to see if any of the callbacks get called.
+(for what it's worth, it looks like a lot of what you have in your while loop should actually be in callbacks)
+
+Originally posted by Airuno2L with karma: 3460 on 2017-06-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by bhampshire1 on 2017-06-08:
+I think I should try shifting my buffer array to my callbacks. I was trying to avoid too many globals. I'll try setting the loop rate. However, the images are coming in at 60 Hz.
+Comment by bhampshire1 on 2017-06-09:
+I shifted the for loops to their respective callbacks and set the loop rate to 5.  The callbacks are being called.
+Comment by Airuno2L on 2017-06-13:
+To avoid globals, you can make everything a class and have those globals as member variables instead.
+

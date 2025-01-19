@@ -1,0 +1,136 @@
+Q:
+
+Turtlebot sensor_state all 0s with Gazebo on Fuerte
+
+I am trying to access the bumps wheeldrops sensor from the Turtlebot sensor_state topic. However, the bump sensor is never activated. In fact, if I execute rostopic echo /turtlebot_node/sensor_state, all the sensor_state values are permanently set to 0. In addition, I noticed that the /odom Twist parameter remains 0 even when the robot is moving.
+Here is my launch file:
+<launch>
+    <arg name="use_sim_time" default="true"/>
+    <arg name="gui" default="true"/>
+
+    <!-- start gazebo with an empty plane -->
+    <param name="/use_sim_time" value="true" />
+
+    <node name="gazebo" pkg="gazebo" type="gazebo" args="-u $(find turtlebot_gazebo)/worlds/1box.world" respawn="false" output="screen"/>
+
+    <include file="$(find turtlebot_gazebo)/launch/robot.launch"/>
+
+    <!-- start gui -->
+    <group if="$(arg gui)">
+        <node name="gazebo_gui" pkg="gazebo" type="gui" respawn="false" output="screen"/>
+    </group> 
+
+</launch>
+
+And here is the simple program that is running as a node:
+#include <ros/ros.h>
+#include <turtlebot_node/TurtlebotSensorState.h>
+#include <geometry_msgs/Twist.h>
+#include <ros/rate.h>
+#include <iostream>
+#include <stdio.h>                        
+            
+using namespace std;    
+uint8_t bumper;
+
+void bumperCallback(const turtlebot_node::TurtlebotSensorState::ConstPtr& msg);
+
+int main (int argc, char** argv){       
+    
+    ros::Time start, end;
+    ros::init(argc, argv, "bumper");    
+    ros::NodeHandle nodeH;  
+    ros::Rate loop_rate(10); //10 Hz.
+    geometry_msgs::Twist twist;
+    
+    //Bumper subscriber.
+    ros::Subscriber bumperSub = nodeH.subscribe<turtlebot_node::TurtlebotSensorState>("/turtlebot_node/sensor_state", 1000, bumperCallback);
+    //Moving.
+    ros::Publisher movingPub = nodeH.advertise<geometry_msgs::Twist>("cmd_vel", 1000);
+
+    //Twist set to navigate forward.
+    double forwardSpeed = 0.15;
+    twist.linear.x = forwardSpeed; 
+    twist.linear.y = 0;
+    twist.linear.z = 0;
+    twist.angular.x = 0; 
+    twist.angular.y = 0; 
+    twist.angular.z = 0;
+    
+    start = ros::Time::now(); //Time when the robot starts moving.
+    while(ros::ok){
+        if(bumper != 0){
+            end = ros::Time::now(); //Time when robot bumped into a wall.
+            ROS_INFO("BOOM OUCH");
+                                
+        }
+        else{ //Go forward until the robot bumps into a wall.
+            ROS_INFO("Going forward");      
+            movingPub.publish(twist);
+        }
+        loop_rate.sleep();
+        ros::spinOnce();
+    }
+    
+    return 0;
+}
+
+//Fetch the sensor state containing the bumper state.
+void bumperCallback(const turtlebot_node::TurtlebotSensorState::ConstPtr& msg){
+    
+    bumper = msg->bumps_wheeldrops;
+    ROS_INFO("Bumper is %d .", bumper);     
+}
+
+I verified that Gazebo is indeed publishing on "/turtlebot_node/sensor_state" and that my own node is subscribed to it. How can I solve this problem? I've researched similar topics, but I don't see anything wrong with my files based on these.
+Note that the following warning is being reported by Gazebo, but I think it's irrelevant:
+Warning [RaySensor.cc:206] ranges not constructed yet (zero sized)
+
+[Edit] I just noticed these additional errors. I had not seen them before because the RaySensor warning is being displayed thousands of times. Gazebo seems to be running fine, though...
+Warning [parser.cc:348] Gazebo SDF has no gazebo element
+Warning [parser.cc:291] DEPRECATED GAZEBO MODEL FILE
+On July 1st, 2012, this formate will no longer by supported
+Convert your files using the gzsdf command line tool
+You have been warned!
+
+Error [ColladaLoader.cc:1392] No Opaque set
+[ INFO] [1375303568.841199057]: imu plugin missing <serviceName>, defaults to /default_imu
+[ INFO] [1375303568.842760080]: imu plugin missing <xyzOffset>, defaults to 0s
+[ INFO] [1375303568.844350786]: imu plugin missing <rpyOffset>, defaults to 0s
+Dbg plugin model name: turtlebot
+[ERROR] [1375303568.887177379]: Unable to find sensor[wall_sensor]
+spawn status:  SpawnModel: successfully spawned model
+[FATAL] [1375303568.951720905, 0.001000000]: ASSERTION FAILED
+    file = /opt/ros/fuerte/include/ros/publisher.h
+    line = 102
+    cond = false
+    message = 
+[FATAL] [1375303568.954664227, 0.001000000]: Call to publish() on an invalid Publisher
+[FATAL] [1375303568.955377726, 0.001000000]: 
+
+Unhandled exception in thread started by 
+sys.excepthook is missing
+lost sys.stderr
+
+[Edit2] I tried my program with a real Turtlebot and it works; the sensor_state parameters are being updated. Now why wouldn't it work with Gazebo?
+
+Originally posted by Zayin on ROS Answers with karma: 343 on 2013-07-31
+Post score: 0
+
+Original comments
+Comment by jorge on 2013-08-22:
+are u using hydro or groovy?
+If in hydro, there's still a lot of work to do: https://github.com/turtlebot/turtlebot_create_desktop/issues/3
+Comment by Zayin on 2013-08-26:
+I'm sorry I forgot to mention it. I'm using Fuerte,
+Comment by Zayin on 2013-08-28:
+Oh, I see, thanks! I shouldn't have assumed Gazebo was fully implemented.
+
+A:
+
+For the sensor_state 0s, I don't know; probably you will need to dig in the code to see if there's a problem or it's just not implemented. For the 0 velocity on odometry, I took a fast look at the code and it's just not implemented.
+
+Originally posted by jorge with karma: 2284 on 2013-08-27
+This answer was ACCEPTED on the original site
+Post score: 0
+

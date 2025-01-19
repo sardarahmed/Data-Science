@@ -1,0 +1,42 @@
+Q:
+
+Why isn't rospy.Rate.sleep() terminating?
+
+Hi, I have written a python script which takes two tf frames and writes the transform between them to a file. The abbreviated code of the script looks like this:
+listener = tf.TransformListener()
+# waiting for first transform between origin and pose
+listener.waitForTransform(origin, pose, rospy.Time(), rospy.Duration(5.0))
+rate = rospy.Rate(10)
+while not rospy.is_shutdown():
+    try:
+         now = rospy.Time.now()
+         listener.waitForTransform(origin, pose, now, rospy.Duration(1.0))
+         (trans, rot) = listener.lookupTransform(origin, pose, now)
+         ... write trans and rot to the file ...
+    # this exception is usually thrown when waitForTransform timed out
+    except tf.Exception as e: 
+         break # get out of the loop
+    rate.sleep()
+... some last commands before the script terminates ...
+
+Usually this script should terminate when no more tf frames are published because I leave the loop when waitForTransform(...) throws an exception.
+When I run this code and start playing a bagfile (use_sim_time true and --clock) the script does not terminate because it gets stuck at rate.sleep() when rosbag play is finished. Any ideas why it behaves this way?
+
+Originally posted by obb on ROS Answers with karma: 23 on 2013-08-30
+Post score: 2
+
+A:
+
+rosbag play with --clock publishes time. That's the whole point of --clock. If the playback stops, ROS time will also stop and thus the rate never gets forward.
+If the Rate is just supposed to happen every 0.1s to limit the loop (i.e. tied to the real world, not ROS time), you can use a WallRate instead (not sure if that exists in rospy)
+
+Originally posted by dornhege with karma: 31395 on 2013-09-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by obb on 2013-09-02:
+This explanation makes sense. WallRate does not seem to exist in rospy. I guess I have to write my own sleep() method then...
+Comment by Martin Günther on 2013-09-04:
+You don't need your own sleep() method, just use time.sleep().
+

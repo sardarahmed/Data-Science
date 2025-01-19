@@ -1,0 +1,122 @@
+Q:
+
+Tf timeout with multiple machines
+
+Hi!
+I try to get the navigation stack running on my robot.
+I've got ROS running on the robot and on an PC used for visualization in Rviz and, if possible, for calculation like gmapping.
+Nodes i need:
+odometry_publisher; base_control; tf_broadcaster; rviz; gmapping; depth_to laserscan; freenect(kinect); move_base.
+I tried to distribute the nodes on the two PC in so may different combinations. But i allways get the same problem:
+When i start all the nodes on my robot like: Odometry_publisher, freenect(kinect) and base_control everything looks good.
+Then i start the rest of the nodes on the other PC.
+In rviz it needs one minute until the laser scan in shown( before it tells that there is no transform from base_link to map). even if the laser scan is not visible in rviz, gmapping is building  map
+After that minute all of my nodes work fine. the is tha map made by gmapping and all the sensordata is published.
+BUT:
+Starting the Navigation stack produces that Warning and does nothing afterwards:
+ [ WARN] [1532685774.079683838]: Timed out waiting for transform from base_link to map to become available before running costmap, tf error: Lookup would require extrapolation into the past.  Requested time 1532685692.802003361 but the earliest data is at time 1532685767.757000016, when looking up transform from frame [base_link] to frame [map]. Transform returned after 0.100864 timeout was 0.1.
+
+btw  i does make no change where the master runs
+I think my time is completely messed up.
+anyone an idea how to fix that?
+thanks you so much!
+
+Originally posted by lorenznew on ROS Answers with karma: 123 on 2018-07-27
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-07-27:
+First thing to check: are the clocks between all involved machines in-sync? If they are not, you'll run into the issues you describe.
+See #q11570.
+Comment by lorenznew on 2018-07-27:
+thanks for the hint!
+I try that:
+ ros@ros-ThinkPad-T410:~$ ntpdate -q ros-robot
+
+and got:
+server 10.42.0.1, stratum 0, offset 0.000000, delay 0.00000
+27 Jul 13:35:32 ntpdate[1719]: no server suitable for synchronization found
+
+so i think the machines are in sync, right?
+Comment by gvdhoorn on 2018-07-27:\
+
+so i think the machines are in sync, right?
+
+No, I don't think so:
+
+ntpdate[1719]: no server suitable for synchronization found
+
+I would say this means that synchronisation failed.
+Please check the question I linked and their use of chrony.
+Comment by lorenznew on 2018-07-27:
+ok, do you have a simple tutorial how to setup chrony. Im a bit lost :)
+thanks!!
+Comment by lorenznew on 2018-07-27:
+what i did so far:
+apt-get install chrony
+
+add this line to  /etc/chrony/chrony.conf:
+server ros-robot minpoll 0 maxpoll 5 maxdelay
+.1
+restart Pc
+sudo /etc/init.d/chrony stop
+sudo /etc/init.d/chrony start
+
+i properly did something wrong =)
+Comment by gvdhoorn on 2018-07-27:
+Perhaps How to use chrony to synchronize timestamp on two computers helps.
+Comment by lorenznew on 2018-07-27:
+thank you, i've got chrony runnning but still 0.308 s offset between the machines.
+so now the Warning is:
+[ WARN] [1532696225.143471688]: Costmap2DROS transform timeout. Current time: 1532696225.1434, global_pose stamp: 1532696224.7965, tolerance: 0.3000
+
+so I'm realy close to  a working time!
+
+A:
+
+Hello everyone!
+I got this working!
+As gvdhoorn sad, the machines where not in sync!
+To solve this:
+try ntpdate -q <IP of your time server>
+if you get  no server suitable for synchronization found
+do on both machines:     apt-get install chrony
+choos one machine as time server. do on this machine: sudo nano /etc/chrony/chrony.conf
+Add these lines:
+# make it serve time even if it is not synced (as it can't reach out)
+local stratum 8
+# allow the IP of your peer to connect
+allow <IP of your time-clinet>
+
+Then do on the time clinet(machine that changes its time towards the server): sudo nano /etc/chrony/chrony.conf
+Add these lines:
+server <server_ip> minpoll 0 maxpoll 5 maxdelay .05
+
+change maxdelay as you wish. 0.05 worked for me!
+restart both machines
+check with ntpdate -q <IP of your time server>
+if they still have a big offset do:
+sudo /etc/init.d/chrony start
+sudo /etc/init.d/chrony stop
+
+check again. The offset should now get better.
+hope that helps!
+
+Originally posted by lorenznew with karma: 123 on 2018-07-28
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by Redhwan on 2021-11-12:
+In my case, I changed to 0.0005.
+The out put:   ntpdate -q 192.168.xx
+server 192.168.xx, stratum 3, offset 0.000688, delay 0.03365
+12 Nov 14:54:28 ntpdate[5375]: adjust time server 192.168.xx offset 0.000688 sec.
+Really, It is not familiar to me.
+It is fine or not?
+please, let me know if I will get any problems.
+Comment by Redhwan on 2021-11-12:
+I also got this:
+server 192.168.xx, stratum 3, offset -0.012946, delay 0.04585
+12 Nov 15:09:38 ntpdate[6213]: adjust time server 192.168.xx offset -0.012946 sec
+

@@ -1,0 +1,109 @@
+Q:
+
+different encodings of depth image for real & simulated kinect
+
+Hi all
+I've got a Gazebo simulation of a kinect camera, where I'm subscribing to the ROS topic /camera/depth/image_raw, which is of type sensor_msgs/Image. I also have a real Kinect for Xbox 360 camera connected to my PC via USB, where I can also get the /camera/depth/image_raw topic.
+Unfortunately, these two messages are not exactly the same:
+message from real camera:
+header: 
+  seq: 0
+  stamp: 
+    secs: 1527861646
+    nsecs: 997300811
+  frame_id: "camera_depth_optical_frame"
+height: 480
+width: 640
+encoding: "16UC1"
+is_bigendian: 0
+step: 1280
+data: [0, 0, ... ] # array is 614'400 long, i.e. 2 entries per pixel
+
+message from simulated camera:
+header: 
+  seq: 0
+  stamp: 
+    secs: 27
+    nsecs: 854000000
+  frame_id: "camera_link"
+height: 480
+width: 640
+encoding: "32FC1"
+is_bigendian: 0
+step: 2560
+data: [9, 51, 243, ... ] # array is 1'228’800 long, i.e. 4 entries per pixel
+
+The important difference here is the different encodings used, which results in different length of the data array. I don't know why this is the case, but nevertheless I would like to have the same encoding for both the real and the simulated depth image (I don't really care which one). How can I convert one encoding into the other? Also, is it possible to convert the data array so that it contains height * width entries, where each entry corresponds to the distance for this pixel in mm (or meter)?
+I'm using the freenect drivers for the real kinect camera (sudo apt-get install libfreenect-dev, sudo apt-get install ros-indigo-freenect-launch), because the Openni drivers didn't work for me, as I'm on a Ubuntu VM, where Openni has their problems with.
+Thanks & Cheers!
+
+Originally posted by RedJohn on ROS Answers with karma: 31 on 2018-06-28
+Post score: 2
+
+Original comments
+Comment by chrissunny94 on 2018-06-28:
+http://wiki.ros.org/cv_bridge/Tutorials/UsingCvBridgeToConvertBetweenROSImagesAndOpenCVImages
+Try this to change the encoding .
+I think , the main think you need to change is the frame_id . Not the encoding .
+Comment by RedJohn on 2018-07-09:
+Thanks for your advise! Sorry for responding late, I wasn't around for a while.
+The cv_bridge did work more or less, but I couldn't encode from 32FC1 to 16UC1, as this results in a 480*640 array of only 0's. Vice verca it was ok, but the value ranges differed (~0.5 from simulated vs. ~500 from real)
+Comment by RedJohn on 2018-07-09:
+So I simply normalized both arrays to be between 0 and 255 (I will post my code when it's working properly). But why do I need to change the frame_id and not the encoding, and how can this be done? Cheers
+
+A:
+
+@PeteBlackerThe3rd is right about the units. The package depth_image_proc has functions to convert between the two versions. If the rest of your code is expecting the uint16_t version, you can do something like the following:
+if ("16UC1" == depth_msg->encoding)
+{
+    try
+    {
+        cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return false;
+    }
+}
+else if ("32FC1" == depth_msg->encoding)
+{
+    try
+    {
+        cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_32FC1);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return false;
+    }
+
+    cv::Mat convertedDepthImg(cv_depth_ptr->image.size(), CV_16UC1);
+
+    const int V = cv_depth_ptr->image.size().height;
+    const int U = cv_depth_ptr->image.size().width;
+
+    #pragma omp parallel for
+    for (int v = 0; v < V; ++v)
+    {
+        for (int u = 0; u < U; ++u)
+        {
+            convertedDepthImg.at<uint16_t>(v, u)
+                = depth_image_proc::DepthTraits<uint16_t>::fromMeters(cv_depth_ptr->image.at<float>(v, u));
+        }
+    }
+
+    cv_depth_ptr->encoding = "16UC1";
+    cv_depth_ptr->image = convertedDepthImg;
+}
+
+with datatypes:
+sensor_msgs::ImageConstPtr depth_msg;
+cv_bridge::CvImagePtr cv_depth_ptr;
+
+Although, it might make more sense to convert the mm version to float, since you probably actually care about the depth in meters anyway.
+
+Originally posted by Andrew Price with karma: 66 on 2019-04-05
+This answer was ACCEPTED on the original site
+Post score: 2
+

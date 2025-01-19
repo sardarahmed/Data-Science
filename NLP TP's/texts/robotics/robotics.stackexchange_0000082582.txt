@@ -1,0 +1,58 @@
+Q:
+
+How to set callback queue size in rospy
+
+Hello,
+I'm currently working on a project where I use a network written in TensorFlow to segment some point clouds.
+I have created a node which subscribes to the point cloud topic. The callback function then passes the point cloud through the network, and publishes the results on a different topic.
+This all works well, but I have a problem:
+The time it takes to run the point cloud through the network is greater than the publish rate of the LiDAR.
+This creates an ever increasing delay between the input and the output of the node, as a new thread is created for each callback function, which then waits until the network is available.
+I would therefore like a way to cancel all callbacks until the network is available again, so all other point clouds than the latest gets discarded.
+Currently I do the following
+# Callback
+def segment(pointcloud):
+    feed_dict = {ops['pointclouds_pl']: pointcloud,
+                ops['is_training_pl']: False}
+    labels = sess.run(ops['pred'], feed_dict=feed_dict)
+    publisher.publish(labels)
+
+The subscriber is declared like this
+subscriber = rospy.Subscriber('aligned_pointcloud', PointCloud2, segment, queue_size=1)
+
+I would assume that setting the queue_size to one would do the trick but that is not the case.
+ while not rospy.is_shutdown():
+        pc = rospy.wait_for_message('aligned_pointcloud', PointCloud2)
+        segment(pc)
+
+The above code is also a possibility I have tried which sorta work. The problem is that it first listens for messages after the function has terminated, instead of keeping the latest ready. So if a message is published right before segment() terminates, the message is not received and the node waits for the next message to be published.
+
+Originally posted by Haarslev on ROS Answers with karma: 56 on 2017-08-29
+Post score: 2
+
+Original comments
+Comment by jayess on 2017-08-29:
+Why are you explicitly calling your callback? You may want to make this an action instead which may give you what you're looking for.
+Comment by Haarslev on 2017-08-29:
+In the bottom example I have not declared a subscriber. I simply wait for a message on the topic, and call the function when a message is received. It is therefore not a callback function. I'll have a look at actions
+Comment by gvdhoorn on 2017-09-23:
+Can you try setting the queue size to None? That might actually work the way you want.
+You'll get a warning, but it should work.
+Comment by Haarslev on 2017-09-24:
+I'll try as soon as I'm near my workstation again, thank you
+
+A:
+
+As pointed out by gvdhoorn, the fix was to set queue_size=None
+subscriber = rospy.Subscriber('aligned_pointcloud', PointCloud2, segment, queue_size=None)
+
+Now only the latest published point cloud is segmented, after the previous callback returns.
+
+Originally posted by Haarslev with karma: 56 on 2017-09-25
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2017-09-25:
+Can't take credit for this unfortunately :) Discussed this with @imcmahon at ROSCon17.
+

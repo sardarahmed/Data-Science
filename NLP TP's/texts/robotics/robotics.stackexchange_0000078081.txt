@@ -1,0 +1,66 @@
+Q:
+
+cant understand ros api properly
+
+I am looking at ros::nodehandle::advertise api here: , and ros::nodehandle::publish in here, acc to these description of advertise member function :
+ template<class M >
+Publisher ros::NodeHandle::advertise    (   const std::string &     topic,
+        uint32_t    queue_size,
+        const SubscriberStatusCallback &    connect_cb,
+        const SubscriberStatusCallback &    disconnect_cb = SubscriberStatusCallback(),
+        const VoidConstPtr &    tracked_object = VoidConstPtr(),
+        bool    latch = false 
+)   
+
+the shortest vesrion of these function is as:
+handle.advertise<std_msgs::Empty>("my_topic", 1, (ros::SubscriberStatusCallback)connectCallback);
+and for subscriber it is like:
+template<class M , class T >
+Subscriber ros::NodeHandle::subscribe   (   const std::string &     topic,
+        uint32_t    queue_size,
+        void(T::*)(const boost::shared_ptr< M const > &)    fp,
+        T *     obj,
+        const TransportHints &      transport_hints = TransportHints() 
+    )       [inline]
+
+with shortest version or simple description as:
+ros::Subscriber sub = handle.subscribe("my_topic", 1, &Foo::callback, &foo_object);
+
+I am using them in my node as:
+   ros::NodeHandle nh;
+    ros::Subscriber sub = nh.subscribe ("/camera/depth/points", 1, cloud_cb);
+    marker_pub = nh.advertise<visualization_msgs::Marker> ("visualization_marker",1);
+
+So why cant i create the subscriber as :
+   ros::Subscriber sub = nh.subscribe<visualization_msgs::Marker> ("/camera/depth/points", 1, cloud_cb);
+
+and the publisher as:
+  marker_pub = nh.advertise ("visualization_marker",1);
+
+Before these i was not studying the ros api in detail but now since i need to comibine ros and gazebo i am also trying to understand ros api. I haven't seen ros api before these in detail. gazebo api was ok for me, now i am trying understand ros api also and i didn't understood these part.
+
+Originally posted by dinesh on ROS Answers with karma: 932 on 2016-12-29
+Post score: 1
+
+A:
+
+The shortest version of advertise is actually:
+template<class M >
+Publisher ros::NodeHandle::advertise(const std::string & topic, uint32_t queue_size, bool latch = false)
+
+Since this is templated on the message type (M), and the message type doesn't appear in the argument list, the message type cannot be inferred from the template arguments, so you must specify it.
+Therefore you call: nh.advertise<visualization_msgs::Marker>("visualization_marker",1); , and the third latch argument will default to false.
+This simpler variant of ros::NodeHandle::subscribe is only templated on the message type:
+template<class M >
+Subscriber ros::NodeHandle::subscribe(const std::string &   topic, uint32_t queue_size, void(*)(M) fp, const TransportHints & transport_hints = TransportHints())
+
+And since the message type (M) can be inferred from the type of fp (void(*)(M)), you don't need to specify any template arguments. (similarly, the transport_hints argument here also uses the default value).
+
+Originally posted by ahendrix with karma: 47576 on 2016-12-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by dinesh on 2016-12-30:
+thanks, for explaining.
+

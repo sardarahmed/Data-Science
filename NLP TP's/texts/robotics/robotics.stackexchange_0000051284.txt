@@ -1,0 +1,69 @@
+Q:
+
+how do I use download_test_data()?
+
+I am trying to migrate a rosbuild package to catkin. It has unit tests which require moderately large data files stored on pr.willowgarage.com. The rosbuild version did it like this:
+rosbuild_download_test_data(
+  http://pr.willowgarage.com/data/velodyne/32e.pcap
+  tests/32e.pcap
+  e41d02aac34f0967c03a5597e1d554a9
+  )
+
+So, I changed that to invoke download_test_data() with identical parameters.
+But, my tests can't find the data. Formerly they did it this way:
+<!-- start read with example PCAP file -->
+<node pkg="velodyne_driver" type="velodyne_node" name="velodyne_node">
+  <param name="model" value="32E"/>
+  <param name="pcap" value="$(find velodyne_driver)/tests/32e.pcap"/>
+</node>
+
+Now it fails:
+[FATAL] [1369196347.360283641]: Error opening Velodyne socket dump file.
+
+I finally discovered a download_data_tests_32e.pcap make target. Invoking it explicitly reads the file into the build tree, and similarly for another test file.
+Several related questions:
+
+Where is download_test_data() documented?
+
+How do it get the the unit test build targets to depend on the download targets?
+
+What do I use instead of $(find velodyne_driver)/tests/32e.pcap to resolve the path name?
+
+UPDATE: The download command puts the data here in the build tree: ~/ros/wet/hydro/build/velodyne/velodyne_driver/tests/32e.pcap, which seems reasonable.
+But, rospack resolves to the source tree:
+$ rospack find velodyne_driver 
+/home/joq/ros/wet/hydro/src/velodyne/velodyne_driver
+
+Is that why $(find velodyne_driver)/tests/32e.pcap does not work?
+Also, experiment reveals an answer to question 2: the tests and run_tests build targets do depend on the download targets, but the more specific run_tests_velodyne_driver target does not.
+UPDATE2: I tried to hack around the problem by using an absolute file name in /tmp:
+download_test_data(
+  http://pr.willowgarage.com/data/velodyne/32e.pcap
+  /tmp/${PROJECT}/tests/32e.pcap
+  e41d02aac34f0967c03a5597e1d554a9)
+
+But, download_test_data() insists on prefixing the name with ${PROJECT_BINARY_DIR}/, even when it is fully qualified. It always goes in the build tree, although it cannot be resolved there.
+
+Originally posted by joq on ROS Answers with karma: 25443 on 2013-05-21
+Post score: 1
+
+Original comments
+Comment by William on 2013-05-22:
+There does not appear to be any documentation for this function, but the source is located here: https://github.com/ros/catkin/blob/groovy-devel/cmake/test/download_test_data.cmake
+Comment by joq on 2013-05-22:
+I looked at the source, that's the only way I got as far as I did. But, it's not exactly self-explanatory. I also found other packages doing similar things, presumably successfully.
+Comment by William on 2013-05-22:
+Yeah, I figured, but I don't have answers to your other questions yet.
+Comment by joq on 2013-05-22:
+OK. Thanks for the help. I'll keep working on it. I want to write a how-to page for this, if I can figure out how. :-)
+Comment by William on 2013-05-22:
+That would be appreciated, I'll try to polish this process for 0.4, but as it really affects a small number of users it hasn't been prioritized.
+
+A:
+
+Opened catkin issue #426.
+
+Originally posted by joq with karma: 25443 on 2013-05-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

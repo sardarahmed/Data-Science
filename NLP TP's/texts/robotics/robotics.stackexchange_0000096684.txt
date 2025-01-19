@@ -1,0 +1,98 @@
+Q:
+
+Rate and sleep function in RCLPY library for ROS2
+
+Recently I started learning ROS2, but I've encountered one issue, I've created a package & defined a node.
+#! /usr/bin/env python
+import rospy
+rospy.init_node("simple_node")
+rate = rospy.Rate(2) # We create a Rate object of 2Hz
+while not rospy.is_shutdown(): # Endless loop until Ctrl + C
+    print("Help me body, you are my only hope")
+    rate.sleep()
+# We sleep the needed time to maintain the Rate fixed above
+# This program creates an endless loop that repeats itself 2 times per second (2Hz) 
+# until somebody presses Ctrl + C in the Shell
+
+So, I need to convert above ROS1 code for ROS2, for that I replaced ROSPY library with RCLPY and coded it as below:
+import rclpy
+def main(args=None):
+    rclpy.init()
+    myfirstnode = rclpy.create_node('simple_node')
+    print("Help me body, you are my only hope")
+
+if __name__ == '__main__':
+    main()
+
+Now, I want to implement below-given code snippet using RCLPY but I'm not able to get all the functions required, I've got the RCLPY substitute of rospy.Rate(2), it is rclpy.create_node('simple_node').create_rate(2).
+while not rospy.is_shutdown():
+    print("Help me body, you are my only hope")
+    rate.sleep()
+
+Please suggest RCLPY substitutes of the functions rospy.is_shutdown() and rospy.Rate(2).sleep().
+
+Originally posted by skyhigh2000 on ROS Answers with karma: 43 on 2020-07-30
+Post score: 4
+
+A:
+
+Use rclpy.ok() as a replacement for rospy.is_shutdown().
+Using a Rate object is a bit trickier in ROS 2, since the execution model is different. We need to make sure to ensure it updates and doesn't block forever. One option is to call "spin" (which executes ROS callbacks, including time updates) in a separate thread.
+The ROS 1 example translated into ROS 2 looks something like this:
+import threading
+
+import rclpy
+
+rclpy.init()
+node = rclpy.create_node('simple_node')
+
+# Spin in a separate thread
+thread = threading.Thread(target=rclpy.spin, args=(node, ), daemon=True)
+thread.start()
+
+rate = node.create_rate(2)
+
+try:
+    while rclpy.ok():
+        print('Help me body, you are my only hope')
+        rate.sleep()
+except KeyboardInterrupt:
+    pass
+
+rclpy.shutdown()
+thread.join()
+
+Another option is to spin in the main thread and poll the rate object to see if it is done. Something like what is done in this test, although this may be too complex for what you need.
+I imagine the implementation of rclpy's Rate could be improved so that users can avoid creating an extra thread; perhaps something worth considering.
+
+Originally posted by jacobperron with karma: 1870 on 2020-07-30
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by skyhigh2000 on 2020-07-31:
+Thank you so much for your answer, the code which you suggested is working fine. Actually, I'm new to ROS, I just had one doubt, why do we need to have a spin() function? Like when does the rate object gets blocked?
+Comment by jacobperron on 2020-07-31:
+We have to spin, because of how Rate is implemented. It registers a callback with a ROS timer, and any time you register a callback in ROS 2 you need an executor to execute it. You've probably noticed "spin" functions in many examples. These spin functions are simply wrappers around a default executor, for convenience.
+If you don't call spin somewhere, then rate.sleep() will not wake up because the ROS timer it is using never triggers the callback.
+Comment by skyhigh2000 on 2020-07-31:
+Awesome, now I'm getting somewhere. So, basically the rclpy.spin() is just counteracting the rate.sleep() function, and from your answers I could derive that in ROSPY there was already a function in Rate which used to trigger callbacks & here in RCLPY we don't have such kind of function in Rate which triggers callbacks that's why we've to manually specify it. And yes how does the rclpy.spin() function knows when to trigger a callback, is it like the frequency parameter which we specified inside node.create_rate(2) is also passed to rclpy.spin() function?
+Comment by jacobperron on 2020-08-03:
+I could be wrong, but I think the implementation of Rate in rospy does not rely on callbacks (or it's hidden from the user), so you don't need to worry about spinning asynchronously.
+
+how does the rclpy.spin() function knows when to trigger a callback, is it like the frequency parameter which we specified inside node.create_rate(2) is also passed to rclpy.spin() function?
+
+It's kind of like this. Trying to describe it simply, a Rate object creates a Timer that is added to an Executor (typically the default executor). Then, rclpy.spin() checks the default executor for "work to do". The executor is the entity that checks if the timer has expired, and if it has expired then calls the user-provided callback.
+I hope this makes things a bit more clear.
+Comment by skyhigh2000 on 2020-08-03:
+Ohh, it works like that, I understood!! Thank you so much for clearing all my doubts, I apologize if you faced any trouble in this.
+Regards.
+Comment by jacobperron on 2020-08-03:
+Happy to help!
+Comment by Muthanna A. Attyah on 2022-04-23:
+when I set the rate for a node using "node.create_rate(1) # Rate in Hz" then use "rclpy.spin_once(node)" inside the "while" loop. I get the correct timing without the need to use "rate.sleep()" or threading. Can you confirm this ?
+Comment by vishalgi on 2022-10-26:
+^Just confirmed this works for me (create_rate and spin_once)
+Comment by viswa_1211 on 2023-06-22:
+When I use the code mentioned above, the node sleeps forever. It does not wake up after that.
+

@@ -1,0 +1,51 @@
+Q:
+
+How to create ROS2 library with dependence installed with CMake FetchContent?
+
+I want to create a package that combines the rclcpp libraries and an external library installed with CMake FetchContent. How do I properly create a cmake file? I have already tried different ways, but I keep getting different errors. Here two package for example. An external-lib package contains an external library, and an executor package includes a external-lib package.
+If I use the command ament_target_dependencies() then I catch the error: ament_target_dependencies() the passed package name 'cli' was not found.
+If I use the command target_link_libraries() then I catch the error: The following imported targets are referenced, but are missing: cli::cli.
+I appreciate your help, thanks!
+
+Originally posted by Mr_Leonard on ROS Answers with karma: 5 on 2022-11-21
+Post score: 0
+
+A:
+
+I was able to build it with the following changes.
+
+In test-external-lib/external-lib/CMakeLists.txt
+create shared library instead of static
+add_library(${PROJECT_NAME} SHARED src/my-lib.cc)
+
+And in test-external-lib/executor/CMakeLists.txt, use
+#ament_target_dependencies(${PROJECT_NAME} external-lib)
+target_link_libraries(${PROJECT_NAME} PUBLIC external-lib::external-lib)
+
+Finally, in test-external-lib/executor/src/exec.cc
+auto tmp = new Consol();
+tmp->Run(argc, argv);
+
+Edit after comment :
+You can use STATIC library too.
+In test-external-lib/external-lib/CMakeLists.txt, do the following 2 changes
+
+ament couldnt find cli, so link it with target_link_libraries
+#target_link_libraries(${PROJECT_NAME} PRIVATE cli::cli rclcpp::rclcpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE cli::cli)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC rclcpp)
+
+export cli too
+#ament_export_dependencies(rclcpp)
+ament_export_dependencies(rclcpp cli)
+
+Originally posted by bvbdort with karma: 3034 on 2022-11-22
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Mr_Leonard on 2022-11-23:
+Thanks for your reply! Yes, with your changes the example worked. But it's strange. Why should we use a dynamic library? And it seems that dependency export stopped working. I move #include  rclcpp.hpp from source file to header file in "external-lib" package, and the 'executor' package can not find the rclcpp lib in "external-lib" `s file. This only works if you directly include rclcpp in the cmake file of the executor package. Any ideas what I'm doing wrong? Link 
+Comment by Mr_Leonard on 2022-11-24:
+I updated the repo with your changes and it works, but only with a SHARED  property. If I set STATIC property I get this error "The following imported targets are referenced, but are missing: cli::cli"
+

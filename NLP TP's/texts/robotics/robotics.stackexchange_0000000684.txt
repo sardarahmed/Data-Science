@@ -1,0 +1,67 @@
+Q:
+
+Why does our LM2576 circuit suddenly cut down the power?
+
+I have an LM2576 circuit plus an adjuster to adjust the output voltage, for controlling motor speed in a line follower robot. The circuit works great when adjusted to give out low voltages, but when I adjust it to higher voltages for my motors to go faster, it works great for 1-2 minutes, then suddenly cuts down the power and motors start to go extremely slow.
+Even when I decrease or increase the output voltage, it won't respond until I turn off the power and turn it back on again. There is something mentioned in the LM2576 datasheet that if we overload the IC it will cut down the power until the load comes lower, so I think it might be a problem with that.
+Since this problem has already caused us to lose the competitions with 5+ teams, I would like to solve it for our next competition, so why does our LM2576 circuit suddenly reduce the power?
+
+A:
+
+If I were you, I would first (1) read the LM2576 datasheet.
+I'm assuming you are using a circuit similar to the schematic and PCB layout on page 23 of the LM2576 datasheet.
+I'm guessing you've tweaked the circuit slightly, replacing the manually-operated pot shown on the schematic for R2, replaced with some sort of microprocessor-controlled thing that frequently changes its effective resistance to make that motor spin faster or slower.
+Then I would (2) put my finger on the chip.
+If it feels so hot that I can't hold my finger on it, I would suspect
+
+thermal shutdown.
+
+georgebrindeiro covered this. You'll also want to read p. 18 of the datasheet, the section "Thermal Analysis and Design": "The following procedure must be performed to determine whether or not a heatsink will be required. ...". The typical solution is to add a big heat sink to the chip. Do you see the size of the heatsink on the PCB layout on page 23 of the datasheet?
+Next I would (3) take a cheap multimeter, switch it to "Amp" mode, and connect it in-line with the motor leads.
+When the output voltage drops (which I measure with my more expensive multimeter),
+and I hear and see the motors slow down, what does the cheap multimeter say?
+Does the cheap multimeter stay pegged at some high current above 3 A (the datasheet says the internal limit will be somewhere between 3.5 A and 7.5 A)?
+If so, then we almost certainly have:
+
+current limiting. The regulator is working as-designed.
+
+The typical solution is to figure out what is pulling so much current, and somehow replace it with something that pulls less current.
+Perhaps the robot has run into a wall or got stuck in a rut, and the motors have stalled out.
+Then maybe the controller needs to sense this condition, stop its futile efforts to punch through the wall, and reverse direction.
+Sometimes we really need more current than one regulator can supply.
+Then we must replace that regulator with multiple regulators or higher-current regulators or both.
+(But not so much current that it immediately melts the wires in the motor).
+On the other hand, if the output voltage and the output current drop, then
+I would (4) connect my more expensive multimeter to the power input pins of the regulator.
+If that is much lower than I expected, then perhaps:
+
+The input voltage is lower than I expected.
+
+When you supply the motors with a higher voltage, they drain the batteries much quicker. Partially-drained batteries have a no-load voltage lower than you might expect from the "nominal" voltage printed on the battery, and loaded batteries have an even lower voltage. I doubt this is your problem, since you imply that if you disconnect the battery and reconnect the same battery, it seems to start working again. The typical solution is to put more batteries in series to increase the actual working voltage.
+Next I would (5) try disconnecting the batteries, and powering everything from a high-current grid-powered "power supply" set to the appropriate output voltages.
+If it seems to run fine off that power supply, but not from batteries, I would suspect:
+
+switching-regulator latchup. "Latchup of Constant-Power Load With Current-Limited Source" http://www.smpstech.com/latch000.htm
+
+When you supply the motors with a higher voltage, they pull a higher current.
+Surprisingly often, the total impedance at the input power pins of switching regulator is so high (bad) that when the regulator turns its internal power switch on, the voltage at its input power pins plummets so low that it's not possible to pull the desired current from that battery.
+Milliseconds later, when the switch turns off, the battery pulls the voltage back up to some reasonable voltage -- so this problem is difficult to debug with a standard multimeter, but obvious when you have the input power pins connected to an oscilloscope.
+The only complete cure is to somehow reduce the total input impedance at the input power pins.
+Occasionally all you need to do is reduce the wiring impedance -- shorten the wires (reduce the resistance), or bring closer together the PWR and GND wires (reduce the inductance), or both.
+Occasionally all you need to do is put more capacitance across the power input pins of the regulator.
+As a battery drains, its effective series resistance increases.
+In theory, you can always cure this by putting more batteries in parallel to reduce the net ESR of of all the batteries in parallel.
+Some people want a very lightweight robot, and so they can't add more batteries, so they can't completely cure the problem.
+Sometimes they can get adequate performance from the robot by using various "soft-start" or "load-shedding" techniques.
+Rather than trying to pull a lot of power from the batteries to get up to speed quickly -- more power than the battery can physically supply, and so triggering this unwanted latchup -- we pull somewhat less power from the batteries, slowly ramping up to speed, and applying various "limp mode" and "tired mode" techniques to keep the total power at any one instant low enough that the battery can supply it.
+(You may be interested in
+What is the best way to power a large number (27) servos at 5 V?
+).
+
+A:
+
+According to the datasheet, there are three possibilities: TTL shutdown, thermal shutdown and current limiting. 
+From what I looked up, TTL shutdown means simply that you have a pin you can use to cut-off the regulator output current. My guess is that it is pin 5 and you simply grounded it, as seen in the typical application circuit, so that possibility can be eliminated.
+Since the circuit works great for 1-2 minutes and then shuts down, my guess is that you are not properly heatsinking and the regulator is going through thermal shutdown. 
+If the IC isn't feeling hot enough, however, then you can probably assume current limiting. In that case, you have to investigate why your circuit is demanding so much current (probably a flawed design).
+

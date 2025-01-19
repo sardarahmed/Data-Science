@@ -1,0 +1,104 @@
+Q:
+
+extrapolation error of local cost map in navigation
+
+Hi all,
+I'm following the navigation tutorial with my differential wheeled robot.
+I build my map with hector slam and now i'm trying to explore it with the navigation stack but I have the following error when I try to send the robot at some Goal :
+[ERROR] [1344094708.876267784]: Extrapolation Error: Unable to lookup transform, cache is empty, when looking up transform from frame [/odom] to frame [/map]
+[ERROR] [1344094708.876364007]: Global Frame: /odom Plan Frame size 98: /map
+[ WARN] [1344094708.876424927]: Could not transform the global plan to the frame of the controller
+
+If I replace the "global_frame" parameter from "/odom" to whatever (like "/map") in the "local_costmap_params.yaml" configuration file, the error disapears but it does not work...
+My tf tree seems good :
+image description http://i45.tinypic.com/2lt0cua.png
+And a tf_echo seems good :
+psykokwak@robot:~/ros/workspace$ rosrun tf tf_echo /map /odom
+At time 1344095433.661
+- Translation: [-0.008, 0.011, 0.000]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.001]
+At time 1344095434.660
+- Translation: [-0.007, 0.009, 0.000]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.000]
+At time 1344095435.659
+- Translation: [-0.007, 0.009, 0.000]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.000]
+At time 1344095435.926
+- Translation: [-0.005, 0.008, 0.000]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.001]
+
+So, I have no idea about the origin of my problem :(
+
+Originally posted by psykokwak on ROS Answers with karma: 65 on 2012-08-04
+Post score: 7
+
+Original comments
+Comment by psykokwak on 2012-08-06:
+No one knows ? :(
+Comment by g.aterido on 2012-10-23:
+I have the same problem, but only when I launch the robot_pose_ekf stack... Whitout that stack everything works perfectly. But I don't know how to solve it :( Did you found what was wrong?
+Comment by Gazer on 2013-06-13:
+sorry...... I am now encountering such problem..... do you figure it out!!????
+Comment by Reza on 2013-07-11:
+I have same problem, any help?
+Comment by Huibuh on 2013-08-12:
+I have the same problem and cannot resolve it. Any help would be very much appreciated. My thread on this problem can be found here: http://answers.ros.org/question/63360/extrapolation-error-using-hector_mapping-move_base/
+Comment by AbuIbra on 2013-11-01:
+Have same problem too!
+Comment by BlitherPants on 2014-01-14:
+Ditto, except I'm using gmapping instead of hector_slam
+
+A:
+
+Hello All,
+I know what the origin of the problem is, and how to (at least temporarily) fix it.
+The Problem
+When using AMCL to provide the map->odom tf-transform to move_base, everything works fine. This is because AMCL 'future dates' the provided transform (see last sentence here: http://wiki.ros.org/amcl#Transforms).
+However, when using hector_slam for localization instead of AMCL, the provided map->odom tf-transform is not future dated. This leads to move_base throwing the
+mentioned error:
+Extrapolation Error: Unable to lookup transform, cache is empty, when looking up transform from frame [/odom] to frame [/map]
+
+How to temporarily fix it
+Check out https://github.com/tu-darmstadt-ros-pkg/hector_slam.git (catkin branch) into your own ROS workspace and modify Line 347 in file HectorMappingRos.cpp (direct link https://github.com/tu-darmstadt-ros-pkg/hector_slam/blob/catkin/hector_mapping/src/HectorMappingRos.cpp) as follows:
+# Replace the original line 347 in HectorMappingRos.cpp
+tfB_->sendTransform( tf::StampedTransform (map_to_odom_, scan.header.stamp, p_map_frame_, p_odom_frame_));
+
+# ...with these two lines
+ros::Duration future_date_duration(0.3F);
+tfB_->sendTransform( tf::StampedTransform (map_to_odom_, scan.header.stamp  + future_date_duration, p_map_frame_, p_odom_frame_));
+
+This future dates the tf-transform published by hector_mapping by 0.3s. Then compile the package and re-run your experiment. In my case, this got rid of the error messages.
+But this has some disadvantages:
+
+The delay of 0.3s can be noted in the navigation/localization performance of hector_mapping in conjunction with move_base. You can also see the updates in rviz lag behind.
+Patched hector_mapping is no permanent solution.
+
+@BlitherPants I suppose it is the same reason why gmapping throws the same errors when used together with move_base.
+Suggested permanent fix
+I can see two options:
+
+move_base has to be changed so it also accepts non-future dated map->odom transforms OR
+hector_slam and gmapping have to be modified to provide future dated map->odom transforms
+
+I suggest we get the follwing people involved in this discussion:
+'@David Lu' (AMCL + move_base maintainer)
+'@Stefan Kohlbrecher' (hector_slam author)
+'@Johannes Meyer' (hector_slam maintainer)
+'@Brian Gerkey' (gmapping author)
+
+Originally posted by Huibuh with karma: 399 on 2014-01-23
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by BlitherPants on 2014-01-24:
+Wow, thanks for the detailed answer! I'll have to see if I can poke around in the source code of gmapping and get back to you...
+Comment by Stefan Kohlbrecher on 2014-01-27:
+This iooks like a bug in move_base to me. Future-dating a transform that is based on timestamped laser (and odometry) data is wrong (even if the error will be small for practical applications so that it won't break things). Sounds like there's simply a waitForTransform missing.
+Comment by BlitherPants on 2014-01-27:
+It looks like the error is happening in TrajectoryPlannerROS (called by move_base, called by gmapping), in the function "transformGlobalPlan" in goal_functions.cpp. Inside this function is a lookupTransform but no waitForTransform. Wonder if that's the problem? My tf skills are still being built...
+

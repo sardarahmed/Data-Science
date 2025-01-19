@@ -1,0 +1,342 @@
+Q:
+
+ROS2/Gazebo/ros2_control: Class gazebo_ros2_control/GazeboSystem does not exist
+
+please excuse if i did not find the correct Thread with a similar problem. After multiple days searching for an answer i decided to post my concrete question.
+My setup:
+Ubuntu 20.04.6 LTS
+ROS2 Foxy
+Gazebo 11.13.0
+installed via sudo apt-get -y install ros-foxy-gazebo
+Inside my URDF File i configured ros2_control as follows:
+  <ros2_control name="GazeboSystem" type="system">
+
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+      <!-- <plugin>test_system</plugin> -->
+    </hardware> 
+
+    <joint name="Joint11_Grundplatte_Bizeps1">
+      <command_interface name="position">
+        <!-- <param name="min">-0.5236</param>        <!-- -0.5236 = -30° -->
+        <param name="max">1.3963</param>        <!--1.3963 = +80° -->
+      </command_interface>
+
+      <state_interface name="position"/>
+    </joint>
+
+  </ros2_control>
+
+I also added the gazebo_ros2_control plugin to the URDF file:
+  <gazebo>
+    <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control"> 
+      <parameters>$(find model_picker_description)/config/picker_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+And thats the used config file picker_controllers.yaml :
+controller_manager:
+  ros__parameters:
+    update_rate: 10  # Hz
+    #use_sim_time: True
+
+    #Publisher für Joint states
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    #"forward_position_controller" ist ein "single joint"-controller aus dem package "ros2_controllers". Ich denke der ist richtig für mich.
+    bizeps_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+bizeps_position_controller:
+  ros__parameters:
+    #Für den ForwardCommandController sind das alle möglichen Parameter. 
+    #siehe: https://github.com/ros-controls/ros2_controllers/blob/master/forward_command_controller/src/forward_command_controller_parameters.yaml
+    joints: Joint11_Grundplatte_Bizeps1
+    interface_name: position
+
+Now lets get into the issue:
+I am starting my Simulations within two steps. First Step starts gazebo with an empty world. Second Step spawns my Models, starts Nodes, ... . During the First Step everything is fine. In my second Step when using the ros2_control hardware plugin gazebo_ros2_control/GazeboSystem im getting the following error:
+[ros2_control_node-2] terminate called after throwing an instance of 'pluginlib::LibraryLoadException'
+[ros2_control_node-2]   what():  According to the loaded plugin descriptions the class gazebo_ros2_control/GazeboSystem with base class type hardware_interface::SystemInterface does not exist. Declared types are  fake_components/GenericSystem test_hardware_components/TestSystemCommandModes test_hardware_components/TestTwoJointSystem test_system
+[ERROR] [ros2_control_node-2]: process has died [pid 26536, exit code -6, cmd '/opt/ros/foxy/lib/controller_manager/ros2_control_node --ros-args --params-file /tmp/launch_params_h9xe6lfo --params-file /home/Stefan/share/ros2_ws_raf/install/model_picker_description/share/model_picker_description/config/picker_controllers.yaml'].
+
+In the CLI where gazebo with the empty world starts in Step 1 i am also getting the following error:
+[gzserver-1] [ERROR] [1701789856.549460633] [gazebo_ros2_control]: parser error Couldn't parse params file: '--params-file $(find model_picker_description)/config/picker_controllers.yaml'. Error: Error opening YAML file, at /tmp/binarydeb/ros-foxy-rcl-yaml-param-parser-1.1.14/src/parser.c:198, at /tmp/binarydeb/ros-foxy-rcl-1.1.14/src/rcl/arguments.c:388
+[gzserver-1] 
+
+In my gzserver Log-Files (~/.gazebo/server-11345$ nano default.log) there is no error message:
+Gazebo multi-robot simulator, version 11.13.0
+Copyright (C) 2012 Open Source Robotics Foundation.
+Released under the Apache 2 License.
+http://gazebosim.org
+
+(1701789841 86590197) [Msg] Waiting for master.
+(1701789841 95590670) [Msg] Connected to gazebo master @ http://127.0.0.1:11345
+(1701789841 95688797) [Msg] Publicized address: 172.21.0.2
+(1701789841 327159780) [Msg] Loading world file [/home/Stefan/share/ros2_ws_raf/install/raf_gazebo/share/raf_gazebo/worlds/raf_empty.world]
+(1701789841 393870146) Init world[default]
+
+When i search for the gazebo_ros2_control package i find inside /opt/ros/foxy/share/gazebo_ros2_control/gazebo_hardware_plugins.xml this:
+<library path="gazebo_hardware_plugins">
+  <class
+    name="gazebo_ros2_control/GazeboSystem"
+    type="gazebo_ros2_control::GazeboSystem"
+    base_class_type="gazebo_ros2_control::GazeboSystemInterface">
+    <description>
+      GazeboPositionJoint
+    </description>
+  </class>
+</library>
+
+I am just a beginner but this tells me, that the plugin should be available.
+I also added the path to the plugin into the environment variable "GAZEBO_PLUGIN_PATH", but nothing changed.
+So at this point i’m totally confused, because in my opinion the interfaces aren’t missing. I am trying to use the gazebo_ros2_control/GazeboSystem for the control of revolute Joints of a Delta Picker.
+Can anyone help me out? Any hint is appreciated.
+Thanks alot in advance.
+P.S. If any further documentation or log-files are needed just say so - i’m quiet new to this.
+Yours sincerely
+Spezies31
+Additional Information after initial Post:
+Code of Launch-File #1:
+First Launch-File "start_world.launch.py" starts gazebo with an empty world:
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_prefix
+
+def generate_launch_description():
+    
+    pkg_gazebo_ros = get_package_share_directory('gazebo_ros')# Get the Path to Package "gazebo_ros". Evtl. anderer Package Name notwendig (vllt. "ros-foxy-gazebo")
+    pkg_box_bot_gazebo = get_package_share_directory('raf_gazebo') # Get the Path to Package "raf_gazebo".
+
+    #We get the whole install dir
+    #We do this to avoid having to copy or softlink manually the packages so that gazebo can find them
+    description_package_name = "raf_gazebo"
+    install_dir = get_package_prefix(description_package_name) # Get the Path to the Install directory of the Packages "raf_gazebo"
+    
+    # Set the path to the WORLD model files. Is to find the models inside the models folder in raf_gazebo package
+    gazebo_models_path = os.path.join(pkg_box_bot_gazebo, 'models') # Generating the Path "gazebo_models_path" by appending 'models' to 'pkg_box_bot_gazebo'
+    # os.environ["GAZEBO_MODEL_PATH"] = gazebo_models_path
+
+    if 'GAZEBO_MODEL_PATH' in os.environ: #Add Gazebo Model Path to "GAZEBO_MODEL_PATH". So Gazebo can load the models. Otherwise gazebo is not able to find them.
+        os.environ['GAZEBO_MODEL_PATH'] = os.environ['GAZEBO_MODEL_PATH'] + ':' + install_dir + '/share' + ':' + gazebo_models_path
+    else:
+        os.environ['GAZEBO_MODEL_PATH'] = install_dir + "/share" + ':' + gazebo_models_path
+
+    if 'GAZEBO_PLUGIN_PATH' in os.environ: #Add Gazebo Plugin Path to "GAZEBO_PLUGIN_PATH". So Gazebo can load the plugins. Otherwise gazebo is not able to find them.
+        os.environ['GAZEBO_PLUGIN_PATH'] = os.environ['GAZEBO_PLUGIN_PATH'] + ':' + install_dir + '/lib'
+    else:
+        os.environ['GAZEBO_PLUGIN_PATH'] = install_dir + '/lib'
+
+    print("Path pkg_gazebo_ros==", pkg_gazebo_ros)
+    print("GAZEBO_MODELS_PATH=="+str(os.environ["GAZEBO_MODEL_PATH"])) #Visualize Generated Path to check them if they are right.
+    print("GAZEBO_PLUGINS_PATH=="+str(os.environ["GAZEBO_PLUGIN_PATH"])) #Visualize Generated Path to check them if they are right.
+
+    # Gazebo launch. Setting Path to Launch File we want to start. "We want to start the gazebo.launch.py File in the directory launch from the package "pkg_gazebo_ros" ""
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py'),
+        )
+    )
+
+    # # gazebo Version from the gazebo_ros2_control_demos -> cart_example_position.launch.py Beispiel. -> Macht keinen Unterschied.
+    # gazebo = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([os.path.join(
+    #         get_package_share_directory('gazebo_ros'), 'launch'), '/gazebo.launch.py']),
+    #     )
+    
+
+    return LaunchDescription([
+        #Setting "our" world "box_bot_empty.world" as world we want to launch
+        DeclareLaunchArgument(
+        'world',
+        default_value=[os.path.join(pkg_box_bot_gazebo, 'worlds', 'raf_empty.world'), ''],
+        description='SDF world file'),
+
+        gazebo
+    ])
+
+Code of Launch-File #2:
+Second Launch file "publish_urdf.launch.py" starts a robot_state_publisher node to publish urdf description of my model and a (normally redundant) controller manager:
+# This launch will:
+# Publish the content of the URDF in the robot_description topic using the "robot_state_publish_node"
+# Publish the static transforms between links with the "robot_state_publish_node"
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+
+from launch import LaunchDescription
+
+from launch.substitutions import Command
+
+from launch_ros.actions import Node
+
+#Added because of ros2_control
+
+from launch.substitutions import FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument
+from launch_ros.substitutions import FindPackageShare
+
+from launch.actions import TimerAction #Für die Verzögerung des Controller_Manager notwendig
+
+# this is the function launch system will look for
+def generate_launch_description():
+
+    ##### DATA INPUT START #####
+    urdf_file = 'model_picker.urdf'
+    package_description = 'model_picker_description'
+    ##### DATA INPUT END #####
+
+    print("Fetching URDF ==>")
+    robot_desc_path = os.path.join(get_package_share_directory(package_description), "urdf", urdf_file)
+
+    with open(robot_desc_path, 'r') as urdf_file:
+        urdf_file_content = urdf_file.read()
+    
+    # print("urdf_file_content enthält:")
+    # print(urdf_file_content)
+
+    # print("Hier ist was in robot_desc_path steht:")
+    # print(robot_desc_path)
+
+    #Robot State Publisher Command(['xacro', str(robot_desc_path)]
+    robot_state_publisher_node = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='robot_state_publisher_node',
+        emulate_tty=True,
+        parameters=[{'use_sim_time': True, 'robot_description': urdf_file_content}],
+        output="screen"
+    )
+
+    #Added because of ros2_control
+    #Pfad zur "picker_controller.yaml" raussuchen und in die Variable "picker_controller" packen
+    path_picker_controller_config = PathJoinSubstitution(
+        [
+            FindPackageShare("model_picker_description"),
+            "config",
+            "picker_controllers.yaml",
+        ]
+    )
+
+    controller_manager_node = Node(
+        package="controller_manager",
+        executable="ros2_control_node",
+        parameters=[{'use_sim_time': True, 'robot_description': urdf_file_content}, path_picker_controller_config],
+        output={
+            "stdout": "screen",
+            "stderr": "screen",
+        },
+    )
+
+    delayed_controller_manager = TimerAction(period=10.0, actions=[controller_manager_node]) # Verzögert die Ausführung des Controller manager Nodeu m 3 Sekunden. Notwendig, damit robot state publisher vorher fertig ist. Sonst startet der Controller Manager nicht und nichts funktioniert.
+
+    #create and return launch description object
+    return LaunchDescription(
+        [
+            robot_state_publisher_node,
+            controller_manager_node,
+            delayed_controller_manager
+        ]
+    )
+
+A:
+
+Sorry for the long pause, i was trying stuff and wanted to write an answer when i had something to say.
+As far as i see it, the problem of not loading the .YAML-File is solved.
+All i did was changing my *.urdf file to a *.urdf.xacro file.
+To do this i did the following:
+1. Change the Ending of the file
+`*.urdf -> *.urdf.xacro`
+
+2. Add the Xacro Reference to the -tag inside the file
+Old:
+
+`<robot name="model_picker_gestaenge">`
+
+` ... `
+
+`<robot/>`
+
+New:
+
+`<robot xmlns:xacro="https://wiki.ros.org/xacro.org" name="model_picker_gestaenge>`
+
+` ... `
+
+`<robot/>`
+
+3. Change Parsing Code
+Old:
+
+##### DATA INPUT START #####
+urdf_file = 'model_picker.urdf'
+package_description = 'model_picker_description'
+##### DATA INPUT END #####
+
+print("Fetching URDF ==>")
+robot_desc_path = os.path.join(get_package_share_directory(package_description), "urdf", urdf_file)
+
+with open(robot_desc_path, 'r') as urdf_file:
+    urdf_file_content = urdf_file.read()
+
+# print("urdf_file_content enthält:")
+# print(urdf_file_content)
+
+# print("Hier ist was in robot_desc_path steht:")
+# print(robot_desc_path)
+
+#Robot State Publisher Command(['xacro', str(robot_desc_path)]
+robot_state_publisher_node = Node(
+    package='robot_state_publisher',
+    executable='robot_state_publisher',
+    name='robot_state_publisher_node',
+    emulate_tty=True,
+    parameters=[{'use_sim_time': True, 'robot_description': urdf_file_content}],
+    output="screen"
+)
+
+New:
+
+##### DATA INPUT START #####
+xacro_file = 'model_picker.urdf.xacro'
+package_description = 'model_picker_description'
+##### DATA INPUT END #####
+
+print("Fetching URDF ==>")
+#Getting Path of the xacro file
+xacro_file_path = os.path.join(get_package_share_directory(package_description), "urdf", xacro_file)
+
+#Convertig *.xacro-File into urdf-String via "xacro" Command -> Ergebnis ist der String der URDF Datei + Wrapping String in ParameterValue so that roslaunch system will not falsely interpret it as a .yaml-File during parsing.
+urdf_file_content = launch.substitutions.Command(['xacro', " " , xacro_file_path])
+
+#Wrapping String in ParameterValue so that roslaunch system will not falsely interpret it as a .yaml-File during parsing.
+urdf_file_content_wrapped = launch_ros.descriptions.ParameterValue( urdf_file_content, value_type=str)
+
+#Erstellen des dictionaries für das parsen der robot_description
+robot_description = [{'robot_description': urdf_file_content_wrapped}]
+
+#Robot State Publisher Command(['xacro', str(robot_desc_path)]
+robot_state_publisher_node = Node(
+    package='robot_state_publisher',
+    executable='robot_state_publisher',
+    name='robot_state_publisher_node',
+    emulate_tty=True,
+    parameters=robot_description,
+    output="screen"
+)
+
+Now the .YAML File is found under the path i gave it and loaded.
+Now i have a different error message which i count as progress. :-)
+Can somebody explain to me why it makes such a huge difference?
+Or does somebody has an assumption?
+

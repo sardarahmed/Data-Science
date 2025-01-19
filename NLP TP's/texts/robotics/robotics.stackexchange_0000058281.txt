@@ -1,0 +1,45 @@
+Q:
+
+Can I roslaunch a rosjava node?
+
+In previous versions of rosjava, I used to be able to start my node using roslaunch or rosrun.  Now, it seems that to execute a node (as shown in the tutorials), I have to use the following syntax:
+./my_pub_sub_tutorial com.github.rosjava_catkin_package_a.my_pub_sub_tutorial.Talker &
+Please advise if it is still possible to use roslaunch and a launch file.  I prefer to launch my java nodes this way, to be able to set parameters in a consistent way with my C++ based nodes.   Now, I get an errror, "cannot launch node of type [execute]".
+Also, it is not clear if I should be creating my rosjava subprojects as libraries (jar files) or executables to do this.
+Thanks in advance.
+
+Originally posted by ceverett on ROS Answers with karma: 332 on 2014-03-27
+Post score: 2
+
+A:
+
+It turns out that this was working before due to a gradlew trick that creates an executable, linked to the jar file, that I had set up a long time ago, and forgotten.  This was based on another post that I found (see the link in the code comment).  I added this to my build.gradle:
+/*
+ * Create a deploy task to make an executable named "execute",
+ * that can be used from the roslaunch .launch files.
+ * To run this from this directory, do:
+ * ../gradlew deployApp
+ *
+ * see: https://code.google.com/p/rosjava/issues/detail?id=140
+ */
+task deployApp(dependsOn: 'installApp') << {
+  File binDir = new File(project.projectDir, '/bin')
+  if (! binDir.isDirectory()) {
+    println "Creating $binDir directory"
+    binDir.mkdirs()
+  }
+  File link = new File(binDir,"execute")
+  File target = new File(project.projectDir, "build/install/$project.name/bin/$project.name")
+  println "Creating symlink from $link.absolutePath to $target.absolutePath"
+  ant.symlink(link: link.absolutePath, resource: target.absolutePath, overwrite: true)
+}
+
+Then, I can have a launchfile with a node that looks like this, note the type of "execute" for the java node:
+<node pkg="my_pub_sub_tutorial" type="execute" name="my_pub_sub_tutorial" args="com.github.rosjava_catkin_package_a.my_pub_sub_tutorial.Talker"/>
+
+and I can roslaunch it like any other node.
+
+Originally posted by ceverett with karma: 332 on 2014-04-23
+This answer was ACCEPTED on the original site
+Post score: 5
+

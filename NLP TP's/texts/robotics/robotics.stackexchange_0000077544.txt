@@ -1,0 +1,93 @@
+Q:
+
+Transform Listener Problem
+
+Hi I'm new to ROS and am trying to transform a point from the /odom frame to the /map frame. Every time I run the package I get the following error:
+Invalid argument passed to lookupTransform argument source_frame in tf2 frame_ids cannot be empty
+My code is detailed below:
+geometry_msgs::PointStamped point1;
+   geometry_msgs::PointStamped point2;
+   std::string frame1 = "/odom"; 
+   std::string frame2 = "/map";
+
+void getPoseCallback(const geometry_msgs::Pose msg)
+
+{
+   point1.point.x = msg.position.x;
+   point1.point.y = msg.position.y;
+   point1.point.z = 0;
+   point1.header.frame_id = frame1.c_str();
+}
+
+int main(int argc, char** argv)
+{  
+  ros::init(argc, argv, "tf_listener");
+
+  ros::NodeHandle node;
+
+  ros::Publisher pose = node.advertise<geometry_msgs::PointStamped>("odom_abs", 10);
+  ros::Subscriber getPose = node.subscribe("/odom", 1000, getPoseCallback);
+  tf::TransformListener listener;
+
+      ros::Rate rate(10.0);
+
+  point2.header.frame_id = frame2.c_str();
+
+  while (node.ok())
+  {
+    try
+    {
+        listener.waitForTransform("/map","/odom",ros::Time::now(), ros::Duration(3.0));
+        listener.transformPoint("/map", point1,point2);
+
+       }
+        catch (tf::TransformException &ex)
+        {
+      ROS_ERROR("%s",ex.what());
+      ros::Duration(1.0).sleep();
+      continue;
+    }
+   
+    pose.publish(point2);
+
+       
+        ros::spin();
+        rate.sleep();
+      }
+
+  return 0;
+};
+ 
+
+Checking with the class reference for the transform_listener, I can't find any error in the arguments.
+
+Originally posted by MattMalt on ROS Answers with karma: 11 on 2016-11-27
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2016-11-28:
+Just curious:
+
+point1.header.frame_id = frame1.c_str();
+
+why the detour via c_str()? Both header.frame_id and frame1 are std::strings.
+Comment by MattMalt on 2016-11-28:
+Ah I see, I saw an example online using c_str() and assumed that I had to use it. Thanks for pointing that out for future reference though!
+
+A:
+
+The error message is quite accurate
+"Invalid argument passed to lookupTransform argument source_frame in tf2 frame_ids cannot be empty"
+The target-frame of transformPoint is "/map", the source_frame is the frame_id of the second argument (namely point1). You create the subscriber that fills the frame, but you do not check if this callback was triggered. Just wait for getPoseCallback and you should be good to go. (You could put the whole transformation and publishing part into the callback)
+point2.header.frame_id = frame2.c_str();
+
+This is not needed. The frame_id of the output object is set automatically to the given target_frame.
+
+Originally posted by NEngelhard with karma: 3519 on 2016-11-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by MattMalt on 2016-11-30:
+Thanks for the reply! Yes, the error has stopped appearing.
+

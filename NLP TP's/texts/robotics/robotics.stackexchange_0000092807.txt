@@ -1,0 +1,61 @@
+Q:
+
+catkin build ONLY the message target of a package
+
+I have packages as follows:
+package_A/
+|-- msg/
+    |-- CustomMsg.msg
+    \-- ... (other messages)
+|-- include/ ... (some code)
+|-- src/ ... (some Python and C++ code)
+
+package_B/ ... (also depends on package_A/CustomMsg.msg)
+
+my_msgs/
+|-- msg/ ... (some messages; one depends on package_A/CustomMsg.msg)
+\-- ... (srv and action definitions that depend on msg)
+
+my_package_1/ ... (depends on my_msgs)
+
+my_package_2/ ... (depends on my_msgs)
+
+I'm working in Melodic and I have some bag data, pkl files, etc., but unfortunately, I need to work with that data in another distro where it's infeasible for me to setup my workspace again (package_A and package_B won't build because of various dependencies, for example). The way I see it, I have 2 options:
+Option 1:
+I only need the messages built to work with my data, but I cannot figure out a way to get catkin to only build the message targets and ignore the code that comes in package_A. Is there a way to do this?
+CMake doesn't come naturally to me, so when trying to build catkin build package_A_generate_messages failed, I decided to come here for help. If there is a way to build just CustomMsg.msg, even better!
+Option 2:
+I know that you can work across distros if the message hashes remain unchanged. But I don't know how those hashes are generated. Is the package name taken into account? I think the answer is yes, but wanted to check what else might be. CustomMsg.msg actually has a pretty simple message definition, so if I redefine the message in my own (faux) package called package_A on the other machine and build, will I end up with the same hash, which will then allow me to reuse my data files?
+
+Originally posted by banerjs on ROS Answers with karma: 5 on 2019-07-30
+Post score: 0
+
+Original comments
+Comment by pcoenen on 2019-07-30:
+I don't know if there is a way to force catkin to only generate messages, but you could comment out all the add_executable/library/dependencies and target_link_libraries in your packages CMakeLists.txt.
+Comment by banerjs on 2019-07-30:
+Yeah, that's essentially what I'm doing with option 2. I think it seems to be working; I'll post back here when I'm sure. Thanks!
+
+A:
+
+What you ask for is impossible, as the message generation targets are only created upon a successful CMake configuration phase run.
+Success of that phase depends on the find_package(..) and other statements in the CMakeLists.txt of all pkgs in a workspace to succeed. That can only happen if all dependencies are present (which would appear to be exactly your problem: "package_A and package_B won't build because of various dependencies, for example").
+The targets are defined in the Makefile that CMake generates after all this succeeds. At that point it would be trivial to invoke only the message generation target:
+catkin_make package_A_generate_messages
+
+or:
+catkin build --make-args package_A_generate_messages
+
+I'm not aware of any option to CMake (which Catkin will invoke) to make it ignore failing commands, so editing the CMakeLists.txt of package_A and package_B would seem to be your only option.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-08-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by banerjs on 2019-08-02:
+Got it. That makes a lot of sense. Thanks!
+Just so I have this clear, assume for instance that instead of missing dependencies, which is indeed my problem, the problem was that dependency APIs had changed (for instance the arguments to a function had changed; something only caught when an actual make command is run)---then the option of running some cmake command followed by a make <package>_generate_messages would have been doable, right?
+Comment by gvdhoorn on 2019-08-02:
+If CMake is happy with whatever it found for packages, and it's just compilation that would fail, then yes, I believe you should be able to run Catkin first (which is essentially CMake) and then the message generation targets should be there.
+

@@ -1,0 +1,59 @@
+Q:
+
+Discrepancy between OctoMap visualization and actual OctoMap in MoveIt!
+
+The robotic platform I use is rail-mounted and has a manipulator 6-DOF robotic arm). I am using MoveIt! to control the arm. The rail the robot is mounted on is added as a collision object. I want to add the rest of the environment (a large steel tank) as an OctoMap, since I want to perform raycasting.
+I publish the OctoMap using the octomap_server_node from the octomap_server package. I republish it to the monitored planning scene using the following snippet:
+class OctoHandler():
+    mapMsg = None
+
+    def __init__(self):
+        rospy.init_node('moveit_octomap_handler')
+        rospy.Subscriber('octomap_full', Octomap, self.cb, queue_size=1)
+        pub = rospy.Publisher('move_group/monitored_planning_scene', PlanningScene, queue_size=1)
+        r = rospy.Rate(0.25)
+        while(not rospy.is_shutdown()):
+            if(self.mapMsg is not None):
+                pub.publish(self.mapMsg)
+            else:
+                pass
+            r.sleep()
+
+    def cb(self, msg):
+        psw = PlanningSceneWorld()
+        psw.octomap.header.stamp = rospy.Time.now()
+        psw.octomap.header.frame_id = 'map'
+        psw.octomap.octomap = msg
+
+        psw.octomap.origin.position.x = 0
+        psw.octomap.origin.orientation.w = 1
+
+        ps = PlanningScene()
+        ps.world = psw
+        ps.is_diff = True
+        self.mapMsg = ps
+
+The OctoMap is added to the planning scene and visible in Rviz. However, instead of the in the global map frame, the visualization is projected in the start_rail frame, the root of my planning scene:
+<virtual_joint name="platform_base" type="floating" parent_frame="/start_rail" child_link="dummy_base_link" />
+
+The planning scene seems correct though, as can be deduced from the image below. The base of the arm is not colliding according to MoveIt!, while the end effector is (in a location where I actually added the environment).
+
+This might be a bug in the MoveIt! Rviz plug-in. For example a missing transform somewhere here. I might also just be doing something wrong. ;) Anything that points me in the right direction is greatly appreciated!
+A workaround might be to include my map frame in my SRDF, to extend the root of the planning scene to the global frame. This is not very elegant, though.
+
+Originally posted by Cees on ROS Answers with karma: 51 on 2017-01-27
+Post score: 1
+
+A:
+
+I'm not sure, what is actually wrong for you, but MoveIt transforms everything to the planning frame, so that is expected.
+What I can see in the code: You manually set the 'map' frame in the header. Are you sure the received map is in that frame? Also to update the move_group node, you should publish to /planning_scene instead.
+
+Originally posted by dornhege with karma: 31395 on 2017-01-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Cees on 2017-01-27:
+Thank you for your reply Christian! I am sure "map" is my global frame, and I do want to publish the Octomap in that frame. I do not expect the problem to be related to that: if I choose to publish in start_rail, the visualization does not shift, but the visualization and actual occupied space align
+

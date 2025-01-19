@@ -1,0 +1,114 @@
+Q:
+
+ros::Timer leads to boost::lock_error at process cleanup
+
+Hello again,
+in my Program i use different classes with inheritance. Everything works fine until i end the process (Ctrl C).
+Then it throws the following error:
+terminate called after throwing an instance of 'boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<boost::lock_error> >'
+  what():  boost::lock_error
+
+The class structure is organized as follows:
+|---------------------------------------------------------|
+| AdditionalObject                                        |
+|---------------------------------------------------------|
+
+|---------------------------------------------------------|
+| BaseObject                                              |
+|---------------------------------------------------------|
+| boost::shared_ptr<AdditionalObject> m_additional_object |
+|---------------------------------------------------------|
+                             A
+                             |
+                             |
+|---------------------------------------------------------|
+| Object                                                  |
+|---------------------------------------------------------|
+
+I created a minimal example that reproduces that error:
+#include <ros/ros.h>
+
+// ***************************** class AdditionalObject *****************************
+class AdditionalObject
+{
+public:
+  AdditionalObject();
+
+private:
+  void timerCallback(const ros::TimerEvent& event);
+  ros::NodeHandlePtr m_n;
+  ros::Timer  m_timer;
+};
+
+AdditionalObject::AdditionalObject()
+{
+  m_n = boost::shared_ptr<ros::NodeHandle>(new ros::NodeHandle());
+  m_timer = m_n->createTimer(ros::Duration(1), &AdditionalObject::timerCallback, this);
+}
+
+void AdditionalObject::timerCallback(const ros::TimerEvent &event)
+{
+  std::cout << "beep" << std::endl;
+}
+
+// ******************************* class BaseObject *******************************
+class BaseObject
+{
+public:
+  BaseObject(boost::shared_ptr<AdditionalObject> additional_object);
+
+private:
+  boost::shared_ptr<AdditionalObject> m_additional_object;
+};
+
+BaseObject::BaseObject(boost::shared_ptr<AdditionalObject> additional_object) : m_additional_object(additional_object) { }
+
+// ********************************** class Object **********************************
+class Object : public BaseObject
+{
+public:
+  Object(boost::shared_ptr<AdditionalObject> additional_object);
+};
+
+Object::Object(boost::shared_ptr<AdditionalObject> additional_object) : BaseObject(additional_object) { }
+
+// **********************************************************************************
+
+// public variables
+boost::shared_ptr<Object> object;
+boost::shared_ptr<AdditionalObject> additional_object;
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "minimal_example");
+  ros::NodeHandle n;
+
+  additional_object = boost::shared_ptr<AdditionalObject>(new AdditionalObject());
+  object = boost::shared_ptr<Object>(new Object(additional_object));
+
+  ros::spin();
+  return 0;
+}
+
+I'm using ROS Hydro on Kubuntu 12.04. Any help would be appreciated.
+
+Originally posted by Blizzard on ROS Answers with karma: 49 on 2014-03-24
+Post score: 0
+
+A:
+
+I am not sure why, but if you put
+  additional_object.reset();
+  object.reset();
+
+after your ros::spin() the error goes away. Probably you have to unbind before  nodehandle and everything goes out of scope. Making your shared_ptrs local objects also works. I think I'd put them in a class of which the instance goes out of scope before the end of main....
+
+Originally posted by Wolf with karma: 7555 on 2014-03-24
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Blizzard on 2014-03-24:
+Well, learning never stops.
+Thank you for your help.
+

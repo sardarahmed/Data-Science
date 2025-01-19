@@ -1,0 +1,94 @@
+Q:
+
+DRCSim and TF : please tell me what I'm missing
+
+Hello All,
+DRCSim-2.2, Ubuntu 12.04.2LTS
+I am trying to convert LaserScan images to Point Clouds with modified version of code here... 
+[http://answers.ros.org/question/11232/how-to-turn-laser-scan-to-point-cloud-map/]
+Modifications are only changing link/topic names, and changing setExtrapolationLimit to 3.0.
+I get the following error...
+
+terminate called after throwing an instance of 'tf::LookupException'
+  what():  Frame id /head\_hokuyo\_frame does not exist! Frames (31): Frame /hokuyo_link exists with parent /head.
+Frame /head exists with parent /utorso.
+Frame /ltorso exists with parent /pelvis.
+
+I shortened this, but /head_hokoyu_frame is not in the list.
+
+"view_frames" shows connection between /pelvis and /head_hokoyu_frame
+
+Update : I have been trying the TF tutorials for inspiration. The view_frames output says the transform from /pelvis to /ltorso is 1363397010.463 sec old ??  Also, tf_monitor shows Average Delay: -0.495226 for some frames.
+Thank you for any assistance or useful links.
+
+Originally posted by dougbot01 on Gazebo Answers with karma: 3 on 2013-03-15
+Post score: 0
+
+A:
+
+Looks like the problem is that when you receive a laser scan, its timestamp is later than all the available /tf data.  This is a common issue in a distributed system, and is what message filters were designed to address.  You should try using a message filter.
+In the meantime, to help understand the problem, below is a slightly modified version of the code you pointed to.  In this version, I added a sleep to the laser scan callback to allow for /tf data to be received before trying to transform the latest scan.  By default, this sleep would block receipt of all data, including /tf; so I created a multithreaded spinner.  What you should see if you run this program is that at first transforms will fail as your /tf subscriber hooks up and starts getting data; then they'll start succeeding.
+Again, don't use the code here; use message filters instead.
+#include <ros/ros.h>
+#include <tf/transform_listener.h>
+#include <laser_geometry/laser_geometry.h>
+
+class My_Filter {
+     public:
+        My_Filter();
+        void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
+     private:
+        ros::NodeHandle node_;
+        laser_geometry::LaserProjection projector_;
+        tf::TransformListener tfListener_;
+
+        ros::Publisher point_cloud_publisher_;
+        ros::Subscriber scan_sub_;
+};
+
+My_Filter::My_Filter(){
+        scan_sub_ = node_.subscribe<sensor_msgs::LaserScan> ("/multisense_sl/laser/scan", 100, &My_Filter::scanCallback, this);
+        point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud2> ("/cloud", 100, false);
+        tfListener_.setExtrapolationLimit(ros::Duration(0.1));
+}
+
+void My_Filter::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan){
+    // Sleep a little so that we have a better chance of having current /tf data
+    // before trying to transfrom this latest /scan.
+    ros::Duration(0.1).sleep();
+    sensor_msgs::PointCloud2 cloud;
+    try
+    {
+      projector_.transformLaserScanToPointCloud("pelvis", *scan, cloud, tfListener_);
+    }
+    catch(tf::TransformException& e)
+    {
+      printf("failed to transform: %s\n", e.what());
+      return;
+    }
+    printf("success\n");
+    point_cloud_publisher_.publish(cloud);
+}
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "my_filter");
+
+    My_Filter filter;
+
+    // Start up two threads, one to handle /tf messages and the other for /scan
+    // messages.
+    ros::MultiThreadedSpinner spinner(2);
+    spinner.spin();
+
+    return 0;
+}
+
+Originally posted by gerkey with karma: 1414 on 2013-03-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by dougbot01 on 2013-03-20:
+Hi Brian, thank you so much for the response. I have been getting through the TF tutorials and see that I will need the MessageFilter as you said. Unfortunately the code/programs for the tutorial are no longer in fuerte (unless I missed a package) but I have almost re-created all the files and will submit bug/patch on GitHub for that. Thanks again!
+

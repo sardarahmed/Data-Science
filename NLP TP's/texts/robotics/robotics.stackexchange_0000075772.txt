@@ -1,0 +1,60 @@
+Q:
+
+Converting Pixel Location in Camera Frame to World Frame
+
+I am trying convert the location in pixels of a target in my camera frame into the x and y coordinates in the world frame. I am currently doing it using the simple pinhole camera model and using TF.  The results seem ok but not great. My code is posted below. Let me know if this seems correct or if I am missing something.
+self.cam_model.fromCameraInfo(self.info_msg)
+cam_model_point = self.cam_model.projectPixelTo3dRay(self.cam_model.rectifyPoint((X_pixel,Y_pixel)))
+point_msg.pose.position.x=cam_model_point[0]
+point_msg.pose.position.y=cam_model_point[1]
+point_msg.pose.position.z=camera.position.z
+point_msg.pose.orientation.x=camera.orientation.x
+point_msg.pose.orientation.y=camera.orientation.y
+point_msg.pose.orientation.z=camera.orientation.z
+point_msg.pose.orientation.w=camera.orientation.w
+point_msg.header.stamp = rospy.Time.now()
+point_msg.header.frame_id = self.cam_model.tfFrame()
+    try:
+    self.listener.waitForTransform(self.cam_model.tfFrame(), "/world", rospy.Time.now(), rospy.Duration(10.0))
+    tf_point = self.listener.transformPose("world", point_msg)
+
+Edit 1: I fixed it slightly and the results look slightly better. I get the correct pattern but the pattern is too small and needs to be scaled up. Below is the new code.
+self.cam_model.fromCameraInfo(self.info_msg)
+cam_model_point = self.cam_model.projectPixelTo3dRay(self.cam_model.rectifyPoint((X_pixel,Y_pixel)))
+point_msg.pose.position.x=cam_model_point[0] + camera.position.x
+point_msg.pose.position.y=cam_model_point[1] + camera.position.y
+point_msg.pose.position.z=cam_model_point[2] + camera.position.z
+point_msg.pose.orientation.x=0
+point_msg.pose.orientation.y=0
+point_msg.pose.orientation.z=0
+point_msg.pose.orientation.w=1
+point_msg.header.stamp = rospy.Time.now()
+point_msg.header.frame_id = self.cam_model.tfFrame()
+    try:
+    self.listener.waitForTransform(self.cam_model.tfFrame(), "/world", rospy.Time.now(), rospy.Duration(10.0))
+    tf_point = self.listener.transformPose("world", point_msg)
+
+Originally posted by jonlwowski012 on ROS Answers with karma: 29 on 2016-08-12
+Post score: 1
+
+A:
+
+I got it work. I realize I had to use a stereo camera in order to get a 3D point. The pinhole camera model only gives you a 3D ray. The code below is the correct way to do it.
+self.cam_model.fromCameraInfo(self.info_msg_left,self.info_msg_right)
+cam_model_point = self.cam_model.projectPixelTo3d((centres[i][0],centres[i][1]),self.Disparity[centres[i][0]][centres[i][1]])
+point_msg.pose.position.x= cam_model_point[0]
+point_msg.pose.position.y=cam_model_point[1]
+point_msg.pose.position.z= cam_model_point[2]
+point_msg.pose.orientation.x=0
+point_msg.pose.orientation.y=0
+point_msg.pose.orientation.z=0
+point_msg.pose.orientation.w=1
+point_msg.header.stamp = rospy.Time.now()
+point_msg.header.frame_id = self.cam_model.tfFrame()
+self.listener.waitForTransform(self.cam_model.tfFrame(), "world", rospy.Time.now(), rospy.Duration(1.0))
+tf_point = self.listener.transformPose("world", point_msg)
+
+Originally posted by jonlwowski012 with karma: 29 on 2016-08-19
+This answer was ACCEPTED on the original site
+Post score: 1
+

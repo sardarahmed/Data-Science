@@ -1,0 +1,29 @@
+Q:
+
+slam_karto marks grid cell underneath real robot as occupied
+
+A picture is worth a thousand words, so here are 3000 words :P
+When slam_karto starts (on a real robot, not simulation), it marks a few cells underneath the robot as occupied. In the screenshot below, the red arrow corresponds to the robot's initial pose, i.e. [0 0 0]
+
+In turn, this causes planning to fail, since the robot is in the "lethal cost" region of the global costmap. (I'm actually doing exploration here, using the hector_navigation package, not navigation.)
+
+Looking at the incoming LaserScan messages, there don't seem to be any measurements at such short range (see screenshot below, where the decay time has been set to 30 sec.) The messages' range_min field is 0.06. I'm building the LiDAR driver from source, so I tried increasing that, e.g. to 0.15. But it didn't have any effect on the issue at hand. For reference / comparison, this map's resolution is 0.05
+
+This problem doesn't arise in simulation though. I can't seem to find any relevant parameters I could tune in order to prevent this. How should I go about debugging it?
+
+Originally posted by spmaniato on ROS Answers with karma: 1788 on 2016-04-21
+Post score: 0
+
+A:
+
+It looks like the following function in Karto.h
+inline const PointVectorDouble& GetPointReadings(kt_bool wantFiltered = false) const
+
+is NEVER called with wantFiltered = true And there is no parameter for adjusting this. Thus, Karto's mapper uses measurements whose range is smaller than the LiDAR's min_range. I think these don't show up in RViz exactly because they are below min_range; RViz probably filters them out.
+Edit: I opened a pull request: https://github.com/ros-perception/open_karto/pull/9
+PS. The reason this doesn't occur in simulation is because the simulated LiDAR measurements are always between min_range and max_range
+
+Originally posted by spmaniato with karma: 1788 on 2016-04-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

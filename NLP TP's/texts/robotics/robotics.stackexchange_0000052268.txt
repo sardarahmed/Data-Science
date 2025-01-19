@@ -1,0 +1,76 @@
+Q:
+
+Invalid node name gazeboo when trying to launch gazebo empty world
+
+When trying to launch an empty world in gazebo using the command
+roslaunch gazebo_worlds empty_world.launch 
+
+I encounter the error
+Invalid node name [gazeboo/�]: node names cannot contain /
+
+Is there a known fix for this issue?
+
+The full error is:
+
+terminate called after throwing an instance of 'ros::InvalidNodeNameException'
+what():  Invalid node name [gazeboo/�]: node names cannot contain /
+Msg Waiting for master
+Aborted (core dumped)
+Error [Connection.cc:477] Connection[0] Closed during Read
+terminate called after throwing an instance of 'boost::system::system_error'
+what():  Connection reset by peer
+[gazebo-2] process has died [pid 18337, exit code 134, cmd /opt/ros/groovy/stacks/simulator_gazebo/gazebo/scripts/gazebo /opt/ros/groovy/stacks/simulator_gazebo/gazebo_worlds/worlds/empty.world __name:=gazebo __log:=/home/dhruv/.ros/log/6ed9ee8a-dde5-11e2-a0c6-0026c789069a/gazebo-2.log].
+log file: /home/dhruv/.ros/log/6ed9ee8a-dde5-11e2-a0c6-0026c789069a/gazebo-2*.log
+Aborted (core dumped)
+[gazebo_gui-3] process has died [pid 18346, exit code 134, cmd /opt/ros/groovy/stacks/simulator_gazebo/gazebo/scripts/gui __name:=gazebo_gui __log:=/home/dhruv/.ros/log/6ed9ee8a-dde5-11e2-a0c6-0026c789069a/gazebo_gui-3.log].
+log file: /home/dhruv/.ros/log/6ed9ee8a-dde5-11e2-a0c6-0026c789069a/gazebo_gui-3*.log
+
+Launch file:
+
+Originally posted by sunzun on ROS Answers with karma: 41 on 2013-06-25
+Post score: 4
+
+Original comments
+Comment by prasanna.kumar on 2013-06-25:
+Did you try changing the node name ? Try re-naming the node name from its current value to something else, just 'gazebo' for instance. And also please update the question with your launch file.
+Comment by sunzun on 2013-06-26:
+I believe the issue is in the ROS api for the gazebo. I haven't made any modifications to the standard groovy install for gazebo (I'm just attempting to run the launch file that ships with the package). I've posted the launch file.
+Comment by sunzun on 2013-06-26:
+I would go through the source code myself, but it's thousands of lines of code, and a simply searching for "gazeboo" leads me to believe the issue is not as simple as a typo. Of course, I could be wrong, but I couldn't find where the issue was myself.
+Comment by RC on 2013-06-26:
+I have the same problem, I hope to find the way to solve this.
+Comment by fberger on 2014-04-25:
+Did anyone resolve this issue?
+
+A:
+
+Okay, so there's apparently an issue with parsing the input argc/argv arguments when initializing the node in the file
+
+/opt/ros/groovy/stacks/simulator_gazebo/gazebo/src/gazebo_ros_api_plugin.src
+
+I fixed this by explicitly defining the node name in the function
+
+void GazeboRosApiPlugin::Load(int argc, char** argv)
+
+by replacing
+
+ros::init(argc,argv,"gazebo",ros::init_options::NoSigintHanlder);
+
+with
+
+std::mapstd::string,std::string remappings;
+remappings["gazebo"] = "gazebo";
+ros::init(remappings,"gazebo",ros::init_options::NoSigintHanlder);
+
+Probably not the most elegant solution, nor does it actually address the root cause of this issue, but it fixes the problem.
+
+Originally posted by sunzun with karma: 41 on 2013-07-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by octavian on 2013-08-22:
+I had the same issue and tried your suggestion above. Do you perform a 'rosmake -a' afterwards in order to compile?
+Comment by fberger on 2014-04-25:
+Sunzun, are there any steps to do after editing the file? Also, are you editing gazebo_ros_api_plugin.src or gazebo_ros_api_plugin.cpp? Your instructions so far haven't gotten it to work for me...
+

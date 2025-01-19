@@ -1,0 +1,40 @@
+Q:
+
+How to pass publisher to callback
+
+How to pass publisher to callback, as far as I can see this should work but keep getting errors: The two param case works without the publisher being passed.
+ ImageGrabber igb(&SLAM);
+ros::NodeHandle nh; 
+ros::Publisher pub = nh.advertise<sensor_msgs::Image>("/camera/depth-converted/image_raw", 1);
+ 
+message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh, "/camera/rgb/image_raw", 100);
+message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "camera/depth_registered/image_raw", 100);
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
+message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub, depth_sub, &pub);
+sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD, &igb, _1, _3));
+
+call back def:
+void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB,const sensor_msgs::ImageConstPtr& msgD, const ros::Publisher *pub)
+
+error:
+error: no matching function for call to ‘message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::Image_<std::allocator<void> >, sensor_msgs::Image_<std::allocator<void> > > >::Synchronizer(sync_pol, message_filters::Subscriber<sensor_msgs::Image_<std::allocator<void> > >&, message_filters::Subscriber<sensor_msgs::Image_<std::allocator<void> > >&, const ros::Publisher*)’
+     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub, depth_sub, &pub);
+
+Originally posted by rnunziata on ROS Answers with karma: 713 on 2017-10-20
+Post score: 1
+
+A:
+
+You're trying to create a topic synchronizer with a publisher as an input, and the compiler is telling you that isn't allowed. You're only allowed to pass a policy and some number of subscribers to the sync() method.
+Instead, you can either make your publisher a global variable, a class variable if your callback is a member of a class, or pass the publisher to the callback as one of the arguments when you use boost::bind.
+Try:
+sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD, &igb, _1, _2, &pub));
+
+Originally posted by ahendrix with karma: 47576 on 2017-10-21
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rnunziata on 2017-10-21:
+did not work....but I did go ahead and make it a class var. Should I close this? It seem that it is just not permitted.
+

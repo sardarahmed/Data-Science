@@ -1,0 +1,59 @@
+Q:
+
+ros2 concatenate string to launchargument
+
+Hello there,
+I am trying to port an old melodic project to eloquent and was wondering on how to concatenate strings to an launch argument like so:
+return LaunchDescription([
+    DeclareLaunchArgument('id', default_value='75', description="an id"),
+    DeclareLaunchArgument('target', default_value="robot_"+launch.substitutions.LaunchConfiguration('id')+"/target"),
+    Node(
+        package='wand_control',
+        node_executable='wand_control',
+        output='screen',
+        node_name="wand_control",
+        node_namespace="aq_"+launch.substitutions.LaunchConfiguration("id"),
+        parameters=[{
+            "target" : launch.substitutions.LaunchConfiguration('target')
+        }]
+    )
+])
+
+but there is an error on the line where I am trying to set the launch argument 'target':
+must be str, not LaunchConfiguration
+
+Is there a way to achieve that?
+
+Originally posted by .zero on ROS Answers with karma: 49 on 2020-08-04
+Post score: 2
+
+A:
+
+You can replace the string concatenation with an array, e.g.:
+import launch
+from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.substitutions import LaunchConfiguration
+
+def generate_launch_description():
+    return launch.LaunchDescription([
+        DeclareLaunchArgument('id', default_value='75', description='an id'),
+        DeclareLaunchArgument('target', default_value=['robot_', LaunchConfiguration('id'), '/target']),
+        LogInfo(msg=LaunchConfiguration('target'))
+    ])
+
+Originally posted by lukicdarkoo with karma: 486 on 2020-08-04
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by .zero on 2020-08-06:
+Thank you!
+But why does it work that way?
+Comment by lukicdarkoo on 2020-08-08:
+Maybe somebody with a better understanding may be more suitable for this question.
+But, the default_value parameter is an array (
+https://github.com/ros2/launch/blob/d8b12df2a6bbb307f845f06f00245e74b58041ef/launch/launch/actions/declare_launch_argument.py#L81) and each element in the array is resolved as a substitution (
+https://github.com/ros2/launch/blob/d8b12df2a6bbb307f845f06f00245e74b58041ef/launch/launch/actions/declare_launch_argument.py#L91). Therefore, it shows that the DeclareLaunchArgument accepts a list of substitutions (or strings that are converted to substitutions).
+Very often, substitutions accept a list, like PathJoinSubstitution (
+https://github.com/ros2/launch/blob/d8b12df2a6bbb307f845f06f00245e74b58041ef/launch/launch/substitutions/path_join_substitution.py#L29) and later it gets concatenated (https://github.com/ros2/launch/blob/d8b12df2a6bbb307f845f06f00245e74b58041ef/launch/launch/substitutions/path_join_substitution.py#L46)
+

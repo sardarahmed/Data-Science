@@ -1,0 +1,83 @@
+Q:
+
+Node is subscribed to a topic but not receiving the message
+
+My hardware is Romi32U4. My serial node is a subscriber to cmd_vel topic and there's a method converts Twist to the left and right speeds. I can move the robot by manually publish Twist message.
+Now, I want to use turtlebot3_teleop to publish Twist messages. I've followed e-manual tutorial to setup remote PC. According to rqt_graph, teleop is publishing to cmd_vel and serial node is subscribing to cmd_vel too. When I echo cmd_vel, I can get the values. However, serial node is not responding. The call back function is not called. I don't know why. The serial node should execute call back function when it gets a Twist message, which it is published by teleop.
+This is the class:
+#define USE_USBCON
+#include <Romi32U4.h>
+#include <ros.h>
+#include <geometry_msgs/Twist.h>
+#include <std_msgs/Float32.h>
+
+Romi32U4Motors motors;
+
+ros::NodeHandle_<ArduinoHardware, 6, 6, 150, 150> nh;
+std_msgs::Float32 left_msg;
+ros::Publisher left_vel_pub("chatter", &left_msg);
+
+std_msgs::Float32 right_msg;
+ros::Publisher right_vel_pub("chatter", &right_msg);
+
+//call back
+void msgTwist(const geometry_msgs::Twist& twist_msg){
+  float wheel_dist = 13;
+
+  float linear_vel = twist_msg.linear.x * 2000;
+  float angle_vel = twist_msg.angular.z * 15; 
+
+  float right_sp = (angle_vel*wheel_dist)/2 + linear_vel;
+  float left_sp = linear_vel*2 - right_sp;
+
+  left_msg.data = left_sp;
+  left_vel_pub.publish( &left_msg );
+
+  right_msg.data = right_sp;
+  right_vel_pub.publish( &right_msg );
+  
+  delay(1000);
+  
+  motors.setSpeeds(left_sp, right_sp)
+}
+
+ros::Subscriber<geometry_msgs::Twist> sub("cmd_vel", &msgTwist);
+
+void setup() {
+  nh.initNode();  
+  nh.advertise(left_vel_pub);
+  nh.advertise(right_vel_pub);
+  nh.subscribe(sub);
+}
+
+void loop() {
+  nh.spinOnce();
+}
+
+Originally posted by huang27c on ROS Answers with karma: 38 on 2018-07-12
+Post score: 0
+
+Original comments
+Comment by Levi_Manring on 2018-07-12:
+To me this sounds like it might be a spinner issue.  Have you looked into that?
+Comment by huang27c on 2018-07-12:
+Can you please explain more. Does that mean I need to modify spinOnce()?
+Comment by billy on 2018-07-12:
+Post the code that sets up the callback.
+Comment by huang27c on 2018-07-13:
+Hi @billy, just updated. please take a look.
+
+A:
+
+I solved my own problem. The problem is the delay in the callback function. turtlebot3_teleop keeps sending messages. The delay slows down the speed of receiving the message and eventually crashed the serial node. Simply delete the delay will fix the problem.
+
+Originally posted by huang27c with karma: 38 on 2018-07-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by jayess on 2018-07-13:
+I don't see any delays in your code.
+Comment by huang27c on 2018-07-13:
+Sorry I accidentally uploaded modified code. I've added the delay back. The delay in the call back is the problem.
+

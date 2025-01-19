@@ -1,0 +1,61 @@
+Q:
+
+Help me understand ros2 execution model
+
+I'm new to ROS2 and struggling to understand how to architect certain aspects of my system. A recurrent problem I'm facing is dealing with nodes that subscribe to specific data and need to provide some functionality to analyze that data. Maybe this piece of (not real) code will make things clearer:
+class ExampleNode(Node):
+    def __init__(self):
+        super().__init__('a_node')
+        self.fb_sub = self.create_subscription(
+            Float32,
+            '/sensor_data',
+            self.sensor_callback,
+            QoSPresetProfiles.SENSOR_DATA,
+        )
+        #We will keep a buffer for the last 100 readings
+        self.readings = deque([],100)
+
+    def sensor_callback(self, msg):
+        self.readings.append(msg.data)
+                    
+    def on_demand_foo(self):
+        # Processes the data on self.readings in some way
+        return self.process_data(self.readings)
+
+    def process_data(self, data):
+        #Some processing of data here
+        return None
+
+def main(args=None):
+    rclpy.init(args=args)
+    my_node = ExampleNode()
+    rclpy.spin(my_node)
+    result = my_node.on_demand_foo()
+    rclpy.shutdown()
+    
+if __name__ == '__main__':
+    main()
+
+On the one hand, I need to spin the node such that the readings buffer is full with the latest sensor readings, and when I call the on_demand_foo method, it can give me information based on the latest data. On the other hand, spinning the node will block execution for any other code, so you can't call any class methods after the spin statement.
+I feel this is just not how ROS2 is meant to work, so how do you solve this kind of situation? Is it the case that the only way to query nodes to analyze information is through a service call and not through a function call? Is there any way to avoid the overhead of a service/action call and use functions instead?
+Thanks in advance for your help!
+
+Originally posted by Piachnp on ROS Answers with karma: 45 on 2022-09-02
+Post score: 0
+
+A:
+
+There's a few options.
+
+If this thing you'd like to do is on a regular interval (e.g. do this operation every N seconds), then the best option is to make the on_demand_foo (or something wrapping it) a timer callback. Timers are added to the same waitset that the ROS interfaces are so the spin will execute it.
+
+If you want this to run at some irregular interval or as the result of another event or want to continue doing things outside of that node class, you should spin up another thread - or more compactly - have the example node provided spin up its own thread so it doesn't block when spinning the main thread to do other things. Typically though, we use OOP for ROS programs so that there is 1 main spin in the main() function and otherwise things are handled as the composition of objects within a node class (which itself may contain objects that are also node objects). In C++, this is a much more natural pattern because you can create / manage executors directly, but Python3's Pythonic API currently doesn't have that same capability (though from other discussions I've had recently, it seems to be just an oversight and may be added). As the result, for now in Python3, you may have nodes composed with other objects which are 'nodes' basically just to have a separate executor processing those requests. But in general (because giving general advise has never bit me in the ass before), in the main() function after the node is instantiated, it is poor design to interact with the main node again. That would preclude natural composition with other systems and/or the more formal Composition Component Containers to make them dynamically loadable - should that be available in Python3 in the future (probably).
+
+The design of ROS nodes are to make "small, sharp tools" (e.g. read the design section of https://www.science.org/doi/10.1126/scirobotics.abm6074) so more, small, reusable node components are desirable and assembled to create your end-application. That's also generally helps to create good software design with small testable and reused units.
+
+If you want to run this at some irregular interval but not necessarily as the result of an event (e.g. instead you need to poll something if you should run it), I'd recommend the timer option and have the timer callback do that polling and then call the on_demand_foo as required. Run the timer on a pretty frequent basis.
+
+Originally posted by stevemacenski with karma: 8272 on 2022-09-06
+This answer was ACCEPTED on the original site
+Post score: 1
+

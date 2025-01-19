@@ -1,0 +1,45 @@
+Q:
+
+How to interpret and use values of an accelerometer
+
+Currently, I'm building a quadcopter using Arduino. To make the copter able to stabilize I use an mpu6050 accelerometer + gyroscope.
+I understand that I can get the angle of rotation by integrating the values of the gyro. I understand too that I can calculate the angle using the amount of G working on the different axes of the accelerometer.
+But from the accelerometer I get values from around 1000 to 14000.
+
+What are these values?
+How can I get the angle from these values?
+How can I turn these values into motor rotation?
+
+A:
+
+You should really read the datasheet that acs linked in a comment to your question. 
+The device you're using has a set of 16-bit analog to digital converters (ADCs) that convert the actual outputs of the gyroscopes and accelerometers to a digital format the microcontrollers can process. 
+The device outputs positive and negative accelerations and speeds, which means the output needs to be interpreted as a signed 16-bit integer. That is, the raw (unsigned) 16-bit number would normally read from 0 to 65535, but it's signed so you need to interpret the output as existing between -32768 to 32767.
+Once you get the raw output put into the correct signed integer output, you need to scale it to get the reading of the sensor. This depends on the "full scale selection" you make when you configure the device. On page 12 of the datasheet, you can see, for the gyroscope, the "Sensitivity Scale Factor" for each selection.
+$$
+\begin{array}{}
+\mbox{PARAMETER}                & \mbox{CONDITIONS} & \mbox{TYP} & \mbox{UNITS} \\
+\mbox{Sensitivity Scale Factor} & \mbox{FS_SEL=0}   & 131        & \mbox{LSB}\left(^\circ /s\right) \\
+                                & \mbox{FS_SEL=1}   & 65.5       & \mbox{LSB}\left(^\circ /s\right) \\
+                                & \mbox{FS_SEL=2}   & 32.8       & \mbox{LSB}\left(^\circ /s\right) \\
+                                & \mbox{FS_SEL=3}   & 16.4       & \mbox{LSB}\left(^\circ /s\right)
+\end{array}
+$$
+So you take your signed integer, divide by the value given for the scale factor (again, based on how you have the device configured), and get your reading. 
+If you've got the maximum value, 32767, and you've got FS_SEL=2, then your sensor is reading (32767/32.8) = 998.99 $^\circ /s$, which is approximately the +1000 degrees per second limit for that FS_SEL setting. 
+The accelerometer scale settings are given on the next page (13), but generally speaking it works the same. The accelerometer reading is also a signed 16-bit output. 
+
+As you correctly stated in your question, you need to numerically integrate the outputs to get to positions and angles. The accelerometer outputs an acceleration, so you need to integrate once to get speed and then again to get position. The gyroscope outputs angular velocities and thus needs to be integrated once to get to angular positions (angles). 
+Generically, numeric integration is done as follows:
+$$
+\mbox{output}_k = \mbox{output}_{k-1} + \mbox{input}_k \Delta T \\
+$$
+The current value for the integrated term is the previous value plus the rate term multiplied by the sample interval. So, for example, current speed is previous speed plus acceleration multiplied by the sample interval. Angle is the previous angle plus angular speed multiplied by the sample interval. 
+
+I'm not sure what your background is or how you got to work on this project, but getting from the output of an inertial measurement unit (IMU, a device that gives accelerometer and gyro readings) to a flight controller is quite a step. 
+There are lots of questions here (and elsewhere) about quadrotor flight controllers. Generally speaking, most flight controllers operate on PID control loops. You provide, via control inputs, the desired angular positions, angular rates, linear speeds, etc., as the "reference input." The controller subtracts the IMU feedback from the reference input to get a "control error." 
+If you want to go forward, and the vehicle is stationary, the control error is (+v - 0) = +v, which means the vehicle should move forward. You can modify the error terms by multiplying the errors by "control gains." The gains scale the error terms. Bigger gains make the controller "think" there is more error and force a larger response.
+A lot of tuning is trial and error; too little throttle and you don't get a response. Too much throttle and the system goes unstable. 
+Most of what I've said about controls and controllers is hand waving; if you don't have controls experience then I'd recommend doing just a controls project; if you don't have programming experience, I'd recommend doing just a programming project, etc. 
+Trying to go from no experience to building your own quadrotor from scratch is a good way to get really discouraged fast. There are so many things to try to manage that it's not a good way to build fundamental experience.
+

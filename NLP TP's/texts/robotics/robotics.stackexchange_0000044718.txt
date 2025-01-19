@@ -1,0 +1,63 @@
+Q:
+
+wrong network adapter with InetAddressFactory.newNonLoopback()
+
+Hi,
+the last days i tried to run android_tutorial_pubsub and ran into several problems.
+First i had the problem that
+NodeConfiguration nodeConfiguration = NodeConfiguration.newPrivate();
+was executed, which won't let you connect from a different device.
+So i changed it into something like NodeConfiguration.newPublic(InetAddressFactory.newNonLoopback().getHostAddress());
+This gives you the first network device which is not a loopback device, but it does not check what device it is. For me it gave me vsnet0 instead of wlan0. So whenever i tried to connect to the subscribed topics or only executed rostopic info /chatter it would complain about not being able to connect.
+This is somehow expected as the ip address of vsnet0 is not in the same subnet as wlan0 and my other computers which run ROS.
+I have now hardcoded the ip address for wlan0 from my android phone, but this is only usefull for my development environment, as i can't expect to have the same ip at other places.
+The question now is how can i select the network device i want to use instead of just getting the first nonLoopback device?
+Any idea or advice would be helpfull.
+Thank you.
+Greetings,
+Markus
+
+Originally posted by bajo on ROS Answers with karma: 206 on 2012-10-08
+Post score: 0
+
+Original comments
+Comment by Lorenz on 2012-10-08:
+Maybe that's a bug in rosjava. Consider filing a ticket on the corresponding bug tracker. To come up with a workaround, I suggest you have a look at the source code of InetAddressFactory: http://mediabox.grasp.upenn.edu/roswiki/doc/api/rosjava/html/InetAddressFactory_8java_source.html
+
+A:
+
+Hi, thank you both for your hints.
+I managed to get the desired effect by changing the function newNonLoopback() so that it won't return PointToPoint interfaces like my phones radio network adapter vsnet0.
+
+rosjava_core/rosjava/src/main/java/org/ros/address/InetAddressFactory.java
+
+public static InetAddress newNonLoopback() {
+  for (InetAddress address : getAllInetAddresses()) {
+    // IPv4 only for now.
+    boolean p2p;
+    try {
+       p2p = NetworkInterface.getByInetAddress(address).isPointToPoint();
+    } catch (SocketException e) {
+      throw new RosRuntimeException(e);
+    }   
+    if (!address.isLoopbackAddress() && isIpv4(address) && (!p2p)) {
+      return address;
+    }   
+  }   
+  throw new RosRuntimeException("No non-loopback interface found.");
+}
+
+I will ask the maintainer of rosjava if he thinks it is wise to include in his repository so others can use it too.
+
+Originally posted by bajo with karma: 206 on 2012-10-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Lorenz on 2012-10-10:
+Nice work. Best if you add a patch to the ticket that was referenced in @ahendrix answer or create a ticket on rosjava.googlecode.com with a patch attached.
+Comment by damonkohler on 2012-10-10:
+Please post issues to the rosjava issues list (http://code.google.com/p/rosjava/issues/list). I don't follow the trac tickets @ahendrix mentioned.
+Comment by bajo on 2012-10-12:
+I opened a ticket at http://code.google.com/p/rosjava/issues/list as this seems the correct place for it.
+

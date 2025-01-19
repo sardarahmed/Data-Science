@@ -1,0 +1,94 @@
+Q:
+
+Spinning multiple nodes across multiple threads
+
+I have an application which dynamically spins up multiple nodes and needs to spin them (as they have subscribers).  Quick example, stolen from here: https://answers.ros.org/question/358343/rate-and-sleep-function-in-rclpy-library-for-ros2/?answer=358386#post-id-358386
+import threading
+import rclpy
+rclpy.init()
+node = rclpy.create_node('simple_node')
+# Spin in a separate thread
+thread = threading.Thread(target=rclpy.spin, args=(node, ), daemon=True)
+thread.start()
+rate = node.create_rate(2)
+try:
+    while rclpy.ok():
+        print('Help me body, you are my only hope')
+        rate.sleep()
+except KeyboardInterrupt:
+    pass
+rclpy.shutdown()
+thread.join()
+
+This example works totally fine and allows the spin to happen in a separate thread (which is what I want because my nodes do other threaded things as well).  The issue I get is when i add a second node and attempt to spin it, I get ValueError: generator already executing.  See this second example:
+import threading
+import rclpy
+rclpy.init()
+node = rclpy.create_node('simple_node')
+node2 = rclpy.create_node('simpler_node')
+# Spin in a separate thread
+thread = threading.Thread(target=rclpy.spin, args=(node, ), daemon=True)
+thread2 = threading.Thread(target=rclpy.spin, args=(node2, ), daemon=True)
+thread.start()
+thread2.start()
+rate = node.create_rate(2)
+try:
+    while rclpy.ok():
+        print('Help me body, you are my only hope')
+        rate.sleep()
+except KeyboardInterrupt:
+    pass
+rclpy.shutdown()
+thread.join()
+thread2.join()
+
+This results in an Exception being thrown in the second thread:
+Exception in thread Thread-2:
+Help me body, you are my only hope
+Traceback (most recent call last):
+File "/usr/lib/python3.8/threading.py", line 932, in _bootstrap_inner
+    self.run()
+File "/usr/lib/python3.8/threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/__init__.py", line 191, in spin
+    executor.spin_once()
+File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 703, in spin_once
+    handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 689, in wait_for_ready_callbacks
+    return next(self._cb_iter)
+ValueError: generator already executing
+
+I realize there are other methods of composing multiple nodes but as I said, the nodes I'm building do a lot of other things in threads and are spun up dynamically by another process.  Is there some method I'm missing to tell rclpy to spin all nodes?  It seems the rclpy.spin() method requires the node argument.
+edit: Quick addition.  The nodes I'm building inherit from rclpy.node.Node and I also attempted to rclpy.spin_once(self) from within those nodes in their main thread (thread that does other things) and I end up at the same ValueError: generator already executing error.
+
+Originally posted by Chuck Claunch on ROS Answers with karma: 206 on 2021-05-06
+Post score: 5
+
+A:
+
+Of course I waited a while to post this after not finding an answer and now I have it.  I just needed to use a multi-threaded executor and spin that instead of spinning the nodes individually:
+import threading
+import rclpy
+rclpy.init()
+node = rclpy.create_node('simple_node')
+node2 = rclpy.create_node('simpler_node')
+executor = rclpy.executors.MultiThreadedExecutor()
+executor.add_node(node)
+executor.add_node(node2)
+# Spin in a separate thread
+executor_thread = threading.Thread(target=executor.spin, daemon=True)
+executor_thread.start()
+rate = node.create_rate(2)
+try:
+    while rclpy.ok():
+        print('Help me body, you are my only hope')
+        rate.sleep()
+except KeyboardInterrupt:
+    pass
+rclpy.shutdown()
+executor_thread.join()
+
+Originally posted by Chuck Claunch with karma: 206 on 2021-05-06
+This answer was ACCEPTED on the original site
+Post score: 8
+

@@ -1,0 +1,401 @@
+Q:
+
+How to use a callback only once in python
+
+It appears that callback keeps executing as long as it receives data. But I want it to subscribe to a topic that is being published, get a pose from that topic, store it in a global variable and then use that global variable in another function which is the function for moveit interface. However, it appears that the callback keeps running so the second function is not properly executed. I am broadcasting a static tf transformation from my launch file as follows:
+<node pkg="tf" type="static_transform_publisher" name="head_plate_broadcaster" args="0.7000, 0.5000, 0.3000, 0.000, 0.000, 0.000, 1.000 l_wrist_flex_link head_plate_frame 100" />
+
+And here is my code, where my_data is my global variable. If I execute only the project() function, the transformation prints values which means it is working, if I execute both listener_new and project function, the project function does not print anything, if I print inside callback, it keeps printing so my understanding is it is not letting the second function to execute.
+#!/usr/bin/env python
+
+import sys
+import copy
+import rospy
+import moveit_commander
+import moveit_msgs.msg
+import geometry_msgs.msg
+from geometry_msgs.msg import PoseStamped
+import tf
+import roslib
+import traceback
+from std_msgs.msg import String
+
+my_data="" #global variable
+def callback(data):
+ #rospy.loginfo(rospy.get_caller_id() + "I heard %s", data.pose)
+ my_data = data.pose
+ #print("Yes", data.pose)
+
+def listener_new():
+ rospy.init_node('listener_new', anonymous=True)
+ rospy.Subscriber("/sd/Pose", PoseStamped, callback)
+ rospy.spin()
+
+print("Yes", my_data)
+
+def project():
+  print(my_data) #I will use the pose that i received in another function.
+  ## Initialize moveit commander
+  print "============ Starting setup"
+  moveit_commander.roscpp_initialize(sys.argv)
+  rospy.init_node('project1',
+                  anonymous=True)
+
+  ## Instantiate a RobotCommander object.  This object is an interface to
+  ## the robot as a whole.
+  robot = moveit_commander.RobotCommander()
+
+  ## Instantiate a PlanningSceneInterface object.  This object is an interface
+  ## to the world surrounding the robot.
+  scene = moveit_commander.PlanningSceneInterface()
+
+  ## Instantiate a MoveGroupCommander object.  This object is an interface
+  ## to one group of joints.  In this case the group is the joints in the left
+  ## arm.  This interface can be used to plan and execute motions on the left
+  ## arm.
+  group = moveit_commander.MoveGroupCommander("right_arm")
+
+  ## We create this DisplayTrajectory publisher which is used below to publish
+  ## trajectories for RVIZ to visualize.
+  display_trajectory_publisher = rospy.Publisher(
+                                      '/move_group/display_planned_path',
+                                      moveit_msgs.msg.DisplayTrajectory)
+
+  ## Wait for RVIZ to initialize. This sleep is ONLY to allow Rviz to come up.
+  print "============ Waiting for RVIZ..."
+  rospy.sleep(10)
+
+  print "============ Generating plan 1"
+ 
+  br = tf.TransformBroadcaster()
+  R = rospy.Rate(150)
+
+  listener = tf.TransformListener()
+
+  if not rospy.is_shutdown():
+    try:
+      now = rospy.Time.now()
+      #now=rospy.Time(0)
+      listener.waitForTransform('/head_plate_frame','/l_wrist_flex_link',rospy.Time(), rospy.Duration(10.0))
+      (position, quaternion) = listener.lookupTransform('/head_plate_frame','/l_wrist_flex_link', rospy.Time(0))
+
+    except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+      traceback.print_exc()
+  print("Position",position)
+  print("Orientation", quaternion)
+
+  pose_source = geometry_msgs.msg.Pose()
+  pose_source.orientation.x = 0.4
+  pose_source.orientation.y = 0.3
+  pose_source.orientation.z = 0.2
+  pose_source.orientation.w = 0.2
+  pose_source.position.x = 0.74
+  pose_source.position.y = -0.07
+  pose_source.position.z = 1.1
+
+  group.set_pose_target(pose_source)
+
+  ## Now, we call the planner to compute the plan
+  ## and visualize it if successful
+  ## Note that we are just planning, not asking move_group 
+  ## to actually move the robot
+  plan1 = group.plan()
+
+  print "============ Waiting while RVIZ displays plan1..."
+  rospy.sleep(5)
+
+  # Uncomment below line when working with a real robot
+  
+  # group.go(wait=True)
+
+  
+  ## First, we will clear the pose target we had just set.
+
+  group.clear_pose_targets()
+
+  ## When finished shut down moveit_commander.
+  moveit_commander.roscpp_shutdown()
+
+  print "============ STOPPING"
+
+if __name__=='__main__':
+  try:
+    listener_new()
+    project()
+  except rospy.ROSInterruptException:
+    pass
+
+ok, so updated and here is the working code:
+#!/usr/bin/env python
+
+import sys
+import copy
+import rospy
+import moveit_commander
+import moveit_msgs.msg
+import geometry_msgs.msg
+from geometry_msgs.msg import PoseStamped
+import tf
+import roslib
+import traceback
+from std_msgs.msg import String
+import numpy as np
+
+def listener_new():
+ rospy.init_node('listener_new', anonymous=True)
+ msg=rospy.wait_for_message('/sd/Pose', PoseStamped)
+ print(msg.pose)
+ project(msg.pose)
+
+def project(msg):
+  receive=msg #receiving the pose in camera frame, need to conver to base_link
+  print "============ Starting setup"
+  moveit_commander.roscpp_initialize(sys.argv)
+
+  ## Instantiate a RobotCommander object.  This object is an interface to
+  ## the robot as a whole.
+  robot = moveit_commander.RobotCommander()
+
+  ## Instantiate a PlanningSceneInterface object.  This object is an interface
+  ## to the world surrounding the robot.
+  scene = moveit_commander.PlanningSceneInterface()
+
+  ## Instantiate a MoveGroupCommander object.  This object is an interface
+  ## to one group of joints.  In this case the group is the joints in the left
+  ## arm.  This interface can be used to plan and execute motions on the left
+  ## arm.
+  group = moveit_commander.MoveGroupCommander("right_arm")
+
+  ## We create this DisplayTrajectory publisher which is used below to publish
+  ## trajectories for RVIZ to visualize.
+  display_trajectory_publisher = rospy.Publisher(
+                                      '/move_group/display_planned_path',
+                                      moveit_msgs.msg.DisplayTrajectory)
+
+  ## Wait for RVIZ to initialize. This sleep is ONLY to allow Rviz to come up.
+  print "============ Waiting for RVIZ..."
+  rospy.sleep(10)
+
+  print "============ Generating plan 1"
+
+  br = tf.TransformBroadcaster()
+  R = rospy.Rate(150)
+  #if not rospy.is_shutdown():
+   #br.sendTransform((1, 1, 1), (0, 0, 0, 1), rospy.Time(), '/head_plate_frame','base_link')      
+   #R.sleep()
+
+  listener = tf.TransformListener()
+
+  if not rospy.is_shutdown():
+    try:
+      now = rospy.Time.now()
+      #now=rospy.Time(0)
+      listener.waitForTransform('/base_link','/head_plate_frame',rospy.Time(), rospy.Duration(10.0))
+      (position, quaternion) = listener.lookupTransform('/base_link','/head_plate_frame', rospy.Time(0))
+
+    except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+      traceback.print_exc()
+  print("Position1",position)
+  print("Orientation1", quaternion)
+
+  pose_source = geometry_msgs.msg.Pose()
+  pose_source.orientation.x = 0.4
+  pose_source.orientation.y = 0.3
+  pose_source.orientation.z = 0.2
+  pose_source.orientation.w = 0.2
+  pose_source.position.x = 0.74
+  pose_source.position.y = -0.07
+  pose_source.position.z = 1.1
+
+  group.set_pose_target(pose_source)
+
+  ## Now, we call the planner to compute the plan
+  ## and visualize it if successful
+  ## Note that we are just planning, not asking move_group 
+  ## to actually move the robot
+  plan1 = group.plan()
+
+  print "============ Waiting while RVIZ displays plan1..."
+  rospy.sleep(5)
+
+  # Uncomment below line when working with a real robot
+  
+  # group.go(wait=True)
+
+  
+  ## First, we will clear the pose target we had just set.
+
+  group.clear_pose_targets()
+
+  ## When finished shut down moveit_commander.
+  moveit_commander.roscpp_shutdown()
+
+  print "============ STOPPING"
+
+if __name__=='__main__':
+  try:
+    listener_new()
+  except rospy.ROSInterruptException:
+    pass
+
+Originally posted by Tawfiq Chowdhury on ROS Answers with karma: 137 on 2019-05-09
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-05-09:\
+
+But I want it to subscribe to a topic that is being published, get a pose from that topic, store it in a global variable and then use that global variable in another function which is the function for moveit interface.
+
+Can you please clarify what it is exactly that you'd want to do a single time? Retrieve a TF transform? Retrieve a message from a topic? Something else?
+There are definitely ways to (for instance) receive only a single message on a topic, but depending on what you want exactly they may not be appropriate.
+Comment by Tawfiq Chowdhury on 2019-05-09:
+Someone is publishing a pose of an object in Camera/Kinect frame in a topic, I want to subscribe and receive the pose, transform it from camera link frame to PR2's base_link frame so that I have the pose of the object in base_link frame then using that pose, I want the moveit interface to go and grab the object.
+Comment by gvdhoorn on 2019-05-09:\
+
+Someone is publishing a pose of an object in Camera/Kinect frame in a topic
+
+And this "topic" is not TF, correct?
+Comment by Tawfiq Chowdhury on 2019-05-09:
+He is publishing the pose in a general topic and the type of the topic is PoseStamped, so I think it is not exactly TF. By general topic, I mean the python publisher/subscriber in ros wiki.
+Comment by gvdhoorn on 2019-05-09:
+Then I believe your question is a duplicate of #q292582.
+Comment by Tawfiq Chowdhury on 2019-05-09:
+I tried the solution in this way:
+from std_msgs.msg import Int8
+
+def callback(data):
+ #rospy.loginfo(rospy.get_caller_id() + "I heard %s", data.pose)
+ my_data = data.pose
+ unregister()
+
+It keeps showing: unregister() NameError: global name 'unregister' is not defined
+Comment by gvdhoorn on 2019-05-09:
+The accepted answer (with the green checkmark) tells you to use rospy.wait_for_message(..). Not unregister().
+Comment by Tawfiq Chowdhury on 2019-05-09:
+Thanks, it worked, I am receiving the pose of the object now in camera frame, could you please show me how to get the pose of the object in base_link frame using tf? I have added my updated code in the original question.
+Comment by jayess on 2019-05-09:
+@Tawfiq Chowdhury Can you please write your solution up as an answer instead of as an update to your question? That'd make it easier for others to follow and follow the format of the site too.
+
+A:
+
+I have also implemented the other thing that I need, so I am pasting my full code here:
+#!/usr/bin/env python
+import sys
+import copy
+import rospy
+import moveit_commander
+import moveit_msgs.msg
+import geometry_msgs.msg
+from geometry_msgs.msg import PoseStamped
+import tf
+import roslib
+import traceback
+from std_msgs.msg import String
+import numpy as np
+import tf2_ros
+import tf2_geometry_msgs
+
+def listener_new():
+ rospy.init_node('listener_new', anonymous=True)
+ msg=rospy.wait_for_message('/sd/Pose', PoseStamped)
+ print(msg.pose)
+ project(msg.pose)
+
+def project(msg):
+  #x = np.array([[msg.position.z, msg.position.z], [msg.position.y, msg.position.y]])
+  #np.savetxt('text.txt', x)
+  ## Initialize moveit commander
+  print "============ Starting setup"
+  moveit_commander.roscpp_initialize(sys.argv)
+  #rospy.init_node('project1', anonymous=True)
+
+  ## Instantiate a RobotCommander object.  This object is an interface to
+  ## the robot as a whole.
+  robot = moveit_commander.RobotCommander()
+
+  ## Instantiate a PlanningSceneInterface object.  This object is an interface
+  ## to the world surrounding the robot.
+  scene = moveit_commander.PlanningSceneInterface()
+
+  ## Instantiate a MoveGroupCommander object.  This object is an interface
+  ## to one group of joints.  In this case the group is the joints in the left
+  ## arm.  This interface can be used to plan and execute motions on the left
+  ## arm.
+  group = moveit_commander.MoveGroupCommander("right_arm")
+
+  ## We create this DisplayTrajectory publisher which is used below to publish
+  ## trajectories for RVIZ to visualize.
+  display_trajectory_publisher = rospy.Publisher(
+                                      '/move_group/display_planned_path',
+                                      moveit_msgs.msg.DisplayTrajectory)
+
+  ## Wait for RVIZ to initialize. This sleep is ONLY to allow Rviz to come up.
+  print "============ Waiting for RVIZ..."
+  rospy.sleep(10)
+
+  print "============ Generating plan 1"
+
+  p1 = geometry_msgs.msg.PoseStamped()
+  p1.header.frame_id = "head_plate_frame"
+  p1.pose.position.x = msg.position.x
+  p1.pose.position.y = msg.position.y
+  p1.pose.position.z = msg.position.z
+  p1.pose.orientation.w = msg.orientation.x
+  p1.pose.orientation.w = msg.orientation.x
+  p1.pose.orientation.w = msg.orientation.x
+  p1.pose.orientation.w = msg.orientation.x
+
+  tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
+  tf_listener = tf2_ros.TransformListener(tf_buffer)
+
+  transform = tf_buffer.lookup_transform("base_link",
+                                       p1.header.frame_id, #source frame
+                                       rospy.Time(0), #get the tf at first available time
+                                       rospy.Duration(1.0))
+  pose_transformed = tf2_geometry_msgs.do_transform_pose(p1, transform)
+  print("pose_transformed",pose_transformed.pose)
+
+  pose_source = geometry_msgs.msg.Pose()
+  pose_source.orientation.x = 0.4
+  pose_source.orientation.y = 0.3
+  pose_source.orientation.z = 0.2
+  pose_source.orientation.w = 0.2
+  pose_source.position.x = 0.74
+  pose_source.position.y = -0.07
+  pose_source.position.z = 1.1
+
+  group.set_pose_target(pose_source)
+
+  ## Now, we call the planner to compute the plan
+  ## and visualize it if successful
+  ## Note that we are just planning, not asking move_group 
+  ## to actually move the robot
+  plan1 = group.plan()
+
+  print "============ Waiting while RVIZ displays plan1..."
+  rospy.sleep(5)
+
+  # Uncomment below line when working with a real robot
+  
+  # group.go(wait=True)
+
+  
+  ## First, we will clear the pose target we had just set.
+
+  group.clear_pose_targets()
+
+  ## When finished shut down moveit_commander.
+  moveit_commander.roscpp_shutdown()
+
+  print "============ STOPPING"
+
+if __name__=='__main__':
+  try:
+    listener_new()
+  except rospy.ROSInterruptException:
+    pass
+
+Originally posted by Tawfiq Chowdhury with karma: 137 on 2019-05-09
+This answer was ACCEPTED on the original site
+Post score: 0
+

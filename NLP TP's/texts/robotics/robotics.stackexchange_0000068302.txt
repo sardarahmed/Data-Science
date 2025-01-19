@@ -1,0 +1,38 @@
+Q:
+
+Best way to fill urdf.xacro files from a Database
+
+Hello!
+I have some robots with a very similar hardware that therefore share some urdf.xacro files. However, some of the values (e.g. ranges for linear axis) differ, and I don't want to copy the whole file to change only two values and have both versions in one repository.
+Is there a way to maybe read some values from a db (even using xacro?). I'd like to call a (python) script that reads the values from a database and inserts these values into the final urdf.
+
+Originally posted by NEngelhard on ROS Answers with karma: 3519 on 2015-06-26
+Post score: 0
+
+A:
+
+I found a solution that works for me:
+In my launch-file, I have a -Tag that let's me include a script:
+<param name="robot_description" command="$(find robot_description_pkg)/scripts/create_urdf.py"/>
+
+(This tag is also evaluated before nodes are launched, so I don't have to care for race conditions).
+In my create_urdf.py, I read my values from the db and call the xacro.py with my base-urdf.xacro and the new params.
+My base.urdf.xacro then contains entries like:
+  <joint name="z_joint" type="prismatic">
+      <parent link="insertion_x"/>
+      <xacro:arg name="insertion_x_max" default="0"/>
+      <limit effort="37" velocity="1" lower="0" upper="$(arg insertion_z_max)"  /> 
+      <joint_properties damping="0.1" friction="0.5" />
+  </joint>
+
+If my db doesn't provide a value for the upper_limit, the default is used, otherwise the new value is inserted into the final urdf.
+The return value of the xacro.py-call is then written to the parameter-server, so that a robot-state publisher can get it.
+   <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" respawn="true" respawn_delay="50"/>  
+
+Using the param-Tag to start the script is maybe a bit hackish, but it provides a way to call my script (and to only start the robot_state_publisher after I have updated the model).
+With this approach, I only have to change the values in the DB and the robot will have the new values after the next launch.
+
+Originally posted by NEngelhard with karma: 3519 on 2015-06-30
+This answer was ACCEPTED on the original site
+Post score: 0
+

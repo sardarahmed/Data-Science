@@ -1,0 +1,196 @@
+Q:
+
+Computing inverse kinematic with jacobian matrices for 6 dof manipulator
+
+I'm trying to calculate the inverse kinematic for an 6 dof manipulator.
+Task:
+A target point $p_{target} = (x,y,z)^T$ and the orientation $o_{target} = (a, b, c)^T$ are given and I want to get the angle configuration $q = (q_1, q_2, q_3, q_4, q_5, q_6)^T$ for my robot.
+Method:
+For that I try to implement the Jacobian method (with the transposed jacobian matrix) with this guide and followed the pseudocode at slide 26. But instead using the pseudoinverse of the Jacobian matrix I used the transposed one.
+I'll try to compute the Jacobian matrix numerically and analytically, but didn't get a solution (endless loop) for any of them. Here's how I retrieve the Jacobian:
+
+Numerically: 
+private void calculateMatrixNumerically()
+{
+    var deltaTheta = 0.01;
+    var newAxisConfiguration = new AxisConfiguration(
+        this.currentAxisConfiguration.joints[0] + deltaTheta,
+        this.currentAxisConfiguration.joints[1] + deltaTheta,
+        this.currentAxisConfiguration.joints[2] + deltaTheta,
+        this.currentAxisConfiguration.joints[3] + deltaTheta,
+        this.currentAxisConfiguration.joints[4] + deltaTheta,
+        this.currentAxisConfiguration.joints[5] + deltaTheta
+        );
+
+    var ePos = this.kinematic.CalculateDirectKinematic(newAxisConfiguration);
+
+    for (var column = 0; column < this.Columns; column++)
+    {
+        this.M[0, column] = (this.currentPos.Point.X - ePos.Point.X) / deltaTheta;
+        this.M[1, column] = (this.currentPos.Point.Y - ePos.Point.Y) / deltaTheta;
+        this.M[2, column] = (this.currentPos.Point.Z - ePos.Point.Z) / deltaTheta;
+        this.M[3, column] = (this.currentPos.Orientations[0].A - ePos.Orientations[0].A) / deltaTheta;
+        this.M[4, column] = (this.currentPos.Orientations[0].B - ePos.Orientations[0].B) / deltaTheta;
+        this.M[5, column] = (this.currentPos.Orientations[0].C - ePos.Orientations[0].C) / deltaTheta;
+    }
+}
+
+Analytically:
+private void calculateMatrixAnalytically()
+{
+    var peMatrix = calculateJointPositions();
+    var zMatrix = calculateZ();
+
+    for (var column = 0; column < this.Columns; column++)
+    {
+        double[] p_p = new double[3];
+        for(var row = 0; row < zMatrix.Rows; row++)
+        {
+            p_p[row] = peMatrix.M[row, this.Columns-1] - peMatrix.M[row, column];
+        }
+
+        this.M[0, column] = zMatrix.M[1, column] * p_p[2] - zMatrix.M[2, column] * p_p[1];
+        this.M[1, column] = zMatrix.M[2, column] * p_p[0] - zMatrix.M[0, column] * p_p[2];
+        this.M[2, column] = zMatrix.M[0, column] * p_p[1] - zMatrix.M[1, column] * p_p[0];
+        this.M[3, column] = zMatrix.M[0, column];
+        this.M[4, column] = zMatrix.M[1, column];
+        this.M[5, column] = zMatrix.M[2, column];
+    }
+}
+
+/// <summary>
+/// Calculate the positions of every joint.
+/// </summary>
+/// <returns>The Matrix with the joint coordinate for each joint.</returns>
+private Matrix calculateJointPositions()
+{
+    Matrix jointPositions = new Matrix(3,6);
+    Position pos;
+
+    for (var joint= 0; joint< this.currentAxisConfiguration.joints.Count(); joint++)
+    {
+        pos = this.kinematic.CalculateDirectKinematic(this.currentAxisConfiguration, joint);
+        jointPositions.M[0, joint] = pos.Point.X;
+        jointPositions.M[1, joint] = pos.Point.Y;
+        jointPositions.M[2, joint] = pos.Point.Z;
+    }
+
+    return jointPositions;
+}
+
+private Matrix calculateZ()
+{
+    // (z0^T-z1^T-z2^T-...-z6^T)
+    var ksEnd = Kinematics.TranslateRobotToWorld();
+    var zMatrix = new Matrix(3, 6);
+
+    for (var column = 0; column < this.currentAxisConfiguration.joints.Count(); column++)
+    {
+        for (var row = 0; row < zMatrix.Rows; row++)
+            zMatrix.M[row, column] = Math.Round(ksEnd.M[row, 2], 7);
+
+        ksEnd = ksEnd.Multiply(
+            Kinematics.TranslateCoordinateSystem(
+            Robo.theta[column] + this.currentAxisConfiguration.joints[column],
+            Robo.d[column],
+            Robo.alpha[column],
+            Robo.a[column])
+            );
+    }
+    return zMatrix;
+}
+
+Here is the implementation of the Pseudocode:
+        do
+        {
+            jacob = JacobiMatrix.GetJacobi(currentPosition, currentAxisConfiguration);
+            jacobiTranspose = jacob.getTransposeMatrix();
+
+            // deltaE = (x2-x1, y2-y1, z2-z1, a2-a1, b2-b1, c2-c1)    
+            deltaE = Position
+                .GetDistanceVector(currentPosition, targetPosition);
+
+            deltaThetas = jacobiTranspose.Multiply(deltaE).
+                                    Scale(beta);
+
+            for (var axis = 0; axis < deltaThetas.Rows; axis++ )
+                currentAxisConfiguration.joints[axis] += deltaThetas.M[axis, 0];
+
+            currentPosition = this.CalculateDirectKinematic(currentAxisConfiguration);
+        } while (Math.Abs(Position.Distance(currentPosition, targetPosition)) > epsilon);
+
+where $beta = 0.5$ and $epsilon = 0.0001$
+Problems:
+The transformation matrice should be fine, because it behaves good for the forward kinematic.
+In my opinion the Jacobian matrix must be somehow wrong. I'm not sure if it is correct how I put the orientation data in the numerical calculation. For the analytical computation I didn't have any clue what could be wrong.
+I would be thankful for any advice. An explicit example for calculating the Jacobian would also be very helpful. 
+
+A:
+
+Disclaimer!
+I will try to solve your problem but it may or may not solve the problem with your code!
+
+TL;DR: Two possible mistake in your code. In your pseudo-code, you are using transpose of jacobian instead of pseudo-inverse of jacobian (as suggested in your referenced slide). The other possible mistake is in the calculation of cross product in your analytical jacobian code.
+
+Long answer for future readers:
+First: In gradient based jacobian approach, if the target point is out of workspace of the robot, your algorithm traps in an infinite loop, trying to reach the error threshold. In inverse methods, jacobian looses rank and program crashes!
+Second: Note that under some conditions a 6dof for manipulator there is always a closed form solution that gives you 6 answers for a IK problem of position and orientation. These conditions are as follow:
+
+Three consecutive rotational joint axes are incident (e.g., spherical wrist)
+Three consecutive rotational joint axes are parallel
+
+To give you an idea, consider an anthropomorphic arm. First joint brings the end-effector to a plane that answer lies within and next two joints solve the position problem. The rest of three degrees of freedom cat tackle the orientation part. There is a brief explanation in 7th page of this file.
+Three: Regarding your code, I'm not sure if the following is correct (to be very honest, I'm not sure what is happening!).
+this.M[0, column] = zMatrix.M[1, column] * p_p[2] - zMatrix.M[2, column] * p_p[1];
+this.M[1, column] = zMatrix.M[2, column] * p_p[0] - zMatrix.M[0, column] * p_p[2];
+this.M[2, column] = zMatrix.M[0, column] * p_p[1] - zMatrix.M[1, column] * p_p[0];
+
+To calculate the contribution of $i^{th}$ revolute joint motion to end-effector velocity, the correct way to go is:
+$$J_{Li}(q) = z_{i-1}\times (p_{ee}-p_{i-1})$$
+$$J_{Ai}(q) = z_{i-1}$$
+where
+
+$J_{Li}$ and $J_{Ai}$ are linear and angular velocity of end-effector
+$q$ is a vector of the current configuration of the robot and 
+$z_{i}$ is the a vector expressing the orientation of the joint in space. If you are using Denavit Hartenberg convention, this will be the first three elements of the third column of DH matrix related to the joint.
+$p_{i}$ and $p_{ee}$ are position of $i^{th}$ joint and end-effector respectively (First three elements of fourth column of DH).
+At last but not least, $\times$ is the cross product of two vectors (I think this is one of the places that your code might have gone wrong).
+
+This, is the proper way of calculating the geometric jacobian. Once you have this, there are several ways to solve IK problem numerically. Apart from transpose, newton method, gradient method and etc.
+To have a deep study of these methods, have a look at these very nice set of slides.
+
+Bonus!
+I strongly suggest, if you are doing to do serious robot programming, consider using some linear algebra libraries such as boost::numeric::ublas or Eigen. They are fast, comprehensive and common. To give you an insight, here is how you can do a simple jacobian in Eigen for a 7dof robot:
+    //Hint:
+    // A0i = A01*A12*A23...Ai
+    // Aij = DH matrix related to transformation for ith to jth joint.
+    Eigen::Vector3d z0, p0, pe;
+        z0  << 0, 0, 1;
+        p0  << 0, 0, 0;
+        pe = A07.block<3,1>(0,3);
+
+    // Ji linear velocity
+    Jacobian.block<3,1>(0,0) = z0.cross(pe-p0);                                  
+    Jacobian.block<3,1>(0,1) = A01.block<3,1>(0,2).cross(pe-A01.block<3,1>(0,3));
+    Jacobian.block<3,1>(0,2) = A02.block<3,1>(0,2).cross(pe-A02.block<3,1>(0,3));
+    Jacobian.block<3,1>(0,3) = A03.block<3,1>(0,2).cross(pe-A03.block<3,1>(0,3));
+    Jacobian.block<3,1>(0,4) = A04.block<3,1>(0,2).cross(pe-A04.block<3,1>(0,3));
+    Jacobian.block<3,1>(0,5) = A05.block<3,1>(0,2).cross(pe-A05.block<3,1>(0,3));
+    Jacobian.block<3,1>(0,6) = A06.block<3,1>(0,2).cross(pe-A06.block<3,1>(0,3));
+
+    // Ji angular velocity
+    Jacobian.block<3,1>(3,0) = z0;                 
+    Jacobian.block<3,1>(3,1) = A01.block<3,1>(0,2); 
+    Jacobian.block<3,1>(3,2) = A02.block<3,1>(0,2); 
+    Jacobian.block<3,1>(3,3) = A03.block<3,1>(0,2); 
+    Jacobian.block<3,1>(3,4) = A04.block<3,1>(0,2); 
+    Jacobian.block<3,1>(3,5) = A05.block<3,1>(0,2); 
+    Jacobian.block<3,1>(3,6) = A06.block<3,1>(0,2); 
+
+And if you are sure your jacobian is not rank deficient, calculating right pseudo inverse is as easy as:
+inline Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> pInv(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> &a) {
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> aT= a.transpose();
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> aaT = a*aT;
+    return aT*(aaT.inverse());
+}
+

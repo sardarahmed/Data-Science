@@ -1,0 +1,66 @@
+Q:
+
+static_transform_publisher doesn't latch on ROS2
+
+On Noetic, I can do the following:
+$ run tf2_ros static_transform_publisher 1 1 1 0 0 0 f1 f2 &
+[2] 1753768
+[ INFO] [1639635211.900468919]: Spinning until killed publishing f1 to f2
+$ rostopic echo /tf_static 
+transforms: 
+  - 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 1639635211
+        nsecs: 900398326
+      frame_id: "f1"
+    child_frame_id: "f2"
+    transform: 
+      translation: 
+        x: 1.0
+        y: 1.0
+        z: 1.0
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+
+This is exactly what I expect to happen since the static publisher is latched.
+However, on Galactic using CycloneDDS:
+$ ros2 run tf2_ros static_transform_publisher --x 1 --y 1 --z 1 --frame-id f1 --child-frame-id f2 &
+[1] 213102
+1639635686.858624 [0] static_tra: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1639635686.868694587] [static_transform_publisher_GjMa6BC7irM5FXBs]: Spinning until stopped - publishing transform
+translation: ('1.000000', '1.000000', '1.000000')
+rotation: ('0.000000', '0.000000', '0.000000', '1.000000')
+from 'f1' to 'f2'
+$ ros2 topic echo /tf_static 
+1639635697.443620 [0]       ros2: selected interface "lo" is not multicast-capable: disabling multicast
+
+No output is produced, but ros2 topic keeps waiting. I'm using loopback as our routers don't like multicast, but since it can find the topic /tf_static shouldn't it also be able to find the message since it uses the durability policy transient local? Or am I misunderstanding something?
+I also found this GitHub bug report that suggests:
+ros2 topic echo --qos-durability transient_local /tf_static
+
+However, that fails in the same way as above for me.
+
+Originally posted by KenYN on ROS Answers with karma: 541 on 2021-12-16
+Post score: 0
+
+Original comments
+Comment by KenYN on 2021-12-16:
+I've raised a bug on GitHub too.
+
+A:
+
+I had tried:
+ros2 topic echo --qos-durability transient_local /tf_static
+
+But GitHub told me that I also need --qos-reliability reliable, so now the following works as expected:
+ros2 topic echo --qos-durability transient_local --qos-reliability reliable /tf_static
+
+Originally posted by KenYN with karma: 541 on 2021-12-17
+This answer was ACCEPTED on the original site
+Post score: 0
+

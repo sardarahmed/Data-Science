@@ -1,0 +1,70 @@
+Q:
+
+How to use data from a callback function in another function
+
+I'm trying to take the x, y, and yaw value from the callback function and use them in a different function. Although when I run the code I have below,  all the variables below return a value of 0.
+From my thought process, I think the global variables should be accessible for the void move() function as well, which doesn't seem to be the case.
+Can someone tell what's wrong?
+#include "ros/ros.h"
+#include "turtlesim/Pose.h"
+#include "geometry_msgs/Twist.h"
+
+float x = 0, y = 0, yaw = 0 ;
+
+void callback(const turtlesim::Pose::ConstPtr& msg)
+{
+    x = msg->x;
+    y = msg->y;
+    yaw = msg->theta;
+    
+}
+
+void move()
+{
+    while (ros::ok())
+    {
+        ROS_INFO("x: [%f], y: [%f], yaw: [%f]", x, y, yaw);
+    }
+}
+
+    int main(int argc, char **argv)
+    {
+        ros::init(argc, argv, "pose");
+        ros::NodeHandle n;
+        ros::Subscriber sub = n.subscribe("/turtle1/pose", 1000, callback);
+        move();
+        ros::spin();
+}
+
+Originally posted by dj95 on ROS Answers with karma: 52 on 2020-02-12
+Post score: 0
+
+A:
+
+So going line by line here to help show you the flow of the issue:
+ros::init(argc, argv, "pose");
+ros::NodeHandle n;
+ros::Subscriber sub = n.subscribe("/turtle1/pose", 1000, callback);
+
+All good, initializing ROS, getting a nodehandle, creating a subscriber object and giving it the callback function to call. The spinner would then throw new messages received on that topic of that type to the function.
+move() {while (ros::ok()) {...}}
+
+Well, this is going to block infinitely. And while you're going to exit when ROS shuts down, no where in this infinite loop do you actually call a spin or spinOnce for the ROS messages building up to be processed (with a 1000 message queue size).
+ros::spin();
+
+Then you spin. This spin will only be called once your move() method exits (ie you end the program) so you're only just then starting to process messages.
+What you could do instead is call ros::spinOnce() in your move() function and remove the ros::spin() from the end of your main function. That way you're processing messages in the callback and printing some values to screen.
+
+Originally posted by stevemacenski with karma: 8272 on 2020-02-17
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by dj95 on 2020-02-17:
+Would it be okay if I call ros::spin() before calling the move()?
+Would that produce the same result?
+Comment by stevemacenski on 2020-02-17:
+No. Spin is blocking and will not return until the session is ended. Think of spin() being a while loop with a spin and a sleep (its more complex than that, but essentially).
+Comment by dj95 on 2020-02-18:
+Thank you for the explanation.
+

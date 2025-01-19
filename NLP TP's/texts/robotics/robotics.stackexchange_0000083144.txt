@@ -1,0 +1,51 @@
+Q:
+
+Is it possible to launch non ros applications with roslaunch?
+
+Hi,
+I would like to know whether it's possible to launch non ros applications with roslaunch? And if so, how can it achieved?
+Thanks for the answer.
+
+Originally posted by l4ncelot on ROS Answers with karma: 826 on 2017-10-04
+Post score: 0
+
+A:
+
+Yes, that is possible, but you will have to take care of some details.
+roslaunch (and rosrun is the same) will add a nr of extra arguments to the command line it generates when starting ROS nodes, and those will also be passed to 'non ros applications'. Examples of those extra command line arguments (CLAs) are the node name (as __name:=..) and the location of the log file the node is expected to use (as __log:=..).
+Ordinary programs typically do not use such arguments and their CLA parsers will get confused.
+Three approaches I've seen:
+
+write a bash script that wraps the 'non-ros binary': this script takes in all CLAs, strips out the ROS-specific ones and then invokes the target binary with the remaining arguments. Advantage: simple to create. Disadvantage: it is not really convenient to manipulate strings (ie: command lines) with bash, and these scripts often assume a fixed order of CLAs, which is not guaranteed, leading to brittle implementations.
+
+write a small Python wrapper that can use rospy.myargv(..) to remove ROS-specific CLAs and then use subprocess to start the target binary (while passing on the remaining CLAs).
+
+same as the previous, but in C++ and using ros::removeROSArgs(..).
+
+I'm not aware of publicly available implementations of any of the above options, but they could already exist. Writing them yourself should not be too hard though.
+Note: to use either the rospy or roscpp CLA parsing functions the wrappers do not have to be ROS nodes themselves.
+
+Edit: as roslaunch can only start binaries that are located in packages, the wrappers would have to live in a ROS package themselves. But that is hardly a constraint.
+
+Edit2: and obviously, if your target binary does not expect any arguments at all, then all of the above is unnecessary, as the args that roslaunch adds will not be processed anyway (but you would still need some way to start your target binary 'from' a ROS package).
+
+Edit3: (very) minimal Python2 example:
+#!/usr/bin/env python
+import sys, subprocess, rospy 
+sys.exit(subprocess.call(rospy.myargv(argv=sys.argv)[1:]))
+
+when used with a launch file that contains something like:
+<node name=".." type=".." pkg=".." args="nc localhost 12345" />
+
+will make nc try to connect to localhost:12345 with roslaunch waiting for it to exit (as it would with 'regular' ROS binaries).
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-10-04
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by gvdhoorn on 2017-10-04:
+Related (prior) questions and answers: #q9161 and #q51474.
+Comment by l4ncelot on 2017-10-04:
+Cool, thanks a lot.
+

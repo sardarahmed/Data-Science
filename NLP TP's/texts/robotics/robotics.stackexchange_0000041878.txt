@@ -1,0 +1,48 @@
+Q:
+
+Problems expected if logs deleted during process?
+
+###Question:
+What would be the expected outcome of deleting logs while a process is running?
+Specifically which of the following categories would that fall under : ) ?
+
+Fine
+Undefined
+Very Bad
+
+###Use Case:
+Our logs are growing too big because of a bug in diamondback where roscpp_internal does not respect log levels. As a work around we have a script that deletes particular log files ever 30 seconds or so. We've also seen a crash (assert/-6) that we've yet to diagnose closely following our log workaround change, and we currently suspect our log deletions as the cause.
+
+Originally posted by Asomerville on ROS Answers with karma: 2743 on 2012-07-02
+Post score: 2
+
+Original comments
+Comment by Eric Perko on 2012-07-02:
+Maybe it's a silly question but, could you upgrade to Electric or Fuerte to fix that bug? :)
+Comment by Asomerville on 2012-07-02:
+Unfortunately the system where this is occurring is a production machine which is locked to diamondback for the time being.
+Comment by joq on 2012-07-02:
+Not silly, but I think we do still need to be able to build, test and release Diamondback fixes.
+Comment by Thomas on 2012-07-02:
+If you need help with debugging this assertion, could you please try to to send more information about what happens? (a backtrace would be a good start)
+Comment by Asomerville on 2012-07-02:
+Thanks for the offer. Because of the nature of the situation (remote machine not internet connected) we're going treat-first-diagnose-later. I'll update if we find anything interesting.
+
+A:
+
+Actually what you try to do just will not help. If you get a look at /proc/XXX/fd where XXX is the process id of your ROS node, you will be able to see the currently opened files and in particular the log files you thought were deleted.
+Don't forget that file descriptors are a mechanism of reference counting on a resource, so as long as rosconsole maintains the file opened, the file will, in fact, not be deleted.
+This explains why what you do is perfectly safe on Linux :)
+So maybe this assertion is just due to you consuming the whole disk space and making the process crash or something? Monitor your disk space, you will see it decreasing until your process crashes, the file descriptor gets released and the kernel cleans the space keps by the previous log files...
+So I think it would be better to try to really fix the error instead of trying to workaround it if possible ;)
+
+Originally posted by Thomas with karma: 4478 on 2012-07-02
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by joq on 2012-07-02:
+@Thomas is right, that is how POSIX filesystems work. The space will not be recovered until all references to the inode are gone.
+Comment by Asomerville on 2012-07-02:
+Duly noted regarding file deletions while the fd is still held.
+

@@ -1,0 +1,180 @@
+Q:
+
+Multiple image subscriber failure
+
+I made 2 nodes, publishing my web camera and external camera images.and I want to show both camera images with a single subscriber node. but when i run my subscriber node, it publishes camera 1 and 2 images alternatively.( if i run subscriber code for the first time it publishes camera 1 image and next time i run it publishes camera 2 images. not publishing at the same time) .can anyone please tell me what changes i have to make in my code.
+camera1.py
+#!/usr/bin/env python
+
+import rospy
+from sensor_msgs.msg import Image
+import cv2
+import numpy as np
+from cv_bridge import CvBridge, CvBridgeError
+
+def webcam_pub():
+    pub = rospy.Publisher('camera1', Image, queue_size=1)
+    rospy.init_node('webcam_pub', anonymous=True)
+    rate = rospy.Rate(60) # 60hz
+
+    cam = cv2.VideoCapture(1)
+    bridge = CvBridge()
+
+    if not cam.isOpened():
+         sys.stdout.write("Webcam is not available")
+         return -1
+
+    while not rospy.is_shutdown():
+        ret, frame = cam.read()
+    
+    
+    msg = bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+
+        if ret:
+            rospy.loginfo("Capturing image failed.")
+
+        pub.publish(msg)
+        rate.sleep()
+
+if __name__ == '__main__':
+    try:
+        webcam_pub()
+    except rospy.ROSInterruptException:
+      pass
+
+camera2.py
+#!/usr/bin/env python
+
+import rospy
+from sensor_msgs.msg import Image
+import cv2
+import numpy as np
+from cv_bridge import CvBridge, CvBridgeError
+
+def webcam_pub():
+    pub = rospy.Publisher('camera2', Image, queue_size=1)
+    rospy.init_node('webcam_pub', anonymous=True)
+    rate = rospy.Rate(60) # 60hz
+
+    cam = cv2.VideoCapture(0)
+    bridge = CvBridge()
+
+    if not cam.isOpened():
+         sys.stdout.write("Webcam is not available")
+         return -1
+
+    while not rospy.is_shutdown():
+        ret, frame = cam.read()
+    
+    
+    msg = bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+
+        if ret:
+            rospy.loginfo("Capturing image failed.")
+
+        pub.publish(msg)
+        rate.sleep()
+
+if __name__ == '__main__':
+    try:
+        webcam_pub()
+    except rospy.ROSInterruptException:
+      pass
+
+Listener.py
+#!/usr/bin/env python
+from __future__ import print_function
+ 
+#import roslib
+#roslib.load_manifest('my_package')
+import sys
+import rospy
+import cv2
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+ 
+class image_converter:
+ 
+  def __init__(self):
+     self.image_pub = rospy.Publisher("image",Image,  queue_size=1)
+ 
+     self.bridge = CvBridge()
+     self.image_sub = rospy.Subscriber("camera2",Image,self.callback)
+     self.image_sub1 = rospy.Subscriber("camera1",Image,self.callback1)
+
+  def callback(self,data):
+     try:
+       cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+     except CvBridgeError as e:
+       print(e)
+ 
+    
+     cv2.imshow("Camera 2", cv_image)
+     cv2.waitKey(3)
+ 
+     try:
+       self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
+     except CvBridgeError as e:
+       print(e)
+  def callback1(self,data):
+     try:
+       cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
+     except CvBridgeError as e:
+       print(e)
+ 
+    
+     cv2.imshow("Camera 1", cv_image1)
+     cv2.waitKey(3)
+ 
+     try:
+       self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image1, "bgr8"))
+     except CvBridgeError as e:
+       print(e)
+ 
+def main(args):
+   ic = image_converter()
+   rospy.init_node('image_converter', anonymous=True)
+   try:
+     rospy.spin()
+   except KeyboardInterrupt:
+     print("Shutting down")
+   cv2.destroyAllWindows()
+ 
+if __name__ == '__main__':
+     main(sys.argv)
+
+Originally posted by sudo_melvinyesudas on ROS Answers with karma: 54 on 2018-04-10
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-04-10:
+This is probably not the solution, but you're assigning two different subscriptions to the same self.image_sub member variable. That won't work.
+Comment by sudo_melvinyesudas on 2018-04-10:
+But i tried with  self.image_sub1 too.still not working.how can i solve this issue?
+Comment by gvdhoorn on 2018-04-10:
+I don't know right now, but reusing that variable is not correct in any case and won't work.
+Comment by sudo_melvinyesudas on 2018-04-10:
+okay..thank you very much.new thing learned.
+Comment by jarvisschultz on 2018-04-10:
+I don't see anything necessarily wrong with the code (outside of what was already pointed out). Are you sure you have images published on the camera1 and camera2 topics? Are your callbacks actually being called?
+Comment by sudo_melvinyesudas on 2018-04-10:
+i just updated my question..can you check again? @jarvisschultz
+Comment by lucasw on 2018-04-10:
+Does rqt_image_view show the images from both cameras on the right topics?
+Comment by sudo_melvinyesudas on 2018-04-10:
+yes. rqt_image_view giving the output image
+
+A:
+
+This looks to be the same problem as https://stackoverflow.com/questions/44577228/multithreaded-cv2-imshow-in-python-does-not-work  Each callback is running in a different thread which messes up imshow (and likely other highgui functions).  There are some other search results that may be more informative if you search for 'cv2 imshow threads python'.
+You could save each received image to member variables and have a single thread (inside a loop with a sleep in __init__ or maybe in a timer update) do all the imshow calls, and possibly need locks around each use or assignment to the images, but I suspect you want the imshows for quick debug purposes and don't want to do a lot of work to overcome their limitations.  If you gain confidence in your image publishers then use rqt_image_view to see that callbacks are working, or print some text information (like the width and height of the image) to stdout in the callbacks.
+
+Originally posted by lucasw with karma: 8729 on 2018-04-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by sudo_melvinyesudas on 2018-04-11:
+when i run my subscriber node, it publishes camera 1 and 2 images alternatively.ie, if i run subscriber code for the first time it publishes camera 1 image and next time i run it publishes camera 2 images. not publishing at the same time.
+

@@ -1,0 +1,339 @@
+Q:
+
+Robotic arm moves on loading inside Gazebo
+
+I am trying to run the ros2_control_demo_example_7 package of ros2_control_demos with some modifications to spawn r6bot robot inside gazebo. I am not using gazebo_ros2_control plugin since on using it I am getting error as pointed out here. As suggested there, I am using ros2_control_node in place of gazebo_ros2_control plugin.
+I have also included the physical properties of each joint in the urdf:
+<dynamics damping="0.15" friction="0"/>
+
+Also, defined the material properties of each link in the gazebo description as below:
+    <gazebo reference="${prefix}base_link">
+        <selfCollide>true</selfCollide>
+        <mu1 value="0.0"/>
+        <mu2 value="0.0"/>
+        <kp value="10000000.0"/>
+        <kd value="1.0"/>
+        <turnGravityOff>false</turnGravityOff>
+    </gazebo>
+
+Everything seems to be working in the terminal but I am getting below output in the gazebo:
+
+r6bot_controller.launch.py
+def generate_launch_description():
+    gaz_pkg_share = FindPackageShare(package='ros2_control_demo_example_7').find('ros2_control_demo_example_7')
+
+    world_file_name = 'empty.world'
+    world_path = os.path.join(gaz_pkg_share, 'worlds', world_file_name)
+
+    # Set the path to the SDF model files.
+    gazebo_models_path = os.path.join(gaz_pkg_share, 'models')
+    
+    if 'GAZEBO_MODEL_PATH' in os.environ:
+        os.environ['GAZEBO_MODEL_PATH'] =  os.environ['GAZEBO_MODEL_PATH'] + ':' + gazebo_models_path
+    else:
+        os.environ['GAZEBO_MODEL_PATH'] =  gazebo_models_path
+
+    # Get URDF via xacro
+    robot_description_content = Command(
+        [
+            PathJoinSubstitution([FindExecutable(name="xacro")]),
+            " ",
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("ros2_control_demo_example_7"),
+                    "urdf",
+                    "r6bot.urdf.xacro",
+                ]
+            ),
+        ]
+    )
+    robot_description = {"robot_description": robot_description_content}
+
+    robot_controllers = PathJoinSubstitution(
+        [
+            FindPackageShare("ros2_control_demo_example_7"),
+            "config",
+            "r6bot_controller.yaml",
+        ]
+    )
+    rviz_config_file = PathJoinSubstitution(
+        [FindPackageShare("ros2_control_demo_description"), "r6bot/rviz", "view_robot.rviz"]
+    )
+
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [PathJoinSubstitution([FindPackageShare("gazebo_ros"), "launch", "gazebo.launch.py"])]
+        ),
+        launch_arguments={"verbose": "true",
+                          "paused":"false",
+                          "gui":"true",
+                          "world":world_path,
+                          "headless":"false",
+                          "use_sim_time":"true"}.items(),
+    )
+
+    spawn_entity = Node(
+        package="gazebo_ros",
+        executable="spawn_entity.py",
+        arguments=["-topic", "robot_description", "-entity", "r6bot"],
+        output="screen",
+    )
+
+    control_node = Node(
+        package="controller_manager",
+        executable="ros2_control_node",
+        parameters=[robot_description, robot_controllers],
+        remappings=[
+            (
+                "/forward_position_controller/commands",
+                "/position_commands",
+            ),
+        ],
+        output="both",
+    )
+    
+    joint_state_publisher_node = Node(
+        package="joint_state_publisher_gui",
+        executable="joint_state_publisher_gui",
+        condition=IfCondition("true"),
+    )
+
+    robot_state_pub_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="both",
+        parameters=[robot_description],
+    )
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        arguments=["-d", rviz_config_file],
+    )
+
+    joint_state_broadcaster_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+    )
+
+    robot_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["r6bot_controller", "-c", "/controller_manager"],
+    )
+
+    # Delay rviz start after `joint_state_broadcaster`
+    delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[rviz_node],
+        )
+    )
+
+    # Delay start of robot_controller after `joint_state_broadcaster`
+    delay_robot_controller_spawner_after_joint_state_broadcaster_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[robot_controller_spawner],
+        )
+    )
+
+    nodes = [
+        joint_state_publisher_node,
+        control_node,
+        robot_state_pub_node,
+        gazebo,
+        spawn_entity,
+        joint_state_broadcaster_spawner,
+        delay_rviz_after_joint_state_broadcaster_spawner,
+        delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
+    ]
+
+    return LaunchDescription(nodes)
+
+r6bot_controller.yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 10  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    r6bot_controller:
+      type: ros2_control_demo_example_7/RobotController
+
+    forward_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+forward_position_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
+    interface_name: position
+
+r6bot_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
+    command_interfaces:
+      - position
+
+    state_interfaces:
+      - position
+
+ros2 control
+(Here I am using ros2_control_demo_example_8/RRBotTransmissionsSystemPositionOnlyHardware plugin, defined in the ros2_control_demo_example_8 package)
+<ros2_control name="${name}" type="system">
+
+  <hardware>
+    <plugin>ros2_control_demo_example_8/RRBotTransmissionsSystemPositionOnlyHardware</plugin>
+    <param name="actuator_slowdown">100.0</param>
+  </hardware>
+  
+  <joint name="joint_1">
+    <command_interface name="position">
+      <param name="min">{-2*pi}</param>
+      <param name="max">{2*pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <joint name="joint_2">
+    <command_interface name="position">
+      <param name="min">{-2*pi}</param>
+      <param name="max">{2*pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <joint name="joint_3">
+    <command_interface name="position">
+      <param name="min">{-pi}</param>
+      <param name="max">{pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <joint name="joint_4">
+    <command_interface name="position">
+      <param name="min">{-2*pi}</param>
+      <param name="max">{2*pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <joint name="joint_5">
+    <command_interface name="position">
+      <param name="min">{-2*pi}</param>
+      <param name="max">{2*pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <joint name="joint_6">
+    <command_interface name="position">
+      <param name="min">{-2*pi}</param>
+      <param name="max">{2*pi}</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
+  </joint>
+
+  <transmission name="transmission1">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator1" role="actuator1"/>
+    <joint name="joint_1" role="joint_1">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+  <transmission name="transmission2">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator2" role="actuator2"/>
+    <joint name="joint_2" role="joint_2">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+  <transmission name="transmission3">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator3" role="actuator3"/>
+    <joint name="joint_3" role="joint_3">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+  <transmission name="transmission4">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator4" role="actuator4"/>
+    <joint name="joint_4" role="joint_4">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+  <transmission name="transmission5">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator5" role="actuator5"/>
+    <joint name="joint_5" role="joint_5">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+  <transmission name="transmission6">
+    <plugin>transmission_interface/SimpleTransmission</plugin>
+    <actuator name="actuator6" role="actuator6"/>
+    <joint name="joint_6" role="joint_6">
+      <mechanical_reduction>4.0</mechanical_reduction>
+      <offset>0.0</offset>
+    </joint>
+  </transmission>
+
+</ros2_control>
+
+I am expecting robotic arm to spawn inside gazebo with below configuration:
+
+Am I missing something or doing something wrong? Is this happening because of PID or other parameters? I would really appreciate some advice on this.
+
+A:
+
+Include gazebo_ros2_control plugin as
+<gazebo>
+   <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+      <parameters>$(find ros2_control_demo_example_7)/config/r6bot_controller.yaml</parameters>
+   </plugin>
+</gazebo>
+
+Remove the control_node from r6bot_controller.launch.py.
+Also, Include gazebo_ros2_control/GazeboSystem hardware plugin as
+<plugin>gazebo_ros2_control/GazeboSystem</plugin>
+

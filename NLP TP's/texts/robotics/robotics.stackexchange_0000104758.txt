@@ -1,0 +1,156 @@
+Q:
+
+Joint Trajectory Controller with velocity command interface has non-zero velocity after finshed trajectory
+
+I want to control a manipulator with the Joint Trajectory Controller by using the velocity command interface. I am planning a trajectory with with MoveIt MotionPlanningof rviz. I am using ros2 humble.
+I've tested several setups but with all of them I have the same problem: When the Joint Trajectory Controller reports "Goal reached, success!", the velocities aren't set to zero. I tried to play with with the parameters (increasing and decreasing stopped_velocity_tolerance or goal_time, changing the gains, adding and removing ff_velocity_scale) which sometimes leads to a smaller final velocity but never to completely stopped motion.
+A simple setup to reproduce this issue is by launching ros2 launch moveit2_tutorials demo.launch.py from (moveit2_tutorials)[https://github.com/ros-planning/moveit2_tutorials] but with changing from position to velocity interface in the panda_moveit_config. I changed
+
+Settings for panda_arm_controller in ros2_controllers.yaml to:
+
+panda_arm_controller:
+  ros__parameters:
+    command_interfaces:
+      - velocity
+    state_interfaces:
+      - position
+      - velocity
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    gains:
+      panda_joint1:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint2:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint3:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint4:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint5:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint6:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+      panda_joint7:
+        p: 10.0
+        i: 1.0
+        d: 1.0
+        i_clamp: 1.0
+        ff_velocity_scale: 1.0
+
+Setting command_interface from position to velocity in panda.ros2_control.xacro:
+
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:macro name="panda_ros2_control" params="name initial_positions_file ros2_control_hardware_type">
+        <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+
+        <ros2_control name="${name}" type="system">
+        <hardware>
+            <xacro:if value="${ros2_control_hardware_type == 'mock_components'}">
+                    <plugin>mock_components/GenericSystem</plugin>
+                    <param name="calculate_dynamics">true</param>
+                </xacro:if>
+                <xacro:if value="${ros2_control_hardware_type == 'isaac'}">
+                <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>
+                <param name="joint_commands_topic">/isaac_joint_commands</param>
+                <param name="joint_states_topic">/isaac_joint_states</param>
+            </xacro:if>
+        </hardware>
+        <joint name="panda_joint1">
+            <command_interface name="velocity"/>
+            <state_interface name="position">
+              <param name="initial_value">${initial_positions['panda_joint1']}</param>
+                </state_interface>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="panda_joint2">
+                <command_interface name="velocity"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['panda_joint2']}</param>
+            </state_interface>
+            <state_interface name="velocity"/>
+        </joint>
+        <joint name="panda_joint3">
+            <command_interface name="velocity"/>
+            <state_interface name="position">
+              <param name="initial_value">${initial_positions['panda_joint3']}</param>
+                </state_interface>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="panda_joint4">
+                <command_interface name="velocity"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['panda_joint4']}</param>
+            </state_interface>
+            <state_interface name="velocity"/>
+        </joint>
+        <joint name="panda_joint5">
+            <command_interface name="velocity"/>
+            <state_interface name="position">
+              <param name="initial_value">${initial_positions['panda_joint5']}</param>
+                </state_interface>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="panda_joint6">
+                <command_interface name="velocity"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['panda_joint6']}</param>
+            </state_interface>
+            <state_interface name="velocity"/>
+        </joint>
+        <joint name="panda_joint7">
+            <command_interface name="velocity"/>
+            <state_interface name="position">
+              <param name="initial_value">${initial_positions['panda_joint7']}</param>
+                </state_interface>
+                <state_interface name="velocity"/>
+            </joint>
+        </ros2_control>
+    </xacro:macro>
+</robot>
+
+Now you can run ros2 launch moveit2_tutorials demo.launch.py, open a second terminal and run ros2 topic echo /joint_states. Plan an arbitrary trajectory by using rviz and hit Plan & Execute in the MotionPlanning panel of rviz. Then you should see a motion being executed and the terminal should report:
+[ros2_control_node-5] [INFO] [1697458106.110702550] [panda_arm_controller]: Goal reached, success!
+[move_group-4] [INFO] [1697458106.122919526] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'panda_arm_controller' successfully finished
+[move_group-4] [INFO] [1697458106.151076866] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-4] [INFO] [1697458106.151414260] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.
+[rviz2-1] [INFO] [1697458106.151859534] [move_group_interface]: Plan and Execute request complete!
+
+In parallel you can check the logs of ros2 topic echo /joint_states which should report non-zero velocities even after the trajectory is successfully executed. Therefore the arm keeps moving (slowly but steady) and you should see the positions constantly changing.
+Is this the intended behavior of the Joint Trajectory Controller? Or do I just have a bad parameter setup? Any help or hint on what the problem could be would be highly appreciated!
+
+A:
+
+Which ROS distro are you using? This is a well-known "feature"/bug and was fixed for rolling/iron packages. I plan to backport this fix to humble, but this might still take some time to ensure not breaking existing setups.
+

@@ -1,0 +1,94 @@
+Q:
+
+Filtering topic data stream by accesing raw packets
+
+Hi everyone,
+[Kinetic 1.12.6, Ubuntu 16.04 kernel 4.4.062-generic]
+We've got the following system topology:
+
+The radio platforms act like a HUB so endpoint nodes see each other like if they were directly connected by an ethernet cable. Our radio platforms are embedded devices that don't understand TCPROS protocol, they are just configured in promiscous mode to move traffic from ethernet interface to RF interface and viceversa.
+Now here comes the problem: we have ~75 topics and we want our radio platforms to be able to filter TCPROS traffic by TOPIC, so we can define high or low priority topics.
+How can we differentiate which packet corresponds to each topic? As far as I understand, client-master negotiate what port they are going to use for each topic and then the datastream from each topic is sent to its assigned port. In other words, my only way to filter data stream from one topic would be to keep a track of assigned ports (when topics are published) and then check every "destination port" field within TCP header? Does this make sense? or is there any easier way?
+Regards,
+-Leroy
+
+Originally posted by leroyworld on ROS Answers with karma: 13 on 2017-02-14
+Post score: 0
+
+Original comments
+Comment by leroyworld on 2017-02-15:
+Thank you @gvdhoonr, you've already given us plenty of useful information to start working with. I consider all your comments made more than a full answer so I'll add an answer redirecting to these comments. Regards.
+Comment by gvdhoorn on 2017-02-15:
+I've merged my comments into an answer. If you want (and consider your question answered) you could accept that answer.
+Comment by gvdhoorn on 2017-02-15:
+Btw: your question was more a discussion, which would probably have worked better over at discourse.ros.org. The one-question-one-answer structure of ROS Answers isn't really suited for that.
+Comment by gvdhoorn on 2017-02-15:
+I've also given you enough karma to attach an image to your question (if you'd like to replace your ascii diagram).
+Comment by leroyworld on 2017-02-15:
+Done. Thank you again, gvdhoorn.
+Comment by gvdhoorn on 2017-02-15:
+No problem.
+Keep us up-to-date on what you eventually decide to do. I'm interested to see whether something like this is doable (with reasonable effort).
+
+A:
+
+FYI: the master is not involved in datastreams for topics after two nodes have negotiated their connections (see wiki/Master fi). This doesn't necessarily change your problem, but your 'diagram' is only valid for the initial negotiation phase. wiki/ROS/Technical Overview is also a good link with info on how the master and nodes interact.
+Also: this sounds a bit like an xy-problem. What is the real issue that you are trying to solve? Is it lowering traffic on your radio-link, or do you want all traffic, but want to be able to prioritise?
+
+Edit:
+
+My TCPROS jargon wasn't accurate enough. I edited the question accordingly.
+I have the same example, camera and viewer, and roscore is running in the same host as the viewer is. Once connections are negotiated, topic datastreams are flowing through the RF link, and I'd like to apply topic filtering
+When the RF link is saturated (bottleneck) we need to lower the traffic, dropping packets from low priority topics. Ideally TCP would try to resend this packets and our RF link should be able to send them eventually.
+Anyway, simply put: Yes, we want to lower the traffic on our radio-link.
+
+I would look into the things the teams in the DRC did: they had to work with low-bw, high-latency and lossy links all the time. I remember some of them implementing custom gateways (nodes) that used UDP to 'bridge' over the wireless links.
+(related thought: ROS2 / DDS should actually make this much simpler: proper QoS settings should make this easier)
+I would also look into separation of ROS graph sections, the way multi-master setups allow you to. That should make it possible to completely control which topics do get tranmitted over your wireless link. Do all 71 topics actually need to be transmitted?
+What you are asking is probably possible (you could probably use the master to track IP:PORT combos for pub/subs, etc), but it might be easier to achieve your goal in a different way, hence my suggestions. I also purposefully used comments, to not answer your question with non-answers.
+
+Edit2:
+
+ROS2/DDS: I forgot to mention we don't have access to the endpoints, as they belong to another company and ROS version is fixed. We are only in charge of the radio platforms and RF link. To inform us which topics are high priority they appended a prefix to each topic, like: /high/flir/imageraw
+
+pfew. Raw images over a radio link. There are lossless compression options (compressed_image_transport with PNG fi) that save quite some bandwidth. Irrespective of what you end up doing I would look into that.
+
+About the UDP Bridge: that's mainly what our radio platforms do. I'll try to check DRC projects.
+About tracking IP:PORT: I guess that's our only choice to implement within the radio platform. But it doesn't seem too straight forward.
+
+yes, that is probably not straightforward, and it'll probably be brittle as well. It would probably really help if you could get some influence over the endpoints. ROS(1) was designed for a 'perfect network' (high-bw, low-latency, no/very little loss). It seems unreasonable to expect that assumption to hold here with your wireless system in between.
+
+Ok, I'll try to talk them into ROS2
+
+covering my *ss here: that is not really what I meant. My comment was more like "hm, this sounds like something where the QoS support in DDS might come in handy". It was not a direct advice to move to ROS2.
+
+Just to see if I understood correctly. Once the topics are negotiated, the only way to differentiate one data stream from one topic to another one is to check the TCP ports, is this right?
+
+I would expect so, but I've never done anything like that. The master keeps a record of all nodes and advertised topics & svcs, together with ip:port info. I could imagine using that to feed a 'proxy' with priorities for different ip:port combos. See if the Master API and/or Slave API help here.
+You could also look into the various multi-master implementations that exist. Instead of transparently bridging two networks over your wireless link (at layer 2 or 3) it'd be more like a configurable proxy where you explicitly configure which topics should be bridged.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-02-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by leroyworld on 2017-02-14:
+My TCPROS jargon wasn't accurate enough. I edited the question accordingly.
+I have the same example, camera and viewer, and roscore is running in the same host as the viewer is. Once connections are negotiated, topic datastreams are flowing through the RF link, and I'd like to apply topic filtering
+Comment by leroyworld on 2017-02-14:
+When the RF link is saturated (bottleneck) we need to lower the traffic, dropping packets from low priority topics. Ideally TCP would try to resend this packets and our RF link should be able to send them eventually.
+Anyway, simply put: Yes, we want to lower the traffic on our radio-link.
+Comment by leroyworld on 2017-02-14:
+->ROS2/DDS: I forgot to mention we don't have access to the endpoints, as they belong to another company and ROS version is fixed. We are only in charge of the radio platforms and RF link. To inform us which topics are high priority they appended a prefix to each topic, like: /high/flir/imageraw
+Comment by leroyworld on 2017-02-14:
+->About ROS graph sections: not sure what that is,I'll check it out. Nevertheless it sounds like it has to do with endpoints (it's a base station and an UAV), for which we don't have access. Not all ~75 topics are actually needed, only those with high priority (probably UAV command and control data)
+Comment by leroyworld on 2017-02-14:
+Well, I do really appreciate your helpful "non-answers" ;)
+-> About the UDP Bridge: that's mainly what our radio platforms do. I'll try to check DRC projects.
+-> About tracking IP:PORT: I guess that's our only choice to implement within the radio platform. But it doesn't seem too straight forward.
+Comment by leroyworld on 2017-02-14:
+"Raw images" i know... They only sent us one bag for testing. I guess they will compress the video in the near future.
+Comment by leroyworld on 2017-02-14:
+Ok, I'll try to talk them into ROS2. Appreciate your help, @gdvhoorn.
+Just to see if I understood correctly. Once the topics are negotiated, the only way to differentiate one data stream from one topic to another one is to check the TCP ports, is this right?
+

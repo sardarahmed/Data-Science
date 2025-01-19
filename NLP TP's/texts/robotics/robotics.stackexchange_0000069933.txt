@@ -1,0 +1,49 @@
+Q:
+
+How to Transform tf::Transform to btTransform
+
+    void broadcastKinectTransform(const tf::Transform& transform, const std::string& kinect_rgb_optical, const std::string& ground, tf::TransformBroadcaster& broadcaster, const tf::TransformListener& listener) {
+    std::string link;
+    if (listener.getParent(kinect_rgb_optical, ros::Time(0), link) && listener.getParent(link, ros::Time(0), link)) {
+            tf::StampedTransform tfTransform;
+            listener.lookupTransform (link, kinect_rgb_optical, ros::Time(0), tfTransform);
+            broadcaster.sendTransform(tf::StampedTransform(transform * tfTransform.asBt().inverse(), ros::Time::now(), ground, link));
+    } else {
+            broadcaster.sendTransform(tf::StampedTransform(transform, ros::Time::now(), ground, kinect_rgb_optical));
+    }
+}
+
+In the above function, .asBt() is deprecated, what should I do to finish the transformation?
+
+Originally posted by johnny.lin on ROS Answers with karma: 5 on 2015-10-13
+Post score: 0
+
+A:
+
+You can simply remove the .asBt() part. Multiplication of tf::StampedTransform by tf::Transform will return tf::Transform.
+EDIT
+Both Bullet and tf have almost identical interfaces, but the type names differ. So you have to convert everything using POD-types, for example floats array.
+To convert btTransform to tf::Transform do something like this:
+btTransform bt_transform;
+tf::Transform tf_transform;
+float gl_matrix[15];
+
+bt_transform.getOpenGLMatrix(gl_matrix);
+tf_transform.setFromOpenGLMatrix(gl_matrix);
+
+Or you can do this component-wise by separately extracting quaternion and origin vector from Bullet transform and setting them back to tf transform. But I think the above method is cleaner.
+
+Originally posted by Boris with karma: 3060 on 2015-10-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by johnny.lin on 2015-10-13:
+Is there a way to do transformation between btTransform and tf::Transform ?
+Comment by Boris on 2015-10-14:
+What ROS version are you using? Is this btTransform from ROS code or are you using Bullet directly?
+Comment by johnny.lin on 2015-10-14:
+I am converting some fuerte code to indigo, so there are plenty of incompatible errors. I am using ROS and bullet together.
+Comment by Boris on 2015-10-14:
+Then conversion via OpenGL-matrix should work fine (the one I mentioned after edit).
+

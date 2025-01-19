@@ -1,0 +1,88 @@
+Q:
+
+how to use ethzasl_icp_mapping with velodyne?
+
+Hi all,
+I am using a .pcap file to playback velodyne HDL 64E_2 data using the velodyne ros package. I would like to obtain some odometry data using the velodyne and the ethzasl_icp_mapping package seems to be a good start. I am able to register pointclouds using a kinect, but with the velodyne I have no output on /point_map. My launch file is as below. I am not using any filters or icp config file and just want to try out the package with default parameters. Is there anything wrong here?
+  <node pkg="velodyne_driver" type="velodyne_node" name="velodyne_driver">
+    <param name="model" value="64E_S2"/>
+    <param name="pcap" value="/home/hope/Downloads/velodynepcap/S227_target.pcap"/>
+    <param name="read_once" value="false"/>
+    <param name="read_fast" value="false"/>
+    <param name="repeat_delay" value="10000.0"/>
+    <param name="rpm" value="200.0"/>
+    <param name="frame_id" value="velodyne"/>
+</node>
+
+<node pkg="velodyne_pointcloud" type="cloud_node" name="cloud_node">
+    <param name="calibration" value="$(find velodyne_pointcloud)/params/64e_utexas.yaml"/>
+    <param name="min_range" value="3.0"/>
+    <param name="max_range" value="130.0"/>
+</node>
+
+<node name="mapper" type="mapper" pkg="ethzasl_icp_mapper" output="screen" >
+    <remap from="cloud_in" to="/velodyne/velodyne_points" />
+    <param name="subscribe_scan" value="false"/>
+    <param name="subscribe_cloud" value="true"/>
+    <param name="odom_frame" value="/velodyne" />
+    <param name="map_frame" value="/map" />
+    <param name="useConstMotionModel" value="false" />
+    <param name="localizing" value="true" />
+    <param name="mapping" value="true" />
+    <param name="minOverlap" value="0.8" />
+    <param name="maxOverlapToMerge" value="0.9" />
+    <param name="tfRefreshPeriod" value="0.01" />
+    <param name="vtkFinalMapName" value="finalMap.vtk" />
+    <param name="useROSLogger" value="true" />
+    <param name="minReadingPointCount" value="1000" />
+    <param name="minMapPointCount" value="10000" />
+    <param name="inputQueueSize" value="1" /> 
+</node>
+
+If there are any other techniques that can do laser odometry, kindly suggest
+
+Originally posted by aswin on ROS Answers with karma: 528 on 2013-08-28
+Post score: 1
+
+A:
+
+I have not tried that combination. Several questions and comments:
+
+Are you using a recent version of the driver? It has fixes for the 64E S2. Are you running Hydro or Groovy?
+
+You should verify the speed of your device. I've seen examples at 300 RPM, but not 200 RPM, I don't think that is an option. Velodyne provides a procedure for configuring the speed, consult the manual if you need or want to change it.
+
+Using nodelets rather than nodes would probably reduce your CPU overhead noticeably.
+
+You should use the correct angles calibration for your device, params/64e_utexas.yaml is for an older model than your S2. The gencalibration.py script will convert the db.xml provided by Velodyne with your device into the YAML format used by the velodyne_pointcloud package.
+
+The cloud node publishes data in the "/velodyne" frame to the /velodyne_points topic, not /velodyne/velodyne_points. Use rostopic list or rosgraph to verify what is actually being published. Also, rostopic hz will tell how often messages are actually sent.
+
+The driver does not publish a transform from "/velodyne" to "/odom". How could it know that? You do need to provide one yourself.
+
+Since your device is moving, something needs to transform "/velodyne" points into the "/odom" frame. Normally that would be done via the transform node instead of the cloud node. It transforms each packet as it's received, to minimise "smearing" of data as the device revolves. Unfortunately, that presumes you have a separate odometry source, publishing that transform for the conversion.
+
+I am not sure what to recommend for the circular odometry dependency: the driver needs odometry for transforming data into a fixed "/odom" frame, but that's what you are trying to generate. If the vehicle is moving slowly enough and the device is rotating quickly enough, you may be able to get away with assuming the point cloud generated for each rotation is "instantaneous".
+I am open to suggestions for how to change the driver to better support your use case. Perhaps we could write a different transform node and nodelet that would better suit your requirements. It is not clear to me how that would work, however.
+I would expect other rotating LIDARs to exhibit similar problems. I would appreciate suggestions from people with experience doing similar things with those devices. Heading changes tend to cause more trouble than forward motion.
+
+Originally posted by joq with karma: 25443 on 2013-08-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aswin on 2013-08-29:
+Hi, first of all, thanks a lot for the work on the driver. I do have issues running some pcap files (e.g. http://robots.engin.umich.edu/SoftwareData/Ford), but thats off topic. Yes, I normally run it at 900 rpm and it looks fine. I get errors on "unable to open calibration file", the 64e_utexas is the only working one i have. I am using the hydro package in ubuntu 13.04.
+Comment by aswin on 2013-08-29:
+Thanks for the suggestion on the rostopic. Thats probably what is wrong. Will try it out. I think the driver as is, serves its purpose; and no feature enhancement is required.
+Comment by joq on 2013-08-29:
+I hope you're right. I am interested in knowing the results of your work.
+Comment by joq on 2013-08-29:
+The latest Hydro version 1.1.1 provides a params/64e_s2.1-sztaki.yaml configuration file. That S2.1 is more similar to your S2 than our old 64E from 2007. I would try that, instead.
+Comment by joq on 2013-08-29:
+The manual says your model supports spin rates from 300 to 1200 RPM. That higher, 20Hz, speed should help minimize rotational "smearing" for your application.
+Comment by aswin on 2013-08-29:
+Will post any updates here. Regarding the calibration file, I cannot load 64e_s2.1-sztaki.yaml. I will verify if I doing it correct 2moro.
+Comment by aswin on 2013-08-29:
+The problem was with the wrong ros topic as you suggested. It should just be /velodyne_points. Thank you.
+

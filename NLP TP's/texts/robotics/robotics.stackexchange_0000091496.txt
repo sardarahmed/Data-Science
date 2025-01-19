@@ -1,0 +1,103 @@
+Q:
+
+Rviz tf 'world' does not exist
+
+Hello everyone,
+Basic info:
+env | grep ROS:
+ROS_ROOT=/opt/ros/kinetic/share/ros
+ROS_PACKAGE_PATH=/home/mifa/ws_moveit/src/moveit_tutorials:/home/mifa/ws_moveit/src/panda_custom_moveit_config:/home/mifa/ws_moveit/src/panda_moveit_config:/home/mifa/ws_moveit/src/universal_robot/universal_robot:/home/mifa/ws_moveit/src/universal_robot/universal_robots:/home/mifa/ws_moveit/src/universal_robot/ur_bringup:/home/mifa/ws_moveit/src/universal_robot/ur_description:/home/mifa/ws_moveit/src/universal_robot/ur10_e_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur10_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur3_e_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur3_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur5_e_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur5_moveit_config:/home/mifa/ws_moveit/src/universal_robot/ur_driver:/home/mifa/ws_moveit/src/universal_robot/ur_gazebo:/home/mifa/ws_moveit/src/universal_robot/ur_kinematics:/home/mifa/ws_moveit/src/universal_robot/ur_msgs:/home/mifa/ws_moveit/src/ur_modern_driver:/opt/ros/kinetic/share
+ROS_MASTER_URI=http://pickit-097:11311/
+ROS_VERSION=1
+ROSLISP_PACKAGE_DIRECTORIES=/home/mifa/ws_moveit/devel/share/common-lisp
+ROS_DISTRO=kinetic
+ROS_IP=192.168.203.151
+ROS_ETC_DIR=/opt/ros/kinetic/etc/ros
+
+OS: ubuntu 16.04
+I've been trying to get a UR10 moving in Rviz using moveit. This worked.
+Now i want to add my end effector to the URDF so that this will also be included in the plath planning.
+For some reason i am unable to get this to work in Rviz. My problem:
+I use the standard files i downloaded from the 'universal_robot' package, but in Rviz is get the following error:
+My fixed frame is set to 'world'. The tf world is made in the ur10_robot.urdf.xacro, provided by the ur_description.
+Then at global options an error appears saying "Fixed Frame [world] does not exist"
+At my RobotModel status is Error, saying:
+URDF parsed OK
+tranform (world to world) OK
+No transform from [base] to [world]
+No transform from [base_link] to [world]
+No transform from [ee_link] to [world]
+No transform from [forearm_link] to [world]
+No transform from [tool0] to [world]
+
+and this for all links in the URDF
+Am i missing something and is this even the right way to link multiple URDF's to eachother?
+Kind regards,
+Jan Tromp
+
+Originally posted by Jan Tromp on ROS Answers with karma: 28 on 2019-04-24
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-04-24:\
+
+is this even the right way to link multiple URDF's to eachother?
+
+I don't believe we can answer this as you don't describe how you've actually added the EEF to the URDF.
+Comment by Jan Tromp on 2019-04-24:
+What do you mean? You mean the physical connection? or the way i added the camera to the URDF.
+Comment by gvdhoorn on 2019-04-24:\
+
+or the way i added the camera to the URDF.
+
+Yes, at the very least.
+You state that what "you did" did not work, but you don't show us what you did. You then ask us whether what "you did" is the right way, but without seeing what you did we cannot really know, can we?
+
+A:
+
+I found a solution. Went back to the previous code my co-worker made and there the urdf's are linked and everything works fine. I think my problem eventually was in the fact that i didnt have the tf static transform node running.
+Can someone with enough karma close this?
+
+Edit: Okay so if you look at the ur10_robot.urdf.xacro, it includes the ur10.urdf.xacro, and then links the base to the world.
+My co-worker added the other urdf files below this and linked them directly in the urdf like this:
+<xacro:include filename="$(find cam_desc)/urdf/camera_macro.xacro" />
+
+<link name="world" />  
+
+<!-- connects the UR10 arm to the world -->
+<joint name="world_joint" type="fixed">
+  <parent link="world" />
+  <child link = "base_link" />
+  <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+</joint>
+
+<!-- connects the  camera to the UR10 arm -->
+<joint name="cam_joint" type="fixed">
+  <parent link="ee_link"/>
+  <child link="mount_link"/>
+  <origin xyz="0.0 -0.045 0.0" rpy="3.14 0.0 1.57" />
+</joint>
+
+Now the problem of the world joint that cannot be found in Rviz is also a bit more clear.
+As your thought, it wasn't because of the tf transform node.
+The reason was because i forgot to start the node that pubs robot state.
+
+Originally posted by Jan Tromp with karma: 28 on 2019-04-25
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-04-25:\
+
+I think my problem eventually was in the fact that i didnt have the tf static transform node running.
+
+that is not something I would expect to be an issue, unless you are not actually using a joint to connect your EEF to your robot model (which is possible, but not necessarily the best way to go about it).
+If you could add some more detail to your answer as to how your "co-worker's code" connects everything, that might be valuable to future visitors of this site. RIght now this Q&A are too localised to be of help to anyone but you.
+Comment by gvdhoorn on 2019-04-25:
+thanks for the update. This helps.
+
+My co-worker added the other urdf files below this
+
+note: it's considered best-practice to create a separate package, with a separate top-level xacro in which you create your composite model. Don't edit files in third-party packages.
+It introduces maintenance for you, as tracking upstream updates becomes much harder, and you "contaminate" what would otherwise be a completely stand-alone package with application-specific artefacts (ie: your gripper model). That in turn complicates deployments (as you now have to distribute your changed third-party package, instead of your own package with just the composite model).
+

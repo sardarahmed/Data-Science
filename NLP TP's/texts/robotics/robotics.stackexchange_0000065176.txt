@@ -1,0 +1,62 @@
+Q:
+
+How can catkin find ROS libraries in non-standard locations?
+
+Actually the complete question would be: How can catkin find ROS libraries in non-standard locations, or is it ok not to write a library for Python in catkin_package(...)?
+I wrote a library in C++ for Python to wrap a C++ class. For it to be usable in Python I needed to change the default location. Extract of CMakeLists.txt in package crossing_detector:
+
+set_target_properties(crossing_detector_wrapper_cpp PROPERTIES
+
+PREFIX ""
+
+LIBRARY_OUTPUT_DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_PYTHON_DESTINATION})
+
+This work well in the sense that I can use it in Python with
+
+from crossing_detector.crossing_detector_wrapper_cpp import CrossingDetectorWrapper
+
+The problem comes when I want to compile separately (catkin_make_isolated or catkin build) another package that depends on crossing_detector, catkin complains about a missing library:
+
+Project 'dataset_analyzer' tried to find library 'crossing_detector_wrapper_cpp'.  The library is neither a target nor
+built/installed properly
+The library is not even needed there.
+
+The problem doesn't occur when compiling both packages together (catkin_make).
+See also: https://github.com/catkin/catkin_tools/issues/128
+I'm thinking of solving the problem by removing the library from catkin_package(...). Is this ok to do so?
+
+Originally posted by galou on ROS Answers with karma: 265 on 2015-01-15
+Post score: 2
+
+A:
+
+The strategy proposed by William works well with catkin_make_isolated and catkin build, where multiple CMake projects exist, and the dependency is built before it is required. It however breaks under catkin_make, where there is a single CMake project and the dependency has not yet been built when it is required (hence find_library fails). For completeness, I have put together a a slightly modified version that is compatible with both single- and multi-CMake projects:
+CMakeLists.txt
+catkin_package(
+  ...
+  LIBRARIES # NOTE: Not specified here, but in extras file
+  CFG_EXTRAS foo-extras.cmake
+)
+
+foo-extras.cmake.in
+find_library(@PROJECT_NAME@_LIBRARY
+            NAMES @PROJECT_NAME@
+            PATHS "${@PROJECT_NAME@_DIR}/../../../@CATKIN_GLOBAL_LIB_DESTINATION@/funky/path/to/foo"
+            NO_DEFAULT_PATH)
+
+if(@PROJECT_NAME@_LIBRARY)
+  # Multiple CMake projects case (i.e. 'catkin build'):
+  # - The target has already been built when its dependencies require it
+  # - Specify full path to found library
+  list(APPEND @PROJECT_NAME@_LIBRARIES ${@PROJECT_NAME@_LIBRARY})
+else()
+  # Single CMake project case (i.e. 'catkin_make'):
+  # - The target has not been built when its dependencies require it
+  # - Specify target name only
+  list(APPEND @PROJECT_NAME@_LIBRARIES @PROJECT_NAME@)
+endif()
+
+Originally posted by Adolfo Rodriguez T with karma: 3907 on 2015-05-26
+This answer was ACCEPTED on the original site
+Post score: 1
+

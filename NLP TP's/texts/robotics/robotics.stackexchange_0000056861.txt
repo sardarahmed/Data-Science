@@ -1,0 +1,83 @@
+Q:
+
+Where should generated header files be generated to? How can I then export them with catkin?
+
+I have the following CMakeLists.txt
+cmake_minimum_required(VERSION 2.8.3)
+project(datatypes)
+
+find_package(catkin REQUIRED)
+catkin_package(
+->INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/${CATKIN_GLOBAL_INCLUDE_DESTINATION}
+#  LIBRARIES rtdb_config
+#  CATKIN_DEPENDS other_catkin_pkg
+#  DEPENDS system_lib
+)
+
+file(MAKE_DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+FILE(GLOB DATATYPE_RAW ${PROJECT_SOURCE_DIR}/datatypes/*)
+add_custom_target(${PROJECT_NAME}
+    ALL
+    COMMAND generate_some_header_files_to ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+    SOURCES ${DATATYPE_RAW}
+)
+
+Where the custom command generates header files to be used by other packages in the dir ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}. (Not sure this dir should be used!!)
+The problem seems to be that since this directory was still not created it fails to be exported by catkin_package:
+catkin_package() include dir '/home/.../devel/include' is neither an absolute directory nor exists relative to '/home/.../src/rtdb/src/datatypes'
+
+Now the question:
+Where should generated header files be generated to? How can I then export them with catkin?
+Thanks in advance.
+Luis
+
+Originally posted by loliveira on ROS Answers with karma: 45 on 2014-01-28
+Post score: 2
+
+A:
+
+Your approach described in the question was almost right. As the CMake error indicates the path you specified as catkin_package(INCLUDE_DIRS ...) must exist when the function is being invoked. Therefore you have to move the MAKE_DIRECTORY line above the function. But since the function is also responsible to define the catkin DESTINATION variables you need to get them explicitly before using catkin_destinations().
+Further more you need to export your target which is responsible to generate the headers in order for downstream packages be able to cleanly depend on them being generated before. Usually you should pass EXPORTED_TARGETS ${PROJECT_NAME}_generate_headers to catkin (but due to a bug until now you have to set the variable ${PROJECT_NAME}_EXPORTED_TARGETS instead).
+Last but not least you need to install the header files.
+The complete example would then look like this:
+cmake_minimum_required(VERSION 2.8.3)
+project(datatypes)
+
+find_package(catkin REQUIRED)
+
+catkin_destinations()
+file(MAKE_DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+file(GLOB DATATYPE_RAW ${PROJECT_SOURCE_DIR}/datatypes/*)
+
+# using a better target name for the custom target
+add_custom_target(${PROJECT_NAME}_generate_headers
+  ALL
+  COMMAND generate_some_header_files_to ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  SOURCES ${DATATYPE_RAW}
+)
+set(${PROJECT_NAME}_EXPORTED_TARGETS ${PROJECT_NAME}_generate_headers)
+
+catkin_package(
+  INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/${CATKIN_GLOBAL_INCLUDE_DESTINATION}
+  # instead of set(${PROJECT_NAME}_EXPORTED_TARGETS ...)
+  # but will only work as of catkin 0.5.81
+  # EXPORTED_TARGETS ${PROJECT_NAME}_generate_headers
+)
+
+# no need for patterns / excludes since the path should only contain the generated headers
+# by using the directory name with a slash at the end
+# the directory name and destination become more natural
+# (both mentioning CATKIN_PACKAGE_INCLUDE_DESTINATION)
+install(
+  DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+Originally posted by Dirk Thomas with karma: 16276 on 2014-01-28
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by loliveira on 2014-01-28:
+Perfect... that seems to be exactly what I'm looking for... unfortunately the good config breaks the compilation :) (my fault this time) ;) Only using catkin 0.5.79 so I'll use the first option.
+

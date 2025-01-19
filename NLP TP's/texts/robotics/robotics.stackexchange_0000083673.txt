@@ -1,0 +1,97 @@
+Q:
+
+How to merge laser TF with other TF frames?
+
+I am new to ROS and I am sure my question reflects this.. Thanks in advance for your time.
+I am using Ubuntu 14.04 on a Lenovo W530 laptop. I am running ROS indigo that I installed with apt-get.
+I have a physical robot I am trying to ROSify. I was lucky to be instructed on how to begin this process (https://answers.ros.org/question/271819/please-suggest-all-packages-to-achieve-slam-for-robot/ both robot and how to rosify can be seen there). I was told to first create a URDF file, which I did (see here: https://pastebin.com/Hzy5jpwP). After this objective I focused on the next task as per the post, and created a robot state publisher. This code is a really ugly and I apologize in advance, I will clean it up soon. You can see it here: https://pastebin.com/NQVzuUD0. Right now as I manually rotate my LMS, RViz shows it move in real time.... it's so cool!
+The problem that I have is that I am not able to visualize all my frames in a single RViz session at the same time. I can open RViz and create a TF and RobotModel types and there are no errors and everything looks good. However as soon as I add a LaserScan type I get a TF error Transform[sender=unknown_publisher] for frame [laser]: Frame [laser] does not exist:
+ :
+To get the Sick LMS to publish it's data I followed this tutorial for sicktoolbox_wrapper: http://wiki.ros.org/sicktoolbox_wrapper/Tutorials/UsingTheSicklms. However I could not see any scans, to see my LMS laser scans I followed the second answer in this post (https://answers.ros.org/question/79281/how-to-show-laser-scanner-data-in-rviz/). When I follow the answer I am able to see the laser but the TF and RobotModel in RViz fault out with this message: Fixed Frame [laser] does not exist.
+.
+Can you please explain how to amalgamate all the frames so that I can see the TF, RobotModel and LaserScan data types all at the same time without any errors? What code do I need to add to my cpp file or URDF file? If you could please explain with a small code snippet I would really appreciate it.
+If I can add any information please let me know.
+Thanks in advance.
+EDIT #1****************
+Clarification on implementing the first part of your answer:
+In the URDF code snippet you provided, you are suggesting I create a joint between the LaserScanner device that is publishing to the /scan topic and another frame in the URDF file. I can't figure out how to refer to the LaserSensor within the URDF file. Initially I had no sensor tag, so I tried to add a sensor tag (http://wiki.ros.org/urdf/XML/sensor) and use it alone, but the error remained the same (as in the first screen shot in this question). Next I tried to create a joint between it and another frame but I started getting errors: [ERROR] [1510628866.601958478]: Failed to build tree: child link [sicklms] of joint [plate_to_laser] not found. Here is what the code I tried:
+<sensor name="sicklms">
+     <parent link="lms_link"/>
+     <origin xyz="0 0 0" rpy="0 0 0"/>   
+</sensor>
+
+ <joint name="plate_to_laser" type="fixed">
+     <parent link="lms_link"/>
+     <child link="sicklms"/>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+ </joint>
+
+How can I refer to the LaserScanner type in the URDF file so that I can reference it within a joint tag to make everything work?
+Clarification regarding last part of your answer:
+In your answer you suggested rosrun sicktoolbox_wrapper sicklms _frame_id:=lms_link... and it works! Thank you! I used it to prove the concept. However, I am launching many nodes from a launch file, and I can't start packages on their own using rosrun. How do I convert this code to work with launch files? My launch file is below. Could you please help me understand what needs to change?
+<launch>
+
+<!--define the serial port for the PC to LMS comm in parameter server-->
+<param 
+    name="sicklms/port" 
+    value="/dev/ttyUSB0">
+</param>
+
+<!--define the lms comm baud rate in parameter server-->
+<param 
+    name="sicklms/baud" 
+    value="500000">
+</param>
+
+<!--launch the sicktoolbox_wrapper node. -->
+<node 
+    pkg="sicktoolbox_wrapper" 
+    type="sicklms" 
+    name="sick_lms_scan_publisher"
+    output="screen">
+</node>
+</launch>
+
+Thank you for your time and knowledge.
+
+Originally posted by BuilderMike on ROS Answers with karma: 247 on 2017-11-01
+Post score: 0
+
+Original comments
+Comment by lucasw on 2017-11-14:
+I don't think <sensor> does anything, but <link name="sicklms" /> should make the urdf work.
+
+A:
+
+You should add a joint between a frame on your robot and laser to your urdf.
+<!-- need to make a placeholder link for the laser frame -->
+<link name="laser" />  
+<joint name="base_to_laser" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser"/>
+    <origin rpy="0 1.57075 0" xyz="0 -0.22 0.25"/>
+</joint>
+
+Where instead of the rpy (roll pitch yaw) and xyz above you insert the position of the laser relative to base_link.  Or instead of base_link use another frame (lms_link) already in your urdf that is close to where the laser is mounted.
+To experiment with different transforms live instead of launching and relaunching with minor changes to the urdf you can publish a transform from the command line (and comment out base_to_laser if it is in the urdf), then lock the values that work best into the urdf: http://wiki.ros.org/tf#static_transform_publisher
+If lms_link is already the correct frame and an additional joint isn't needed then having sicklms publish the laser_scan relative to that is an easy alternative to the above:
+rosrun sicktoolbox_wrapper sicklms _frame_id:=lms_link
+
+(or provide it in a launch file with ` within the sicklms node launching xml)
+
+Originally posted by lucasw with karma: 8729 on 2017-11-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by BuilderMike on 2017-11-13:
+@lucasw Thanks for your answer! I was able to make a part of it work, but am struggling with  implementing it "properly". Could you please have a look at my questions below the "Edit #1" section? Thank you very much for your time.
+Comment by lucasw on 2017-11-14:
+You can do param setting within the launch file:
+<node name="sick_lms_scan_publisher" ... >
+  <param name="frame_id" value="lms_link" />
+</node>
+
+Comment by BuilderMike on 2017-11-14:
+@lucasw thank you very much for your help! Your answer got me unstuck and going. Thanks again for your time, expertise, and reading my project's life story :-)
+

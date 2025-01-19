@@ -1,0 +1,64 @@
+Q:
+
+Gyroscope - How can I remove low frequency component with a high pass filter only?
+
+I'm using Matlab to suppress low frequency components with a high pass filter. 
+Objective
+
+Filter angular velocity measurements affected by high frequency noise and bias in order to get the best estimate of the angular position.
+
+The output when the gyroscope is still looks like this.
+
+First Approach
+The easiest way to remove baseline is to remove the average and can be achieved with Matlab using one line of code.
+yFilt = y - mean(y)
+
+Second Approach
+We can design a high pass filter to attenuate low frequency components. If we analyze the frequency components of the signal we will see one peak at low frequency and "infinite" small components in all frequencies due to Noise. With a second order ButterWorth filter with normalized cutoff freq Wn = 0.2 we will get what we are looking for.
+
+Filtered data
+
+Tilting the Gyro
+When we tilt the gyroscope the situation changes. With a sampling frequency of 300Hz we get the following plot.
+
+The first half of the dft is shown below in a normalized scale.
+
+You can find the sample.mat file here
+The first approach works great. I would like to apply the second one to this particular case but here there are other low frequency components that make to job harder.
+How can I apply the second approach based on the High Pass filter to remove the bias?
+EDIT 1 
+You can find more information here
+EDIT 2
+How can we filter this signal to remove bias while keeping the angular velocity information (from 110-th to 300-th sample) intact?
+If gyroscopes have the bias problem only when they are not experiencing any rotation, then the offset is present only in the first ~110 samples.
+If the above hypothesis is correct, maybe if we apply high pass filtering only in the first 110 samples and desactivate the filter during rotations of the gyro, the estimated angular position will be more accurate.
+
+A:
+
+:UPDATED:
+This is the last update I'm going to make to this answer because I feel like you are repeatedly redefining your question.
+
+You have already designed a Butterworth filter that removes the DC offset, but your question title is "How can I remove low frequency component with a high pass filter". What is the problem you are having??
+You ask, in what was the 5th edit of your question, but you call "Edit 2", how you can remove the bias while retaining the signal intact. If you have to do it with a filter (which I DO NOT RECOMMEND), then set the cutoff frequency of your filter an order of magnitude (one decade) below your lowest frequency of interest. Refer to a Bode plot of your filter to see how your filter will modify your signal. 
+I don't recommend a filter because a bias is called "bias" and not "noise". This is because a bias is a systematic error - a DC bias will exist in all samples, so you cannot "turn on" a filter when you think you are stationary and then "turn off" the filter when you think you are moving - the DC bias will exist in all signals. This is why I have suggested you calibrate your sensor, which is what you should be doing with every sensor you connect to your system anyways. 
+You have not provided any information about your testing or application, but if what you say at the end of the current version of your question is correct - maybe if we apply high pass filtering only in the first 110 samples and desactivate the filter during rotations of the gyro, the estimated angular position will be more accurate - then this would imply that you know, in advance, when the the gyro is rotating and when it is not. If this is the case, you can remove all of the DC bias accurately, with very little computational cost, by calculating the signal mean during periods when the gyro is stationary and subtracting that mean from the signal when the gyro is in motion. 
+As BendingUnit22 pointed out in the comments, the sample data set you have provided is not representative of the scenario in which you intend to use the filter, which is making it needlessly difficult for everyone trying to contribute to this problem to divine what you're after.
+I have to assume your insistence on using a filter is academic because it is more difficult to implement, more computationally expensive, and more likely to skew the data you want to use.
+
+:Original Content Below:
+I've moved from a comment to an answer in the hopes that I might clarify/point out some problems you might be having. 
+Regarding the topics you did ask about:
+
+A DC offset in a sensor like an accelerometer or a gyroscope is called a bias - it's the output of the sensor when the input is zero. 
+For devices like this, you actually would do a calibration process where you would use your line of code yFilt = y - mean(y), but you could more appropriately call it biasOffset = y - mean(y). Once you've done the initial calibration you store biasOffset in nonvolatile memory and use that to adjust future input samples. 
+
+Regarding the topics you didn't ask about:
+
+Be careful using a high pass filter when your frequencies of interest are low. In your Figure 3, you have a close approximation of 3/4 of a sine wave starting at 110 seconds and running to 150 seconds. That is, it looks like your signal has a period of about (150-110)/(3/4) = 53.3 seconds, corresponding to a frequency of (1/53.3) = 0.0188 Hz, or 0.118 rad/s. Bear in mind that a filter's "cutoff" frequency doesn't actually cut off all frequency content above or below the designate frequency, but rather the cutoff frequency is generally the half-power (-3dB) point. Here's a decent discussion of filters (page 9) from a signal processing/aliasing perspective, but still worth reading. What I'm trying to say is that you could wind up significantly skewing your desired signal if you choose a cutoff frequency that is anywhere near (within an order of magnitude) of your desired signal frequency. 
+Be careful with units. You caught it! You changed the units on Figure 2 from $m/s^2$ to deg/s - it makes a big difference! Where last night it looked like your sensor was accelerating up to 335km/hr, now it looks like it's turning at 1rpm. That's a big difference! 
+
+:EDIT:
+You have since changed the units on Figure 2 (x-axis) from seconds to samples, which, at 300Hz, means you've changed the time scale from 5 minutes to 1 second. Again, a huge difference, but now this means that your 3/4 sine wave-looking section occurs in 40 samples, not 40 seconds, which at 300Hz means it happens in 0.1333 seconds. Then, a full sine wave happens in a period of 0.1777 seconds, for a frequency of 5.6257Hz. 
+Note, however, that you are using normalized frequency on your last figure, and your signal frequency, 5.6257Hz, divided by your sampling frequency, 300Hz, gives you 0.0188. This again shows that the low frequency signal I'm assuming you're trying to eliminate is, in fact, the signal you want. 
+As a correction, I had previously stated that you didn't provide time data, but in fact you had provided sampling frequency, which means that you have indirectly provided time data, given the number of samples in the test data you provided. 
+

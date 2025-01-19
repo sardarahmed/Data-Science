@@ -1,0 +1,130 @@
+Q:
+
+Can't locate node laser_scan_filters
+
+I want to filter the angles of the laser scans and wrote a launch file:
+<launch>
+  <node pkg="laser_filters" type="laser_scan_filters" output="screen" name="laser_scan">
+    <rosparam command="load" file="$(find laser_filters)/launch/angle_filter.yaml" />
+  </node>
+</launch>
+
+However, when I try to execute it, I get this error:
+ERROR: cannot launch node of type [laser_filters/laser_scan_filters]: can't locate node [laser_scan_filters] in package [laser_filters]
+
+Which is quite strange as there is a c++ executable in CMakeLists.
+Here is an example of CMakeLists:
+cmake_minimum_required(VERSION 2.8.3)
+project(laser_filters)
+
+##############################################################################
+# Find dependencies
+##############################################################################
+
+set(THIS_PACKAGE_ROS_DEPS sensor_msgs roscpp tf filters message_filters
+  laser_geometry pluginlib angles)
+
+find_package(catkin REQUIRED COMPONENTS ${THIS_PACKAGE_ROS_DEPS})
+find_package(Boost REQUIRED COMPONENTS system signals)
+include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+
+##############################################################################
+# Define package
+##############################################################################
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES pointcloud_filters laser_scan_filters
+  CATKIN_DEPENDS ${THIS_PACKAGE_ROS_DEPS}
+  DEPENDS
+  )
+
+##############################################################################
+# Build
+##############################################################################
+
+add_library(pointcloud_filters src/pointcloud_filters.cpp)
+target_link_libraries(pointcloud_filters ${catkin_LIBRARIES})
+
+add_library(laser_scan_filters src/laser_scan_filters.cpp src/median_filter.cpp src/array_filter.cpp src/box_filter.cpp)
+target_link_libraries(laser_scan_filters ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+add_executable(scan_to_cloud_filter_chain src/scan_to_cloud_filter_chain.cpp)
+target_link_libraries(scan_to_cloud_filter_chain ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+add_executable(scan_to_scan_filter_chain src/scan_to_scan_filter_chain.cpp)
+target_link_libraries(scan_to_scan_filter_chain ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+add_executable(generic_laser_filter_node src/generic_laser_filter_node.cpp)
+target_link_libraries(generic_laser_filter_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+if (CATKIN_ENABLE_TESTING)
+  find_package(rostest)
+  add_executable(test_scan_filter_chain test/test_scan_filter_chain.cpp)
+  target_link_libraries(test_scan_filter_chain laser_scan_filters ${rostest_LIBRARIES} gtest)
+  add_dependencies(test_scan_filter_chain gtest)
+
+  add_rostest(test/test_scan_filter_chain.launch)
+
+  catkin_add_gtest(test_shadow_detector test/test_shadow_detector.cpp)
+  target_link_libraries(test_shadow_detector ${catkin_LIBRARIES} ${rostest_LIBRARIES})
+endif()
+
+##############################################################################
+# Install
+##############################################################################
+
+install(TARGETS pointcloud_filters laser_scan_filters 
+  scan_to_cloud_filter_chain
+  scan_to_scan_filter_chain
+  generic_laser_filter_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Install headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+
+install(FILES laser_filters_plugins.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+Any thoughts?
+
+Originally posted by stevemartin on ROS Answers with karma: 361 on 2018-12-20
+Post score: 0
+
+Original comments
+Comment by zubair on 2018-12-20:
+did you try to source your workspace ??? (source devel/setup.bash)
+Comment by stevemartin on 2018-12-20:
+@zubair of course, it is hardcoded in my bashrc
+
+A:
+
+You have created a library called laser_scan_filters not an executable, this is the cause of your problem. Libraries will only execute if they are linked to by an executable binary, they cannot be run independently themselves.
+add_library(laser_scan_filters src/laser_scan_filters.cpp src/median_filter.cpp src/array_filter.cpp src/box_filter.cpp)
+target_link_libraries(laser_scan_filters ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+You need to change this to:
+add_executable(laser_scan_filters src/laser_scan_filters.cpp src/median_filter.cpp src/array_filter.cpp src/box_filter.cpp)
+target_link_libraries(laser_scan_filters ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+Hope this helps.
+Update:
+Looking at the documentation for laser_filters you need to start the scan_to_scan_filter_chain node and specify the filters you want to put in that chain in a YAML file.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2018-12-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-12-20:
+Isn't the CMakeLists.txt the OP shows the regular one from the laser_filters package?
+In that case the libraries are supposed to be there.
+I'm confused by the text in the OP.
+Comment by PeteBlackerThe3rd on 2018-12-20:
+That would make sense if they're building it from source. The laser_filters are libraries not nodes, this may be the source of the problem.
+

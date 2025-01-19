@@ -1,0 +1,55 @@
+Q:
+
+How to make a class with publisher and subscriber which is a member of another class
+
+Let's assume I have class cA, which has a node that subscribe from topic and publisher with a "constant" frequency. Class cA is a mamber of class cB.
+Where I should put "while(ros::ok())" for publishing purpose? Cose if i put it in constructor it'll bloc constructor of "higher" class (ofc. I can make a function cA::Publish() and run everything further in  cB::Publish() or split classes to more nodes and classes, but i am looking for beter solution).
+Should I use threads? I have never used them so I don't know if i should. I found this
+cant_post_links_http://wiki.ros.org/roscpp/Overview/Callbacks%20and%20Spinning
+Is there an easy example?
+thanks in advance
+
+Originally posted by BP on ROS Answers with karma: 176 on 2014-03-13
+Post score: 1
+
+A:
+
+I think the while(ros::ok()) should be somewhere 'global', e. g. in your main function or a single run function. Do not put it to deep into your class hierarchy, it make your code hard to understand.
+If you need your class to publish at constant rate and your CPU load is not 'to high' (i. e. not threading needed due to CPU load) I would add a ros::Timer in your class, bind the timer to a class member function and publish in the member function.
+Example:
+#include <ros/ros.h>
+#include <std_msgs/Empty>
+
+#define TIMER_TIMEOUT (0.5F) // in sec
+
+class MyClass
+{
+  private:
+
+  ros::NodeHandle po_nh;
+  ros::Timer po_timer;
+  ros::Publisher po_pub;
+
+  void onTimer()
+  {
+    po_pub.publish( std_msgs::Empty() );
+  }
+
+public:
+  MyClass( ros::NodeHandle ao_nh ) :
+    po_nh( ao_nh )
+  {
+    po_pub = po_nh.advertise<std_msgs::Empty>( "~empty", 10 ) ;
+    po_timer = po_nh.createTimer( ros::Duration( TIMER_TIMEOUT ), boost::bind( &MyClass::onTimer,  this ) );
+  }
+
+  virtual ~MyClass()
+  {
+
+  }
+};
+
+Originally posted by Wolf with karma: 7555 on 2014-03-13
+This answer was ACCEPTED on the original site
+Post score: 2
+

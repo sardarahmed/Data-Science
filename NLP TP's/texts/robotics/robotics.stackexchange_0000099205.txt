@@ -1,0 +1,97 @@
+Q:
+
+Importing ROS msgs from a directory other than /msg
+
+I'm trying to create a flexible way of defining enumerations for different datatypes, such that adding a new enum doesn't invalidate the message hash, thereby ruining the bag.
+Such that a traditional message like:
+
+uint16 VOLTAGE
+
+uint16 CURRENT
+
+uint16 data
+
+Would be split into 2 messages, one simply containing uint16 data and the other containing the enumeration, essentially a documentation file. Ideally these 2 files would be named the same but in separate but parallel folders. So the enumeration file could be defined in constants/Battery.msg and the actual ROS message could be defined in msg/Battery.msg.
+I've managed to add the other file in the CMakeLists.txt file using the DIRECTORY variable in add_message_files, but this doesn't namespace the import, so there is a name conflict.
+So, is there any way to define a new build location for message generation within the same CMakeLists.txt file in ROS? Such that I can import from both custom_msgs.msg and custom_msgs.constants ?
+
+Originally posted by lynx on ROS Answers with karma: 3 on 2021-06-07
+Post score: 0
+
+A:
+
+Edit 2:
+Warning: long piece of text ahead about semantics of messages and why what we have is actually not that bad.
+
+Thank you for the time and in-depth answer! Not the answer I was hoping for, but what I feared... I was hoping that hardcoded /msg in genpy wouldn't be there.
+Thanks for the alternative solution, I was aware of the rosbag migration, just dealing with dozens of bags with 10s of thousands of messages makes adding any new enumeration extremely cumbersome.
+
+With the risk of "gold plating" this, I feel there is actually a big advantage to the way things are implemented now.
+ROS messages (and services and actions) are supposed to be stand-alone. That is: their contents should be interpretable without requiring any external sources of information (that's of course difficult to achieve in reality, but that's the idea).
+This is important both for archival reasons (ie: when stored in .bags from say 10 years ago) as well as to help ensure that consumers will be able to figure out what is being communicated right now. Both at the syntax level (ie: form of the data) as well as semantics (ie: meaning).
+The MD5 hash of message structures ensures that the form of .msgs expected by consumers is exactly the same as those produced by publishers. This not only guarantees that consumers will be able to deserialise the data (ie: they know in what form the data is), but it will also go a long way to make sure that how they interpret the meaning of that data is as the producer expected them to (ie: their responses and behaviour match with what the intentions of the producer were).
+What you propose in your example (using a plain uint16 to contain the value of an enum value and then storing the possible (legal?) values of that uint16 in a separate message type) goes against this (if it doesn't completely make it impossible).
+With the proposed approach, it would be possible to change the members of the "enum" (in quotes, as the msg spec does not really support enums) without any producer or consumer being able to detect this, as there is no direct coupling between the enum and the uint16. None of the hashes would change, as the "enum message" is not stored anywhere.
+The proper way to do this would be to either keep the enumeration values in the same .msg, or use the type of the enumeration .msg as the type of the field containing the value (ie: instead of uint16).
+I realise this doesn't help make things any easier, but I believe the current system does help avoid all sorts of problems.
+
+I was aware of the rosbag migration, just dealing with dozens of bags with 10s of thousands of messages makes adding any new enumeration extremely cumbersome.
+
+This is easy for me to say (as I don't have to do it), but automation should go a long way here. Migration rules should be almost generatable themselves if we're only talking about adding values to enumeration fields. With the rule in place, batch processing .bags should also be relatively straightforward.
+
+Edit: I'm not entirely sure, but from this:
+
+I'm trying to create a flexible way of defining enumerations for different datatypes, such that adding a new enum doesn't invalidate the message hash, thereby ruining the bag.
+
+it might be this is an xy-problem.
+While changing a .msg does change its hash, it does not immediately "ruin" .bags which contain the old definition.
+rosbag supports migration of .bags containing one version of a .msg to another. This requires bag migration rules to be provided, which tell rosbag how to transform old instances of a message type into the new one. The linked page has information on how to write those rules.
+Such a migration does require processing the entire .bag, but it is a one-time process, and keeps the old .bag as-is.
+On modern systems, with high throughput IO systems and high performance CPUs, a moderately sized bag should not take too long to migrate.
+
+Original answer: tl;dr: no, I don't believe this is supported.
+
+Longer: looking at the genmsg_py.py script's help, this could be possible:
+
+$ ./genmsg_py.py --help
+
+Usage: genmsg_py.py file
+
+Options:
+
+  -h, --help      show this help message and exit
+  --initpy        
+  -p PACKAGE      
+  -o OUTDIR       
+  -I INCLUDEPATH  
+
+notice the -o OUTDIR command line argument.
+genpy is the package providing the rospy compatible code generator used to convert your .msg defs into code. gencpp.py supports a similar option, and the other message code generators might as well, I haven't checked.
+So on the generation side, this could be possible.
+However, as you never really invoke any of the message code generation scripts directly, but use the message_generation and message_runtime CMake infrastructure, I see two possible problems/challenges (although I haven't checked whether they are problems/challenges):
+
+the default implementation of the CMake-side to genpy, gencpp et al. hard-codes the output directory to ${ARG_GEN_OUTPUT_DIR}/msg (see here for genpy fi). To change this, you'd have to fork that package and make it do something else, which will not be very scalable.
+none of the consumers of messages will be 'aware' they have to add additional directories to their msg/srv include paths, leading to lookup failures in downstream consumer code-paths.
+
+While technically you could fork the relevant packages and update them, I'm not sure that would be the kind of overhead you'd find acceptable for what you're trying to do.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-06-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by lynx on 2021-06-07:
+Thank you for the time and in-depth answer! Not the answer I was hoping for, but what I feared... I was hoping that hardcoded /msg in genpy wouldn't be there.
+Thanks for the alternative solution, I was aware of the rosbag migration, just dealing with dozens of bags with 10s of thousands of messages makes adding any new enumeration extremely cumbersome. "Ruin" might have been too strong of a word :p
+Comment by lynx on 2021-06-08:
+In reply to edit 2: I don't want to seem like I'm just complaining about ROS, it's an incredible piece of software that I've loved using and seeing what it can do. I hear you, I want to have my cake and eat it too. But, I generally don't treat rosbags as the gold standard of data storage, generally they're exploded into either sql databases or something more standardized if the data is that important to store for ~10 years.
+What I'm proposing would make this data not standalone, that's true, but in combination with other version control systems (i.e. git), for projects that are shorter temporally (like over semester/year) I could see the tradeoff for additional flexibility being worth it. But, that's not the goal of msgs and ROS, as I now understand (via the standalone principal).
+I haven't invested that much time into rosbag migration, I'll try and generate some rules and see if I can make something work.
+Thanks again! I appreciate the explanation, it's neat to see.
+Comment by gvdhoorn on 2021-06-08:\
+
+I don't want to seem like I'm just complaining about ROS
+
+and I just wanted to provide some insight into why the current implementation is as-it-is :)
+no need to apologise.
+

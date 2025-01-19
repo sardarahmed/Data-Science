@@ -1,0 +1,134 @@
+Q:
+
+tf invalid argument
+
+Hi,
+I'm trying to follow this tutorial, and am running into an error. The error is
+    [ERROR] [1497197044.658735156]: Exception thrown while processing service call: Invalid argument passed to lookupTransform argument target_frame in tf2 frame_ids cannot be empty
+[ERROR] [1497197044.663532989]: Service call failed: service [/localize_part] responded with an error: Invalid argument passed to lookupTransform argument target_frame in tf2 frame_ids cannot be empty
+
+The code I am running is:
+ bool localizePart(myworkcell_core::LocalizePart::Request& req,
+                       myworkcell_core::LocalizePart::Response& res)
+     {
+        // Read last message
+           fake_ar_publisher::ARMarkerConstPtr p = last_msg_;
+           if (!p) return false;
+
+           res.pose = p->pose.pose;
+           tf::Transform cam_to_target;
+           tf::poseMsgToTF(p->pose.pose, cam_to_target);
+
+           tf::StampedTransform req_to_cam;
+
+           listener_.lookupTransform(req.base_frame, p->header.frame_id, ros::Time(0), req_to_cam);
+
+           req_to_target = req_to_cam * cam_to_target;
+           tf::poseTFToMsg(req_to_target, res.pose);
+           return true;
+     }
+
+From what I've seen, this error implies one of my arguments in the lookupTransforms function is not initialized. I'm not sure how to fix this, any help will be appreciated.
+
+    /*
+ * vision_node.cpp
+ *
+ *  Created on: May 9, 2017
+ *      Author: donni
+ */
+/**
+ * Simple ROS node
+ */
+
+#include <ros/ros.h>
+#include <fake_ar_publisher/ARMarker.h>
+#include <myworkcell_core/LocalizePart.h>
+#include <tf/transform_listener.h>
+
+class Localizer
+{
+public:
+//Here we are defining the variables which are used in the Localizer class
+    ros::ServiceServer server_;
+    ros::Subscriber ar_sub_;
+    fake_ar_publisher::ARMarkerConstPtr last_msg_;
+    tf::TransformListener listener_;
+
+    tf::Transform req_to_target;
+
+    Localizer(ros::NodeHandle& nh) // This is the constructor
+    {
+        ar_sub_ = nh.subscribe<fake_ar_publisher::ARMarker>("ar_pose_marker", 1,
+        &Localizer::visionCallback, this);
+        server_ = nh.advertiseService("localize_part", &Localizer::localizePart, this);
+    }
+
+    void visionCallback(const fake_ar_publisher::ARMarkerConstPtr& msg)
+    {
+        last_msg_ = msg;
+       // ROS_INFO_STREAM(last_msg_->pose.pose);
+    }
+
+    bool localizePart(myworkcell_core::LocalizePart::Request& req,
+                       myworkcell_core::LocalizePart::Response& res)
+     {
+        // Read last message
+           fake_ar_publisher::ARMarkerConstPtr p = last_msg_;
+           if (!p) return false;
+
+           res.pose = p->pose.pose;
+           tf::Transform cam_to_target;
+           tf::poseMsgToTF(p->pose.pose, cam_to_target);
+
+           tf::StampedTransform req_to_cam;
+
+           listener_.lookupTransform(req.base_frame, p->header.frame_id, ros::Time(0), req_to_cam);
+
+           req_to_target = req_to_cam * cam_to_target;
+           tf::poseTFToMsg(req_to_target, res.pose);
+           return true;
+     }
+
+};
+
+int main(int argc, char* argv[])
+{
+       // This must be called before anything else ROS-related
+       ros::init(argc, argv, "vision_node");
+
+       // Create a ROS node handle
+       ros::NodeHandle nh;
+
+       ROS_INFO("Hello, World!");
+
+       // The Localizer class provides this node's ROS interfaces
+          Localizer localizer(nh);
+
+          ROS_INFO("Vision node starting");
+
+       // Don't exit the program.
+       ros::spin();
+}
+
+Originally posted by dshimano on ROS Answers with karma: 129 on 2017-06-11
+Post score: 0
+
+Original comments
+Comment by ufr3c_tjc on 2017-06-11:
+I would first make sure that your request has a non-zero base_frame (using a ROS_INFO print). You could also do the same for the p->header.frame_id. You could also manually fill the first two fields (with "base_link", for example), one-by-one, to see which one is giving the error.
+
+A:
+
+I had the same error message returned to me.
+I then figured that my 'target_frame' argument (req.base_frame) in the listener lookupTransform call is empty!
+So I went in my main node (myworkcell_node.cpp) and noticed that the service request parameter 'base_frame' was only added after the service call when it should be BEFORE.
+This line 'srv.request.base_frame = base_frame' should be before this line 'vision_client_.call(srv)'.
+
+Originally posted by gotowinter with karma: 16 on 2018-02-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gotowinter on 2018-02-02:
+Just realised that in any case the source code can all be found here: https://github.com/ros-industrial/industrial_training/tree/kinetic/exercises
+

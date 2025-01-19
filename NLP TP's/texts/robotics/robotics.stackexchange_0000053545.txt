@@ -1,0 +1,104 @@
+Q:
+
+Navigation: oscilation on local planner
+
+Dear community,
+I am working on a mobile robot (differential drive), using a Hokuyo Laser Range Finder and the navigation stack (ROS Groovy on Ubuntu 12.04) for autonomous navigation.
+I have calibrated the odometry of the robot and I can get a fairly good map of the environment using gmapping. Once the map is saved, I can joystick the robot around and it stays well localized on the map.
+Then I use Rviz to send a navigation goal to the robot, the global planner does its job and generates a global path, the robot starts to move and eventually it reaches its goal, but it does so with something that can only be described as "flair" (and a lot of it!!)
+Navigation with flair http://ros.org/wiki/navigation?action=AttachFile&do=get&target=nav_comic.png
+I have read carefully all the documentation on navigation and especially the guide on tuning the robot for navigation.
+I suspect that the problem might be in the configuration parameters of the local planner (maybe the acceleration and speed limits, but I am using the values that are supposed to be appropriate from my robot) and managed to get a navigation behaviour a bit less "flairly" by reducing the width and height of the local planner, from the default 6 meters, to 1 meter. But still, the robot oscillates around the global path.
+You can see this video
+Is there any way to solve this?   As I mentioned, I read all the documentation from head to tail and still can figure it out. Posting this question is my last resort, so I would deeply appreciate any advice or answers.
+Thank you so much in advance.
+[For the sake of completeness here goes the launch and configuration files for navigation]
+<launch>
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <remap from="cmd_vel" to="base_controller/command"/>
+    <rosparam file="$(find beego)/config/LRF/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find beego)/config/LRF/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find beego)/config/LRF/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find beego)/config/LRF/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find beego)/config/LRF/move_base_params.yaml" command="load" />
+  </node>
+
+</launch>
+
+costmap_common_params.yaml
+obstacle_range: 3.5
+raytrace_range: 4.0
+footprint: [[-0.25, -0.25], [-0.25, 0.25], [0.25, 0.25], [0.35, 0.0], [0.25, -0.25]]
+inflation_radius: 0.65
+
+observation_sources: laser_scan_sensor
+
+laser_scan_sensor: {sensor_frame: /laser, data_type: LaserScan, topic: /scan, marking: true, clearing: true, expected_update_rate: 10.0}
+
+local_costmap_params.yaml
+local_costmap:
+  global_frame: /map
+  robot_base_frame: base_link
+  update_frequency: 5.0
+  publish_frequency: 2.0
+  static_map: false
+  rolling_window: true
+  width: 1.0
+  height: 1.0
+  resolution: 0.05
+
+global_costmap_params.yaml
+global_costmap:
+  global_frame: /map
+  robot_base_frame: base_link
+  update_frequency: 5.0
+  publish_frequency: 2.5
+  static_map: true
+  width: 0.0
+  height: 0.0
+
+move_base_params.yaml
+controller_frequency: 10
+controller_patience: 15.0
+oscillation_timeout: 10.0
+oscillation_distance: 0.5
+
+TrajectoryPlannerROS:
+  max_vel_x: 0.45
+  min_vel_x: 0.1
+  max_rotational_vel: 1.0
+  min_in_place_rotational_vel: 0.4
+
+  acc_lim_th: 1.0
+  acc_lim_x: 0.5
+  acc_lim_y: 0.5
+  path_distance_bias: 50.0
+  goal_distance_bias: 0.8
+  holonomic_robot: false
+
+Originally posted by Martin Peris on ROS Answers with karma: 5625 on 2013-08-15
+Post score: 3
+
+A:
+
+From your video, it seems you are having problem with localization, as your laser scans (in red) are moving a lot. Although you say you have good localization, as far as I understood, when you test it you are not using the navigation stack. That puts an extra load on your hardware, which may result in bad localization, when everything is running together (I had similar problems running simulations, that would go away when using more powerful machines, without changing any parameters).
+If you can use a more powerful hardware, I would give it a try. If not, try to relax some of the navigation stack constraints, specially the forward simulation parameters. Try reducing the simulation time, the number of samples and the loop frequency.
+I hope this helps...
+
+Originally posted by Procópio with karma: 4402 on 2013-08-15
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Martin Peris on 2013-08-19:
+Thanks a lot! Yes, when I test the odometry the navigation stack is not running and the hardware I am using is not powerful at all. I will try to get my hands on a kick-ass machine, but first I will try your suggestion on relaxing some navigation constraints.
+Comment by Martin Peris on 2013-10-28:
+You were right, relaxing those constrains (specially the loop frequency), the robot could navigate smoothly along the global path.
+Comment by RB on 2014-01-26:
+Hi, I have two doubts; 1. I think first one is your move_base.launch file. Why you have included "remap from="cmd_vel" to="base_controller/command"
+
+Instead of move_base_params.yaml; I have added base_local_planner_params.yaml which have similar parameters except first four lines (controller_frequency, oscillation_timeout etc). Is it make a huge difference in autonomous behavior? Where you have set the FORWARD SIMULATION PARAMETER?
+
+Please Reply..
+

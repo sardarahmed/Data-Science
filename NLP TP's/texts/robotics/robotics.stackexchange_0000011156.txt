@@ -1,0 +1,45 @@
+Q:
+
+What is the best way to compute the probabilistic belief of a robot equipped with a vision sensor?
+
+I am trying to implement 'belief space' planning for a robot that has a camera as its main sensor. Similar to SLAM, the robot has a map of 3D points, and it localizes by performing 2D-3D matching with the environment at every step. For the purpose of this question, I am assuming the map does not change. 
+As part of belief space planning, I want to plan paths for the robot that take it from start to goal, but in a way that its localization accuracy is always maximized. Hence, I would have to sample possible states of the robot, without actually moving there, and the observations the robot would make if it were at those states, which together (correct me if I am wrong) form the 'belief' of the robot, subsequently encoding its localization uncertainty at those points. And then my planner would try to connect the nodes which give me the least uncertainty (covariance).
+As my localization uncertainty for this camera-based robot depends entirely on things like how many feature points are visible from a given locations, the heading angle of the robot etc.: I need an estimate of how 'bad' my localization at a certain sample would be, to determine if I should discard it. To get there, how do I define the measurement model for this, would it be the camera's measurement model or would it be something relating to the position of the robot? How do I 'guess' my measurements beforehand, and how do I compute the covariance of the robot through those guessed measurements?
+EDIT: The main reference for me is the idea of Rapidly exploring Random Belief Trees, which is an extension of the method Belief Road Maps. Another relevant paper uses RRBTs for constrained planning. In this paper, states are sampled similar to conventional RRTs, represented as vertices as a graph, but when the vertices are to be connected, the algorithm propagates the belief from the current vertex to the new, (PROPAGATE function in section V of 1), and here is where I am stuck: I don't fully understand how I can propagate the belief along an edge without actually traversing it and obtaining new measurements, thereby new covariances from the localization. The RRBT paper says "the covariance prediction and cost expectation equations are implemented in the PROPAGATE function": but if only the prediction is used, how does it know, say, whether there are enough features at the future position that could enhance/degrade the localization accuracy?
+
+A:
+
+Use bearings-only localization to model camera informativeness, and simulate measurements with zero noise (e.g., no innovation).
+For a variety of reasons, this is actually theoretically sound way of estimating the informativeness of a path. 
+There are many "measurement free" informative-ness metrics, like the Fisher Information Matrix. All you need are the positions of the robot and the positions of the landmarks in the map to determine how much information about the robot's position would be obtained by measuring the landmark locations. (Or visa-versa, the innovation from measurements is applied to both target and robot (it's SLAM right?), so the same metric works for both).
+I'd start with a bearing sensor, as that's a good, well accepted model of a vision sensor. Figure out the "noise" on the bearing measurements by assuming a few pixels of error in locating features in the world.  Let the state of the system be the position of the robot plus its uncertainty, and then sample paths (as you suggest). From each position in the sampled path, I'd recompute the predicted uncertainty using the FIM. This is not hard to do, just assume no error in the measurements (i.e., there will be no "innovation" about the robot's belief, but you will still experience a drop in uncertainty represented by shrinking covariance in the robot's position estimate. I would not update the locations or uncertainties of the landmarks, just to simplify the problem. 
+This is a fairly well understood approach from what I recall in my last review of this literature, but don't take my word for it (review yourself!). At least this should form a baseline approach that is easy to simulate. Let's use the power of literature. You might peruse this thesis for the set up and equations.
+Summarizing
+
+Form the state vector $x$ which is the position (and orientation if you care) of the robot, and uncertainty in those position elements $\Sigma$. 
+Use an RRT, discrete graph planner (dijkstra / A*), or grid search (A* probably), but at every "step" of the sampled trajectory, recompute $\Sigma_i$ using the standard EKF update equations. 
+Let the "cost" of the trajectory be some convex combination of progress towards goal and the inverse of the covariance (e.g., the information matrix)
+
+Some subtleties
+Use the smallest state vector that makes sense. If you can assume the robot can point the camera independently of motion, or has multiple cameras, then ignore orientation and just track position. I'll proceed in 2D positions only.
+You will have to derive the linearized system, but can borrow it from the thesis above. make sure to not bother with simulating measurements (e.g., if you only do EKF updates with "simulated measurements", then assume the measurements are true and without noise. 
+Critically, this simplifies the planning problem as your state doesn't change except for the uncertainty and planned motion. Check the equations here for EKF, and note that the only two equations that are relevant to calculate the new covariance are 
+$$P_{i|i-1}=F^T_iP_{i-1|i-1}F_i+Q$$ 
+and $$P=P-PH^T  (H P H^T + R)^{-1}  HP$$ ... (I expanded the kalman gain into the last equation).
+If we apply Woodbury matrix identity
+we simplify that second one to $$P^{-1}=P^{-1}+H^TR^{-1}H$$. 
+We're done. You have a nice informativeness measure over the $n$ steps of the trajectory as,
+$$I=\sum_{i=1}^n H_i^TR^{-1}H_i$$
+where $R$ is the measurement noise (e.g., the bearing error of measurement to each landmark), for each time step in your trajectory. Since we are looking at information (inverse of covariance) we want to maximize the trace, determinant, or something else of $\sum_{i=1}^n H_i^TR^{-1}H_i$
+So, what's $H$? Well it's the Jacobian of the measurement function with respect to the robot's location. That is, $H$ is of size $nx2$, since you have $n$ landmarks ($n$ measurement functions), and $2$ state elements of the robot: x,y. $R$ is of size $n\times n$, where I would set it to $\sigma I_{n\times n}$ for some pretend value of $\sigma$,(the actual uncertainty doesn't matter, it's all the same constant.
+What's the measurement equation? It's 
+$$\tan^{-1}\frac{y_t-y_r}{x_t-x_r}$$ 
+for target $t$ and robot position $r$.
+
+Unwinding the recursion. I'd proceed as follows:
+
+Write a path search algorithm that finds its way without considering uncertainty.
+Derive $H$, or look it up in any bearings localization paper. 
+To determine the "goodness" of a path for use in the search algorithm, add in $trace(H^TRH)$ for each pose along the path. 
+Notice that the result matches the FIM of the trajectory (exercise left to the reader), and you have correctly and in a theoretically sound way determined the most informative trajectory.
+

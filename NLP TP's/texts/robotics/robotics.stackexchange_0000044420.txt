@@ -1,0 +1,39 @@
+Q:
+
+What is the mathematics behind the turtlebot calibration?
+
+Because of problems with the calibration, I try to understand what is happening in the turtlebot_calibration node, specifically the scan_to_angle.py, method scan_cb(). This is a piece of code that attempts to calculate a single angle from a scan. The code is:
+   for r in msg.ranges:
+        if angle > self.min_angle and angle < self.max_angle and r < msg.range_max:
+            x = sin(angle) * r
+            y = cos(angle) * r
+            sum_x += x
+            sum_y += y
+            sum_xx += x*x
+            sum_xy += x*y
+            num += 1
+        angle += d_angle
+    if num > 0:
+        angle=atan2((-sum_x*sum_y+num*sum_xy)/(num*sum_xx-sum_x*sum_x), 1)
+        res = ScanAngle()
+        res.header = msg.header
+        res.scan_angle = angle
+        self.pub.publish(res)
+    else:
+        rospy.logerr("Please point me at a wall.")
+
+Can someone tell me more about the mathematics behind this?
+You may also notice that the algorithm uses the atan2() in a unintended way, causing a divide by zero in case of all x = 0 (unlikely) or num = 1.
+
+Originally posted by Jaap Reitsma on ROS Answers with karma: 76 on 2012-09-26
+Post score: 2
+
+A:
+
+To answer my own question: I remembered again this type of code: It is linear regression. The basics is that the wall is assumed to be straight and that the laser scanner or Kinect projects within a sufficient small window a number of scans with points (range, angle) on a straight line y = a.x + b. These polar coordinates are converted to (x, y) coordinates and inserted in a linear regression (least squares) formula. We are interested in the direction of the line, or better the perpendicular line (that is rotated 90 degrees). I think the code snip above is mixing the cos and sin as for a right-handed coordinate system the normal definition is x = r.cos(alfa). Because of the perpendicular line the final result is ok after all.
+For a line you need of course at least 2 scan points, and for a reliable result many more. Perhaps you also need to average the angle for less noise.
+
+Originally posted by Jaap Reitsma with karma: 76 on 2012-09-27
+This answer was ACCEPTED on the original site
+Post score: 4
+

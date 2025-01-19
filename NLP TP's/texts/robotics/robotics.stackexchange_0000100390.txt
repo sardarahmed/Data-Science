@@ -1,0 +1,55 @@
+Q:
+
+[slam_toolbox]: Message Filter dropping message: for reason 'discarding message because the queue is full'
+
+Hi everyone,
+I am using slam_toolbox (in ROS2 Galactic) to generate a map of an environment using Ros2 bag files of recorded Odometry and Laser Scan data.
+However, when starting the slam toolbox via ros2 launch slam_toolbox online_sync_launch.py I get the following error.
+
+[sync_slam_toolbox_node-1] [INFO]
+[1635173765.135318248] [slam_toolbox]:
+Message Filter dropping message: frame
+'laser_frame' at time 1626324749.677
+for reason 'discarding message because
+the queue is full'
+
+Device information:
+
+OS: Ubuntu - OS version: 20.04 - CPU: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz x 8 - GPU Nvidia: GeForce MX130 - Memory : 8GB
+
+Moreover, I have used the default configuration of the slam toolbox as below, and warnings are shown here:
+
+# ROS Parameters
+odom_frame: odom
+map_frame: map
+base_frame: base_footprint
+scan_topic: /scan
+
+Clearly, RVIZ2 warnings are caused by the slam-toolbox which is not functioning as messages are getting discarded because the queue is full. Additionally, the rqt-graph looks like this:
+
+I suspect my issue is with my slam configuration. Has anyone seen this type of error before? I feel like I'm missing something easy.
+
+Originally posted by JehanJay on ROS Answers with karma: 35 on 2021-10-25
+Post score: 3
+
+A:
+
+Does your rosbag have the full TF tree? That's message filters saying that it didn't call the callback with the sensor data because there wasn't a tranform available when it queued or anytime after that point. The queue expires old messages that weren't able to be transformed.
+Edit: from your screen shot, you don't have the odom -> base link transform, that could be what's causing it, easily.
+I suppose it could also be the case that you're on such a low compute platform that you're not able to process the SLAM system in time before things are being thrown out, but given you lack any map at all in your screen shot, I think its more likely that you're missing a complete TF tree. And I think if you were on an RPi or something very small, you would have mentioned that in the question ;-)
+
+Originally posted by stevemacenski with karma: 8272 on 2021-10-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by JehanJay on 2021-11-10:
+Yes, the problem was due to not having the complete TF tree. Translating all the Odom messages to TF solved the issue for me.
+Comment by ericnasanta on 2021-11-17:
+Howdy! I'm having the same problem. I know I have to create a odom -> base link transform, but I'm not sure how. I just switched to a physical robot from gazebo, so the transformation was being created by one of the gazebo plugins. If you don't mind me asking, how were you able to accomplish this?
+Comment by JehanJay on 2021-11-21:
+@ericnasanta ,  I created a script to translate all the /odom messages and write/publish them in /tf topic. If you're using a rosbag  file or ros2bag file for live mapping you could run this translation script while playing the bag file to get the complete TF tree. Or else you could create a newer bag file with additional /tf topic with all the translated /odom messages.  Either way, you get the same complete TF tree that is required for the slam toolbox to execute its operation.
+Use this link to perform the /odom-/f translation. If you're using Ros2, the script is a bit different but the idea is almost the same :)
+Comment by ericnasanta on 2021-11-22:
+Thanks for the help!
+

@@ -1,0 +1,60 @@
+Q:
+
+How can you create dependencies between custom output targets and generated messages from other packages (packages in ${catkin_EXPORTED_TARGETS})
+
+I have a command and target as in the following:
+add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/my_package/config/config.json
+  COMMAND ${CMAKE_BINARY_DIR}/../devel/env.sh ./gen_config ${CMAKE_BINARY_DIR}/my_package/config/config.json
+  DEPENDS ${catkin_EXPORTED_TARGETS}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/my_package/scripts
+  VERBATIM)
+
+add_custom_target(my_package_generate_config ALL DEPENDS ${CMAKE_BINARY_DIR}/my_package/config/config.json)
+
+What I want is to be able to add a new message (i.e. a new file NewMessage.msg and related CMakeLists entry in add_message_files) to an external package that this package is dependent on and have the config regenerate (as it depends on all available messages).
+Is there any way to do this?
+
+Originally posted by scott-ch on ROS Answers with karma: 11 on 2016-12-08
+Post score: 1
+
+A:
+
+I don't know if you can:
+
+The DEPENDS option specifies files on
+which the command depends. If any
+dependency is an OUTPUT of another
+custom command in the same directory
+(CMakeLists.txt file) CMake
+automatically brings the other custom
+command into the target in which this
+command is built. If DEPENDS is not
+specified the command will run
+whenever the OUTPUT is missing; if the
+command does not actually create the
+OUTPUT then the rule will always run.
+If DEPENDS specifies any target
+(created by an ADD_* command) a
+target-level dependency is created to
+make sure the target is built before
+any target using this custom command.
+Additionally, if the target is an
+executable or library a file-level
+dependency is created to cause the
+custom command to re-run whenever the
+target is recompiled.
+-- https://cmake.org/cmake/help/v3.0/command/add_custom_command.html
+
+So based on that, I'd say that the message generation target (which is also created with add_custom_command: https://github.com/ros/gencpp/blob/indigo-devel/cmake/gencpp-extras.cmake.em#L24) does not transitively provide the file level dependency because of the stipulation in the line "If any dependency is an OUTPUT of another custom command in the same directory (CMakeLists.txt file) CMake automatically brings the other custom command into the target in which this command is built." about it needing to be in the same CMakeLists.txt file.
+Within a single workspace and using catkin_make, you might have a chance at getting the list of generated files since they share a CMake instance, but I do not think there is a way to get the list of those files from a separate workspace or when using catkin_make_isolated/catkin_tools.
+I also looked at whether or not you could get the output depends files as a property of the gencpp target, but I don't think you can.
+Finally, you could look at the IMPLICIT_DEPENDS in the specific case of the C++ generated files. It is described in the documentation of add_custom_command (linked above).  Make sure you look at the right version of the CMake docs (based on the OS you're using), as the command could have changed.
+
+Originally posted by William with karma: 17335 on 2016-12-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by scott-ch on 2016-12-08:
+Thanks for your answer, although it was not exactly what I wanted to hear!
+

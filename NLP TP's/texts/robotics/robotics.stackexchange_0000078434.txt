@@ -1,0 +1,60 @@
+Q:
+
+Persistent map frame in RTAB-Map localization mode
+
+I have a map generated using a Kinect and RTAB-Map. I want to run RTAB-Map again in localization mode using the same database, and have repeatable coordinates within the map, regardless of my starting position.
+From what I understand, the map frame origin is set to the starting point when odometry starts, so I don't know my position within the saved map. I'd like to have a canonical set of coordinates that is the same for the same physical location between sessions. If there was a tf frame that is fixed within the saved map, that would work.
+Does RTAB-Map have this feature? What should I do to achieve this?
+Thanks
+
+Originally posted by micander on ROS Answers with karma: 21 on 2017-01-19
+Post score: 2
+
+Original comments
+Comment by natejgardner on 2017-01-21:
+I saw this in the rtabmap multi-session mapping video. There must be a way to get the absolute coordinates relative to the map.
+
+A:
+
+Hi,
+Make sure parameter "RGBD/OptimizeFromGraphEnd" is set to false (default is false) so that the robot is localized accordingly to the first node in the map (your fixed map's frame). rtabmap will publish /map -> /odom frame to convert the robot pose into /map frame. For example between sessions, each time rtabmap is localized against the same location, /map -> /base_link will be always the same (the same pose in the map independently of the odometry value).
+Note that /map -> /odom is published only when the robot is first localized. On start, make sure the robot can recognize where it is (i.e., it is actually at a real location in the map).
+EDIT: Small example
+Start the camera:
+$ roslaunch freenect_launch freenect.launch depth_registration:=true
+
+Create a map (clear the database and use RVIZ):
+$ roslaunch rtabmap_ros rtabmap.launch rtabmap_args:="--delete_db_on_start" rtabmapviz:=false rviz:=true
+
+When loop closures are detected, the /map -> /odom transform should change:
+
+Now kill rtabmap.launch to save the database, then relaunch in localization mode:
+$ roslaunch rtabmap_ros rtabmap.launch localization:=true rtabmapviz:=false rviz:=true
+
+Move the camera in the same area than in the map, until a localization happens, then /map -> /odom will be published again (with some values depending on where you started the camera the second time):
+
+Note that here I clicked Download Map on the MapCloud plugin to get back the map shown in RVIZ.
+cheers
+
+Originally posted by matlabbe with karma: 6409 on 2017-01-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by natejgardner on 2017-02-01:
+/map -> /odom is always 0.000 for me. We confirmed RGBD/OptimizeFromGraphEnd is false, and no matter where we start (we even checked the database to make sure the camera frame matches up almost perfectly with an image saved in the database), /map and /odom are the same frame.
+Comment by natejgardner on 2017-02-01:
+Just to confirm, where is the parameter RGBD/OptimizeFromGraphEnd set?
+Comment by matlabbe on 2017-02-04:
+I updated the answer. It is set internally to its default value (false). To change it, you can use $roslaunch rtabmap_ros rtabmap.launch rtabmap_args:="--RGBD/OptimizeFromGraphEnd true". You can also set <param name="RGBD/OptimizeFromGraphEnd" type="string" value="true"/> under rtabmap tag
+Comment by matlabbe on 2017-02-04:
+All RTAB-Map core parameters can be set that way. To see a complete list off all parameters: $rosrun rtabmap_ros rtabmap --params
+Comment by natejgardner on 2017-02-06:
+Thanks for the update. Unfortunately, /map -> /odom is still always published as zero, even when there is a loop closure. That said, there is almost never a loop closure. It seems that downloading the cloud first may be necessary? We get more loop closures when we do this, but it takes 30 minutes.
+Comment by micander on 2017-02-06:
+I still can't get it working. Is rviz mode required for localization? I'm using the rtabmapviz mode. It seems that loop closures are occurring (green flashes) but rosrun tf tf_echo /map /odom still outputs zero values.
+Comment by matlabbe on 2017-02-06:
+Downloading the cloud in RVIZ is not necessary, it is just for visualization. RVIZ is not necessary either, it should work with or without rtabmapviz too. Do you have a video of the problem? Which version are you using? How do you launch the nodes? You can update your question for clarity.
+Comment by micander on 2017-02-10:
+The project's not public but we can send you an email with the video. We're using version 0.11.11 that we built with eigen, gtsam, cvsba, g2o, and mkl. We're launching with a launch file that <include>s a copy of rtabmap.launch from rtabmap_ros, as well as starting kinect2_bridge.
+

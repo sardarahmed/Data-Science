@@ -1,0 +1,83 @@
+Q:
+
+How to subscribe to two image topics
+
+Hello,
+I am trying to write a node that subscribes to image_color_rect and image_depth_rect topics provided by my Kinect v2's driver node. I have written the following sample:
+void kinectdepthCallback(const sensor_msgs::ImageContPtr& msg2){
+    
+    cv_bridge::CvImagePtr cv_ptr2;
+    try{
+        cv_ptr2 = cv_bridge::toCvCopy(msg2, sensor_msgs::image_encodings::BGR8); 
+    }
+    catch (cv_bridge::Exception& e){
+        ROS_ERROR("Could not convert from '%s' to 'bgr8'.", e.what());
+    return;
+    }
+    cv::imshow("Depth Image",cv_ptr2->image);
+}
+
+void kinectCallback(const sensor_msgs::ImageConstPtr& msg){
+  cv_bridge::CvImagePtr cv_ptr;
+    try{
+        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8); 
+    }
+    catch (cv_bridge::Exception& e){
+        ROS_ERROR("Could not convert from '%s' to 'bgr8'.", e.what());
+    return;
+    }
+    (some code here)
+}
+
+int main(int argc, char** argv)
+{
+  ROS_INFO("Initializing node");
+  ros::init(argc, argv, "image_converter");
+  ros::NodeHandle kinect_node;
+  image_transport::ImageTransport it(kinect_node);
+  //image_transport::ImageTransport it2(kinect_node);
+  image_transport::Subscriber sub;
+  sub = it.subscribe("/kinect2/qhd/image_color_rect",1,kinectCallback);
+  sub = it.subscribe("/kinect2/qhd/image_depth_rect",1,kinectdepthCallback);
+
+ (some other code here)
+
+  return 0;
+}
+
+My code works without errors if I don't subscribe for the depth image.
+I am trying to do these 2 subscriptions, but I get an error like the following:
+error: invalid initialization of reference of type ‘const int&’ from expression of type ‘const boost::shared_ptr<const sensor_msgs::Image_<std::allocator<void> > >’
+           BOOST_FUNCTION_RETURN(f(BOOST_FUNCTION_ARGS));
+
+What probably is the reason for that?
+Aren't my subscriptions correct?
+Also what kind of encoding should I have for the depth image?
+Thanks for answering in advance,
+Chris
+
+Originally posted by patrchri on ROS Answers with karma: 354 on 2016-10-13
+Post score: 0
+
+Original comments
+Comment by Thomas D on 2016-10-13:
+Have you tried two unique subscribers, one for each topic?
+Comment by patrchri on 2016-10-13:
+I am actually trying to create one node to do 2 subscriptions.
+Comment by Thomas D on 2016-10-13:
+I mean that you should try two unique subscribers within a single node. You would end up with image_transport::Subscriber sub_image and image_transport::Subscriber sub_depth. Then use it.subscribe on each one with a different topic/callback for each. One subscriber per topic in ROS.
+Comment by patrchri on 2016-10-13:
+Thanks for the tip...I solved it
+Comment by Thomas D on 2016-10-13:
+The way that your example code is now (plus the fix for spelling error) you will only ever get to the depth callback because you are reassigning the single subscriber. You will still need multiple subscribers in a single node if you want both sets of messages.
+Comment by Thomas D on 2016-10-13:
+I don't know which encoding you need. It would help if you update your original question with the error you are getting. In your callback you could try printing out msg2->encoding to see what is being received, and maybe use that field for cv_bridge.
+
+A:
+
+You should try two unique subscribers within a single node. You would end up with image_transport::Subscriber sub_image and image_transport::Subscriber sub_depth. Then use it.subscribe on each one with a different topic/callback for each. One subscriber per topic in ROS. The way that your example code is now (plus the fix for spelling error) you will only ever get to the depth callback because you are reassigning the single subscriber. You will still need multiple subscribers in a single node if you want both sets of messages.
+
+Originally posted by Thomas D with karma: 4347 on 2016-10-13
+This answer was ACCEPTED on the original site
+Post score: 0
+

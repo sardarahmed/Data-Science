@@ -1,0 +1,77 @@
+Q:
+
+Converting Python tf code to C++
+
+Are there any non-trivial examples for using the tf package to calculate quaternions in C++ for an Arduino?
+I'm trying to convert this Python code for publishing IMU data, to the equivalent C++, so I can run it on an Arduino using the rosserial_arduino package:
+import rospy
+import tf
+from sensor_msgs.msg import Imu
+from std_msgs.msg import Header
+
+imu_msg = Imu()
+imu_msg.header = Header()
+imu_msg.header.stamp = rospy.Time.now()
+imu_msg.header.frame_id = '/base_link'
+quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+imu_msg.orientation.x = quaternion[0]
+imu_msg.orientation.y = quaternion[1]
+imu_msg.orientation.z = quaternion[2]
+imu_msg.orientation.w = quaternion[3]
+imu_msg.linear_acceleration.x = accel[0]
+imu_msg.linear_acceleration.y = accel[1]
+imu_msg.linear_acceleration.z = accel[2]
+imu_pub.publish(imu_msg)
+
+However, even though there are several general-purpose C++ examples and rosserial_arduino examples for using Tf, I can't find anything for calculating quaternions on the Arduino.
+All the C++ code I've found seems to require defining:
+tf::Transform transform;
+
+However, there doesn't seem to be any tf.h header available for the Arduino, and this gives me the compilation error:
+error: 'Transform' in namespace 'tf' does not name a type
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2017-04-01
+Post score: 0
+
+Original comments
+Comment by NEngelhard on 2017-04-02:
+my 2 cents: I always try to do as little on the arduino as possible, in you case, I'd send the data you read on the serial connection and then handle the conversions on a system where you just have all the libraries (and python)
+
+A:
+
+It seems quaternions and IMU message sending work just fine on the Arduino, but some of the tf math is missing. Rosserial only implements createQuaternionFromYaw, but I need createQuaternionFromRPY. Fortunately, this algorithm is well documented elsewhere, as the rosserial_arduino author noted, so all I had to add to my code was:
+static geometry_msgs::Quaternion createQuaternionFromRPY(double roll, double pitch, double yaw) {
+    // https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles#Source_Code
+    // http://docs.ros.org/api/geometry_msgs/html/msg/Quaternion.html
+    geometry_msgs::Quaternion q;
+    double t0 = cos(yaw * 0.5);
+    double t1 = sin(yaw * 0.5);
+    double t2 = cos(roll * 0.5);
+    double t3 = sin(roll * 0.5);
+    double t4 = cos(pitch * 0.5);
+    double t5 = sin(pitch * 0.5);
+    q.w = t0 * t2 * t4 + t1 * t3 * t5;
+    q.x = t0 * t3 * t4 - t1 * t2 * t5;
+    q.y = t0 * t2 * t5 + t1 * t3 * t4;
+    q.z = t1 * t2 * t4 - t0 * t3 * t5;
+    return q;
+}
+
+and then my IMU publisher looks like:
+imu_msg.header.stamp = nh.now();
+imu_msg.header.frame_id = base_link;
+imu_msg.orientation = createQuaternionFromRPY(imu.roll_radians, imu.pitch_radians, imu.yaw_radians);
+imu_msg.linear_acceleration.x = imu.accel.x;
+imu_msg.linear_acceleration.y = imu.accel.y;
+imu_msg.linear_acceleration.z = imu.accel.z;
+imu_publisher.publish(&imu_msg);
+
+I ran into some weird issues because I forgot to advertise my publisher with:
+ros::Publisher imu_publisher = ros::Publisher("imu", &imu_msg);
+
+and I think that was causing the Arduino to crash or hang, and I was confusing that with the IMU packet being too big, when it was actually just fine. But after I added that, I was able to subscribe to /myarduino/imu with rostopic and see IMU messages stream without issue.
+
+Originally posted by Cerin with karma: 940 on 2017-04-03
+This answer was ACCEPTED on the original site
+Post score: 1
+

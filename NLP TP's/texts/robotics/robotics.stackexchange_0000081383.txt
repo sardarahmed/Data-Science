@@ -1,0 +1,209 @@
+Q:
+
+Create a generic node in python
+
+Hi all, I am trying to post this question once again. I am trying to create a ros node with multiple publishers, subscribers, services and action servers. To create this, I create a class and define functions for all publishers(using while loop), subscribers, services and actions. But when I call these functions using the object of the class in the main block, only the first called publisher runs(in the while loop), blocking all the other method calls.
+The code is as below:
+#!/usr/bin/env python
+import roslib
+import rospy
+import sys
+from std_msgs.msg import String
+import actionlib
+from smach_ros import ActionServerWrapper
+from SKA.srv import *
+from SKA.msg import *
+from threading import Thread
+from actionlib_msgs.msg import *
+
+class CN_Dish():
+    def __init__(self):
+        rospy.init_node('cn_dish')
+        init_message = rospy.get_param('~message', 'cn_dish node started')
+        rate = float(rospy.get_param('~rate', '1.0'))
+        rospy.loginfo('rate = %d', rate)
+       
+#(Continuous   Publisher) 
+    def publisher_For_HealthMonitoring(self,event):
+        pub = rospy.Publisher('HealthMonitoring', HealthMonitoring_Message,queue_size=10)
+        rate = rospy.Rate(10) # 10hz 
+        msg = HealthMonitoring_Message()
+        while not rospy.is_shutdown():
+            rospy.loginfo(msg)
+            pub.publish(msg)
+
+#(Continuous   Publisher) 
+    def publisher_For_powerLevel(self,event):
+        pub = rospy.Publisher('powerLevel', PowerLevel_Message,queue_size=10)
+        rate = rospy.Rate(10) # 10hz 
+        msg = PowerLevel_Message()
+        while not rospy.is_shutdown():
+            pub.publish(msg)
+
+    #(Single time publisher)
+    def publisher_For_ThresholdCrossed(self):
+        pub = rospy.Publisher('ThresholdCrossed', ThresholdCrossed_Message)
+        rate = rospy.Rate(10) # 10hz 
+        msg = ThresholdCrossed_Message()
+        if not rospy.is_shutdown():
+            rospy.loginfo(msg)
+            pub.publish(msg)
+            rospy.spin()
+
+  #(Single time publisher)
+    def publisher_For_Pointing(self):
+        pub = rospy.Publisher('Pointing', Pointing_Message)
+        rate = rospy.Rate(10) # 10hz 
+        msg = Pointing_Message()
+        if not rospy.is_shutdown():
+            rospy.loginfo(msg)
+            pub.publish(msg)
+            rospy.spin()
+            rate.sleep() 
+    
+    #(Subscriber for some external event)
+    def subscriber_for_event_ObserveStarted(self):
+        topic = rospy.get_param('~topic', 'ObserveStarted')
+        print "Subscription Started"
+        rospy.Subscriber(topic, ObserveStarted_Message ,self.callback_for_event_ObserveStarted)
+        
+    # Create a callback function for the subscriber.
+    def callback_for_event_ObserveStarted(self,data):
+    # Simply print out values in our custom message.
+        rospy.loginfo(rospy.get_name() + " Event %s", data)
+
+    #Goal Action Server
+    def action_server_for_Point(self):
+        self._as = actionlib.SimpleActionServer('Point', Point_ActionAction, 
+                                                                          execute_cb=self.handle_Point_action, auto_start = False)
+        self._as.start() 
+            
+    def handle_Point_action(self, goal):
+         r = rospy.Rate(1)
+         success = True
+         a = 0
+         while success:
+            print "Hello"
+            a = a+1
+            if(a>10):
+                success = False
+            r.sleep()
+         rospy.loginfo('Executing Goal ')
+             result = Point_ActionResult()
+               
+         if True:
+            result.status = a
+                     
+#Service
+    def handle_Stop_service(self,req):
+        print "Request Received %d"%(req.devNo)
+        
+        return (0)  
+            
+    def service_server_for_Stop(self):
+        s = rospy.Service('Stop', Stop_Service, self.handle_Stop_service)
+        print "Ready Processing for Service."
+        rospy.spin()
+
+if __name__ == '__main__':
+# Initialize the node and name it.
+# Go to class functions that do all the heavy lifting. Do error checking.
+       try:
+           ne = CN_Dish()
+           ne.(call all the function defined in the class to start publishing, subription, services and action server)
+           print "Done"
+       except rospy.ROSInterruptException: pass
+
+Any hint or help would be a great help !!
+
+Originally posted by amarbanerjee23 on ROS Answers with karma: 5 on 2017-06-21
+Post score: 0
+
+Original comments
+Comment by NEngelhard on 2017-06-21:
+That's no pseudo code. You have removed everything that could give a hint an what you do wrong...
+Comment by amarbanerjee23 on 2017-06-21:
+Hi,
+Thanks for viewing the post.
+If I could explain my question again, I wish to create a ROS node which contains multiple publishers and subscribers and also multiple Service Servers and Action Servers.
+As for the code, I am very sorry that I can't post it in any more details
+Comment by Airuno2L on 2017-06-22:
+I don't think anyone will be able to help without seeing an example of the problem you're having.
+Comment by amarbanerjee23 on 2017-06-23:
+Hi attached the code block, please see if you could suggest something which I am missing :)
+
+A:
+
+rospy.spin() is a blocking call:  http://docs.ros.org/lunar/api/rospy/html/rospy-module.html#spin
+Here is the source of spin():
+def spin():
+    """
+    Blocks until ROS node is shutdown. Yields activity to other threads.
+    @raise ROSInitException: if node is not in a properly initialized state
+    """
+
+    if not rospy.core.is_initialized():
+        raise rospy.exceptions.ROSInitException("client code must call rospy.init_node() first")
+    logdebug("node[%s, %s] entering spin(), pid[%s]", rospy.core.get_caller_id(), rospy.core.get_node_uri(), os.getpid())        
+    try:
+        while not rospy.core.is_shutdown():
+            rospy.rostime.wallsleep(0.5)
+    except KeyboardInterrupt:
+        logdebug("keyboard interrupt, shutting down")
+        rospy.core.signal_shutdown('keyboard interrupt')
+
+A key observation here is the contents of the "try" block. All spin() does is wait for rospy to shutdown. If you are doing this yourself, there is no need for rospy.spin().
+Okay, on to cvancleef's comment on while loops and timers.
+Let's take a quick look at the implementation of timer, starting line 178 here: https://github.com/ros/ros_comm/blob/lunar-devel/clients/rospy/src/rospy/timer.py
+First thing to note is that Timer extends threading.Thread. Python's (at least cpython, which is the standard distro that you download from the site) threading.Thread is not a native thread. That is to say, the interpreter decides what order to execute commands, but nothing happens in parallel. This means you don't really get any guarantees as for timing nor do you really get much as far as performance benefits. If that's what you need you would have to make your own threads using the multiprocessing module instead.
+Here is the run() function:
+def run(self):
+    r = Rate(1.0 / self._period.to_sec())
+    current_expected = rospy.rostime.get_rostime() + self._period
+    last_expected, last_real, last_duration = None, None, None
+    while not rospy.core.is_shutdown() and not self._shutdown:
+        try:
+            r.sleep()
+        except rospy.exceptions.ROSInterruptException as e:
+            if rospy.core.is_shutdown():
+                break
+            raise
+        if self._shutdown:
+            break
+        current_real = rospy.rostime.get_rostime()
+        start = time.time()
+        self._callback(TimerEvent(last_expected, last_real, current_expected, current_real, last_duration))
+        if self._oneshot:
+            break
+        last_duration = time.time() - start
+        last_expected, last_real = current_expected, current_real
+        current_expected += self._period
+
+Just like rospy.spin(), all it really does is a while loop checking for ros still being alive, and calls your function if the expected duration has passed. Not really much different from using Rate().
+
+Originally posted by femtogram with karma: 16 on 2017-06-23
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by amarbanerjee23 on 2017-06-23:
+Thanks.  So where should I use rospy.spin() ?
+After every subscriber function of at the last when I call the methods using the class object ?
+Comment by femtogram on 2017-06-23:
+You don't need rospy.spin(). See explanation above.
+Comment by gvdhoorn on 2017-06-23:\
+
+Not really much different from using Rate().
+
+I'd like to add some nuance here: it is different, if only for the conceptual / architectural difference between an infinite while-loop with a sleep compared to a nr of timers calling event handlers. The concrete implementation may be similar ..
+Comment by gvdhoorn on 2017-06-23:
+.. but I posit that a node which is clearly structured around a nr of (seemingly) independent timers all with their own responsibilities is to be preferred over a convulted while loop with rates/sleeps and 'dividers'.
+Comment by amarbanerjee23 on 2017-06-23:
+Thanks for the input. But if I use the while loop, then the other calls are all blocked, as the while loop keeps executing. Any suggestions as to how I could call a a publisher as well as a other subscribers, and services in the same node ?
+Comment by gvdhoorn on 2017-06-23:
+@amarbanerjee23: it may be beneficial if you spend some time reading up on asynchronous event-based programming. A ROS node typically registers some callbacks for subscriptions and/or timers, which implement the business logic, and then hands over control to a ros::spin() or similar. while ..
+Comment by gvdhoorn on 2017-06-23:
+.. loops are seldomly used, precisely because they form a blocking sort of construct. The while(ros::ok()) .. part of a node is basically a compromise that could just as well be done using a timer: it allows a synchronous control flow to co-exist with the async event handling of ROS.
+Comment by femtogram on 2017-06-25:
+@gvdhoorn absolutely, there is a large architectural difference, and a definite difference in responsiveness. but if someone is having trouble with understanding the blocking nature of rospy.spin(), I'm not sure it makes sense to push a fully event based and multi-threaded solution.
+

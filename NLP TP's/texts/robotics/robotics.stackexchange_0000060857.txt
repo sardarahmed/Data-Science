@@ -1,0 +1,108 @@
+Q:
+
+No valid hardware interface element found in joint
+
+I am getting the following error trying to load simulation interface for gazebo ros . This worked in hydro but after moving to ubuntu 14 - indigo I now get these errors. I can not see any thing that has changed in the documentation for this feature. It there a indigo-devel lib I need? I pull all software from ubuntu software center. I also compiled gazebo-ros-pkgs from source from indigo-devel.
+[ERROR] [1405708119.053840656]: No valid hardware interface element found in joint 'joint1'.
+[ERROR] [1405708119.053997707]: Failed to load joints for transmission 'tran1'.
+[ERROR] [1405708119.054095180]: No valid hardware interface element found in joint 'joint2'.
+[ERROR] [1405708119.054185473]: Failed to load joints for transmission 'tran2'.
+[ INFO] [1405708119.161913723]: Loaded gazebo_ros_control.
+[ERROR] [1405708120.087262628, 0.468000000]: Exception thrown while initializing controller joint1_position_controller.
+Could not find resource 'joint1' in 'hardware_interface::EffortJointInterface'.
+[ERROR] [1405708120.087374119, 0.468000000]: Initializing controller 'joint1_position_controller' failed
+[ERROR] [1405708121.093701156, 1.280000000]: Exception thrown while initializing controller joint2_position_controller.
+Could not find resource 'joint2' in 'hardware_interface::EffortJointInterface'.
+[ERROR] [1405708121.093770162, 1.281000000]: Initializing controller 'joint2_position_controller' failed
+
+    
+
+In Gazebo:
+
+    <joint name='joint2' type='revolute'>
+        <pose>0 0 0.03 0 1.5707 1.5707</pose>
+        <child>right_wheel</child>
+        <parent>base_link</parent>
+        <axis>
+          <xyz>0 1 0</xyz>
+          <limit>
+            <lower>-1e+16</lower>
+            <upper>1e+16</upper>
+          </limit>
+        </axis>
+      </joint>
+      <plugin name='ros_control' filename='libgazebo_ros_control.so'>
+        <robotNamespace>/rrbot</robotNamespace>
+        <robotSimType>gazebo_ros_control/DefaultRobotHWSim</robotSimType>
+      </plugin>
+   
+
+In URDL .xmacro
+
+  <transmission name="tran2">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint2"/>
+    <actuator name="motor2">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+      <motorTorqueConstant>10</motorTorqueConstant>
+    </actuator>
+  </transmission>
+
+In Yaml
+
+rrbot:
+  # Publish all joint states -----------------------------------
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 10
+
+  # Position Controllers ---------------------------------------
+  joint1_position_controller:
+    type: effort_controllers/JointVelocityController
+    joint: joint1
+    pid: {p: 40, i: 1, d: .1, i_clamp: 1}
+  joint2_position_controller:
+    type: effort_controllers/JointVelocityController
+    joint: joint2
+    pid: {p: 40, i: 1, d: .1, i_clamp: 1}
+
+Originally posted by rnunziata on ROS Answers with karma: 713 on 2014-07-15
+Post score: 6
+
+Original comments
+Comment by gvdhoorn on 2014-07-15:
+I can't help you with your actual problem, but might I suggest you change your question title to something a little more descriptive? Your current title is rather vague.
+Comment by rnunziata on 2014-07-15:
+thank you...it was indeed vague
+
+A:
+
+Hello. I met the same problem as you. Finally I find out the reason is that in this version of ros_control/transmission_interface/transimission_parser.cpp , the parser will check if there are   tags in both  section and  section. But in rrbot and other gazebo example, only  has  tag. Therefore this error occurs.
+By adding  tags to  section, this error disappears. For example, in rrbot.xacro, change
+<joint name="joint1"/>
+
+as:
+  <transmission name="tran1">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint1">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+  </transmission>
+
+Originally posted by lockandfire with karma: 276 on 2014-07-20
+This answer was ACCEPTED on the original site
+Post score: 16
+
+Original comments
+Comment by rnunziata on 2014-07-20:
+This seems to work..thanks.. , not sure if this is a gazebo or ros issue. I can not find documentation of how or why this changed. Any thoughts on this?
+Comment by lockandfire on 2014-07-22:
+It seems to be a ros issue with indigo because this change is found in indigo version of ros_control pkg. I don't know why ...
+Comment by Arn-O on 2014-08-02:
+I have posted an issue in the ros_control bug tracker: https://github.com/ros-controls/ros_control/issues/177
+Comment by Arn-O on 2014-08-02:
+Duplicate with: http://answers.gazebosim.org/question/6654/gazeboos-x-109-no-valid-hardware-interface-element/
+Comment by Dave Coleman on 2015-01-10:
+Fixed by @Kei Okada https://github.com/ros-simulation/gazebo_ros_demos/pull/4
+

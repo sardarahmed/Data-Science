@@ -1,0 +1,68 @@
+Q:
+
+Where is the preffered position to put a simple control loop in a ROS2 Node (C++) for obstacle avoidance
+
+I am working on a turtlebot simulation with ROS2, and I would like the robot to stop when it hits a wall.
+Where is the proper place to implement simple logic (for example, if distance < 10 then stop)? Right now, I have code in the callback, but this isn't ideal especially if the code took a while to run it could cause sensor messages to be missed. Also, if I wanted to only check for obstacles every 2secs, putting a delay in the callback is also not a good idea.
+What is the preferred method/where is the preferred place to add this logic, and also how can I delay it so the logic only checks the laser scan every 2 seconds?
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
+#include "geometry_msgs/msg/twist.hpp"
+
+class LaserScanReader : public rclcpp::Node
+{
+public:
+    LaserScanReader()
+        : Node("laser_scan_reader")
+    {
+        subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+            "scan", 10, std::bind(&LaserScanReader::topic_callback, this, std::placeholders::_1));
+        cmd_vel_publisher_ =
+            this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    }
+    void publish_cmd_vel(geometry_msgs::msg::Twist cmd_vel)
+    {
+        cmd_vel_publisher_->publish(cmd_vel);
+    }
+
+private:
+    void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) const
+    {
+        int center_index = msg->ranges.size() / 2;
+        RCLCPP_INFO(this->get_logger(), "Center reading: '%f'", msg->ranges[center_index]);
+        if (msg->ranges[center_index] < 10)
+        {
+            // stop robot here/publish 0 to cmd_vel (is there a better place to do this)
+            //  how can I cehck every 2secs (insted of everytime callback runs)
+        }
+    }
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
+};
+
+int main(int argc, char *argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<LaserScanReader>());
+    rclcpp::shutdown();
+    return 0;
+}
+
+```
+
+A:
+
+In general computations specific to the node are implemented as member functions. If it gets way to big you should think about using different threads / callback groups or split your tasks up into different nodes or components. Otherwise there is not really a preferred place to put a computation. It really depends on your software design and your requirements.
+Executing something every 2s is much simpler, than dealing with functions that take too long and should execute faster.
+For your case you could add a timer callback as a member function, where you do your computation:
+void timer_callback() {
+  // do periodic task
+}
+
+And add a timer that calls the function every 2 seconds when the node is spinning:
+timer_ = this->create_wall_timer(2000ms, std::bind(&LaserScanReader::timer_callback, this));
+
+The message (or just the data) that you need can be stored as a member variable to share it between the topic_callback and timer_callback. Don't forget to declare the variable in the class.
+Also I would suggest to remove the member function publish_cmd_vel and store the publisher cmd_vel_publisher_ as a member variable, because you will have less code and it is clearer for other persons who read it.
+Edit:
+A good example of how to use timer callbacks is the guide on how to write a simple publisher node (C++) in the ROS2 doc.
+

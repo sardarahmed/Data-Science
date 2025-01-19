@@ -1,0 +1,229 @@
+Q:
+
+URDF - wheels joints are stuck to base_link
+
+After spending so many hours figuring things out, I finally got to make a two wheeled robot that gets controlled with  diff_drive_controller using ROS. However, whenever i publish cmd_vel like the following:
+rostopic pub /diff_drive_controller/cmd_vel geometry_msgs/Twist -- '[1.0, 0, 0]' '[0.0, 0.0, 1.2]'
+
+the robot moves in a weird way: the base_link seems to be fixed to the wheels. Whenever the wheels move, base_link moves with the wheels. What I want is the base_link to stay still and the wheels to rotate.
+Here is my urdf of the two wheeled robot:
+<link name="base_link">
+    <collision name='collision'>
+        <origin xyz="0 0 0.1" rpy="0 0 0" />
+        <geometry>
+            <box size=".3 .3 .05"/>
+        </geometry>
+    </collision>
+
+   <visual name='visual'>
+       <origin xyz="0 0 0.1" rpy="0 0 0" />
+       <geometry>
+           <box size=".3 .3 .05"/>
+       </geometry>
+   </visual>
+
+   <inertial>
+       <origin xyz="-0.1 0 0.1" rpy="0 0 0" />
+       <mass value="5"/>
+       <inertia
+           ixx="0.03854" ixy="0.0" ixz="0.0"
+           iyy="0.075" iyz="0.0"
+           izz="0.03854"/>
+    </inertial>
+</link>
+
+<link name="left_wheel">
+    <collision name="collision">
+        <origin xyz="0 0 0" rpy="0 1.5708 1.5708" />
+        <geometry>
+            <cylinder length="0.05" radius="0.1"/>
+        </geometry>
+    </collision>
+
+    <visual name="visual">
+        <origin xyz="0 0 0" rpy="0 1.5708 1.5708" />
+        <geometry>
+            <cylinder length="0.05" radius="0.1"/>
+        </geometry>
+    </visual>
+
+    <inertial>
+        <mass value="1"/>
+        <inertia
+            ixx="0.002708" ixy="0.0" ixz="0.0"
+            iyy="0.002708" iyz="0.0"
+            izz="0.005"/>
+    </inertial>
+</link>
+
+<link name="right_wheel">
+    <collision name="collision">
+        <origin xyz="0 0 0" rpy="0 1.5708 1.5708" />
+        <geometry>
+            <cylinder length="0.05" radius="0.1"/>
+        </geometry>
+    </collision>
+
+    <visual name="visual">
+        <origin xyz="0 0 0" rpy="0 1.5708 1.5708" />
+        <geometry>
+            <cylinder length="0.05" radius="0.1"/>
+        </geometry>
+    </visual>
+
+    <inertial>
+        <mass value="1"/>
+        <inertia
+            ixx="0.002708" ixy="0.0" ixz="0.0"
+            iyy="0.002708" iyz="0.0"
+            izz="0.005"/>
+        </inertial>
+</link>
+
+<gazebo reference="left_wheel">
+    <mu1 value="10000.0" />
+    <mu2 value="10000.0" />
+    <fdir1>0 1 0</fdir1>
+    <minDepth>0.01</minDepth>
+</gazebo>
+
+<gazebo reference="right_wheel">
+    <mu1 value="10000.0" />
+    <mu2 value="10000.0" />
+    <fdir1>0 1 0</fdir1>
+    <minDepth>0.01</minDepth>
+</gazebo>
+
+<joint type="continuous" name="left_joint">
+    <child link="left_wheel">left_wheel</child>
+    <parent link="base_link">base_link</parent>
+    <axis xyz="0 1 0"/>
+    <origin xyz="0 -0.175 0.1" rpy="0 0 0"/>
+    <!--<limit effort="100" velocity="10.0"/> --> 
+</joint>
+
+<joint type="continuous" name="right_joint">
+    <child link="right_wheel">right_wheel</child>
+    <parent link="base_link">base_link</parent>
+    <axis xyz="0 1 0"/>
+    <origin xyz="0 0.175 0.1" rpy="0 0 0"/>
+    <!--<limit effort="100" velocity="10.0"/> --> 
+</joint>
+
+<transmission name="right_tran">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_joint">
+        <hardwareInterface>VelocityJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_motor"/>
+    <mechanicalReduction>1</mechanicalReduction>
+    <motorTorqueConstant>1</motorTorqueConstant>
+</transmission>
+
+<transmission name="left_tran">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_joint">
+        <hardwareInterface>VelocityJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_motor"/>
+    <mechanicalReduction>1</mechanicalReduction>
+    <motorTorqueConstant>1</motorTorqueConstant>
+</transmission>
+
+And this is my .yaml code for the controller:
+  # Publish all joint states -----------------------------------
+  joint_state_controller:
+    type: "joint_state_controller/JointStateController"
+    publish_rate: 50  
+
+  ## Position Controllers ---------------------------------------
+  #left_joint_velocity_controller:
+  #  type: velocity_controllers/JointVelocityController
+  #  joint: left_joint
+  #  pid: {p: 100.0, i: 0.01, d: 10.0}
+  #right_joint_velocity_controller:
+  #  type: velocity_controllers/JointVelocityController
+  #  joint: right_joint
+  #  pid: {p: 100.0, i: 0.01, d: 10.0}
+
+  
+  diff_drive_controller:
+    type: "diff_drive_controller/DiffDriveController"
+    publish_rate: 50
+    
+    left_wheel: ['left_joint']
+    right_wheel: ['right_joint']
+ 
+    wheel_separation: 0.35
+    
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
+
+    base_frame_id: base_link
+ 
+    # Velocity and acceleration limits for the robot
+    linear:
+      x:
+        has_velocity_limits    : false
+        #max_velocity           : 10.0   # m/s
+        has_acceleration_limits: false
+        #max_acceleration       : 6.0   # m/s^2
+    angular:
+      z:
+        has_velocity_limits    : false
+        #max_velocity           : 10.0   # rad/s
+        has_acceleration_limits: false
+        #max_acceleration       : 6.0   # rad/s^2
+
+Originally posted by Moneyball on ROS Answers with karma: 13 on 2017-03-12
+Post score: 0
+
+A:
+
+I'm new to this myself, but I resently got DiffDriveController to work on my robot. If I understand your problem correctly, I think you need to fix the mass / inertia. From what I have read, the identity matrix is a bad default for the moment of inertia matrix.
+I use these macros in my model:
+  <xacro:macro name="cylinder_inertia" params="m r h">
+            <inertia  ixx="${m*(3*r*r+h*h)/12}" ixy = "0" ixz = "0"
+                      iyy="${m*(3*r*r+h*h)/12}" iyz = "0"
+                      izz="${m*r*r/2}" /> 
+  </xacro:macro>
+
+  <xacro:macro name="box_inertia" params="m w h d">
+          <inertia
+            ixx="${m / 12.0 * (d*d + h*h)}" ixy="0.0" ixz="0.0"
+            iyy="${m / 12.0 * (w*w + h*h)}" iyz="0.0"
+            izz="${m / 12.0 * (w*w + d*d)}"/>
+  </xacro:macro>
+
+Make sure you configure the friction of your wheels so they don't slip. Here's a sample from my model. You will probably have to play with the values, some of them may be overkill.
+  <gazebo reference="wheel_FL">
+    <mu1 value="100000.0"/>
+    <mu2 value="100000.0"/>
+    <fdir1>0 1 0</fdir1>
+    <minDepth>0.01</minDepth>
+    <slip1>0</slip1>
+    <slip2>0</slip2>
+  </gazebo>
+
+Originally posted by gudjon with karma: 111 on 2017-03-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Moneyball on 2017-03-12:
+Hi thank you. I tried it with your equation and it seems to move better than before. But the movement is still a bit jerky. One quick question: what is the mass of your base_link and wheels?
+Comment by Moneyball on 2017-03-12:
+Also in the yaml code, what exactly are pose_covariance_diagonal and twist_covariance diagonal? Will they affect the way my robot moves?
+Comment by gudjon on 2017-03-12:
+My vehicle is still a work in progress, but the mass is set very high (300+ for the base, 10 for each wheel), also it has 4 wheels.
+Does your vehicle have a third contact to the ground, like a caster wheel, or does it stand on two wheels like an inverted pendulum?
+Comment by gudjon on 2017-03-12:
+As far as I know the covariance has nothing to do with the driving properties, it's only used for the odometry.
+Another thing you could look into is the friction of the tires. To make sure their not slipping or bouncing. I'll update my answer to include a sample.
+Comment by Moneyball on 2017-03-12:
+I don't have caster wheel, just two wheels on the side of the base_link. How do I change the friction? If I never specified it, would it default to 0 friction?
+Comment by Moneyball on 2017-03-12:
+Just saw your updated post: ill go check to see if friction will do the trick
+Comment by Moneyball on 2017-03-13:
+when i added , parseURDF failed so i only used mu1, mu2, fdir, and mindepth. I forgot the -r flag for rostopic pub. Now everything works! Thank you
+

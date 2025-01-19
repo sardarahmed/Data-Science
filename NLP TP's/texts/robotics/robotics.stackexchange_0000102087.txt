@@ -1,0 +1,96 @@
+Q:
+
+Ros2 for Unity create custom msg
+
+Hi all,
+I'm trying to add a custom msg to my ROS2 for Unity on Windows. From what I understand, I need to follow this. Everything is fine till I arrive at the point of modifying the custom_messages.repos file in order to get my custom msg from get_repos.ps1.
+I don't know how to write this file in fact, it requires some URL and other parameters. But in my case, I don't have an online repo because as said here, I should put my custom msg pkg into src/ros2 sub-folder. Obviously every time I run the build.ps1, I encountered some errors related to my msg.
+After building ros2-for-Unity pkg and importing it into the project, I get this error in Unity: error CS1061: 'Teleop' does not contain a definition for 'ang' and no accessible extension method 'ang' accepting a first argument of type 'Teleop' could be found (are you missing a using directive or an assembly reference?)
+Remember that ros2-for-unity is a plugin so I can't do ros2 topic list from it. To see if the topic is active I need to launch the command from the normal ros2_ws, and I can see my msg sent correctly.
+This is my custom msg that builds in the normal ws:
+std_msgs/Header         header
+# current position
+geometry_msgs/Vector3[2]      pose        # meters
+# current angles 
+geometry_msgs/Vector3[2]   ang    # rad
+
+This is my Unity subscriber:
+namespace ROS2 {
+ public class RCM2Omni : MonoBehaviour
+    {
+        private ROS2UnityComponent ros2Unity;
+        private ROS2Node ros2Node;
+        private ISubscription<my_msgs.msg.Teleop> Omni2;
+        private float[] transformations = new float[3];
+        bool moving = false;
+
+        void Start()
+        {
+            ros2Unity = GetComponent<ROS2UnityComponent>();
+        }
+
+        void Update()
+        {
+            if (ros2Node == null && ros2Unity.Ok())
+            {
+                ros2Node = ros2Unity.CreateNode("RCM2Omni");
+             
+                Omni2 = ros2Node.CreateSubscription<my_msgs.msg.Teleop>(
+                  "/Teleop", msg => { parse(msg); });
+            }
+
+            if (moving)
+            {              
+                transform.Rotate(transformations[0], 0, 0);
+                moving = false;
+            }
+        }
+
+        public void parse(my_msgs.msg.Teleop msg)
+        {
+            transformations[0] = (float)msg.ang[1].x;
+            moving = true;
+        }
+    }
+}
+
+Has anyone already had this problem?
+
+Originally posted by alberto on ROS Answers with karma: 100 on 2022-07-08
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2022-07-11:
+Is the line with transformations[0] = (float)msg.ang[1].x; in the parse(my_msgs.msg.Teleop msg) correct? In the examples I can see
+chatter_sub = ros2Node.CreateSubscription<std_msgs.msg.String>("chatter", msg => Debug.Log("Unity listener heard: [" + msg.Data + "]"));
+
+so maybe try msg.Data.ang[1] or similar?
+Comment by alberto on 2022-07-11:
+Even with msg.Data I receive: 'Teleop' does not contain a definition for 'Data' ..
+Instead, with only msg, I get the result in the console, but it's only the msg object, and I don't know if it has the elements or how to access it.
+Comment by ljaniec on 2022-07-11:
+I think you can check it from ground up - I would start with this example: https://github.com/RobotecAI/ros2cs/blob/master/src/ros2cs/ros2cs_examples/ROS2Listener.cs, check if it works with std_msgs.msg.String, then add your custom message and check with this simplest possible ROS 2 Listener if your message is heard correctly. I don't see e.g. Ros2cs.Init(); in your code, that is there in the example listener code.
+
+A:
+
+I found the solution, in this answer I will resume all the steps I followed in one place.
+First, to build your Ros2-for-Unity plugin follow this.
+
+clone the repo
+do .\pull_repositories.ps1, this will create the ros2cs folder
+open the ros2cs folder, and create the custom_messages folder in it. This is not mandatory, it should work if you put it in ros2cs/ros2, but I didn't test it.
+add my custom_msg_pkg in that folder exactly as it is in the ros2ws
+do ./build.ps1 -standalone
+do create_unity_package.ps1
+Now in Unity, do Assets->Import package->Custom package and select your newly created UnityPackage. Import all.
+Write publisher and subscriber, I followed this.
+
+And then final but a most important reminder, if you'll ever face this error in Unity: error CS1061: your_msg does not contain a definition for your_field and no accessible extension method your_field accepting a first argument of type your_msg could be found (are you missing a using directive or an assembly reference?)
+CHECK THAT THE FIRST LETTER OF THE ELEMENT IS CAPITAL.
+For example: to access std_msgs.String.data in C++ you do msg.data, but in C# (or Unity, I don't know which one complains) you must do msg.Data (capital D !), or you will have error CS1061. The same goes for your custom_msg fields! I want to highlight this because it made me cry for 2 days and it's a very silly error.
+Also thanks to @ljaniec for the help!
+
+Originally posted by alberto with karma: 100 on 2022-07-11
+This answer was ACCEPTED on the original site
+Post score: 2
+

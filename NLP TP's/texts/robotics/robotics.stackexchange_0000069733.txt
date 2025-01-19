@@ -1,0 +1,35 @@
+Q:
+
+amcl estimation quality
+
+I would like to know how much to trust the amcl output pose.  One thought is to see how well the laser data correlates with obstacles in the cost map, another is to calculate the variance of the particle locations.  Is there some standard way to estimate the quality of the amcl pose?
+
+Originally posted by dan on ROS Answers with karma: 875 on 2015-09-21
+Post score: 4
+
+A:
+
+AMCL publishes a PoseWithCovarianceStamped where the covariance represents the spread within the entire filter. This tells you something about how confident the filter is about its estimate, but not directly how good the estimate is. If you want to know how good a particular pose is, you'll have to apply the sensor model to the pose. AMCL does this in amcl_laser.cpp. If you want to modify AMCL, you can probably just call pf_get_cluster_stats on the pose and look at the weight.
+Edit:
+pf_get_cluster_stats doesn't give variance on a particular pose, the weight is an estimate of how closely the pose matches the current laser scan based on the map, normalized (I think) by the weights of all the particles.
+When you say "see how well the laser data correlates with obstacles in the cost map" this is exactly what is happening, except it's using the static map, not costmap.
+
+Originally posted by Dan Lazewatsky with karma: 9115 on 2015-09-22
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by dan on 2015-09-22:
+I tried using the covariance in the PoseWithCovarianceStamped output from AMCL, but, as you say, it seems to only  the overall spread.  I looked at pf_get_cluster_stats and do see how that could give the variance on a particular pose, but am unclear on how to relate that to how well the ........
+Comment by dan on 2015-09-22:
+laser data matches the costmap for a particular pose.  What about integrating the costmap weights that are at the locations of the radar returns?  Unfortunately, that fails when the pose is only slightly offset, where the laser returns appear next to, but not right on, objects such as long walls.
+Comment by Dan Lazewatsky on 2015-09-22:
+Updated my answer with some more info based on your comments.
+Comment by dan on 2015-09-22:
+OK, I will give that a try.  Can you point me to a place in the amcl code where I could apply pf_get_cluster_stats?  I looked at amcl_laser.cpp and see that around line 410 the laser hits are compared with the obstacle location, but the details of how to call pf_get_cluster_stats eludes me.
+Comment by Dan Lazewatsky on 2015-09-23:
+You actually don't even need to call it yourself. in amcl_node.cpp, I would create a float64 publisher, and somewhere around line 1217, publish max_weight (or maybe max_weight * number of particles).
+Comment by dan on 2015-10-06:
+see followup question here:
+http://answers.ros.org/question/218717/in-amcl-amcl_nodecpp-what-does-the-draw_weight_as_height_-parameter-do/
+

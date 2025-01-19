@@ -1,0 +1,55 @@
+Q:
+
+a problem of linking external libraries
+
+Hi All,
+I encountered a problem while linking a ROS program against some external libraries. I am trying to link my ROS program against Xenomai libraries. To make sure Xenomai libraries have been successfully installed in my OS (Ubuntu 10.10), I built a simple program (non-ROS) with gcc like this:
+gcc -I/usr/xenomai/include -D_GNU_SOURCE -D_REENTRANT -D__XENO__ -Wall -pipe -lnative -L/usr/xenomai/lib -lxenomai -lpthread -lrtdk hellworld.c -o helloworld
+
+No problems arise here, and I got the executable.
+To build my ROS programs (take as an example the tutorial program at the ROS website ), I add the following commands to CMakeLists.txt:
+rosbuild_add_executable(listener src/listener.cpp)
+include_directories(/usr/xenomai/include)
+add_definitions(-D_GNU_SOURCE -D_REENTRANT -D__XENO__)
+rosbuild_add_compile_flags(listener -Wall -pipe)
+link_directories(/usr/xenomai/lib)
+target_link_libraries(listener native xenomai pthread rtdk)
+
+That says, I want to link the “listener” node against some Xenomai libraries, like “native”, “xenomai”, etc. However, when I rosmake’d the whole package, I got this error:
+  Linking CXX executable ../bin/listener
+  /usr/bin/ld: cannot find -lnative
+  /usr/bin/ld: cannot find -lxenomai
+  collect2: ld returned 1 exit status
+
+It seems rosbuild did not search libraries in “/usr/xenomai/lib” which is supposed to specified by link_directories(/usr/xenomai/lib). Did I miss something to tell rosbuild to search libraries in “/usr/xenomai/lib”?
+With many thanks,
+
+Originally posted by HZ on ROS Answers with karma: 76 on 2011-09-23
+Post score: 2
+
+A:
+
+After some googling, I found this. I think I can now answer the problem myself: It turned out that I need to place link_directories(/usr/xenomai/lib) before rosbuild_add_executable(listener src/listener.cpp), that is,
+link_directories(/usr/xenomai/lib)
+rosbuild_add_executable(listener src/listener.cpp)
+include_directories(/usr/xenomai/include)
+add_definitions(-D_GNU_SOURCE -D_REENTRANT -D__XENO__)
+rosbuild_add_compile_flags(listener -Wall -pipe)
+target_link_libraries(listener native xenomai pthread rtdk)
+
+Is this a bug, or a restriction of CMake? Is it documented somewhere?
+
+Originally posted by HZ with karma: 76 on 2011-09-23
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by HZ on 2011-09-26:
+Is this requirement of CMake documented somewhere? I came from gcc, and the order should not cause a compilation error in gcc.
+Comment by HZ on 2011-09-26:
+In the problematic CMakeLists.txt, I tried to add "/usr/xenomai/lib" to the search path by adding "link_directories(/usr/xenomai/lib)". However, I added this command after "rosbuild_add_executable(listener src/listener.cpp)", and it turned out that I need to reverse the order of these two commands.
+Comment by tfoote on 2011-09-25:
+/usr/xenomai/lib is not a default location to look for libraries, so you have to add it to the search path.
+Comment by Sudhan on 2013-05-06:
+I am going to use one external library (VISION - a private lib) with my ROS package (which already uses opencv). Shall I use the external library, by just including the above lines? Here I didn't understand the last three lines - add_definitions, rosbuild_add_compile_flags and target_link_libraries?
+

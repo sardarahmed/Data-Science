@@ -1,0 +1,79 @@
+Q:
+
+local cost map not updated
+
+Hi, All,
+I am using a 6m laser range finder to generate local cost map. (Hokuyo URG).
+I found the the local cost map was not updated promptly.
+what happens is that, whenever an obstacle occurs in the range. an inflated object is generated in the local cost map.
+however, after it disappears, the inflated object remains there for a very long time.
+I have set the cost map update frequency to 10Hz. but it does not seems to help.
+any other suggestion?
+I have an unverified postulation here. on the actual laser packets received, after the obstacle disappears, the range readings at that particular points becomes 0 or NaN. somehow cost_map_2D keeps the old data if the particular beam is 0.
+thanks
+ray
+
+Originally posted by dreamcase on ROS Answers with karma: 91 on 2014-08-14
+Post score: 3
+
+Original comments
+Comment by dreamcase on 2014-08-14:
+http://wiki.ros.org/costmap_2d#Marking_and_Clearing
+I notice the error could be an anomaly in clearing process. somehow, the clearing part is not functioning.
+below is my config file. can someone help me check it?
+costmap_common_params.yaml
+obstacle_range: 4.0
+raytrace_range: 4.0
+transform_tolerance: 5.0
+footprint: [[0.75,0.4], [0.8, 0], [0.75, -0.4],[-0.75, -0.4], [-0.75, 0.4]]
+
+robot_radius: 1.0
+inflation_radius: 2.0
+footprint_padding: 0.01
+cost_scaling_factor: 7
+lethal_cost_threshold: 100
+observation_sources: laser_scan_sensor point_cloud_sensor
+
+laser_scan_sensor: {sensor_frame: local_laser, data_type: LaserScan, topic: localscan, marking: true, clearing: true}
+point_cloud_sensor: {sensor_frame: local_laser, data_type: PointCloud, topic: point_cloud, marking: true, clearing: true}
+
+local_costmap_params.yaml
+local_costmap:
+ global_frame: /world
+  robot_base_frame: base_link
+  update_frequency: 5.0
+  transform_tolerance: 5.0
+  publish_frequency: 2.0
+  static_map: false
+  rolling_window: true
+  
+  width: 10.0
+  height: 10.0
+  resolution: 0.05
+ 
+  origin_x: -293.6
+  origin_y: -100.0
+  allow_unknown: false
+
+Comment by pkohout on 2014-08-14:
+can you please also post the output of rostopic list ?
+Comment by dreamcase on 2014-08-14:
+some more observations. if change the laser source to SICK long range laser LMS111, the cost map gets updated properly.
+has it something to do with the resolution of the laser? what if the laser is not able to cover all the 5cmx5cm grid within the local cost map? does it cause residues on the local cost map?
+
+A:
+
+This looks like it's being caused by your laser driver reporting 0 and NaN when you'd like it to report maxRange or inf.
+This can be a safety constraint when your scanner can't detect anything in range, in case of situations such as scanning a mirrored surface which doesn't get picked up as on obstacle. In practice, for controlled environments, this is probably not your desired behaviour.
+You can setup a custom node, or implement a laser_filter which would convert the 0s and NaNs to maxRange (which the costmap obstacle layer will pick up as 'no obstacles') or inf (which requires the inf_is_valid parameter to be set on the costmap obstacle layer for that sensor), and then republish the scan message on a filtered topic. This will allow the costmap to properly clear 'empty space' for rays with no obstacles in range.
+
+Originally posted by paulbovbel with karma: 4518 on 2014-08-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by musiqsoulchild on 2015-03-23:
+Does anyone know exactly how to implement a solution like this? I'm not sure where to start. How do I use laser_filter to get rid of 0s and NaNs for maxRange and inf?
+Comment by kevin.kuei.0321@gmail.com on 2015-10-29:
+I encountered the same problem. Anyone plz??
+

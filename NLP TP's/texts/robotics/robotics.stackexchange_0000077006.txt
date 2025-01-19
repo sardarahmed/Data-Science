@@ -1,0 +1,85 @@
+Q:
+
+ROS_CANopen can't start velocity_controller and trajectory_controller
+
+Hi,
+I am working with ros_canopen to control a robot arm. The arm uses Copley drives. Please check out the github repo that I'm working on here.
+
+The position controller (point to point move) works fine now. A littile problem here is I don't know how to specify the speed during the point-to-point move.
+
+When I tried to start the velocity_controller:
+rosrun controller_manager controller_manager start I_Joint_velocity_controller
+
+errors would show up:
+[ERROR]: I_Jointcould not enter mode 2
+[ERROR]: Could not switch one joint for I_Joint_velocity_controller, will stop all related joints and the controller.
+[ERROR]: I_Joint is not ready to switch mode
+[ERROR]: Could not switch controllers. The hardware interface combination for the requested controllers is unfeasible.
+
+and if I start the trajectory_controller:
+rosrun controller_manager controller_manager start joint_trajectory_controller
+
+errors would be:
+    abort60c1#1, reason: Invalid value for parameter (download only).
+    Could not process message
+
+    [ERROR]: RPDO timeout; RPDO timeout;ros_canopen/canopen_master/src/sdo.cpp(429): Throw in function void canopen::SDOClient::transmitAndWait(const canopen::ObjectDict::Entry&, const canopen::String&, canopen::String*)
+    Dynamic exception type: boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<canopen::TimeoutException> >
+    std::exception::what: SDO
+    [canopen::tag_objectdict_key*] = 60c1sub1
+
+Are these problems caused by wrong configuration of my dcf file? I mapped the PDOs according to the Copley programming manual p. 25
+Many thanks.
+
+Originally posted by Craig on ROS Answers with karma: 78 on 2016-10-29
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-10-29:
+Just a tip (I always get confused as well): Askbot does not support github flavoured markdown. Use four spaces to start a code block, not three backticks.
+Comment by Craig on 2016-10-29:
+Thanks. : )
+
+A:
+
+A littile problem here is I don't know how to specify the speed during the point-to-point move.
+
+canopen_motor_nodedoes not support setting the velocity dynamically (for this mode).
+You can set it at start-up to a fixed value (Object 0x6081, the drive even supports more options).
+I have opened a new issue for dynamic setting: https://github.com/ros-industrial/ros_canopen/issues/194
+
+I_Joint could not enter mode 2
+
+According to the manual the drive just supports mode 3 (profiled velocity).
+You should not have copied the Schunk DCF, the Copley drive seems to be more like the Elmo..
+
+and if I start the trajectory_controller:
+
+The error message suggests that you should check the sent command.
+Perhaps the drive have to be configured in a different way.
+Please map 60c1sub1 to a PDO, otherwise IP mode will not work as expected.
+(http://wiki.ros.org/canopen_402)
+
+Originally posted by Mathias Lüdtke with karma: 1596 on 2016-10-29
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Craig on 2016-10-29:
+Hi Mathias. Thank you for your help.
+I set the 6081 in dcf_overlay, as you've suggested, and used   cansend can0 601#23.81.60.00.01.2c.08.00 to change the velocity of the motor after initialization.
+It would nicer that the position_controller support speed adjustment after strart-up.
+Comment by Craig on 2016-10-30:
+I mapped 60c1sub1 to RPDO2 with
+dcf_overlay:
+     "1601sub2": "0x60c10120"
+
+It produced the same error when I called the canopen_motor init service. And candump stopped at :
+can0  TX - -  601    40 C1 60 01 00 00 00 00
+can0  RX - -  581    80 C1 60 01 01 00 01 06 # obj write only
+
+Comment by Mathias Lüdtke on 2016-10-31:
+(This is not the same error!)
+Not sure what's going on here. It should be RW.
+You can get rid o the read if you set a default value for 60c1sub1 in your DCF.
+

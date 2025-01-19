@@ -1,0 +1,41 @@
+Q:
+
+Line Follower optimization
+
+I'm working on building a line follower robot and want to optimize its performance. It was suggested that I use a PID algorithm. I read a lot about PID but am confused a bit regarding following:
+I've calculated the error_value using $k_p * proportional + ...$
+But regarding the change in the motor speed I'm confused as to what to use during comparison the difference (i.e. currentposition - setpoint) or the errorvalue. That is should I use 
+if (difference > 0)
+{ //code for changing appropriate motor's speed using error_value }
+
+or 
+if (error_value > 0)
+{ //code for changing appropriate motor's speed using error_value }
+
+Also is there any specified range for the values of the constants $k_p$, $k_i$ and $k_d$?
+I'm using a differential wheeled robot for my line follower.
+Also I would be happy if someone suggests me any other advanced optimization algorithm for improving the line follower robot.
+
+A:
+
+When using a PID loop to steer using line following, then your set point will always be the same. You will always want the line to be in the same position with respect to the robot, for instance in the centre of your sensor.
+So if your line sensor outputs a value from -1 to 1 with 0 being the centre of the sensor, then you will want your set point to be zero (and sensor read back and difference will be the same). If your line sensor outputs a value of 0 to 10, then you will want your set point to be 5 (and your sensor read back and difference will be different).
+Since you are steering by setting the wheels to turn at different speeds, then to smoothly follow a line at a constant velocity, you will probably want to adjust the speeds for both wheels based on the error. For example, if you need to turn left to stay on the line, you will slow down the left wheel and speed up the right wheel. The more you need to turn, the more you will need to slow down the inside wheel and the more you will need to speed up the outside wheel.
+Consider the situation where you need to turn $\theta$ radians to the left to correct for error $e$ and your current speed is $S_0$:
+
+So your left wheel needs to travel at $S_L = r\theta$ and your right wheel needs to travel at $S_R = (r+b)\theta$.
+To maintain the same overall speed $S_0$, you need $S_0 = (r+b/2)\theta$, 
+so the left wheel will need to travel at $S_L = S_0 - (b/2)\theta$
+while the right wheel will need to travel at $S_R = S_0 + (b/2)\theta$.
+As your error tends towards zero, the speeds of each motor will also tend towards each other. As the error grows, the speed differentials will grow too.
+You may even need your inside wheel to rotate backwards if your sensor is telling you that the line is curving more tightly than the distance between your wheels. These are complications which you can work through step by step as your control gets more sophisticated though.
+Also, since your error will have both positive and negative values (to represent the continuum from off the scale left ... too far left ... on the line ... too far right ... off the scale right then you should never need to ask if the error is positive or negative, you should just calculate new values based on the error value, since a positive value and a negative value should have opposite and symmetric effects on the motors.
+Note that for line following, you may be able to get away with just the proportional gain term (i.e. leaving the other terms at zero). Implementing a Derivative term may well allow you to push up the proportional gain term higher to get a more responsive system, but an integral term is unlikely to help. The fact that if you robot goes in the wrong direction the error will get larger means that your robots physical movements will act like an integral term anyway.
+The specific values of P, D and I will be determined by the responsiveness of your system. For general advice about tuning PID parameters, see my answer and others on What are good strategies for tuning PID loops?
+
+A:
+
+You may want to check out this question on how to tune PIDs.  
+It sounds like you're confusing the role of error in this calculation.  The PID equation takes the error measurement (actual position - desired position) and determines how much "response" should be commanded in the controller (e.g. how much force).  
+So instead of saying if (error_value > 0) { }, you should be saying something like response = get_PID_calculation(error_value).  Depending on the construction of your specific vehicle, that response would be sent to the drive motor as the throttle amount, the steering as desired angle, or some other control input.
+

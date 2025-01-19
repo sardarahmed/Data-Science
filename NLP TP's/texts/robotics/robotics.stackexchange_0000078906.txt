@@ -1,0 +1,113 @@
+Q:
+
+How to publish a message from a rosserial_arduino subscriber
+
+How do you make a subscriber in a rosserial_arduino node that can publish a message?
+I'm trying to make a node that listens for a "force_sensors" message, and in response, publishes sensor readings.
+This is my Arduino Uno sketch:
+#include <ros.h>
+#include <std_msgs/Empty.h>
+#include <std_msgs/Bool.h>
+#include <std_msgs/Byte.h>
+#include <std_msgs/Int64.h>
+#include <std_msgs/Float32.h>
+#include <std_msgs/Float64MultiArray.h>
+
+#include "BooleanSensor.h"
+
+sensor = BooleanSensor();
+
+// If true, all sensors will push their current readings to the host, even if they haven't changed
+// since last polling.
+bool force_sensors = false;
+
+ros::NodeHandle nh;
+
+std_msgs::Bool bool_msg;
+
+ros::Publisher sensor_publisher = ros::Publisher("sensor", &bool_msg);
+
+void on_force_sensors(const std_msgs::Empty& msg) {
+    force_sensors = true;
+}
+ros::Subscriber<std_msgs::Empty> force_sensors_sub("force_sensors", &on_force_sensors);
+
+void on_toggle_led(const std_msgs::Empty& msg) {
+    force_sensors = true;
+    digitalWrite(STATUS_LED_PIN, HIGH-digitalRead(STATUS_LED_PIN));   // blink the led
+}
+ros::Subscriber<std_msgs::Empty> toggle_led_sub("toggle_led", &on_toggle_led);
+
+void setup() {
+
+    pinMode(STATUS_LED_PIN, OUTPUT);
+    digitalWrite(STATUS_LED_PIN, true);
+
+    nh.getHardware()->setBaud(57600);
+    nh.initNode();
+    nh.subscribe(toggle_led_sub);
+    nh.subscribe(force_sensors_sub);
+    nh.advertise(sensor_publisher);
+
+}
+
+void loop() {
+
+    if (sensor.changed() || force_sensors) {
+        bool_msg.data = sensor.get();
+        sensor_publisher.publish(&bool_msg);
+    }
+
+    nh.spinOnce();
+    delay(1);
+    
+    force_sensors = false;
+}
+
+It has two subscribers, one that listens for a "toggle_led" message, and toggles the state of the onboard LED.
+The other listens for a "force_sensors" message, and sets a boolean flag to force a sensor message to be published.
+Attached to the Uno is a simple button whose state is checked when sensor.changed() is called. I've confirmed that when I push this button, I see a message with rostopic echo /uno/sensor.
+I would also expect to see this same message after I run rostopic pub /torso_arduino/force_sensors std_msgs/Empty --once. However, no message is received.
+I modified the toggle_led subscriber to also set the force_sensor flag. Yet even though this still responds to a message and toggles the LED, it still doesn't force the sending of any sensor messages.
+What am I doing wrong?
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2017-02-12
+Post score: 0
+
+A:
+
+the Problem is the oder of the instrucktions.
+if you change your loop to
+`void loop() {
+if (sensor.changed() || force_sensors) {
+    bool_msg.data = sensor.get();
+    sensor_publisher.publish(&bool_msg);
+    force_sensors = false;
+}
+
+nh.spinOnce();
+delay(1);
+}
+
+or
+`void loop() {
+if (sensor.changed() || force_sensors) {
+    bool_msg.data = sensor.get();
+    sensor_publisher.publish(&bool_msg);
+    
+}
+force_sensors = false;
+nh.spinOnce();
+delay(1);
+}
+
+the Reson is that the var  force_sensors is updatet  in  nh.spinOnce() and just after that you resett it
+
+Originally posted by duck-development with karma: 1999 on 2017-02-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Cerin on 2017-02-12:
+Good catch.
+

@@ -1,0 +1,79 @@
+Q:
+
+Mavros multi-vehicle simulation
+
+Hello,
+I'm trying to setup a simulation environment for a multi-vehicle system using mavros and I have come up with some issues:
+My idea is to run multiple APM SITL (Ardu Copter) instances, each of those connected to a mavros node via TCP (to simulate a serial connection of an onboard computer) and use UDP Mavlink bridge to connect all vehicles to QGroundControl.
+
+APM_SITL <--(TCP:5760)--> mavros <--(UDP:14550/1)--> QGroundControl
+
+I modified sim_vehicle.sh so that it doesn't directly launch mavproxy. Then I connect mavros via serial and use gcs_url to create the mavlink bridge to QGroundControl (listening on UDP 14550):
+roslaunch mavros apm2.launch fcu_url:=tcp://localhost:5760 gcs_url:=udp://localhost:14551@localhost:14550
+
+Doing this I'm able to see the vehicle in QGroundControl but for some reason the connection doesn't seem to work properly and I see no changes in the system when I run a mavros program.
+When I do not disable mavproxy (that is, I run each SITL instance with mavproxy connected to TCP 5760) and connect QGroundControl via UDP, it works fine. But if I try to connect mavros via TCP (to one of the two other open serial ports 5762 or 5763) I get this same issue: https://groups.google.com/forum/#!topic/drones-discuss/I8sGdE-g8I0
+
+mavros <--(TCP:5762)--> APM_SITL <--(TCP:5760)--> mavproxy <--(UDP:14550/1)--> QGroundControl
+
+Another issue I'm encountering is the use of different system ID's. I can change the parameter in APM (SYSID_THISMAV) but don't really know how to use tgt_system and tgt_component
+Any help is highly appreciated!
+
+Originally posted by molinsp on ROS Answers with karma: 21 on 2015-05-01
+Post score: 2
+
+A:
+
+Mavros not desined for multiple drone connections. Start new instance for each drone.
+Also you should preconfigure different system id on each drone. E.g. connect to each and change SYSID_THISMAV.
+Then use same number in tgt_system.
+
+Originally posted by vooon with karma: 404 on 2015-05-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by molinsp on 2015-05-01:
+Yes this is clear to me. My question is wether my approach of connecting mavros via TCP (as in 1) and use mavlink bridge is right. It is not even working now for 1 uav and I don't know if this is because I'm using gcs_url wrong or because ArduCopter SITL require mavproxy for some reason.
+Comment by vooon on 2015-05-01:
+Tcp url is ok, perhaps you may not use gcs url, because mavproxy by default starts one.
+But check tcp port, 5760 - serial1 used by mavproxy, try 5761/2.
+Comment by molinsp on 2015-05-01:
+I tried using 5762/3 (which are both open) but I get the same issue than here: https://groups.google.com/forum/#!topic/drones-discuss/I8sGdE-g8I0. It continuously switches from stabilize to "Mode Mode(0x000000c0)". Is this an issue with mavros?
+Comment by vooon on 2015-05-01:
+Strange, but it more related to firmware. Mode stringify may fallback to MODE(hex) or CMODE(num).
+Usually mode() when there no custom mode bit.
+Comment by vooon on 2015-05-01:
+Also you may try connect to mavproxy udp ports.
+Comment by Thomas. on 2015-05-08:
+Hi, I am having the same problem, mavros continuously sends Stabilize and "Mode Mode(0x000000c0)". Did anyone find a solution?
+Comment by vooon on 2015-05-09:
+@Thomas what firmware you used? What diagnostics say?
+Mode(0xc0) → MAV_MODE_FLAG: SAFETY_ARMED | MANUAL_INPUT_ENABLED
+No CUSTOM_MODE_ENABLED => only MODE(hex).
+Comment by Thomas. on 2015-05-10:
+Hi vooon,
+I started roscore, then simulator with:
+sim_vehicle.sh --console --map --aircraft test
+Then I used mavros to connect to the simulator:
+"roslaunch mavros apm.launch fcu_url:=udp://127.0.0.1:5762 gcs_url:=udp://@"
+"rostopic echo /mavros/imu/data_raw" works
+How can I get info you asked for?
+Comment by vooon on 2015-05-11:
+Sim launch starts mavproxy, so don't use gcs_url and connect to second udp out.
+Comment by Thomas. on 2015-05-11:
+Hi Voon, I found the needed information here: "https://groups.google.com/forum/#!topic/drones-discuss/I8sGdE-g8I0". The command I needed was "
+roslaunch mavros apm2.launch fcu_url:=udp://localhost:14551@". But still I do not know how to get the copter up in the air :-(
+Thanks for your help!
+Comment by vooon on 2015-05-12:
+Try arm and then takeoff command.
+Comment by Thomas. on 2015-05-12:
+Using mavros I wasn't successful yet. I could switch modes and send takeoff but the copter did not take off. I used mavproxy and I could let the drone fly in the simulator. It seems that, like in mavproxy, I have to send a rc command (channel3, 1500) after arming the drone but I have not tried yet.
+Comment by Thomas. on 2015-05-12:
+Hi voon,
+I wrote a small script in Python which uses rospy and mavros to start and land a quadcopter. I have not seen a script like this before is there a good place to publish it? Maybe it is helpful for other people.
+Comment by vooon on 2015-07-12:
+There exist one script from PX4 folks, your very welcome.
+Comment by PrasadNR on 2016-11-01:
+Hi @vooon, I am facing a similar problem too. Can you please solve this particular problem as mentioned in Multiple robots in ROS Gazebo SITL with separate MAVlink/MAVproxy codes ? If not, can you tell why it cant be done with official links? Thanks!
+

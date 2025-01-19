@@ -1,0 +1,185 @@
+Q:
+
+rosserial-windows sync with device lost
+
+Hi everyone,
+I am using rosserial for windows and followed the  instruction.
+This works fine, I even build a dll of that, quite similiar to this post.
+I can send the tutorial message Hello World in my vb.Net program by using this DLL.
+Now I am trying to send a message with some IMU data, by using a timer in my vb.Net program which calls a function in my DLL. Unfortunately on the Linux side the following message appears "Sync with device lost"
+The same message without the timer but with a loop works. Here is the working code of my DLL
+extern "C" __declspec(dllexport) void __stdcall PublishData_Something( double x, double y) {
+ros::NodeHandle nh;
+char *ros_master = "100.111.0.222:11411";//
+//printf("Connecting to server at %s\n", ros_master);
+nh.initNode(ros_master);
+powerball_msgs::ExtPoseInput extPoseInput_msg;
+ros::Publisher cmd_vel_pub("cmd_vel", &extPoseInput_msg);
+nh.advertise(cmd_vel_pub);
+while (1)
+{
+    extPoseInput_msg.robot.translation.x = x;
+    extPoseInput_msg.robot.translation.y = y;
+    extPoseInput_msg.robot.translation.z = 0;
+    extPoseInput_msg.robot.rotation.x = x;
+    extPoseInput_msg.robot.rotation.y = y;
+    extPoseInput_msg.robot.rotation.z = 0;
+    extPoseInput_msg.gripper.movement = 0;
+    extPoseInput_msg.gripper.rel_acceleration = 0;
+    extPoseInput_msg.gripper.rel_velocity = 0;
+    cmd_vel_pub.publish(&extPoseInput_msg);
+    nh.spinOnce();
+    Sleep(100);
+}
+
+}
+this works, the message is send to the Linux computer, but as mentioned I want to use a timer in my vb.net application, so the message can be updated. So I changed the function above
+Here is the code of the message which throws the error "Sync with device lost"
+extern "C" __declspec(dllexport) void __stdcall PublishData_GripperNeu(double rel_vy, double y) {
+ros::NodeHandle nh;
+char *ros_master = "100.111.0.222:11411";//'
+nh.initNode(ros_master);
+//printf("Advertising cmd_vel message\n");
+powerball_msgs::ExtPoseInput extPoseInput_msg;
+ros::Publisher cmd_vel_pub("cmd_vel", &extPoseInput_msg);
+nh.advertise(cmd_vel_pub);
+extPoseInput_msg.robot.rel_velocity = 0; 
+extPoseInput_msg.robot.rel_acceleration = 1;
+extPoseInput_msg.gripper.rel_acceleration = 1;
+extPoseInput_msg.gripper.rel_velocity = (float)rel_vy;
+extPoseInput_msg.gripper.movement = y;
+extPoseInput_msg.robot.translation.z = 0;//Setzen der nicht veränderten Werte auf null
+extPoseInput_msg.robot.translation.x = 0;
+extPoseInput_msg.robot.translation.y = 0;
+extPoseInput_msg.robot.rotation.w = 0;
+extPoseInput_msg.robot.rotation.x = 0;
+extPoseInput_msg.robot.rotation.y = 0;
+extPoseInput_msg.robot.rotation.z = 0;
+//Publish Message
+cmd_vel_pub.publish(&extPoseInput_msg);
+nh.spinOnce();
+
+}
+Now the warning on the Linux side appears  "Sync with device lost" every time this message is published.
+The Biggest difference between this two messages are that the second one do not use a loop because the loop is the timer in my vb.net application.
+That is wrong with my second message?
+
+Edit: Thank you gvdhoorn
+First I make a declaration and then the first function is InitialRos()
+ros::NodeHandle nh;
+char *ros_master = "100.111.0.222:11411";//
+powerball_msgs::ExtPoseInput extPoseInput_msg;
+ros::Publisher cmd_vel_pub("cmd_vel", &extPoseInput_msg);
+
+extern "C" __declspec(dllexport) void __stdcall InitialROS() { 
+  nh.initNode(ros_master);
+  nh.advertise(cmd_vel_pub);}
+
+which I call only once.
+and other function, which I call by a timer
+extern "C" __declspec(dllexport) void __stdcall PublishData_Gripper(double rel_vy, double y) {
+
+  ros::Publisher cmd_vel_pub("cmd_vel", &extPoseInput_msg);
+  nh.advertise(cmd_vel_pub);
+  extPoseInput_msg.robot.rel_velocity = 0; //
+  extPoseInput_msg.robot.rel_acceleration = 1;//
+  extPoseInput_msg.gripper.rel_acceleration = 1;
+  extPoseInput_msg.gripper.rel_velocity = (float)rel_vy;
+  extPoseInput_msg.gripper.movement = y;
+  extPoseInput_msg.robot.translation.x = 0;
+  extPoseInput_msg.robot.translation.y = 0;
+  extPoseInput_msg.robot.rotation.w = 0;
+  extPoseInput_msg.robot.rotation.x = 0;
+  extPoseInput_msg.robot.rotation.y = 0;
+  extPoseInput_msg.robot.rotation.z = 0;
+  cmd_vel_pub.publish(&extPoseInput_msg);
+  nh.spinOnce();}
+
+In this version the message "sync with device lost" appears when the first function InitialRos() is called
+
+Originally posted by ChrisBecken on ROS Answers with karma: 43 on 2017-12-20
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-12-20:
+Can you clarify why you appear to be re-initialising the connection each and every time your callback is executed? Why not setup your NodeHandle and Publisher once, and then re-use them inside the callback body?
+Comment by ChrisBecken on 2017-12-20:
+First I splited the function PublishData_GripperNeu into two parts. Initialisation and PublishData
+But then I got the error "sync with device lost" in Linux when I clicked on a button in my vb.net application which called only the initialisation function. At that point no message was send
+Comment by ChrisBecken on 2017-12-20:
+only the topic was advertised by nh.advertide(cmd_vel_pub);
+Comment by gvdhoorn on 2017-12-20:
+Without knowing more about how you split things up (ie: show your program), it's going to be hard to say why that happened.
+If you make sure things are ordered properly, and all necessary parts stay in scope, it should work.
+Re-initing everything each and every callback will most likely not.
+Comment by gvdhoorn on 2017-12-20:
+I see this in your edit in your callback function:
+ros::Publisher cmd_vel_pub("cmd_vel", &extPoseInput_msg);
+nh.advertise(cmd_vel_pub);
+
+There should be no need to recreate the Publisher or call advertise(..) again. You've already done that.
+Only update and pub the msg in the callback.
+Comment by ChrisBecken on 2017-12-20:
+I didn't see that, I will correct this.
+Thank you very much
+But do anyone know what "sync with device lost" mean?
+Can it be something with spinOnce()
+
+A:
+
+I solved it by calling spinOnce periodically on the windows side before any messages is send
+Edit: Here a code snippet(Thanks to gvdhoorn)
+First I declare all important variables at the beginning of my DLL like this
+ros::NodeHandle nh;                                  
+char *ros_master = "111.222.0.111:11411";//here you have to put your IP:PORT !!!
+char *topic="cmd_vel";
+powerball_msgs::ExtPoseInputextPoseInput_msg;  
+ros::Publisher cmd_vel_pub(topic, &extPoseInput_msg);
+
+Then the export functions follows. The function ROS_SpinOnce is the one you have to call periodically in your application before you initialize the node and advertise the topic. It only executes spinOnce
+extern "C" __declspec(dllexport) void __stdcall ROS_SpinOnce() {
+    nh.spinOnce();
+}
+
+After you started to call spinOnce periodically, you have to initialize and advertise like this. It has to be called only once.
+extern "C" __declspec(dllexport) void __stdcall InitialROS() { 
+    nh.initNode(ros_master);
+        nh.advertise(cmd_vel_pub);
+}
+
+After that you can publish so many messages as wanted in another functions like below. If you call Publish functions periodically in  your application you have to add nh.SpinOnce
+either in your DLL-functions or by calling ROS_SpinOnce() in the timer event.
+extern "C" __declspec(dllexport) void __stdcall PublishData_Gripper(double rel_vy, double y) {
+    extPoseInput_msg.robot.rel_velocity = 0;
+    ....
+}
+
+Originally posted by ChrisBecken with karma: 43 on 2018-01-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-01-10:
+On which side?
+Could you perhaps add a small example (ie: code) to your answer?
+Comment by gvdhoorn on 2018-01-10:
+I fixed the code formatting. Can you check to see whether it should all be a single block? It's rather confusing as it is right now.
+Comment by ChrisBecken on 2018-01-10:
+Thank you gvdhooorn. This is a code snippet from a dll. What do you mean by should it all be a single block?
+Comment by gvdhoorn on 2018-01-10:
+There is limited space in the answer section, so perhaps the formatting as it is right now is not the best way to show us what you did / what is needed.
+Adding some whitespace (or removing it) might improve things.
+Also: do the comments go with the function before or after them?
+Comment by ChrisBecken on 2018-01-10:
+I hope that it is much better.
+Comment by gvdhoorn on 2018-01-10:
+This is awesome. Thanks for updating the formatting.
+Comment by gvdhoorn on 2018-01-10:
+One nitpick though: I don't believe 111.222.0.1121:11411 is a valid IP:PORT combo?
+Comment by ChrisBecken on 2018-01-10:
+No it isn't. I toke a radom number
+Comment by gvdhoorn on 2018-01-10:
+That's fine, but an IP octet with 4 digits (1121) is going to confuse some future readers :)
+Comment by ChrisBecken on 2018-01-10:
+You are right. Changed it
+

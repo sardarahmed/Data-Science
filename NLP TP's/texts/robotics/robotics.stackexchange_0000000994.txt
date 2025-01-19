@@ -1,0 +1,39 @@
+Q:
+
+Chaining Kalman filters
+
+My team is building a robot to navigate autonomously in an outdoor environment. We recently got a new integrated IMU/GPS sensor which apparently does some extended Kalman filtering on-chip. It gives pitch, roll, and yaw, north, east, and down velocities, and latitude and longitude.
+However, we also have some encoders attached to our wheels, which provide linear and angular velocities. Before we got this new IMU/GPS sensor, we made our own EKF to estimate our state using the encoders and some other low-cost sensors. We want to use this new sensor's on-chip filter, but also incorporate our encoders into the mix.
+Is there any problem with chaining the filters? What I mean is, we'd use the output of the IMU/GPS sensor's on-chip EKF as an update to our own EKF, just as we use the data read from the encoders as an update to our EKF. It seems reasonable to me, but I was wondering what is usually supposed to be done in this case. 
+
+A:
+
+You can use the INS / GPS as updates to the output of your first EKF. This is, in fact, not chaining, but simply conditioning the estimate based on the added information from the INS / GPS.
+Suppose we have the following functions: 
+$x_{t+1|t}$, $P_{t+1|t}$ = EKF_PREDICT($x_t$, $P_t$, $u_t$), for inputs as state $x$, covariance $P$, and control inputs (estimated by odometry) $u_t$.
+and
+$x_{t+1|t+1}$, $P_{t+1|t+1}$ = EKF_UPDATE($x_{t+1|t}$, $P_{t+1|t}$, $\hat{x}_{t+1}$).  
+The estimates from sensors are the $\hat{x}_{t+1}$. We have things like:
+$\hat{x}^{gps}_{t+1} = f(GPS)$
+$\hat{x}^{map}_{t+1} = f(map)$
+$\hat{x}^{ins}_{t+1} = f(INS)$
+etc for all other ways of estimating the state of the robot.
+So running the function EKF_UPDATE for all of those sensors is good enough.
+Your loop will be something like this:
+for all time $t$
+
+Let $u_t$ be the current odometry / kinematic estimate of pose, and $R_u$ be the noise on that estimate.
+$x_{t+1|t}$, $P_{t+1|t}$ = EKF_PREDICT($x_t$, $P_t$, $u_t$, $R_u$)
+for all sensors $S$,
+
+Let $\hat{x}^{S}_{t+1}$ be the estimate of the pose from that sensor, and $R_{S}$ be the noise on that estimate
+$x_{t+1|t+1}$, $P_{t+1|t+1}$ = EKF_UPDATE($x_{t+1|t}$, $P_{t+1|t}$, $\hat{x}_{t+1}, R_S$).  
+end-for
+
+end-for
+
+Some caveats are: 
+
+Since we're using the EKF, there is no guarantee that the estimate is independent of the ordering of the updates. That is, if you do INS then GPS, the resulting estimate might be different than if you update with GPS then INS. This is usally not a big deal, but the filter will requiring significantly more tuning. 
+Please be aware your INS has a bias and drift, which might affect your long-term reliability. GPS can help you a lot here. Most literature simultaneously estimates the bias and drift in the INS.
+

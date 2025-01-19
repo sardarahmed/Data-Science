@@ -1,0 +1,103 @@
+Q:
+
+how to: geom calcs in ROS
+
+I'm in the need to do geometry calculations (matrix_by_matrix, vector_by_matrix, scalar_by_vector, and so on).
+I looked up the documentation but the vector class isn't documented at all, and doing something like
+tf::Vector3 myvect = vect1 + vect2;
+
+results in error, as well as
+tf::Vector3 myvect;
+myvect.x = 3.5;
+
+or
+tf::Vector3 myvect(1,2,3);
+myvect = myvect * 2;
+
+So Vector3 appears to be unusable.
+Why are all those types there if I eventually must use Eigen?
+Here is my code:
+    tf::StampedTransform transform1, transform2, transform3;
+    tf::Vector3 vactual1, vactual2, vactual3, cmd1, cmd2, cmd3, *tmp1, *tmp2, *err;
+    tf::Quaternion qactual1,qactual2,qactual3;
+    double roll,pitch,yaw, dist12, dist13, dist23, factor;
+    while (n.ok())
+    {        
+    
+        try{
+            listener.lookupTransform("world", "/robot_1/base_link", ros::Time(0), transform1);
+            listener.lookupTransform("world", "/robot_2/base_link", ros::Time(0), transform2);
+            listener.lookupTransform("world", "/robot_3/base_link", ros::Time(0), transform3);
+        vactual1 = transform1.getOrigin();
+        vactual2 = transform2.getOrigin();
+        vactual3 = transform3.getOrigin();
+        qactual1 = transform1.getRotation();
+        qactual2 = transform2.getRotation();
+        qactual3 = transform3.getRotation();
+        tf::Matrix3x3(qactual1).getRPY(roll, pitch, yaw);
+        dist12 = (powf(vactual2.x()-vactual1.x(),2)+powf(vactual2.y()-vactual1.y(),2));
+        dist13 = (powf(vactual3.x()-vactual1.x(),2)+powf(vactual3.y()-vactual1.y(),2));
+        dist23 = (powf(vactual3.x()-vactual2.x(),2)+powf(vactual3.y()-vactual2.y(),2));
+
+    //compute error correction for node 1
+    err = new tf::Vector3(vactual2.x() - vactual1.x(),vactual2.y() - vactual1.y(), 0);
+    factor = - 0.5 * (dist12 - 1.0);
+    tmp1 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    err = new tf::Vector3(vactual3.x() - vactual1.x(), vactual3.y() - vactual1.y(), 0);
+    factor = - 0.5 * (dist13 - 1.0);
+    tmp2 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    cmd1 = *tmp1 + *tmp2;
+
+    //compute error correction for node 2
+    err = new tf::Vector3(vactual1.x() - vactual2.x(), vactual1.y() - vactual2.y(), 0);
+    factor = - 0.5 * (dist12 - 1.0);
+    tmp1 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    err = new tf::Vector3(vactual3.x() - vactual2.x(), vactual3.y() - vactual2.y(), 0);
+    factor = - 0.5 * (dist23 - 1.0);
+    tmp2 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    cmd2 = *tmp1 + *tmp2;
+
+    //compute error correction for node 3
+    err = new tf::Vector3(vactual2.x() - vactual3.x(), vactual2.y() - vactual3.y(), 0);
+    factor = - 0.5 * (dist23 - 1.0); 
+    tmp1 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    err = new tf::Vector3(vactual1.x() - vactual3.x(), vactual1.y() - vactual3.y(), 0);
+    factor = - 0.5 * (dist13 - 1.0);
+    tmp2 = new tf::Vector3(factor * err->x(), factor * err->y(), 0);
+    cmd3 = *tmp1 + *tmp2;
+
+    }
+    catch (tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+        }
+    
+
+    std::cout << "Robot 1 -> X: " << vactual1.x() << "  Y: " << vactual1.y() << "  T: " << yaw << std::endl;
+    std::cout << "Formation : [" << dist12 << " , " << dist13 << " , " << dist23 << "]" << std::endl;
+        ros::spinOnce();
+        r.sleep();
+    }
+
+As is evident from the above I had to find workarounds for many of the operations:
+scalar_by_vector wasn't accepted, and not knowing how to set a member I had to move math operations inside instantiation instructions.
+
+Originally posted by Claudio on ROS Answers with karma: 859 on 2013-03-05
+Post score: 0
+
+A:
+
+If you want a generic linear math library Eigen is the recommended library.
+The tf/bullet LinearMath library is designed for a limited purpose and works well for that purpose.  Feel free to use it or not as you see fit.  Just because it does not have operator overloading does not mean that it's broken.  It's a design choice made by the developers.
+
+Originally posted by tfoote with karma: 58457 on 2013-03-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by dornhege on 2013-03-05:
+Shouldn't the operator overloading work? My currently installed header defines for example: TFSIMD_FORCE_INLINE Vector3  operator*(const Vector3& v, const tfScalar& s)
+Comment by BluPlana on 2017-01-17:
+Please, what does TFSIMD_FORCE_INLINE mean?
+Comment by tfoote on 2017-01-17:
+@BluPlana this is an old resolved question. If you have a question of your own please ask it separately.
+

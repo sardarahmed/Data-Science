@@ -1,0 +1,61 @@
+Q:
+
+How can I simulate dynamixel arm in gazebo?
+
+I am trying to simulate my robot in gazebo which has dynamixel based arm. I am able to manipulate my robot arm by kinematics as well as by motion planning. But I want to create some pick_and_place task in gazebo with my robot. I have included the arms in my URDF. Spawing the robot in gazebo does not make the arm stiff. While the robot is moving, the revolute joints of my robots are also moving with external force. How can i get topics of my individual arms or individual motors. Topic like this /arm_controller/follow_joint_trajectory   or /arm_shoulder_pan_joint/command.
+
+Originally posted by jontromanab on ROS Answers with karma: 56 on 2013-03-16
+Post score: 0
+
+A:
+
+You need to modify your URDF. Add this for each joint you want to control:
+ <transmission type="pr2_mechanism_model/SimpleTransmission" name="kinect_trans">
+    <actuator name="kinect_motor" />
+    <joint name="kinect_joint" />
+    <mechanicalReduction>1.0</mechanicalReduction>
+    <motorTorqueConstant>1.0</motorTorqueConstant>
+ </transmission>
+
+ <gazebo reference="kinect_joint">
+    <erp>0.1</erp>
+    <stopKd value="100000000.0" />
+    <stopKp value="100000000.0" />
+    <fudgeFactor value="0.5" />
+ </gazebo>
+
+Then you will need one manager:
+<gazebo>   
+     <controller:gazebo_ros_controller_manager name="gazebo_ros_controller_manager" plugin="libgazebo_ros_controller_manager.so">
+          <alwaysOn>true</alwaysOn>
+          <updateRate>1000.0</updateRate>
+          <robotNamespace></robotNamespace>
+          <robotParam>robot_description</robotParam>
+          <interface:audio name="gazebo_ros_controller_manager_dummy_iface" />
+     </controller:gazebo_ros_controller_manager>
+</gazebo>
+
+Then, create configuration (yaml) file like this one:
+kinect_controller:
+  type: robot_mechanism_controllers/JointPositionController
+  joint: kinect_joint
+  pid: &kinect_position_gains
+    p: 2.0
+    i: 0.5
+    d: 0.1
+    i_clamp: 10.0
+
+And finally, put this into your launch file:
+<rosparam file="$(find your_package)/config/conf_file.yaml" command="load" />
+    
+<param name="pr2_controller_manager/joint_state_publish_rate" value="100.0" />
+
+<!-- Spawn some controllers stopped/started -->
+<node pkg="pr2_controller_manager" type="spawner" args="kinect_controller" name="spawn_dynamix" output="screen"/>
+
+That should be all... You will get command topic for each joint. If you want also follow joint action, you try to write simple script on your own - here is example which I'm using and it works somehow: http://pastebin.com/HaKtegR4. Good luck :-)
+
+Originally posted by ZdenekM with karma: 704 on 2013-03-26
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,80 @@
+Q:
+
+rosserial_python can't connect to Arduino Leonardo
+
+I am trying to use an Arduino to connect two sensors to ROS Groovy on Ubuntu 12.04 but have problems to talk to it using rosserial. Since I have several sensors, I bought the Arduino Leonardo http://arduino.cc/en/Main/arduinoBoardLeonardo based on the ATmega32u4 since it has four interrupt pins that I need for my sensors.
+The first problem was in ArduinoHardware.h
+
+iostream = &Serial;
+
+which I changed to
+
+iostream = &Serial1;
+
+as proposed here: https://github.com/ros-drivers/rosserial/issues/49
+Now the HelloWorld.ino compiled and I could upload it to the Arduino.
+I started
+
+rosrun rosserial_python serial_node.py /dev/ttyACM0
+
+but only get this response:
+
+[INFO] [WallTime: 1367338659.844329] ROS Serial Python Node
+
+[INFO] [WallTime: 1367338659.858269] Connecting to /dev/ttyACM0 at 57600 baud
+
+[ERROR] [WallTime: 1367338676.969867] Lost sync with device, restarting...
+
+Has someone managed to use the Leonardo and can help me?
+Nikolas
+// update:
+I adapted by loop to:
+
+void loop(){
+
+Serial.println(1);
+
+if (state){
+
+digitalWrite(led, HIGH);   // turn the LED on (HIGH is the voltage level)
+
+}else{
+
+digitalWrite(led, LOW);   // turn the LED on (HIGH is the voltage level)
+
+}
+
+state = !state;
+
+delay(1000);               // wait for a second
+
+str_msg.data = hello;
+
+chatter.publish( &str_msg );
+
+nh.spinOnce();
+
+}
+
+The led (Pin 13) is blinks with a frequency of .5Hz (1s on 1s off). If (Iff) I start the rosserial_python, the TX-Led also flashes as the pin13-Led changes its state.
+Therefore there is at least some kind of communication, but no rostopic.
+
+Originally posted by NikolasEngelhard on ROS Answers with karma: 106 on 2013-04-30
+Post score: 2
+
+A:
+
+To my knowledge, you can't use the Arduino Serial library while sending/receiving ROS topics.
+Since your data will be sent in the chatter.publish call, the rosserial_python node will see this data, as well as data sent with the Serial.println call, which is probably whats causing it to lose sync.
+Try commenting out that Serial.println line in loop() and see if it can connect stably.
+Also, I noticed that in your python solution you're using a baud rate of 115200, whereas the rosserial node is attempting to connect at  57600. Are you setting the serial rate to 115200 in your void setup() on the Arduino? You'll probably want to remove that as well as it will conflict with the rosserial configuration.
+Best of luck!
+
+Originally posted by hd271 with karma: 38 on 2013-05-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by NikolasEngelhard on 2013-05-01:
+I first tried it without the serial.println but could also not connect properly. I experimented with different baudrates (and checked that both ends use the same rate) but was not able to connect.
+

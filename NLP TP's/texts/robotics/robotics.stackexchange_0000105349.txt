@@ -1,0 +1,107 @@
+Q:
+
+Trouble with creating an image_transport nodelet
+
+I'm working in ROS noetic on ubuntu 20.04
+I'm pretty new to the concepts of nodelets but I felt I needed them to more efficiently go through a process of taking uncompressed images and then decompressing them with the image_transport package without it having to go through TCP. I went through the pluginlib tutorial and then this tutorial for nodelets, which I based my code off of.
+I slightly altered it to first take normal images, which worked, but once I started working with the image_transport package, I've been encountering an error related to the callback signature.
+Here is my main code where the commented out lines are the lines for the normal publisher/subscriber that worked with sensor_msgs/Image types.
+#include <ros/ros.h>
+#include <std_msgs/String.h>
+#include <sensor_msgs/CompressedImage.h>
+#include <sensor_msgs/Image.h>
+#include <nodelet/nodelet.h>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
+#include <pluginlib/class_list_macros.h>
+#include <stdio.h>
+#include <boost/bind.hpp>
+
+namespace image_nodelet
+{
+    class Transport_Nodelet: public nodelet::Nodelet
+    {
+        public:
+            Transport_Nodelet()
+            {
+            }
+        private:
+            virtual void onInit()
+            {
+                ros::NodeHandle nh = getPrivateNodeHandle();
+                ros::NodeHandle im_nh = getNodeHandle();
+                NODELET_DEBUG("Initializing nodelet...");
+
+                image_transport::ImageTransport it(im_nh);
+                
+                sub_ = it.subscribe("/acl_jackal/forward/color/image_raw/compressed", 1, boost::bind(&Transport_Nodelet::callback, this, _1));
+                pub_ = it.advertise("img_out", 1);
+
+                //image_transport::Subscriber sub = it.subscribe("/acl_jackal/forward/color/image_raw/compressed", 1, &Transport_Nodelet::callback, this);
+                //image_transport::Publisher pub = it.advertise("img_out", 1);
+
+                // Create a publisher topic
+                //pub = nh.advertise<sensor_msgs::Image>("img_out",10); 
+             
+                // Create a subscriber topic
+                //sub = nh.subscribe("/acl_jackal/forward/color/image_raw/compressed",10, &Transport_Nodelet::callback, this);  
+            }
+            // ros::Publisher pub;
+            // ros::Subscriber sub;
+            image_transport::Publisher pub_;
+            image_transport::Subscriber sub_;
+
+            void callback(const sensor_msgs::CompressedImageConstPtr& input)
+            {
+
+                try {
+                    // Convert the compressed image ROS message to a cv::Mat using cv_bridge
+                    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(input, sensor_msgs::image_encodings::BGR8);
+
+                    // Here cv_ptr->image contains the uncompressed image as cv::Mat
+
+                    // You can now publish the uncompressed image if needed
+                    pub_.publish(cv_ptr->toImageMsg());
+                } catch (cv_bridge::Exception& e) {
+                    ROS_ERROR("Could not convert from '%s' to 'bgr8'.", input->format.c_str());
+                }
+ 
+                // sensor_msgs::Image output;
+                // output.data = input->data;
+
+                // NODELET_DEBUG("msg data = %d",output.data);
+                // ROS_INFO("msg data = %d",output.data);
+                // pub.publish(output);        
+            }
+    };
+    // Export the Hello_World class as a plugin using the
+    // PLUGINLIB_EXPORT_CLASS macro.
+    PLUGINLIB_EXPORT_CLASS(image_nodelet::Transport_Nodelet, nodelet::Nodelet);
+}
+
+However, I get an error when I catkin_make:
+/home/glenn/catkin_make_ws/src/my_workspace/src/my_nodelet.cpp:31:141:   required from here
+/usr/include/boost/bind/bind.hpp:319:35: error: no match for call to ‘(boost::_mfi::mf1<void, image_nodelet::Transport_Nodelet, const boost::shared_ptr<const sensor_msgs::CompressedImage_<std::allocator<void> > >&>) (image_nodelet::Transport_Nodelet*&, const boost::shared_ptr<const sensor_msgs::Image_<std::allocator<void> > >&)’
+  319 |         unwrapper<F>::unwrap(f, 0)(a[base_type::a1_], a[base_type::a2_]);
+
+This is referring to line 31 of my code which is:
+sub_ = it.subscribe("/acl_jackal/forward/color/image_raw/compressed", 1, boost::bind(&Transport_Nodelet::callback, this, _1));
+
+I followed the image_transport API documentation for the callback signature, where the only difference is I used sensor_msgs::CompressedImageConstPtr& instead of sensor_msgs::ImageConstPtr& which you can see in my callback function.
+Any help would be appreciated. I've tried looking at all the documentation and forums but found no hints at a solution to my problem.
+Update: I tried the obvious and just followed exactly as the document says for the callback, so I changed the argument type in the callback from
+void callback(const sensor_msgs::CompressedImageConstPtr& input)
+
+to
+void callback(const sensor_msgs::ImageConstPtr& input)
+
+With everything else the same, and it compiled. Does this mean I can't use the compressed image type with image_transport? I managed to already read uncompressed images so would I better off manually uncompressing without the image_transport package?
+
+A:
+
+About your build error: if you look at image_transport.h, you'll see that the advertise() and subscribe() are defined only for ImageConstPtr objects. That's why it won't build if you pass a CompressedImageConstPtr object.
+Not sure if you are aware of it, but the image_transport::ImageTransport class has a feature to automatically decompress a CompressedImage msg, then pass an ImageConstPtr object to your subscribe() callback. Take a look at this page:
+http://wiki.ros.org/image_transport/Tutorials/ExaminingImagePublisherSubscriber
+

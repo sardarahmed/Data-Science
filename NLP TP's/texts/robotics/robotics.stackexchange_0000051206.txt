@@ -1,0 +1,129 @@
+Q:
+
+How do I use pcl 1.7 with groovy?
+
+Hello,
+I want to use the RSD-Feature from PCL, which is in their current trunk-version (must be 1.7, am I right?) with ROS groovy.
+How can I compile the current pcl-trunk version for ros groovy? I found this github repo: github.com/ros-perception/perception_pcl but I don't know how to use it.
+I made the same thing half a year ago for ROS electric with a svn checkout from the svn.pointclouds.org/ros/branches/electric/perception_pcl_unstable/ and after that a "rosmake pcl" but the whole svn.pointclouds.org/ros/* does not exist anymore.
+Can anyone help me with this?
+Thanks in advance,
+kartoffelsalat
+
+Originally posted by kartoffelsalat on ROS Answers with karma: 133 on 2013-05-17
+Post score: 13
+
+Original comments
+Comment by kartoffelsalat on 2013-05-17:
+Sorry for not publishing complete links, but my karma isn't sufficient for this (why do I need karma for this action???)
+Comment by William on 2013-05-17:
+The askbot system has a minimum required karma for posting links to prevent spamming.
+
+A:
+
+I did this a while back, here is what I did.
+First you need to have the pcl_ros package in your workspace, or you need to install all of the debians which pcl_ros depends on. Since I am on a mac, I will fetch all of the dependencies and build them from source, so I will start like this:
+Note: the /tmp directory is cleared at reboot, you may want to pick a different directory
+cd /tmp
+mkdir pcl_ws
+cd pcl_ws
+wstool init src http://packages.ros.org/web/rosinstall/generate/raw/groovy/pcl_ros
+
+That downloaded pcl_ros and all of it's dependencies into the src folder, including pcl-1.6 which is what is released with groovy. Lets remove that version of pcl so that we can replace it later:
+rm -rf src/pcl
+
+If you only want to rebuild pcl and pcl_ros from source then run sudo apt-get install ros-groovy-pcl-ros in order to get all of the dependencies you need and then setup a workspace with pcl_ros in it:
+# Only do this if you did the apt-get and did not run wstool above
+cd /tmp
+mkdir pcl_ws
+cd pcl_ws
+mkdir src
+cd src
+git clone https://github.com/ros-perception/perception_pcl.git
+
+Either way, at this point you have the /tmp/pcl_ws/src folder now which contains at least pcl_ros. In the src folder you should clone the master of pcl (1.7):
+cd /tmp/pcl_ws/src
+git clone https://github.com/PointCloudLibrary/pcl.git
+
+Next you need to "ROS"-ify the pcl package. First you need the package.xml for pcl, we can get this from the released version (it hasn't changed from 1.6 to 1.7):
+cd pcl
+wget https://raw.github.com/ros-gbp/pcl-release/release/pcl/1.6.0/package.xml
+
+Next you will want to edit the cmake/pcl_find_ros.cmake file to hard code the USE_ROS option to ON, here is a patch:
+diff --git a/cmake/pcl_find_ros.cmake b/cmake/pcl_find_ros.cmake
+index cf2e1e3..b426066 100644
+--- a/cmake/pcl_find_ros.cmake
++++ b/cmake/pcl_find_ros.cmake
+@@ -25,7 +25,7 @@ endmacro(get_ros_inc_path)
+ set(ROS_DISTRO $ENV{ROS_DISTRO})
+
+ if(ROS_DISTRO)
+-    option(USE_ROS "Integrate with ROS rather than using native files" OFF)
++    option(USE_ROS "Integrate with ROS rather than using native files" ON)
+     message(STATUS "Found ROS; USE_ROS is ${USE_ROS}; ROS-Distro: ${ROS_DISTRO}")
+     if(USE_ROS)
+         # Search for ROS
+
+Now you can build your pcl workspace:
+cd /tmp/pcl_ws
+source /opt/ros/groovy/setup.bash  # Only if you are using debians
+catkin_make_isolated --install  # prefix with `./src/catkin/bin/` if not using debians
+
+Now assuming you didn't run into any build errors (I didn't get any on my Mac just now), then you should have a folder at /tmp/pcl_ws/install_isolated which you can source to utilize pcl and pcl_ros:
+source /tmp/pcl_ws/install_isolated/setup.bash
+
+Originally posted by William with karma: 17335 on 2013-05-17
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by mjcarroll on 2013-05-20:
+I have successfully followed these instructions to get PCL trunk working with ROS Groovy.
+Comment by kartoffelsalat on 2013-05-30:
+Thanks for your quick reply, William! And shame on me for responding so late. I was successful, but it was not easy...Since PCL has also included an old version of libsvm, I ran into runtime error, I didn't expect at all.
+Comment by kartoffelsalat on 2013-05-30:
+Nevertheless: The way you wrote how to use the compiled pcl-1.7 with ROS didn't worked for me. So I just copied the whole content of .../install_isolated into my /opt/ros/groovy and now its working! Thanks again!
+Comment by Artem on 2013-06-15:
+The instructions don't work for me. pcl builds without a problem, however when it comes to plc_ros I got many linking problems with libpcl_ros_segmentation.dylib.
+Comment by Artem on 2013-06-16:
+Linking CXX shared library /Users/artemlenskiy/ros/catkin_install/devel_isolated/pcl_ros/lib/libpcl_ros_surface.dylib
+Undefined symbols for architecture x86_64:
+"pcl::MovingLeastSquares<pcl::PointXYZ, pcl::Normal>::performProcessing(pcl::PointCloudpcl::Normal&)", referenced from:
+vtable fo
+Comment by Artem on 2013-06-16:
+Any ideas how to solve this? I should mention that if I comment out all the lines related to ros_surface in CMakeLists.txt, plc_ros builds successfully.
+Comment by William on 2013-06-16:
+I don't know, I guess the trunk of PCL has a breaking change now. I would file a ticket on pcl_ros.
+Comment by VicL on 2013-06-30:
+Hi I had an error here: [ 87%] Built target flann_s
+CalledProcessError: Command '/tmp/pcl_ws/install_isolated/env.sh make -j8 -l8' returned non-zero exit status 2
+<== Failed to process package 'flann':
+Command '/tmp/pcl_ws/install_isolated/env.sh make -j8 -l8' returned non-zero exit status 2
+Comment by VicL on 2013-06-30:
+any help?thanks in advance!
+Comment by VicL on 2013-06-30:
+Hmm I did not do anything for this part of the patch:
+diff --git a/cmake/pcl_find_ros.cmake b/cmake/pcl_find_ros.cmake
+index cf2e1e3..b426066 100644
+--- a/cmake/pcl_find_ros.cmake
++++ b/cmake/pcl_find_ros.cmake
+Is there something to edit in this part?
+Comment by Artem on 2013-06-30:
+It is hard to say without a full log, but try to turn off CUDA support in CMakeLists.txt.
+Comment by VicL on 2013-07-01:
+Which CMakeLists.txt would that be?
+is it the one at /tmp/pcl_ws/src/flann?
+Comment by Artem on 2013-07-01:
+set( CMAKE_VERBOSE_MAKEFILE on ) in CMakeLists.txt the one in PCL. Regarding CUDA, I recently had troubles compiling FLANN with CUDA support.
+Comment by sran on 2013-07-08:
+I have exact same problem as VicL and I can't find set( CMAKE_VERBOSE_MAKEFILE on) in CMakeLIsts.txt in pcl directory... Can anybody help with this? Thank you so much in advance
+Comment by Seanny123 on 2013-12-01:
+May I suggest an edit? Could you note at the beginning that you should not use the /tmp directory if you intend to recompile the source again later, since it will be deleted after you re-boot?
+Comment by Neil Traft on 2014-08-22:
+Is this still the preferred way to do this? There's no pcl_find_ros.cmake file in the pcl repo anymore so I can't follow these instructions.
+Comment by vincentweisen on 2015-09-10:
+I found this error !!
+CMake Error at /usr/share/cmake-2.8/Modules/FindBoost.cmake:1202 (message):
+Unable to find the requested Boost libraries.
+any idea?
+

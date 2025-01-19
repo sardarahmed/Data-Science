@@ -1,0 +1,214 @@
+Q:
+
+[ROS2 Foxy] Passing argument from one launch file to another
+
+I have compartmentalized my launch files into different purposes, I currently have a main launch file from which I would like to call one of the others. I have partly done this to be able to separate some of the functionalities, but also so the main launch doesn't become to verbose.
+The main launch file gets passed an argument for the vehicle platform architecture, such as to find a specific config file highlighting some necessary parameters. This argument that is to be passed is platform.
+How can I pass this argument from the main launch file to its children.
+I included an example of the main.launch.py so one can see how the platform arg is being used.
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions.declare_launch_argument import DeclareLaunchArgument
+from launch.actions.include_launch_description import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node  
+
+def generate_launch_description():
+    # defining platform
+    # select either newholland_t7 or fort_rd25
+    platforms = ["newholland_t7", "fort_rd25"]
+    for id, plat in enumerate(platforms):
+        print(f"\t{id} for {plat}")
+    platform_id = int(input("Select a platform: "))
+
+    try:
+        platform = platforms[platform_id]
+    except IndexError as ex:
+        print(f"[ERROR]: {ex}, please select valid index")
+        return LaunchDescription()
+    print(f"Selected {platform}")
+
+    urdf_path = os.path.join(
+        get_package_share_directory("main_pkg"), "urdf", platform + ".urdf.xml"
+    )
+    with open(urdf_path, "r") as infp:
+        robot_description = infp.read()
+    urdf_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        parameters=[{"robot_description": robot_description}],
+        arguments=[urdf_path],
+        output="screen",
+    )
+
+    danger_zone_config = os.path.join(
+        get_package_share_directory("agrirobot"), "config", platform + ".yaml"
+    )
+    visualize_markers = Node(
+        package="visualize_markers",
+        executable="visualize_markers_node",
+        name="visualize_markers",
+        parameters=[danger_zone_config],
+        output="screen",
+    )
+
+    # some other things
+
+    ld = LaunchDescription()
+    ld.add_action(urdf_publisher)
+    ld.add_action(visualize_markers)
+
+    return ld
+
+Originally posted by morten on ROS Answers with karma: 198 on 2021-09-29
+Post score: 1
+
+Original comments
+Comment by shonigmann on 2021-10-01:
+I just realized that you are giving your robot_state_publisher both the URDF path AND the contents of the URDF file as robot_description. You only need one or the other, and the former is deprecated, so the latter is a better bet.
+I also just realized that, for the use case outlined above, you can get away without the additional LaunchArguments. I will append a secondary answer that matches what you're going for a bit more directly (but is perhaps a bit less generalizable)
+
+A:
+
+You can add launch_arguments when you call IncludeLaunchDescription
+That said, looking over your sample launch file, I would suggest you to use DeclareLaunchArgument instead of input() to define whatever inputs you want to the launch file, so they can be given without the need for user input.
+Question #306935 gives an example (for Crystal, but should still hold up in Foxy).
+Edit - Adding a quick example for clarity:
+main.launch.py could contain
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions.declare_launch_argument import DeclareLaunchArgument
+from launch.actions.include_launch_description import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node  
+
+def generate_launch_description():
+    # defining platform
+    platform_arg = DeclareLaunchArgument(
+        'platform',
+        default_value='newholland_t7',  # default value is optional
+        description='select either newholland_t7 or fort_rd25')
+
+    # some other things
+    
+    # include secondary launch file that takes in the platform argument
+    launch2 = IncludeLaunchDescription(
+                       PythonLaunchDescriptionSource([get_package_share_directory('my_package'), '/secondary.launch.py']),
+                       launch_arguments=[('platform', LaunchConfiguration('platform')],
+                   )
+
+    ld = LaunchDescription()
+    ld.add_action(platform_arg )
+    ld.add_action(launch2 )
+
+    # add some other actions
+
+    return ld
+
+and then secondary.launch.py could contain:
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions.declare_launch_argument import DeclareLaunchArgument
+from launch.actions.include_launch_description import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node  
+from launch.substitutions import PathJoinSubstitution
+
+def generate_launch_description():
+    # defining platform
+    platform_arg = DeclareLaunchArgument(
+        'platform',
+        default_value='newholland_t7',  # default value is optional
+        description='select either newholland_t7 or fort_rd25')
+
+    # LaunchConfiguration concatenation is a bit indirect, but using additional launch arguments works well (per https://answers.ros.org/question/358655/ros2-concatenate-string-to-launchargument/ )
+    platform_yaml = DeclareLaunchArgument('platform_yaml', default_value=[LaunchConfiguration('platform_arg'), '.yaml'])
+    platform_urdf = DeclareLaunchArgument('platform_yaml', default_value=[LaunchConfiguration('platform_arg'), '.urdf.xml'])
+
+   # get path to some file depending on the launch argument
+   platform_urdf_path = PathJoinSubstitution(get_package_share_directory('my_package'), 'urdf', LaunchConfiguration('platform_urdf'))    
+   platform_yaml_path = PathJoinSubstitution(get_package_share_directory('my_package'), 'urdf', LaunchConfiguration('platform_yaml'))    
+
+    # some other things
+    
+    ld = LaunchDescription()
+    ld.add_action(platform_arg)
+
+    # add some other actions
+
+    return ld
+
+More compact solution:
+main.launch.py would be the same...
+and then secondary.launch.py could contain:
+import ...
+
+def generate_launch_description():
+    # defining platform
+    platform_arg = DeclareLaunchArgument(
+        'platform',
+        default_value='newholland_t7',  # default value is optional
+        description='select either newholland_t7 or fort_rd25')
+
+platform_path = PathJoinSubstitution(get_package_share_directory('my_package'), 'urdf', LaunchConfiguration('platform'))
+
+# get contents of urdf file using Command substitution and `cat` command to print file to output
+robot_description = Command(['cat ', platform_path, '.urdf.xml'])
+
+urdf_publisher = Node(
+    package="robot_state_publisher",
+    executable="robot_state_publisher",
+    name="robot_state_publisher",
+    parameters=[{"robot_description": robot_description}],
+    output="screen",
+)
+
+visualize_markers = Node(
+    package="visualize_markers",
+    executable="visualize_markers_node",
+    name="visualize_markers",
+    parameters=[('parameter_name', [platform_path, '.yaml'])],  # not sure what the intended parameter name is
+    output="screen"
+)
+
+...
+
+The above works because a Node's 'arguments' take take SomeSubstitutionType, which supports an iterable (a list) of Substitutions (e.g. Launch Configurations) and Text (strings).  'parameters' take SomeParameters which ultimately include SomeSubstitutionType, so they can also accept lists of Substitutions and text.
+When either is evaluating the value of a given combination of substitutions and texts, they get concatenated!
+
+Originally posted by shonigmann with karma: 1567 on 2021-09-29
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by morten on 2021-09-30:
+How do I then parse the argument in the other file? Because I don't need the platform string in a ROS-compatible format, I need the string itself so I can parse out the file path
+Edit: the example also doesn't seem to solve the problem, he finishes saying that "Maybe it has a method that returns the value- the perform() method wants a LaunchContext but I'm not sure where to get it."
+Comment by shonigmann on 2021-09-30:
+I edited above. Guess I didn't read the answer I linked completely.. To get the value of a LaunchArgument, you call LaunchConfiguration('argument_name'). It does need to be evaluated in context (e.g. by a ros launch action at runtime), but there are ways of getting around that if you do need the value in your own python functions (e.g. by using different Launch Substitutions or the most flexible but "opaque" way would be with OpaqueFunction)
+Comment by shonigmann on 2021-09-30:
+Edited again to show using the launch argument in a file path, based on your original code sample
+Comment by morten on 2021-09-30:
+It just seems very verbose to have to define separate launch arguments for the yaml and urdf files. But if thats what it takes I'll give it a try tomorrow. Thanks
+Comment by shonigmann on 2021-09-30:
+I agree - I'd love a more direct substitution for string concatenation. As an alternative, you can look into OpaqueFunction (sorry I don't have a better example handy, but this issues thread gives one). Any python functions you have inside an OpaqueFunction will be evaluated at runtime in context, so your string LaunchConfiguration can be used directly like a string (e.g. my_string = str(context.launch_configurations['my_arg']) then you can get away with my_string2 = my_string + '.urdf').
+Comment by morten on 2021-10-01:
+Just a final question, which library does context come from? Or what is the context object? Part of the original use case is checking if the platform is valid, so this is kind of outside the scope of a node.
+Edit: Also, what is there any way to skip making additional launch arguments? To avoid making the argument list too messy for the launch file.
+Comment by morten on 2021-10-01:
+Is there anywhere to read documentation regarding substitutions and launch configurations? I can't seem to find any and it all feels a little needlessly complex, but that's likely just my lack of understanding.
+Comment by shonigmann on 2021-10-01:
+context comes from LaunchContext and captures the current state of the launch file - not necessarily a single node - including defined arguments, parameters, events, etc.. LaunchArguments are a bit like Schrodingers cat here - you're code can't know what they'll be until you actually run the code, so all the substitutions are there as placeholders, waiting for that context.
+But perhaps more importantly to your question, context is passed in automatically by the OpaqueFunction substitution. You give OpaqueFunction a function handle, and it expects that handle to accept a context input. Then inside that function, you can extract information about the current context to use as needed
+Comment by shonigmann on 2021-10-01:
+I wouldn't worry too much about having too many launch arguments if you do not intend them to be filled out manually. I proposed a few alternative approaches not using launch arguments, using PythonExpression and Command substitutions here but have yet to find a cleaner approach.
+Comment by shonigmann on 2021-10-01:
+Documentation is a bit scant on launch unfortunately. It was meant to be a Google Summer of Code project last summer, but I'm not sure it ever got taken up... The best official source I've found is: https://github.com/ros2/launch/blob/foxy/launch/doc/source/architecture.rst
+

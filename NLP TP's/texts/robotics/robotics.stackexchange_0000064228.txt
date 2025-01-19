@@ -1,0 +1,109 @@
+Q:
+
+Ros Node Hang up
+
+Hi,
+I am writing a subscriber node with a long callback function. The node calls the callback function once or twice and then hangs up sometimes inside the callback function or sometimes outside the callback function. I have been able to detect where it hangs by publishing ROS_INFO messages at various points in the code.
+Inside the callback function, I modify global variables (matrix). Could that be the reason for the node getting stuck during runtime ?
+Any other guesses for why a node will hang such that I cant even ctrl+c and stop it ?
+Here is the code:
+#include "ros/ros.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <Eigen/Dense>
+#include <Eigen/LU>
+#include "std_msgs/String.h"
+#include <std_msgs/Float32.h>
+#include <std_msgs/Int32.h>
+#include <tf/transform_broadcaster.h>
+#include <nav_msgs/Odometry.h>
+#include <coop_est/FeatureB.h>
+#include <coop_est/FeatureBArray.h>
+#include <nav_msgs/Odometry.h>
+#include <tf/transform_datatypes.h>
+#include "/opt/ros/hydro/include/tf/LinearMath/Matrix3x3.h"
+#include "/opt/ros/hydro/include/tf/LinearMath/Transform.h"
+#include "tf/tf.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+
+using namespace Eigen;
+using namespace message_filters;
+using namespace sensor_msgs;
+
+// Filter Initialization
+
+VectorXf X(3); // Define Starting position and orientation as the inertial frame
+MatrixXf Q(3,3);
+MatrixXf P(3,3);
+
+void FeaturesReceived(const coop_est::FeatureBArray::ConstPtr& msg, const nav_msgs::Odometry::ConstPtr& odo) /
+{
+
+   DO A NUMBER OF MATRIX OPERATIONS ON THE GLOBAL MATRICES Q, P, Xf
+
+}
+
+int main(int argc, char** argv)
+{
+
+  ros::init(argc, argv, "coop_node");
+
+  ros::NodeHandle n;
+
+  int should_continue = 1;
+  ros::Rate r(5); // 10 hz
+
+  message_filters::Subscriber<coop_est::FeatureBArray> fea_sub(n, "Feature", 1);
+  message_filters::Subscriber<nav_msgs::Odometry> odo_sub(n, "odom", 1);
+  typedef sync_policies::ApproximateTime<coop_est::FeatureBArray, nav_msgs::Odometry> MySyncPolicy;
+  Synchronizer<MySyncPolicy> sync(MySyncPolicy(1), fea_sub, odo_sub);
+  sync.registerCallback(boost::bind(&FeaturesReceived, _1, _2));
+
+  ros::spin();
+
+  return 0;
+
+}
+
+------ UPDATE------
+After making the callback function much simpler, I found that the callback function got stuck at the same line repeatedly. I have a for loop inside the callback function and when I change the number of iterations on the for loop, the place where the node gets stuck changes. If the number of iterations are very low then the node does not get stuck.
+void FeaturesReceived(const coop_est::FeatureBArray::ConstPtr& msg, const nav_msgs::Odometry::ConstPtr& odo) /
+{
+
+for (int i = 0; i< n; i++)
+{
+   DO A NUMBER OF MATRIX OPERATIONS ON THE GLOBAL MATRICES Q, P, Xf
+}
+}
+
+My thoughts are that as I am operating on the global Eigen2 type matrix inside the callback, when a second callback is created before the execution of the first one is complete, the program hangs as two callback instances are trying to modify the same memory location.
+How can I sequentially execute the callback in ROS and wait until the previous callback has fnished executing ?
+Thank you for your help !
+
+Originally posted by satk on ROS Answers with karma: 3 on 2014-11-24
+Post score: 0
+
+A:
+
+If your node is hanging inside your callback, there's probably some kind of infinite loop in your callback.
+ROS registers a sigint handler and uses it to perform an orderly shutdown of your node once all callbacks are done, so if you callback runs forever, your node will hang.
+You should still be able to kill your node with SIGQUIT ( ctrl-\ )
+
+Originally posted by ahendrix with karma: 47576 on 2014-11-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by satk on 2014-11-25:
+Thank you for your reply ahendrix. I am able to stop the node using ctrl-\  My problem is still not solved. I need a way for ROS to not callback a function again until the previous callback has returned. I am updating the original question with the new findings.
+Comment by ahendrix on 2014-11-25:
+Unless you're using a multithreaded spinner (you aren't), ROS executes callbacks serially. This is almost certainly a bug in your code.
+Comment by Martin Peris on 2014-12-02:
+I agree with ahendrix, there must probably be an infinite loop in your code. In this loop: for (int i = 0; i< n; i++){...} how do you define n? are you sure you don't have your infinite loop right there?
+

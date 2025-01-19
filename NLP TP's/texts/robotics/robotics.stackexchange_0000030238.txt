@@ -1,0 +1,73 @@
+Q:
+
+how to apply transform to data displayed in RVIZ?
+
+Hello,
+I am getting pointcloud data from different kinects which are facing each other and I am trying to visualize using "rviz". I want to apply a transform (rotate 180 around y-axis) to one of the point clouds and display it, any ideas on how do this? Thank you.
+My launch files: Kinect1_openni_node.launch, Kinect2_openni_node.launch, kinect_frames1.launch, kinect_frames2.launch
+As you can see in the image the opposite walls are displayed on the same side i.e. w.r.t to their (kinect's) axes.
+
+UPDATE:
+Here's the output of the transforms
+rosrun tf tf_echo /openni_depth_frame /openni_depth_optical_frame1
+At time 1299860886.324
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.000]
+rosrun tf tf_echo /openni_depth_frame /openni_depth_optical_frame2
+At time 1299860897.873
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion [-0.707, -0.001, 0.707, -0.001]
+            in RPY [0.000, 1.570, -3.140]
+
+Even then I don't see any change, it's the same as the image above. Am I missing any settings in RViz??
+Best,
+CV
+
+Originally posted by blueskin on ROS Answers with karma: 284 on 2011-03-10
+Post score: 1
+
+A:
+
+Let's say your first kinect has a frame of openni_camera_1, and your second kinect has a frame of openni_camera_2.
+You could make one the child of the other, but I find it cleaner to make them both children of a common virtual frame frame. Let's call that frame kinect_link.
+You need to publish a static transform between the link frame and each kinect. One of the transforms can just be the identity, and the other one will be a 180 y-axis rotation. If you're using launch files, the following lines will create the static publishers:
+<node pkg="tf" type="static_transform_publisher" name="kinect_link_to_kinect_1" 
+args="0 0 0 0 0 0 /kinect_link /openni_camera_1 10" />
+
+<node pkg="tf" type="static_transform_publisher" name="kinect_link_to_kinect_2" 
+args="0 0 0 0 3.14159 0 /kinect_link /openni_camera_2 10" />
+
+Next, when you run rviz, simply set the fixed_frame filed to kinect_link.
+Now, the example I gave only accounts for the rotation between the kinects. You probably want to tweak the transforms so that they account for the displacement between them as well.
+PS. Are you sure you want a rotation around the y-axis? It might actually be the z-axis.
+UPDATE: It looks like getting your two kinects to output in different frames takes a little work. The openni_camera driver allows you to set these parameters: rgb_frame_id and depth_frame_id. These are set by default to openni_rgb_optical_frame and openni_depth_optical_frame. However, if you are using the openni_node launch file, it sets these as children to an openni_camera frame. So you would have to rewrite the kinect_frames launch file and make two versions of it, one for each kinect
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2011-03-10
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by blueskin on 2011-03-11:
+Ivan: my bad those files were old ones. I've uploaded the new ones. it doesn't do anything. All I can see is the axis getting translated every second or so but not the data. Can you chat on gtalk? blueskin.neo@gmail.com .thank you
+Comment by Ivan Dryanovski on 2011-03-11:
+@blueskin: In Kinect2_openni_node.launch, set "rgb_frame_id" to "/openni_rgb_optical_frame2", and "depth_frame_id" to "/openni_depth_optical_frame2. They are set to "1" in both launch files right now, so both kinects are publishing in the same frame (1), and no one is publishing in frame 2.
+Comment by blueskin on 2011-03-11:
+Ivan: yep, updated two openni launch files. Commands: >> roslaunch openni_camera Kinect1_openni_node.launch , >> roslaunch openni_camera Kinect2_openni_node.launch
+Comment by Ivan Dryanovski on 2011-03-11:
+@blueskin: ok the transforms look good. Can you post your openni launch file as well?
+Comment by blueskin on 2011-03-11:
+@Ivan: I've modified the launch files and launching appropriate launch files. Links for these files are provided in the question.
+Comment by Ivan Dryanovski on 2011-03-11:
+@blueskin: Who is publishing the /openni_depth_frame /openni_depth_optical_frame1 link? Are you using the openni_node.launch file? If so, it calls kinect_frames.launch, which sets those to 0 (probably).
+Comment by blueskin on 2011-03-11:
+Hey Ivan, I've updated the question with transforms outputs, I don't see any transforms applied to the data. Could you please look at it.
+Comment by Ivan Dryanovski on 2011-03-10:
+@blueskin: Yes, you are launching two separate nodes, one for each kinect. Each node should have the depth_frame_id parameter remapped to a unique value. This way you end up with two distinct optical frames. After that, follow the static tf instructions to link them with a common virtual frame
+Comment by blueskin on 2011-03-10:
+Ivan: I also have separate node launch files. Should I change     to      and 2 respectively? because I don't see any transformations being applied in either case
+Comment by Ivan Dryanovski on 2011-03-10:
+@blueskin: that should work.
+Comment by blueskin on 2011-03-10:
+Ivan: I was looking exactly into it. I've set both kinects as children of /openni_depth_frame and corresponding frames as given in the links in the question. In RVIZ I've set, fixed frame: /openni_depth_frame & Target frame: ? is it right?
+

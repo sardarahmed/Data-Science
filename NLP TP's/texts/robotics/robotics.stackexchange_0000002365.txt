@@ -1,0 +1,45 @@
+Q:
+
+covariance matrix in EKF?
+
+I'm struggling with the concept of covariance matrix. 
+$$
+\Sigma
+= 
+\begin{bmatrix}
+\sigma_{xx} & \sigma_{xy} & \sigma_{x \theta} \\
+\sigma_{yx} & \sigma_{yy} & \sigma_{y \theta} \\
+\sigma_{\theta x} & \sigma_{\theta y} & \sigma_{\theta \theta} \\
+\end{bmatrix}
+$$
+Now, my understanding for $\sigma_{xx}$, $\sigma_{yy}$, and $\sigma_{\theta \theta}$ that they describe the uncertainty. For example, for $\sigma_{xx}$, it describes the uncertainty of the value of x. Now, my question about the rest of sigmas, what do they represent? What does it mean if they are zeros? I can interpret that if $\sigma_{xx}$ is zero, it means I don't have uncertainty about the value of x. 
+
+Note, I'm reading Principles of Robot Motion - Theory, Algorithms, and Implementations by Howie Choset et. al., which states that
+
+By this definition $\sigma_{ii}$ is the same as $\sigma_{i}^{2}$ the variance of $X_{i}$. For $i ≠ j$, if $\sigma_{ij} = 0$, then $X_{i}$ and $X_{j}$ are independent of each other.
+
+This may answer my question if the rest of sigmas are zeros however, I'm still confused about the relationship between these variables for example $x$ and $y$. When does this happen? I mean the correlation between them. Or in other words, can I assume them to be zeros?
+Another book namely FastSLAM: A Scalable Method ... by Michael and Sebastian which states 
+
+The off-diagonal elements of the covariance matrix of this
+  multivariate Gaussian encode the correlations between pairs of state
+  variables.
+
+They don't mention when the correlation might happen and what does it mean?
+
+A:
+
+Here is one toy case where off-diagonal elements are non-zero.
+Consider a state vector that includes the position of both the left and right wheels instead of just a single position for the robot. Now if the left wheel has a position of 100m then you know the right wheel will also have a position of roughly 100m (depending on the axle length). As the left wheel increases position so will the right wheel, in general. It's not an exact 1:1 correlation, e.g. it doesn't hold exactly when the robot is turning, but overall it holds.
+So here the off-diagonal entry between left wheel x-position and right wheel x-position would be close to 1.
+
+A:
+
+To get a feeling for the covariance matrix - without getting into the math details here - its best to start with a 2x2 matrix. Then remember that the covariance matrix is an extension of the concept of variance into the multivariate case. In the 1D case, variance is a statistic for a single random variable. If your random variable has a Gaussian distribution with zero mean, its variance can precisely define the probability density function. 
+Now, if you extend this to two variables instead of one, you can differentiate between two cases. If your two variables are independent, which means the outcome of one value has no relation to the other value, its basically the same as in the 1D case. Your $\sigma_{xx}$ and your $\sigma_{yy}$ give the variance of the $x$ and $y$ part of your random variable, and $\sigma_{xy}$ will be zero. 
+If your variables are dependent this is different. Dependent means that there is a relation between the outcome of $x$ and $y$. For example you could have that whenever $x$ is positive, $y$ is in general more likely to also be positive. This is given by your covariance value $\sigma_{xy}$.
+Giving an example for a robot in a 2D case without orientation is a bit contrived, but lets say you have a random component along the travel direction on the $x$-axis and you know that this component also generates a drift on your lateral axis ($y$). This could for example be a faulty wheel. This will result in a rotated uncertainty ellipse. Now for e.g. when you later have something that measures your actual $x$ position, you can estimate the uncertainty distribution on your $y$ component. 
+A more relevant example is in the 3D case, where usually you have a different uncertainty along the transversal direction compared to the lateral direction. When you rotate your system (so changing $\theta$) this will also rotate your uncertainty ellipse. Note that the actual representation is usually some banana shape, and the Gaussian is only an approximation. In the EKF case its a linearization around the mean.
+One really good way to visualize this is to use the concept of the uncertainty ellipse. It basically shows the $1 \sigma$ boundary for a multivariate Gaussian distribution, and can be used to visualize a Covariance matrix. A quick search brought up this demo which will also provide you with some additional insight into how the covariance is built. In essence, the diagonal entries define the extents of the axis, while the off-diagonal entries relate to the rotation of the entire ellipse. 
+This is also true in the 3D case. I would love to get more mathematical here, but maybe some time later.
+

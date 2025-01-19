@@ -1,0 +1,182 @@
+Q:
+
+Create an RViz dockable panel w/ catkin and Qt5
+
+Hi everyone,
+These past days, I'm trying to write an RViz dockable panel following the tutorial here.
+My goal is basically to display – for now – an empty panel (the strict minimum, for a beginning).
+The problem is that all the tutorial is writing with both rosbuild and Qt4, while I would like to use catkin and Qt5. Each time I'm trying to compile, I keep having this error message :
+[ERROR] [1426085794.672184440]: PluginlibFactory: The plugin for class 'plugin_panel/Hi' failed to load.  Error: Failed to load library /home/mdufour/catkin_ws_test/devel/lib/libplugin_panel.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = /home/mdufour/catkin_ws_test/devel/lib/libplugin_panel.so: undefined symbol: _ZTVN8my_panel11PluginPanelE)
+My package directory looks like this :
+plugin_panel/
+|__ CMakeLists.txt
+|__ package.xml
+|__ plugin_description.xml
+|__ src/
+    |__ plugin_panel.cpp
+All the code is in the .cpp file, for simplification.
+Here's my CMakeLists.txt :
+cmake_minimum_required(VERSION 2.8.11)
+
+project(plugin_panel)
+
+find_package(Qt4 REQUIRED)
+find_package(catkin REQUIRED)
+
+include(${QT_USE_FILE})
+add_definitions(${QT_DEFINITIONS})
+
+add_library(${PROJECT_NAME} src/plugin_panel.cpp)
+
+target_link_libraries(${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES})
+This is my .cpp (very basic!) :
+#include <QWidget>
+#include <QHBoxLayout>
+#include <QLabel>
+
+#include <rviz/panel.h>
+
+namespace my_panel
+{
+    class PluginPanel: public rviz::Panel
+    {
+        Q_OBJECT
+
+    public:
+        PluginPanel(QWidget* parent = 0):
+            rviz::Panel(parent)
+            {
+                QHBoxLayout* topic_layout = new QHBoxLayout;
+                topic_layout->addWidget(new QLabel("Hi!"));
+            }
+    };
+}
+
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(my_panel::PluginPanel, rviz::Panel)
+The package.xml (overloaded for sure) :
+<?xml version="1.0"?>
+<package>
+    <name>plugin_panel</name>
+
+    <version>0.0.0</version>
+
+    <description>
+        An additional (yet empty) panel in RViz.
+    </description>
+
+    <maintainer email="none@none.none">Matthieu</maintainer>
+
+    <license>BSD</license>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <build_depend>roscpp</build_depend>
+    <build_depend>roslib</build_depend>
+    <build_depend>rviz</build_depend>
+    <build_depend>pluginlib</build_depend>
+    <build_depend>class_loader</build_depend>
+
+    <run_depend>roscpp</run_depend>
+    <run_depend>roslib</run_depend>
+    <run_depend>rviz</run_depend>
+    <run_depend>pluginlib</run_depend>
+    <run_depend>class_loader</run_depend>
+
+    <export>
+        <rviz plugin="${prefix}/plugin_description.xml"/>
+    </export>
+<package>
+And finally the plugin_description.xml :
+<library path="lib/libplugin_panel">
+    <class name="plugin_panel/Hi"
+           type="my_panel::PluginPanel"
+           base_class_type="rviz::Panel">
+        <description>
+            An empty panel.
+        </description>
+    </class>
+</library>
+Phew! Sorry, that was heavy…
+I'm certainly missing something in one of those files, but I can't figure out what.
+Thanks for your answers.
+
+Originally posted by anonymous21729 on ROS Answers with karma: 15 on 2015-03-11
+Post score: 0
+
+A:
+
+target_link_libraries(${PROJECT_NAME} Qt5::Widgets ${catkin_LIBRARIES})
+
+I'm not too familiar with Qt5, but I'm not sure whether Qt5::Widgets is an actual library name under Linux.
+according to Using CMake with Qt 5 - Building Qt 5 projects with CMake, linking to Qt5 libraries with CMake should be done as follows (for the QtWidgets component):
+target_link_libraries(YOUR_TARGET [..] ${Qt5Widgets_LIBRARIES})
+
+That page has a lot of information on using CMake with Qt5 actually.
+Also: according to Developing with Qt - The Transition from Qt 4.x to Qt 5, Qt5 could make use of C++11 features. Afaik, ROS (still) doesn't support that, and binary compatibility may not be guaranteed when mixing and matching (non)C++11 compatible object files/libraries.
+
+Edit3:
+
+find_package(catkin REQUIRED)
+
+Shouldn't at least rviz be listed as COMPONENTS here?
+Looking at the CMakeLists.txt of the catkinized version of the plugin tutorial package you linked to it would seem that you are missing some important parts:
+find_package(catkin REQUIRED COMPONENTS rviz)
+catkin_package()
+include_directories(${catkin_INCLUDE_DIRS})
+link_directories(${catkin_LIBRARY_DIRS})
+
+## This plugin includes Qt widgets, so we must include Qt like so:
+find_package(Qt4 COMPONENTS QtCore QtGui REQUIRED)
+include(${QT_USE_FILE})
+
+## I prefer the Qt signals and slots to avoid defining "emit", "slots",
+## etc because they can conflict with boost signals, so define QT_NO_KEYWORDS here.
+add_definitions(-DQT_NO_KEYWORDS)
+
+## Here we specify which header files need to be run through "moc",
+## Qt's meta-object compiler.
+qt4_wrap_cpp(MOC_FILES
+  src/drive_widget.h
+  src/imu_display.h
+  src/plant_flag_tool.h
+  src/teleop_panel.h
+)
+
+## Here we specify the list of source files, including the output of
+## the previous command which is stored in ``${MOC_FILES}``.
+set(SOURCE_FILES
+  src/drive_widget.cpp
+  src/imu_display.cpp
+  src/imu_visual.cpp
+  src/plant_flag_tool.cpp
+  src/teleop_panel.cpp 
+  ${MOC_FILES}
+)
+
+## An rviz plugin is just a shared library, so here we declare the
+## library to be called ``${PROJECT_NAME}`` (which is
+## "rviz_plugin_tutorials", or whatever your version of this project
+## is called) and specify the list of source files we collected above
+## in ``${SOURCE_FILES}``.
+add_library(${PROJECT_NAME} ${SOURCE_FILES})
+
+target_link_libraries(${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES})
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-03-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by anonymous21729 on 2015-03-11:
+Thanks for replying!
+Unfortunately, I just re-wrote my CMakeLists.txt to follow the standards of Qt4 (using find_package(Qt4 REQUIRED) etc), and I still have the error message :(
+Comment by gvdhoorn on 2015-03-11:
+Ok, well, could you update your question then (CMakeLists.txt, etc)? Perhaps there is some other issue going on here.
+Comment by gvdhoorn on 2015-03-11:
+Please don't use answers as comments, use comments for that (this is not a traditional top-down forum).
+You say "nothing happened at all": which bits did you copy, and what didn't happen?
+Comment by Simon Schmeisser on 2015-08-17:
+"I'm not too familiar with Qt5, but I'm not sure whether Qt5::Widgets is an actual library name under Linux."
+It's called a target generator or something like that and is the recommended way now (since CMake 2.8.11/12), it will add includes, libs, flags, .. http://doc.qt.io/qt-5/cmake-manual.html
+

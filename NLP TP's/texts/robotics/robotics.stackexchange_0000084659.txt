@@ -1,0 +1,122 @@
+Q:
+
+Visualising the real time trajectory path using markers
+
+I'm trying to publish a list of markers, based on the data from the msg subscribed. I'm not able to visualise it, though I change the marker Ids!
+Thanks in advance!
+    def __init__(self):
+        self.count = 0 
+        rospy.Subscriber("/arm_1/arm_controller/cartesian_velocity_command",TwistStamped, self.event_in_cb)
+        rospy.sleep(0.5)
+
+    def event_in_cb(self,msg):
+        self.waypoints = msg
+        self.a = list()
+        self.a.append(self.waypoints.twist.linear.x)
+        self.a.append(self.waypoints.twist.linear.y)
+        self.a.append(self.waypoints.twist.linear.z)
+        self.show_text_in_rviz()
+
+    def show_text_in_rviz(self):
+        self.marker = Marker()
+        self.marker_publisher = rospy.Publisher('visualization_marker', Marker, queue_size=5)
+        self.marker = Marker(
+                    type=Marker.SPHERE,
+                    id=0,
+                    lifetime=rospy.Duration(1000),
+                    pose=Pose(Point(self.a[0]/10**5,self.a[1]/10**5,self.a[2]/10**5), Quaternion(0, 0, 0, 1)),
+                    scale=Vector3(0.05, 0.05, 0.05),
+                    header=Header(frame_id='arm_link_5'),
+                    color=ColorRGBA(0.0, 2.0, 0.0, 0.8))
+        self.count+=1
+        self.marker.id = self.count
+        self.marker_publisher.publish(self.marker)
+
+if __name__ == '__main__':
+    rospy.init_node("trajectory_interactive_markers_node", anonymous=True)
+    trajectory_interactive_markers = TrajectoryInteractiveMarkers()
+    rospy.sleep(0.5)
+    rospy.spin()
+
+Originally posted by pmuthu2s on ROS Answers with karma: 224 on 2018-01-11
+Post score: 0
+
+A:
+
+Hi @pmuthu2s,
+I've tested your code and it worked after I select the right frame_id.
+In my case I had to change the frame_id to hokuyo_laser_link but just because my robot doesn't have a link named arm_link_5.
+You have to check if your robot have a link named arm_link_5. You can see the "tf tree" with rosrun tf view_frames. That command will generate a frames.pdf file that you can use to see the link names of your robot.
+Once you open RViz with rosrun rviz rviz, you also have to select the right "Fixed Frame". In my case the frame was world. You could select "any" link found on frames.pdf.
+Since I didn't have a topic named /arm_1/arm_controller/cartesian_velocity_command that publishes message of type TwistStamped, I just created a topic named /tutorial that publishes std_msgs/String and subscribed to that topic (just for simplicity) on the TrajectoryInteractiveMarkers class.
+I've created that topic with: rostopic pub /tutorial std_msgs/String "data: 'Hi'" -r 2
+I've also created a video that shows the steps mentioned here.
+Since the marker is only published when a message from /arm_1/arm_controller/cartesian_velocity_command is received, you have to make sure that topic is publishing.
+You can do that with any of the commands below:
+rostopic echo /arm_1/arm_controller/cartesian_velocity_command
+rostopic hz /arm_1/arm_controller/cartesian_velocity_command
+The modified code I've used is shown below:
+#! /usr/bin/env python
+
+import rospy
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import TwistStamped, Pose, Point, Vector3, Quaternion
+from std_msgs.msg import Header, ColorRGBA, String
+
+class TrajectoryInteractiveMarkers:
+    
+    def __init__(self):
+    self.count = 0 
+    # rospy.Subscriber("/arm_1/arm_controller/cartesian_velocity_command",TwistStamped, self.event_in_cb)
+    self.marker_publisher = rospy.Publisher('visualization_marker', Marker, queue_size=5)
+    rospy.Subscriber("/tutorial", String, self.event_in_cb)
+    rospy.sleep(0.5)
+
+    def event_in_cb(self,msg):
+    self.waypoints = msg
+    self.a = [1, 1, 1]
+    #self.a = list()
+    #self.a.append(self.waypoints.twist.linear.x)
+    #self.a.append(self.waypoints.twist.linear.y)
+    #self.a.append(self.waypoints.twist.linear.z)
+    
+    self.show_text_in_rviz()
+
+    def show_text_in_rviz(self):
+    self.marker = Marker()
+    
+    self.marker = Marker(
+                type=Marker.SPHERE,
+                id=0,
+                lifetime=rospy.Duration(1000),
+                pose=Pose(Point(self.a[0]/10**5,self.a[1]/10**5,self.a[2]/10**5), Quaternion(0, 0, 0, 1)),
+                scale=Vector3(0.05, 0.05, 0.05),
+                header=Header(frame_id='hokuyo_laser_link'),
+                color=ColorRGBA(0.0, 2.0, 0.0, 0.8))
+    self.count+=1
+    self.marker.id = self.count
+    self.marker_publisher.publish(self.marker)
+    rospy.loginfo('msg published')
+    
+if __name__ == '__main__':
+    rospy.init_node("trajectory_interactive_markers_node", anonymous=True)
+    trajectory_interactive_markers = TrajectoryInteractiveMarkers()
+    rospy.sleep(0.5)
+    rospy.spin()
+
+If you still have any question, just take a look at the video.
+Cheers.
+
+Originally posted by Ruben Alves with karma: 1038 on 2018-01-13
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by pmuthu2s on 2018-01-13:
+Hey thanks alot!Video was nice ! Also, I wanted to update that, I had a problem because of thes lines pose=Pose(Point(self.a[0]/105,self.a[1]/105,self.a[2]/10**5), Quaternion(0, 0, 0, 1)),
+scale=Vector3(0.05, 0.05, 0.05)
+But after I changed the scale and threshold, it worked fine
+Comment by gubertoli on 2018-03-12:
+Great.
+What is the best approach to keep a constant refresh instead of forcing the "tutorial" topic to callback ? (for high frequency marker - fast dynamics)
+

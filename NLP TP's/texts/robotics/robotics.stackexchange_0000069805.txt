@@ -1,0 +1,43 @@
+Q:
+
+Sometimes when I publish to cmd_vel node got stuck
+
+Hi!
+I am working with the ardrone_autonomy package for the Ar.Drone. I have already a code for the control signal and it works great, except for the part when I try to publish the commands in the cmd_vel topic. Normally it publish fast, which is what i need, but sometimes it kinda freeze, for 1 or 2 seconds, and goes back to publishing normally. I dont know why is that happening, und is very important for me to fix that delay, because in that 2 seconds the Drone could crash.
+Here is the relevant part of the code:
+Inside the main:
+ros::init(argc, argv, "tracker");
+ros::NodeHandle nh;
+ros::Rate loop_rate(50);
+
+Inside the callback:
+ros::NodeHandle neu;
+    ros::Publisher pub_empty_land;
+    ros::Publisher pub_point=neu.advertise<geometry_msgs::Point>("color_position",1);
+    ros::Publisher pub_control=neu.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+twist_msg.linear.x=Control.at<float>(2);
+            twist_msg.linear.y=Control.at<float>(0);
+            twist_msg.linear.z=Control.at<float>(1);
+                        
+        pub_point.publish(posptav);
+        pub_control.publish(twist_msg);
+        cv::waitKey(15);
+        ros::spinOnce();
+
+I would appreciate your help
+Thanks!
+
+Originally posted by erivera1802 on ROS Answers with karma: 59 on 2015-09-27
+Post score: 0
+
+A:
+
+Publishers should be persistent; you shouldn't be creating a new publisher on each callback. This is because publisher setup can take a few seconds under poor conditions, and this can cause messages to be dropped before the publisher is completely set up.
+Instead, you should create your publisher in main(), and the callback should only be interpreting the data and using the existing publisher to publish a new message.
+You should NEVER call ros::spinOnce() from inside a callback; spinOnce is the call which processes message callbacks in the first place. Most ROS nodes call ros::spin() or ros::spinOnce() from main.
+If you're trying for consistent performance, calling cv::waitKey from within your callback is also a bad idea; you don't want to do anything within your callback which could create a significant delay.
+
+Originally posted by ahendrix with karma: 47576 on 2015-09-27
+This answer was ACCEPTED on the original site
+Post score: 2
+

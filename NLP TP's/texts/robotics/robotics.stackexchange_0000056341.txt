@@ -1,0 +1,50 @@
+Q:
+
+using image transport compression and boost library c++
+
+Hi, I have a callback that I need to run after subscribing to a ROS image topic:
+void imageCallback(const sensor_msgs::ImageConstPtr& original_image, int n) {
+   ..
+}
+
+as you can see, the callback takes two parameters, the image and a number.
+I know that is possible to use boost library to send two parameters to the callback in this way:
+image_transport::Subscriber sub = it.subscribe("/camera1/RGB", 1, boost::bind(imageCallback,_1, 1));
+
+but I would like to use also a compression transport plug-in.
+So, if I write
+ image_transport::Subscriber sub = it.subscribe("/camera1/RGB", 1, boost::bind(imageCallback, _1, 1),image_transport::TransportHints::TransportHints("compressed"));
+
+I cannot build the code:
+error: no matching function for call to ‘image_transport::ImageTransport::subscribe(const char [13], int, boost::_bi::bind_t<void, void (*)(const sensor_msgs::ImageConstPtr&, int), boost::_bi::list2<boost::arg<1>, boost::_bi::value<int> > >, image_transport::TransportHints)’
+/opt/ros/fuerte/stacks/image_common/image_transport/include/image_transport/image_transport.h:40: note: candidates are: image_transport::Subscriber image_transport::ImageTransport::subscribe(const std::string&, uint32_t, const boost::function<void(const sensor_msgs::ImageConstPtr&)>&, const ros::VoidPtr&, const image_transport::TransportHints&)
+/opt/ros/fuerte/stacks/image_common/image_transport/include/image_transport/image_transport.h:48: note:                 image_transport::Subscriber image_transport::ImageTransport::subscribe(const std::string&, uint32_t, void (*)(const sensor_msgs::ImageConstPtr&), const image_transport::TransportHints&)
+
+So, how I should write the subscriber line code?
+Thanks
+
+Originally posted by rosmat88 on ROS Answers with karma: 3 on 2014-01-02
+Post score: 0
+
+A:
+
+The function declaration with defaults is (see image_transport.h):
+/**
+   * \brief Subscribe to an image topic, version for arbitrary boost::function object.
+   */
+  Subscriber subscribe(const std::string& base_topic, uint32_t queue_size,
+                       const boost::function<void(const sensor_msgs::ImageConstPtr&)>& callback,
+                       const ros::VoidPtr& tracked_object = ros::VoidPtr(),
+                       const TransportHints& transport_hints = TransportHints());
+
+If you just add your TransportHints, the compiler will assume is to be the 4th arg, where a ros::VoidPtr is expected, which causes the compile error. I think your function call should be:
+ image_transport::Subscriber sub = it.subscribe("/camera1/RGB", 1, boost::bind(imageCallback, _1, 1), ros::VoidPtr(), image_transport::TransportHints::TransportHints("compressed"));
+
+Originally posted by Wolf with karma: 7555 on 2014-01-07
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rosmat88 on 2014-01-13:
+Yes, this worked for me. I didn't think to look at class definition. Thanks
+

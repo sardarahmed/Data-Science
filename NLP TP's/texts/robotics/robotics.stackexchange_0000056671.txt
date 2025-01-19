@@ -1,0 +1,41 @@
+Q:
+
+conversion of depht image coordinates to world coordinates (u,v,d) to (x,y,z)
+
+Hi, I implemented a object detection classifier working on rgb and depth data (from openni_launch) which provides object center coordinates in the image plane (u,v). Now I want to convert those image coordinates (+depth) to world coordinates (resp. the 3D camera frame).
+I know I could just use the (u,v) coordinates and the registered cloud to get the point stored at (u,v,) but sometimes there is a NaN at this point and I dont want to deal with that as it would require to look for the neighbours which biases the object center and stuff. Another drawback is that after some pcl-calculations (resampling, removing nans, calculating normals, removing major planes etc.) the cloud is not organized anymore.
+Second I could use the /cameraInfo topic to get the intrinsics of my depth sensor in order to calculate the conversion by hand using the lens equation, but this is some trouble if you want to do it the correct way (considering all instrinsics of the camera matrix).
+So ... as openni_launch already does this for the whole pointcloud-creation, is there a function or service offering this conversion in openni_launch, openni api, pcl api, ros_perception etc?
+
+Originally posted by stfn on ROS Answers with karma: 287 on 2014-01-21
+Post score: 1
+
+A:
+
+image_geometry can do this very easily (unfortunately the API docs are broken right now).
+image_geometry::PinholeCameraModel model_;
+model_.fromCameraInfo(cam_info);
+cv::Point3d point3d = projectPixelTo3dRay(point2d); //point2d is a cv::Point2d
+
+This will give you a ray which you can then normalize and multiply by your depth to get the 3D point.
+PCL probably has a way to do this too.
+
+Originally posted by Dan Lazewatsky with karma: 9115 on 2014-01-21
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by stfn on 2014-01-22:
+That should do, even though I'd expect openni_launch resp. rgbd_launch to offer that as well somewhere. Anyway, which */camera_info do I need then, rgb, or depth? And does this depend on weather depth_registered is set?
+Comment by Dan Lazewatsky on 2014-01-22:
+camera_info should be from whatever camera the detection came from. If it came from /camera/rgb/whatever, you should use /camera/rgb/camera_info. It's probably simplest to have depth registration on and do everything in /camera/depth_registered, but it shouldn't matter.
+Comment by Pablo Iñigo Blasco on 2016-09-30:
+The solution you propose looks reasonable to me. But I wonder why the most of the documentation and discussion on the internet about how to get a 3D point from the depth image is different. They directly consider the depth value as z coordinate (in mm).
+Comment by Pablo Iñigo Blasco on 2016-09-30:
+Some references about this are:
+https://msdn.microsoft.com/en-us/library/dn785
+http://stackoverflow.com/questions/35121161/saving-point-cloud-data-into-a-file
+http://nicolas.burrus.name/index.php/Research/KinectCalibration
+Comment by Pablo Iñigo Blasco on 2016-09-30:
+It looks like they are an orthogonal projection, while you are proposing a perspective projection, right?
+

@@ -1,0 +1,46 @@
+Q:
+
+Turtlesim: Stop after one turn. Subscriber way faster than the Publisher
+
+I am interested in drawing one circle with the turtlesim. However the subscriber is retrieving the pose way faster than the publishers moves the turtle. This is the code that I came up with:
+#!/usr/bin/env python3
+
+import rospy
+from geometry_msgs.msg import Twist 
+from turtlesim.msg import Pose
+
+locations = []
+
+def pose_callback(pose:Pose):
+    global locations
+
+    msg = Twist()
+    msg.linear.x = 2.0 
+    msg.angular.z = 1.0
+
+    pub.publish(msg)
+    
+    rospy.sleep(0.5) # delay on subscribing 
+    locations.append((pose.x,pose.y))
+    rospy.loginfo(locations)
+    if (pose.x, pose.y) in locations:
+        rospy.loginfo(f'Circle completed!')
+        rospy.signal_shutdown('Completed circle')
+
+if __name__ == "__main__":
+    rospy.init_node('draw_one_circle', disable_signals=True) 
+    pub = rospy.Publisher("/turtle1/cmd_vel", Twist, queue_size=10)
+    sub = rospy.Subscriber("/turtle1/pose", Pose, callback=pose_callback)
+    
+    rospy.loginfo("Node has been started.")
+
+    rospy.spin()
+
+Any tip on what should I do?
+
+A:
+
+Right now you're giving open loop commands but expecting precise positioning in your stop condition. This may succeed in the simplest of simulators, but it's a recipe for disaster with any real system or realistic simulation.
+You need to introduce some amount of feedback, and adjust your commanded velocity twist amount to be dependent on how far along your desired path your robot is. It's a very large change to your algorithm, but it will allow you to drive circles (or any path) while dealing with real world disturbances like different floor types, carpets, and humans.
+If you're really trying to hack together a simple circle, you'll want to change your twist values (msg.linear and msg.angular) so the robot completes 1 circle with an integer number of messages and then just send that number of messages. This code will be useless outside of this particular setup though.
+

@@ -1,0 +1,104 @@
+Q:
+
+PointCloud has no member named ‘serializationLength’
+
+I am trying to migrate some code from ros diamondback to ros fuerte and I am getting this compiler error:
+error: ‘const PointCloud’ has no member named ‘serializationLength’
+
+The PointCloud type it mentions is specifically a sensor_msgs::PointCloud. I am including <pcl_ros/point_cloud.h> as some posts have suggested. What is wrong?
+
+Originally posted by astrokenny on ROS Answers with karma: 78 on 2013-01-24
+Post score: 0
+
+Original comments
+Comment by joq on 2013-01-24:
+Are you trying to reuse the same workspace in Fuerte you had previously built using Diamondback?
+Comment by astrokenny on 2013-01-24:
+I'm not using ros workspaces.
+Comment by tfoote on 2013-01-26:
+If you're not using ROS this is the wrong forum.
+Comment by brice rebsamen on 2013-02-01:
+I think he meant he is not using workspaces as in rosws. So I am reopening, as I am facing the same issue, and I am proposing a solution
+
+A:
+
+Here is what was working under diamondback:
+void serializePointCloudROS(const sensor_msgs::PointCloud& cloud, ostream& out) {
+    out << "Cloud" << endl;
+    out << "serialization_length" << endl;
+    out << cloud.serializationLength() << endl;
+    uint8_t data[cloud.serializationLength()];
+    cloud.serialize(data, 0);
+    assert(sizeof(char*) == sizeof(uint8_t*));
+    out.write((char*)data, cloud.serializationLength());
+}
+
+And here is what I am replacing it with in fuerte.
+void serializePointCloudROS(const sensor_msgs::PointCloud& cloud, ostream& out) {
+    assert(sizeof(char*) == sizeof(uint8_t*));
+    uint32_t serial_size = ros::serialization::serializationLength(cloud);
+    boost::shared_array<uint8_t> buffer(new uint8_t[serial_size]);
+    ros::serialization::OStream stream(buffer.get(), serial_size);
+    stream << cloud;
+
+    out << "Cloud" << endl;
+    out << "serialization_length" << endl;
+    out << serial_size << endl;
+    out.write((char*)stream.getData(), serial_size);
+}
+
+And for the deserialization, this is what I had in diamondback:
+bool deserializePointCloudROS(std::istream& istrm, sensor_msgs::PointCloud* cloud) {
+    string line;
+
+    getline(istrm, line);
+    if(line.compare("Cloud") != 0)
+        return false;
+
+    getline(istrm, line);
+    if(line.compare("serialization_length") != 0)
+        return false;
+
+    uint32_t serialization_length = 0;
+    istrm >> serialization_length;
+    getline(istrm, line);
+  
+    uint8_t data[serialization_length];
+    istrm.read((char*)data, serialization_length);
+    cloud->deserialize(data);
+    getline(istrm, line);
+  
+    return true;
+}
+
+And here is what I am replacing it with in fuerte.
+bool deserializePointCloudROS(std::istream& istrm, sensor_msgs::PointCloud* cloud) {
+    string line;
+
+    getline(istrm, line);
+    if(line.compare("Cloud") != 0)
+        return false;
+
+    getline(istrm, line);
+    if(line.compare("serialization_length") != 0)
+        return false;
+
+    uint32_t serialization_length = 0;
+    istrm >> serialization_length;
+    getline(istrm, line);
+  
+    boost::shared_array<uint8_t> buffer(new uint8_t[serialization_length]);
+    istrm.read((char*)buffer.get(), serialization_length);
+    ros::serialization::IStream stream(buffer.get(), serialization_length);
+    stream >> *cloud;
+    getline(istrm, line);
+
+    return true;
+}
+
+It compiles, but I haven't tested it yet.
+
+Originally posted by brice rebsamen with karma: 1001 on 2013-02-01
+This answer was ACCEPTED on the original site
+Post score: 0
+

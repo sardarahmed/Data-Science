@@ -1,0 +1,70 @@
+Q:
+
+Vrep to generate trajectory
+
+Hi all, i'm new in ros and i'm trying to move my simulated UR10 in gazebo. What i'm doing is setting up the same scene in Vrep  (now CoppeliaSim), where also i generate a set of points of my target trajectory, composed by 6*300=1800 points(each joint has 300 points to follow).
+I also have a jointTrajectoryController and the related actions. Is there a way to move my simulated robot using this points? I suppose Vrep has to publish some message to the /follow_joint_trajectory/goal topic but i have some problem understanding how to compose the message to publish. Tell me if i'm wrong, but i suppose i can't just copy and paste this 1800 points in the "Points" field of the action message.
+I also tried something really terrible using 6 differents JointPositionController, one for each joint, and sending them alternately the point to reach through the /command topic, something like this pseudocode:
+for i=1,1800,1 do
+    publish(controller[i%6 +1],points[i])
+end
+
+I can't use only the last point, i want to follow the exact same trajectory vrep generated.
+
+Originally posted by BlueSkeptical on ROS Answers with karma: 18 on 2020-02-10
+Post score: 0
+
+A:
+
+I suppose Vrep has to publish some message to the /follow_joint_trajectory/goal topic but i have some problem understanding how to compose the message to publish.
+
+Provided you are using ur_gazebo (or a similar package) which exposes a FollowJointTrajectory action server, you'd have to write something that instantiates and populates a control_msgs/FollowJointTrajectory goal and then submits it to the action server.
+The goal is not that difficult to create. Something like this would do it:
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+
+...
+
+# using the action namespace you mentioned in your question here
+client = actionlib.SimpleActionClient('follow_joint_trajectory', FollowJointTrajectoryAction)
+client.wait_for_server()
+
+goal = FollowJointTrajectoryGoal()
+goal.trajectory = JointTrajectory()
+
+# NOTE: order matters here! This HAS to correspond to how the
+#       values in your VREP trajectory are ordered
+goal.trajectory.joint_names = [
+  'shoulder_pan_joint',
+  'shoulder_lift_joint',
+  'elbow_joint',
+  'wrist_1_joint',
+  'wrist_2_joint',
+  'wrist_3_joint'
+]
+
+# not entirely sure how your 'points' list (array?) is built up. I'm
+# assuming a list of tuple(float, float, float, float, float, float)
+# here. Adjust as necessary.
+
+for p in points:
+  goal.trajectory.points.append(
+    JointTrajectoryPoint(
+      positions=list(p),
+      velocities=...,
+      accelerations=...,
+      effort=...,
+      time_from_start=rospy.Duration(...)))
+
+# finally: submit the goal for execution
+client.send_goal(goal)
+
+# optional
+client.wait_for_result()
+
+You'll want to make sure to specify proper velocities, as I expect the controller to stop at each point in your trajectory if you don't.
+
+Originally posted by gvdhoorn with karma: 86574 on 2020-02-10
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,70 @@
+Q:
+
+How good should inverse kinematics with KDL or Trac_ik work?
+
+Hello List,
+I have a basic 5DOF arm that basically works with moveit! and inverse kinematics.
+I adapted  the moveit_ik_demo.py script from the ROS by Example book and use phrases like:
+  # Set the target pose.                                                                                                        
+    target_pose = PoseStamped()
+    target_pose.header.frame_id = reference_frame
+    target_pose.header.stamp = rospy.Time.now()
+    target_pose.pose.position.x = -0.274
+    target_pose.pose.position.y = -0.019
+    target_pose.pose.position.z = 0.306
+    target_pose.pose.orientation.x = 0.057
+    target_pose.pose.orientation.y = 0.047
+    target_pose.pose.orientation.z = 0.99
+    target_pose.pose.orientation.w =  0.113                                                                                                                
+    right_arm.set_pose_target(target_pose, end_effector_link)
+    traj = right_arm.plan()
+    right_arm.execute(traj)
+
+But the problem is that if I give perfectly reachable poses in the set_pose_target function, on average only 5 out of 6 calls results in success.
+The others result in
+LBKPIECE1: Unable to sample any valid states for goal tree
+
+Why does it fail so often?
+I use a Core2 quad CPU so I would have thought that 5 seconds should be long enough to find the solution.
+This is both with KDL and Trac_ik.
+Am I missing something?
+As said, the poses are perfectly reachable, on average 5 out of 6 times the solution is found.
+UPDATE: Solved. The positions I used were not perfectly reachable because I left out some decimals in copying the values to the test program. See some comments with the answers below.
+Thanks in advance, Sietse
+
+Originally posted by Sietse on ROS Answers with karma: 168 on 2016-09-09
+Post score: 0
+
+Original comments
+Comment by cbames on 2016-09-12:
+How are you determining that the poses are perfectly reachable?
+Comment by Sietse on 2016-09-12:
+I have a program (arbotix_gui) to set the joints and visualise with rviz.
+From the ROS_by_example book I use get_arm_pose.py that gives the eef position.
+I think that should work.
+See also my comment below where trac_ik uses the ik_test program where 995 out of 1000 attemps succeed.
+Comment by pbeeson on 2016-09-12:
+I believe the trac_ik sample uises 1e-3 eps, which again points to the fact that your goal pose may be be exactly reachable after you round it to 3 significant digits.
+
+A:
+
+As @Airuno2L stated, the numerical solvers are optimized for with >= 6 DOF. A solution that worked well for us in some applications is performing some slight modifications on trac_ik to make it work better with < 6 DOF systems. You can find a fork here: https://github.com/tu-darmstadt-ros-pkg/hector_trac_ik/commits/master
+And a example robot configuration using the options here:
+https://github.com/tu-darmstadt-ros-pkg/hector_tracker_planning/blob/master/hector_tracker_robot_moveit_config/config/kinematics.yaml
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2016-09-12
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Sietse on 2016-09-12:
+Trac_ik has a test program ik_tests that I just used on my system. With 1000 random (reachable) positioins trac_ik solves around 995! So that's OK.
+I now don't understand why this does not work with my program....
+Comment by pbeeson on 2016-09-12:
+It could be a rounding issue, where the pose is not EXACTLY reachable, but one close to it is, and your joint values are getting rounded by whatever FK solution you are using. 1) Have you tried increasing the EPS in the trac_ik plugin from 1e-5 to something higher? This is hardcoded in plugin source
+Comment by pbeeson on 2016-09-12:
+2) You could take the joints you know define this goal pose, and run KDL's FK solver for the chain and see if the pose you get out matches the pose you are sending to IK.
+Comment by Sietse on 2016-09-13:
+Yes, I did copy the values only to about 3 decimals in the (naive) assumption that a position so close would be reachable anyhow. I now copied the values more complete and it now almost ALWAYS works.
+So that was the problem, thanks!
+

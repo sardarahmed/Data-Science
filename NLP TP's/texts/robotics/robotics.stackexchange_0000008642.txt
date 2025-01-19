@@ -1,0 +1,31 @@
+Q:
+
+Discontinuity in device orientation
+
+Why is there a discontinuity in the quaternion representation of my device orientation?
+I'm using a SENtral+PNI RM3100+ST LSM330 to track orientation. I performed the following test:
+
+Place the device in the center of a horizontal rotating plate ("lazy susan").
+Pause for a few seconds.
+Rotate the plate 360° clockwise.
+Pause for a few seconds.
+Rotate the plate 360° clockwise again.
+
+I got this output, which appears discontinuous at sample #1288-1289.
+
+Sample #1288 has  (Qx,Qy,Qz,Qw) = (0.5837, 0.8038, 0.0931, 0.0675), but sample #1289 has (Qx,Qy,Qz,Qw) = (0.7079, -0.6969, -0.0807, 0.0818).
+Plugging in the formulas on page 32 of this document, this corresponds to a change in orientation from (Heading, Pitch, Roll) = (108°, 0°, 142°) to (Heading, Pitch, Roll) = (-89°, 0°, 83°).
+The graph of (Heading, Pitch, Roll) is also not continuous mod 90°.
+Does this output make sense? I did not expect a discontinuity in the first plot, since the unit quaternions are a covering space of SO(3). Is there a hardware problem, or am I interpreting the data incorrectly?
+Edit: The sensor code is in central.c and main.c. It is read with this Python script.
+
+A:
+
+Something's not right, either with your test, your conversion, or with the device itself. If you look at your graph of heading, pitch, and roll, you can see that heading rotates through 360 degrees, which is expected, but roll changes almost 180 degrees in one direction, then 180 degrees back. If your device is loose and rolling around on the turntable then maybe that's correct, but otherwise you've got something else going on. 
+Can you provide your initialization code? Notice that you can't just power-on this device an use it - from page 16 of the manual:
+
+Note: It is necessary to set the MagRate, AccelRate, AND GyroRate registers to non-zero values for the SENtral algorithm to function properly and to obtain reliable orientation and scaled sensor data. If a [Sensor]Rate register is left as 0x00 after power-up, or is changed to 0x00, this effectively disablesthat sensor within the SENtral algorithm. Also, the CalStatus, MagTransient, and AlgorithmSlow bits become undefined.
+
+Are you getting any errors? Page 17, step (d) states you are to read the event register and then process the bits in the priority order specified in Figure 4-3 (at the top of that page), which means you are to check and act on an error bit before checking the sensor data available bits. 
+Finally, Can you provide your sensor read code? Your sample data with the discontinuity shows values in the range of -1 to 1, but Page 19 clearly states that Full Scale Output for the quaternions are 0-1, or $\pm \pi$. All of your data appears to be bounded at +1 on the high end, which makes me believe that you are not operating at the $\pm \pi$ band, so maybe you are reconstructing the bytes incorrectly upon receipt. 
+

@@ -1,0 +1,92 @@
+Q:
+
+Problems publishing synchronized topics
+
+I want to publish image synchronized topics using following code:
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+
+using namespace sensor_msgs;
+using namespace message_filters;
+
+void callback(const ImageConstPtr& left_image, const CameraInfoConstPtr& left_cam_info, const ImageConstPtr& right_image, const CameraInfoConstPtr& right_cam_info)
+{
+  // Solve all of perception here...
+    printf("-----------------------\n");
+    std::cout << "Time stamp (left image): "<< left_image->header.stamp << std::endl;
+    std::cout << "Time stamp (right image): "<< right_image->header.stamp << std::endl;
+    std::cout << "Time stamp (left camera info): "<< left_cam_info->header.stamp << std::endl;
+    std::cout << "Time stamp (right camera info): "<< right_cam_info->header.stamp << std::endl;
+}
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "vizzy_sync_node");
+
+  ros::NodeHandle nh;
+
+  message_filters::Subscriber<Image> left_image_sub(nh, "vizzy/left/image_raw", 1);
+  message_filters::Subscriber<CameraInfo> left_info_sub(nh, "vizzy/left/camera_info", 1);
+  message_filters::Subscriber<Image> right_image_sub(nh, "vizzy/right/image_raw", 1);
+  message_filters::Subscriber<CameraInfo> right_info_sub(nh, "vizzy/right/camera_info", 1);
+
+  TimeSynchronizer<Image, CameraInfo, Image, CameraInfo> sync(left_image_sub, left_info_sub, right_image_sub, right_info_sub, 10);
+  sync.registerCallback(boost::bind(&callback, _1, _2, _3, _4));    // cria 4 callbacks
+
+  ros::spin();
+
+  return 0;
+}
+
+but I see that the Callback function is not fired and don't know why. Anyone can help me and if possible tell me if in order to output the synchronized topics I can just publish them with simple advertise?
+
+Originally posted by aba92 on ROS Answers with karma: 29 on 2015-03-19
+Post score: 0
+
+Original comments
+Comment by Wolf on 2015-03-19:
+Are you sure the time stamps do EXACTLY match? The TimeSynchronizer requires this for firing the callback, no epsilon allowed....
+
+A:
+
+As far as I know you should specify the sychronization policy, i.e.
+#include "message_filters/subscriber.h"
+#include "message_filters/synchronizer.h"
+#include "message_filters/time_synchronizer.h"
+#include "message_filters/sync_policies/approximate_time.h"
+#include <ros/callback_queue.h>
+#include <boost/bind.hpp>
+
+Furthermore you should set a callback queue.
+Example:
+First:
+using namespace message_filters;
+ros::CallbackQueue my_callback_queue_;
+message_filters::Subscriber<nav_msgs::Odometry> poseSub_;
+message_filters::Subscriber<sensor_msgs::LaserScan> laserSub_;
+typedef sync_policies::ApproximateTime<nav_msgs::Odometry, sensor_msgs::LaserScan> MySyncPolicy;
+typedef message_filters::Synchronizer<MySyncPolicy> Synchronizer;
+boost::shared_ptr<Synchronizer> sync_;
+
+Specify the message_filter subscriber:
+ros::NodeHandle nh_;
+poseSub_.subscribe(nh_, "/robot_pose", 1);
+laserSub_.subscribe(nh_, "/scan", 1);
+
+Then set the synchronizer:
+sync_.reset(new Synchronizer(MySyncPolicy(10), poseSub_, laserSub_));
+sync_->registerCallback(boost::bind(&emergency_handler::avoid, this, _1, _2));
+nh_.setCallbackQueue(&my_callback_queue_);
+
+Then, in order to spin the callback:
+my_callback_queue_.callOne();
+
+The code I posted is intended for a class use.I hope this helped...
+PS: Sorry for my poor English...
+
+Originally posted by Chaos with karma: 396 on 2015-03-19
+This answer was ACCEPTED on the original site
+Post score: 1
+

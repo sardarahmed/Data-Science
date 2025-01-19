@@ -1,0 +1,47 @@
+Q:
+
+Determining transfer function of a PTU for visual tracking
+
+I have a PTU system whose transfer function I need to determine. The unit receives a velocity and position, and move towards that position with the given velocity. What kind of test would one perform for determining the transfer function...
+I know Matlab provides a method. The problem, though, is that I am bit confused on what kind of test I should perform, and how I should use Matlab to determine the transfer function.
+The unit which is being used is a Flir PTU D48E
+---> More about the system 
+The input to the system is pixel displacement of an object to the center of the frame. The controller I am using now converts pixel distances to angular distances multiplied by a gain $K_p$. This works fine. However, I can't seem to prove why that it works so well, I mean, I know servo motors cannot be modeled like that.
+The controller is fed with angular displacement and its position now => added together give me angular position I have to go to. 
+The angular displacement is used as the speed it has to move with, since a huge displacement gives a huge velocity.
+By updating both elements at different frequency I'm able to step down the velocity such that the overshoot gets minimized. 
+The problem here is: if I have to prove that the transfer function I found fits the system, I have to do tests somehow using the ident function in Matlab, and I'm quite unsure how to do that. I'm also a bit unsure whether the PTU already has a controller within it, since it moves so well, I mean, it's just simple math, so it makes no sense that I'll convert it like that.
+
+A:
+
+Imagine for a moment that you keep the input velocity fixed throughout the identification experiment, then you might inject into the system a sudden change in the final commanded position set-point while measuring as feedback the current position of your equipment (e.g. joint encoders). You will thus come up with a bunch of profiles of commanded vs. feedback positions for your identification goal. To this end you can profitably rely on the ident tool of the MATLAB System Identification Toolbox.
+Explore the system response against different input position steps and remember to validate any result over profiles sets that you did not use during identification.
+Finally, you could assume that varying the input velocity will have an impact on the internal controller responsivity, since of course what you're going to model is the whole apparatus made up of the internal actuators, controller, etc. In theory, you should repeat the identification experiment over a range of different input velocities.
+
+I'll expand hereinafter a little bit further, given the fresh info you provided.
+It's clear that there is an internal controller that converts your velocity input in a proper signal (usually voltage) actuating the motors. If you don't trust this internal loop, then you have to identify the plant and apply compensation as follows.
+Setting: identification of a system controlled in velocity. Hence, input $=$ commanded velocity $v$; output $=$ encoder feedback $\theta$.
+Procedure: you inject a chirp in velocity and you collect encoders. You can use ident to come up with a transfer function of your motor controlled in velocity at "high-level". This transfer function should resemble a pure integrator but it won't. What makes this difference needs to be compensated with the design of your velocity controller. This procedure has to be repeated for the two axes of the PTU. How to design a proper controller by putting its poles and zeros it's a matter of knowledge you should have; to do that of course you'll exploit the identified transfer function.
+Note: you don't have vision in the loop yet, just position feedback from the encoders. This way you can refine the velocity control of your system, so that in the end, given a target angular position $\theta_d$ where you want to go, you know how to form the proper velocity commands $v$ to send to the device at run-time, while reading back the corresponding encoders $\theta$.
+Then vision kicks in. The vision processing will tell you where the face centroid $p_d$ is with respect to the image center; this information is refreshed continuously at run-time. Then, using the intrinsic parameters of the pinhole model of your camera, you'll have an estimate of which angular positions this pixel corresponds to.
+This is not that difficult to determine. Knowing the centroid coordinates $p_d$ and assuming that we know how far the face lies from the camera (let's say 1 m but we don't care about the real distance), that is we know its $z$ component in the camera reference frame, the pinhole model gives us a way to find out the face $x$ and $y$ components in the camera frame. Finally, trigonometry provides you with the delta angles to add up to the current camera encoders that will in turn let you compute the absolute target angular positions. These latter values will represent the angular set-point for the above velocity controller.
+
+Here comes the math
+
+Given $p_d=\left(u,v\right)$ the face centroid and $z$ the distance of the face from the camera, it holds:
+$$
+\left( \begin{array}{c} x \\ y \\ z \\ 1 \end{array} \right) = \Pi^\dagger \cdot \left( \begin{array}{c} z \cdot u \\ z \cdot v \\ z \end{array} \right),
+$$
+where $x,y,z$ are the Cartesian coordinates of the face in the camera frame and $\Pi^\dagger$ is the pseudoinverse of the matrix $\Pi \in \mathbb{R}^{3 \times 4}$ containing the intrinsic parameters of your camera (i.e. the focal length, the pixel ratio and the position of the principal point - browse internet for that - there are standard procedures to estimate this matrix). We are not interested in $z$, so that you can put in the above equation whatever value for $z$ you want (say 1 m), but remember to be consistent in the following. Given $u,v$ you get $x,y$ as output.
+Once you have $x,y$ you can compute the angular variations $\Delta\phi_p$ and $\Delta\phi_t$ for the pan and the tilt, respectively:
+$$
+\Delta\phi_p=\arctan\frac{x}{z} \\
+\Delta\phi_t=-\arctan\frac{y}{z}
+$$
+Finally, the absolute angular positions used as set-point will be:
+$$
+\phi_p:=\phi_p+\Delta\phi_p \\
+\phi_t:=\phi_t+\Delta\phi_t
+$$
+Alternatively, we could also identify the whole system with the visual feedback in place of the motor encoders (visual servoing). Here, the transfer function will tell us the impact of a velocity command directly on the displacement a pixel undergoes. Intuitively, this identification will be more difficult because we put everything together and it's likely that we won't achieve the same performance of the first method.
+

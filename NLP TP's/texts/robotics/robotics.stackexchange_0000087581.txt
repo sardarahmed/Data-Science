@@ -1,0 +1,95 @@
+Q:
+
+Second instance of robot model for constraints planning
+
+Hi every one!
+I'm working on a dual_arm planner to use 2 UR-10 for manipulation.
+I'm coding it in c++, but i'm still learning every day about coding, so please be gentle :)
+Using ROS Indigo on Ubuntu 14.04
+In fact I'm trying to create a second instance of the robot_model used in the planning_scene by moveit, and use it for a constraint sampler that check that the two end effectors are keeping the same relative position/orientation during the manipulation.
+I need this second robot_model because the UR's range for each joint is very large, and the trac_ik solver (used for an RRT algorythm) can have unexpected behavior if he find multiple IK solution (crossing singularities between two consecutive state of the robot).
+Limiting the robot joint bounds is a good solution to avoid those plannig problem, but doing it in the urdf file is to restrictive for the appliation of the robot. So I'm trying to set this second robot model to be able to set a JointBoundsVector with ROS Param.
+And here is my problem :
+the JointModelGroup extracted from the second instance of the robot_model just give me constants method to extract joint models (witch contains JointsLimit.msg), or JointBoundsVector, or anything else that could allow me to modify the robot model object.
+bool set_variable_joints_bounds(const planning_scene::PlanningSceneConstPtr& scene, 
+std::string &l_arm_jmg_name_, const std::vector<std::pair< double, double > > &l_arm_limits,
+std::string &r_arm_jmg_name_, const std::vector<std::pair< double, double > > &r_arm_limits)
+{
+    moveit::core::RobotModelConstPtr const_rm_= scene->getRobotModel();
+    moveit::core::RobotModel rm = *const_rm_;
+    moveit::core::JointModelGroup* l_arm_jmg = rm.getJointModelGroup(l_arm_jmg_name_);
+    moveit::core::JointModelGroup* r_arm_jmg = rm.getJointModelGroup(r_arm_jmg_name_);
+    std::vector<std::string> l_arm_jm_list = l_arm_jmg->getJointModelNames();
+    std::vector<std::string> r_arm_jm_list = r_arm_jmg->getJointModelNames();
+    assert(l_arm_jm_list.size()==l_arm_limits.size());
+    assert(r_arm_jm_list.size()==r_arm_limits.size());
+
+    for (size_t i=0 ; i<l_arm_jm_list.size();i++){
+       const robot_model::JointModel* _jm = l_arm_jmg->getJointModel(l_arm_jm_list[i]);
+        std::vector<moveit_msgs::JointLimits>  _jl = _jm->getVariableBoundsMsg();
+        _jl[i].min_position = l_arm_limits[i].first;
+        _jl[i].max_position = l_arm_limits[i].second;
+        _jm->setVariableBounds(_jl);
+    }
+
+}
+
+I understand that those methods are constant for a good reason : some ROS services just look at the robot_model during there inittialisation. But I don want to modify the planning scene, I just need a alterable version of the robot_model ...  and don't want to modify the moveit package for it ^^
+So if some one has an idea, I'll be pleased to try it !
+Thanks for reading
+
+Originally posted by PDaelm on ROS Answers with karma: 26 on 2018-06-28
+Post score: 0
+
+A:
+
+Hi,
+Just found a non-constant method of the RobotModel class to access to JointModels.
+Here is the updated code :
+robot_model::RobotModelConstPtr construct_limited_robot_model(const planning_scene::PlanningSceneConstPtr& scene, std::string &l_arm_jmg_name_, const std::vector<std::pair< double, double > > &l_arm_limits, std::string &r_arm_jmg_name_, const std::vector<std::pair< double, double > > &r_arm_limits){
+
+    bool _flag_l = false;
+    bool _flag_r = false;
+    robot_model::RobotModelConstPtr const_rm_= scene->getRobotModel();
+    robot_model::RobotModelPtr _limited_robot_model_ptr (new robot_model::RobotModel(*const_rm_));
+
+    robot_model::JointModelGroup* l_arm_jmg = _limited_robot_model_ptr->getJointModelGroup(l_arm_jmg_name_);
+    robot_model::JointModelGroup* r_arm_jmg = _limited_robot_model_ptr->getJointModelGroup(r_arm_jmg_name_);
+    std::vector<std::string> l_arm_jm_list = l_arm_jmg->getActiveJointModelNames();
+    std::vector<std::string> r_arm_jm_list = r_arm_jmg->getActiveJointModelNames();
+    assert(l_arm_jm_list.size()==l_arm_limits.size());
+    assert(r_arm_jm_list.size()==r_arm_limits.size());
+
+    for (size_t i=0 ; i<l_arm_jm_list.size();i++){
+        robot_model::JointModel* _jm = _limited_robot_model_ptr->getJointModel(l_arm_jm_list[i]);
+        std::vector<moveit_msgs::JointLimits>  _jl = _jm->getVariableBoundsMsg();
+        _jl[i].min_position = l_arm_limits[i].first;
+        _jl[i].max_position = l_arm_limits[i].second;
+        _jm->setVariableBounds(_jl);
+        if (i==(l_arm_jm_list.size()-1))
+            _flag_l =true;
+    } 
+    for (size_t i=0 ; i<r_arm_jm_list.size();i++){
+        robot_model::JointModel* _jm = _limited_robot_model_ptr->getJointModel(r_arm_jm_list[i]);
+        std::vector<moveit_msgs::JointLimits>  _jl = _jm->getVariableBoundsMsg();
+        _jl[i].min_position = r_arm_limits[i].first;
+        _jl[i].max_position = r_arm_limits[i].second;
+        _jm->setVariableBounds(_jl);
+        if (i==(r_arm_jm_list.size()-1))
+            _flag_r =true;
+    }
+
+    if (_flag_l && _flag_r)
+        return _limited_robot_model_ptr;
+    else
+        return nullptr;
+
+    }
+
+The JointModel pointer in the for loops does not need to be constant here.
+Now I need to declare this new robot_model instance as an attribute of the constraint sampler, but this is another problem. And for this using RobotModelConstPtr can be usefull.
+
+Originally posted by PDaelm with karma: 26 on 2018-06-28
+This answer was ACCEPTED on the original site
+Post score: 0
+

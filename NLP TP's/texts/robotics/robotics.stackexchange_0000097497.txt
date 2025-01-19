@@ -1,0 +1,188 @@
+Q:
+
+bot stops working on changing tf listener 'target_frame' to '/odom', works fine for other frames
+
+I have written a simple P controller in the callback of my 'scan_subscriber' Subscriber. It is working as intended.
+I also wanted to transform the laser scan data from '/base_laser' frame to '/odom' frame.
+So, I wrote a simple transform listener inside 'tf_callback' function, setting the target_frame as '/odom'. This makes the bot to not work as intended (It moves for a while and then topples).
+However, when I change the target_frame to any frame other than '/odom', the bot works just fine.
+How can 'listener.waitForTransform' or 'listener.transformPoint' functions interfere with the publising of another topic ('/cmd_vel') ?
+What am I missing? I have been trying to debug this for 2 days now.
+#!/usr/bin/python
+
+import rospy
+from sensor_msgs.msg import LaserScan
+import math
+from geometry_msgs.msg import PointStamped,  Point, Twist
+import tf
+from visualization_msgs.msg import Marker 
+
+class HuskyBot: 
+
+    def __init__(self): 
+
+        
+        rospy.init_node('husky_node')
+            
+        self.laser_point = Point(0,0,0) 
+
+        self.scan_subscriber = rospy.Subscriber('/scan', LaserScan, self.laser_callback)
+        
+        self.tf_subscriber = rospy.Subscriber('/scan' , LaserScan, self.tf_callback)
+
+        self.velocity_publisher = rospy.Publisher('/cmd_vel' , Twist, queue_size = 1000) 
+
+        self.rate = rospy.Rate(1)
+
+        rospy.spin()
+                
+
+    def tf_callback(self, data): 
+    
+                
+
+        laser_point_stamped  = PointStamped() 
+
+        laser_point_stamped.header.frame_id = "/base_laser"
+        laser_point_stamped.header.stamp = rospy.Time() 
+
+        laser_point_stamped.point = self.laser_point 
+        
+        listener = tf.TransformListener()
+
+        try: 
+            
+            last_time = rospy.Time.now() 
+            
+
+            ''' Program runs successfully on changing the target frame to any frame other than odom '''
+
+            target_frame = '/odom'
+
+            listener.waitForTransform(target_frame , '/base_laser' , rospy.Time(), rospy.Duration(1.0))
+               
+            
+            odom_point = listener.transformPoint(target_frame , laser_point_stamped)
+       
+
+        except Exception as e: 
+
+            print "Following exception was enconuntered while performing the transformation -> " + str(e)
+
+    def laser_callback(self, data): 
+        
+
+        pillar_dis = 100000  
+
+        pos = 0 
+
+         
+        for idx, val in enumerate(data.ranges) : 
+
+            if not math.isinf(val): 
+
+                if val  < pillar_dis : 
+                    
+                    pillar_dis = val 
+
+                    pos = idx 
+
+        pillar_ang  = data.angle_min + pos * data.angle_increment 
+
+        vel_msg = Twist() 
+
+        tolerance = 0.1 
+        
+        ''' Simple P controller to navigate the bot ''' 
+
+        if pillar_dis > tolerance : 
+
+            v_x = 1.5 * pillar_dis 
+
+            w_z = 4 * (0 - pillar_ang) 
+
+            vel_msg.linear.x = v_x 
+            vel_msg.angular.z  = w_z 
+
+            self.velocity_publisher.publish(vel_msg) 
+        
+
+        p_x = pillar_dis * math.cos(pillar_ang) 
+        p_y = pillar_dis * math.sin(pillar_ang) 
+        p_z = 0 
+
+        self.laser_point = Point(p_x, p_y, p_z) 
+
+if __name__ == '__main__' : 
+
+    x = HuskyBot()  
+    
+    
+        
+
+Originally posted by skpro19 on ROS Answers with karma: 310 on 2020-11-04
+Post score: 0
+
+Original comments
+Comment by tryan on 2020-11-05:
+It looks like odom_point is not used after it's assigned, is that correct? Are there any errors or warnings in the logs?  Is there anything suspicious in your tf tree (multiple publishers of the same transform, slow rates, etc.)?
+Comment by JackB on 2020-11-05:
+Can you please explain why you have two subscribers to the /scan topic, one called "scan_subscriber" and the other called "tf_subscriber"? Also what is the output of rosrun tf view_frames? Is your tf tree built as you expect? (read: does it follow REP105?)
+Comment by skpro19 on 2020-11-05:
+@tryan
+The plan was to use publish visualisation_markers using odom_point. But I removed that to resolve the above mentioned error first.
+Also, it seems like there is an issue with the line listener.waitForTransform(target_frame , '/base_laser' , rospy.Time(), rospy.Duration(1.0)).
+Once I comment out this line, and keep  odom_point = listener.transformPoint(target_frame , laser_point_stamped), the bot runs just fine, but I receive this exception - Following exception was enconuntered while performing the transformation -> "odom" passed to lookupTransform argument target_frame does not exist.
+How can the  listener.waitForTransform(target_frame , '/base_laser' , rospy.Time(), rospy.Duration(1.0)).  interfere with the topic '/cmd_vel'?
+Comment by JackB on 2020-11-05:
+@skpro19 are you 100% sure the odom frame exists?
+Comment by skpro19 on 2020-11-05:
+@JackB
+This is how my frames.pdf look like. Since, I am using a standard husky_bot, I don't think there should be an issue with REP105 compliance.
+Comment by skpro19 on 2020-11-05:
+@JackB There is no particular reason. I was first trying to achieve the things mentioned in the 'tf_callback' function inside the 'laser_callback' function itself. But. since I was facing the above mentioned error, I thought of making 2 different subscribers.
+Comment by JackB on 2020-11-05:
+You should try to avoid making two subscribers like that once you have the problem figured out, but I understand.
+Comment by tryan on 2020-11-05:
+@skpro19 While this may not be the actual problem, it will help clarify things if you recombine the callbacks and move the listener constructor into the __init__ function as @JackB suggested.
+Comment by skpro19 on 2020-11-05:
+Thanks @tryan, I was able to resolve the issue :-)
+
+A:
+
+See the first part of Tom Moore's answer to this question.
+You are making the tf listener in the callback, which executes SO fast, that the system doesn't have time to register it. Make the tf listener a class variable just like you do with the publishers and subscribers and test it again.
+Without looking too much closer, this wouldn't exactly explain why it works with other setups but not when you set the frame to "/odom", except maybe that non-static tfs  (like odom) take longer to subscribe to. But I think this is a good first step at least to debugging, if this doesn't solve the entire problem.
+
+Originally posted by JackB with karma: 977 on 2020-11-05
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by skpro19 on 2020-11-05:
+@JackB If we see the tf_tree image, we can see that  odom -> base_link transform (published by '/ekf_localization') has a 50Hz frequency while all the other transforms between base_link and its children (published by '/robot_state_publisher') have a 1000Hz frequency.
+Comment by JackB on 2020-11-05:
+@skpro19 I am not sure what this comment means with respect to my answer. It confirms what I said about that the non-static tf gets published much much slower than the static tfs (not that we are sure that that is the important part). No matter what you do, remove the listener = tf.TransformListener() from the callback function and make it like self.listener = tf.TransformListener().
+Comment by skpro19 on 2020-11-05:
+Thank you @JackB for poinitng me in the right direction. I was able to resolve the issue. :-)
+I was stuck on this issue for quite some time now. I really appreciate it.
+
+I made the following changes to my code -
+
+Added self.listener =    tf.TransformListener() and    self.listener.waitForTransform(target_frame    , '/base_laser' , rospy.Time(),    rospy.Duration(1.0)) inside the    __init__ function
+
+Removed listener =    tf.TransformListener() and listener.waitForTransform(target_frame    , '/base_laser' , rospy.Time(),    rospy.Duration(1.0)) from the tf_callback function
+
+Changed odom_point = listener.transformPoint(target_frame , laser_point_stamped)
+to odom_point = self.listener.transformPoint(target_frame , laser_point_stamped)
+
+Comment by JackB on 2020-11-05:
+@skpro19 I am so happy I could help! You can accept my answer as correct or post your own with an explanation and revised code, cheers.
+Comment by skpro19 on 2020-11-07:
+@JackB You mentioned - 'You are making the tf listener in the callback, which executes SO fast, that the system doesn't have time to register it. Make the tf listener a class variable just like you do with the publishers and subscribers and test it again.'
+Are you saying that the callbacks are being called with such a high frequency that the system doesn't have the time to register the listener = tf.TransformListener() ? i.e another callback is called even before the the first callback hasn't been processed completely?
+Comment by JackB on 2020-11-07:
+@skpro19 unless you are using multiple threads, only one callback can ever be processed at a time, and therefore you cannot have another callback executed before the first process exits. That being said I am not 100% sure how the system handles the "registration" of the tf.transfromListener() but it is apparent that what ever happens it doesn't happen fast enough
+Comment by skpro19 on 2020-11-11:
+@JackB okay.
+

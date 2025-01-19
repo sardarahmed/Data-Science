@@ -1,0 +1,56 @@
+Q:
+
+Navigating a robot using same path every time
+
+Hello,
+I am not sure if I am clear here with my question. What I want to do is create a map with couple of obstacles in it and to make the robot drive around them, making an 8 shape. Something similar to the picture. Just imagine that in those 2 loops, there would be an obstacle. I am probably using wrong terms to find a similar example. I want the robot to be always driving that shape too (this is necessary for tests). Which tutorials could provide me with some samples?
+Right now I am using teb_local_planner. One of the requirements for the robot is that it also has to localize itself while doing this.
+image description http://png.clipart.me/graphics/thumbs/139/background-with-road-in-the-form-of-eight-vector-illustration_139624610.jpg
+Thank you!
+EDIT So I have tried running samples of teb_local_planner following the Global Plan (Via-Points), however it didnt work for me.
+I couldnt git clone the newest version of teb_local_planner because I already had it in my ~/catkin_ws directory (or at least I got git FATAL error), however I ran the rosdep install in the same folder and it didnt complain.
+How do I know that it didnt work in the end? I could never see neither the global_plan_viapoint_sep parameter nor weight_viapoint when I ran the roslaunch teb_local_planner test_optim_node.launch. Heres proof:
+https://www.dropbox.com/s/axq237aul1v1huu/Screenshot%202016-05-09%2020.11.06.png?dl=0
+https://www.dropbox.com/s/l6x1a4cxgkg6wb7/Screenshot%202016-05-09%2020.11.01.png?dl=0
+I tried setting it just in rqt config file, but to no avail.
+
+Originally posted by murdock on ROS Answers with karma: 75 on 2016-04-29
+Post score: 1
+
+Original comments
+Comment by croesmann on 2016-05-09:
+According to your new edit: the issue is not related to your original question, but it is much more concerned with: how to compile a package from source. If you cannot see the parameter, you do not have Version 0.4 properly installed. Of course, you shouldn't have two copies of the package at once.
+Comment by croesmann on 2016-05-09:
+Here is a similar question to the missing version. It still takes some time until new packages are synchronized in ROS.
+Comment by croesmann on 2016-05-09:
+You can find information on how to compile from source here. Delete any duplicate teb_local_planner package first! If you want to be 100% sure, also invoke sudo apt-get remove ros-indigo-teb-local-planner first.
+
+A:
+
+To my knowledge, move_base is currently not intended to provide / follow a global plan endlessly, since
+it switches between three states: Planning (globally), Controlling (locally, determining velocity commands) and Clearing.
+Obviously, you require a goal point for the global plan.
+You can try the following:
+First, we follow the 2 loops once:
+Write your own global planner that computes your "predefined" plan of the 8-shape. Create your two loops by choosing an appropriate discretization (maybe every 0.2/0.3 cm, or better with a parameter). Of course, you should generate your intermediate points computer-aided.
+Writing a global planner is not hard. You must implement the required interface and export your compiled library as plugin. A tutorial can be found here: Writing A Global Path Planner As Plugin in ROS.
+You can also check out the carrot_planner example (click here for indigo source).
+Then try which of your local planners performs best. Version 0.4 of the teb_local_planner provides a path following mode which could be really helpful here!
+After configuring your planners for move_base, you must invoke move_base by sending a navigation goal in order to switch the state machine to the Planning state.
+Multiple loops:
+
+If you want to follow the path endlessly, you can write a small node that renews the navigation goal, if the robot has reached its goal. But here you will always have a deceleration and acceleration phase each time.
+Maybe you can renew your global plan more often causing the state machine to  switch between states planning and controlling. But this shouldn't be a problem since this is common practice with the default GlobalPlanner (parameter planning_frequency). This way it should be possible to follow the path endlessly without the decelaration and acceleration phase. But you might need to adjust your predefined path (incl goal) according to the current robot position.
+If you just want to repeat a few times, you could replicate your global plan in the global planner multiple times (e.g. with a parameter).
+
+Originally posted by croesmann with karma: 2531 on 2016-04-29
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by murdock on 2016-04-30:
+Correct me if I am wrong, but from what I gathered I may just be able to use teb_local_planner's path following mode and that would solve my problem?
+P.S. As always, thank you for your answers.
+Comment by croesmann on 2016-05-02:
+yeah, but in conjunction with a global planner which provides your predefined path. You can built upon the source code posted by Steven_Daniluk.
+

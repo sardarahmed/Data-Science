@@ -1,0 +1,36 @@
+Q:
+
+Time Mapping for Robot Arm Teleoperation
+
+I have a 6DOF robotic arm that I wish to teleoperate by tracking my own hands. For the sake of simplicity, let us assume a 3DOF arm where only position is fed, and the orientation is constant.  Suppose I get my wrist pose in mm (which is my end effector) at 100 Hz. (slightly noisy in the order of a couple of mm). There are no network latency issues.
+The IK solver of my robotic arm is fast, and more or less realtime (order of a millisecond). The speed for every step of the motion has to be fed in, i.e. for every position command, the speed at which to execute the motion has to be specified.
+Here is my problem: The teleoperation mapping does not seem to be realtime nor smooth. If the hand moves from point A to B, the arm takes a while to get there, probably a couple of seconds delay, however, when the hand is still, then it is realtime, (since there is no movement to make, thus it is real-time). Fast motions are not mapped very well in realtime, thus the teleoperation experience is poor.
+I'm sure these are general problems faced when someone gets started with teleoperation.
+What is the ideal way to approach this, from a general concept of teleoperation.
+There are various things to consider such as
+
+Time taken for IK solver.
+How often to the end effector (wrist) position.
+Speed to feed for each motion.
+Buffer size of the receiver on the robotic arm side, to process.
+
+While I understand that one solution/method will not fit all types, a general detailed explanation of a methodology on how to approach hand teleoperation, and the various things to consider would be very helpful. What is the established method to ensure both smoothness of motion, and realtime time/latency mapping for teleoperation? While most papers deal with accuracy, and how to get the hand position, not a lot of papers discuss this issue of time and speed for operation.
+Currently, this is how I approach the issue. I collect position values, and find the distance between the previous hand position (A), and the current reading. If the distance is less than some threshold (eg. 5mm), the current reading is discarded. Once the distance exceeds the threshold, it is sent to the robotic arm. The time is calculated as the distance by the time between previous position (A) and current reading. Though this works well for most cases, it fails fast random motions.
+However, I am not sure if this is a general practice for teleoperation.
+Finally, is solving IK for each pose required? If not, how can this be done?
+
+A:
+
+You have to decide what are your teleoperation priorities:
+
+Do you want to replicate exactly the trajectory of the hand
+Do you want to synchronize the current position of the hand as best as possible with the robot?
+
+Trajectory fidelity:
+This might introduce a lag between the current position of the hand and the robot, if your robot is slower than the hand motion you are trying to copy. You can refine the sampling of the hand trajectory, say to a 100ms range, but instead of sending the coordinates directly to the robot, and changing the setpoint of the robot controller every 100ms, regardless of the fact that the robot reached the position or not, you should create a motion buffet with the waypoints your robot needs to follow. You should connect these waypoint with a spline and/or use a multi-point trajectory planner to generate and execute this trajectory, by taking into account the dynamic capabilities of your robot.
+Position/pose fidelity:
+If you do not care about the trajectory of your hand, just he final point, you should use a PTP trajectory planner, which always brings your robot from its current point to the current position of the hand, while taking into account its dynamic capabilities.
+In both cases, there is a need to plan a trajectory, not just dump setpoints on the controller. If your controller is good enough, it might be able to cope with them, but this is not guaranteed. Planning a trajectory shapes the way the setpoints are generated and makes sure that the robot can actually follow the intended motion. Yes, you might loose some dynamic performance in some cases, but the benefits outweigh this.
+As for IK, if you have Cartesian position, you have 2 choices. Plan a path in Cartesian space and convert to joint angles afterwards, or convert to joint space and plan a path in joint space. Every time you transition from Cartesian to joint space you need the IK transformation, there is no way around this. If you want to follow a straight line, you have to plan in cartesian space. If you do not care about the shape of the trajectory between the waypoints, you can plan in joint space.
+If you want to evaluate, where your robot is currently in relation to the intended Cartesian path, you need the forward kinematic transformation to transform your the current joint angles of your robot to Cartesian space and see where you are in relation to the intended Cartesian path.
+

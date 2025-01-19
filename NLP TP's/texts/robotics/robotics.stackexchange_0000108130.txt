@@ -1,0 +1,38 @@
+Q:
+
+Cancel request policy in ROS2 for specified goal id and timestamp seems odd
+
+From the Action design doc:
+https://github.com/ros2/design/blob/gh-pages/articles/actions.md
+Cancel Goal Service
+
+    Direction: client calls server
+    Request: goal ID and timestamp
+    Response: response code and a list of goals that have transitioned to the CANCELING state
+
+The purpose of this service is to request the cancellation of one or more goals on the action server. The response code indicates any failures in processing the request (e.g. OK, REJECTED or INVALID_GOAL_ID). The list of goals in the response indicates which goals will be attempted to be canceled. Whether or not a goal transitions to the CANCELED state is indicated by the status topic and the result service.
+
+The cancel request policy is the same as in ROS 1.
+
+- If the goal ID is empty and timestamp is zero, cancel all goals
+- If the goal ID is empty and timestamp is not zero, cancel all goals accepted at or before the timestamp
+- If the goal ID is not empty and timestamp is zero, cancel the goal with the given ID regardless of the time it was accepted
+- If the goal ID is not empty and timestamp is not zero, cancel the goal with the given ID and all goals accepted at or before the timestamp
+
+On the last line ("goal ID is not empty and timestamp is not zero"), why "cancel the goal with the given ID and all goals accepted at or before the timestamp"? I would imagine it would make more sense to "cancel the all goals with the given ID accepted at or before the timestamp" (instead of all goals across the board). But I also am very new to ROS and have no idea what I am talking about, so take my question with a grain of salt.
+I find it odd because I would assume that if the goal ID was specified, then the process requesting the cancellation doesn't want to affect goals with different IDs. Basically it seems that the second ("goal ID is empty and timestamp is not zero)" and forth ("goal ID is not empty and timestamp is not zero") have the same result: cancel all goals accepted at or before the timestamp.
+Here is the source code:
+https://github.com/ros2/rcl/blob/rolling/rcl_action/src/rcl_action/action_server.c
+I believe the code in question is the definition of rcl_action_process_cancel_request() which start around line 723 of action_server.c of the rcl library.
+A few related questions that might help me understand Tully's response:
+
+Is it possible to have two action requests with the same goal ID? For example, can you tell a robot to move forward 2 meters and then queue up a second action to go an additional 2 meters before the first action has finished?
+If it is possible to have two action requests with the same goal ID, how would I cancel the older request without canceling the newest request (without cancelling other actions with different IDs)? Alternatively, how would I cancel the newest request without canceling the older request (without cancelling other actions with different IDs)?
+
+A:
+
+The cancel message basically has two fields. You can cancel based on time or you can cancel based on ID. If either field is set to non zero that policy will be triggered.
+The documentation calls out the 4 different permutations. It is less likely to want to use that fourth permutation. But it's simpler to not remove that case in the implementation. And in the case it may be useful to someone, it's available.
+I'll note that the id and timestamp are independent so there is a little bit more flexibility than you could take advantage of simultaneously cancelling a request as well as removing the backlog from further in the past potentially leaving some intermediate ones.
+In the case you call out only effecting the specific ID, you just set the id and not the timestamp.
+

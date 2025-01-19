@@ -1,0 +1,64 @@
+Q:
+
+Subscriber callback inside class not recognized C++
+
+I have created a class that contains a ROS subscriber and the callback function. I have done this following the ROS tutorial and according to other answers that I have found (for example here).
+I have included a snippet of my code below:
+class VelocityCommandSubscriber{
+public:
+    geometry_msgs::Twist velocity_msg;
+    std::string velocity_type;
+    VelocityCommandSubscriber(geometry_msgs::Twist velocity_msg, std::string velocity_type)
+    {
+        velocity_msg = velocity_msg;
+        velocity_type = velocity_type;
+        velocitySubscriber = nH.subscribe<std_msgs::Float64>("/command_velocity_"+velocity_type,10, &VelocityCommandSubscriber::VelocityCallback, this);
+    }
+    void VelocityCallback(std_msgs::Float64::ConstPtr& velocity_cmd_msg)
+    {
+        //Callback code here
+    }
+protected:
+    ros::NodeHandle nH;
+    ros::Subscriber velocitySubscriber;
+};
+
+However, whenever I run this code I get the following error
+error: no matching function for call to ‘ros::NodeHandle::subscribe<std_msgs::Float64>(std::__cxx11::basic_string<char>, int, void (VelocityCommandSubscriber::*)(std_msgs::Float64_<std::allocator<void> >::ConstPtr&), VelocityCommandSubscriber*)’
+   81 |             velocitySubscriber = nH.subscribe<std_msgs::Float64>("/command_velocity_"+velocity_type,10, &VelocityCommandSubscriber::VelocityCallback, this); |                                                             
+
+Does anyone know what am I doing wrong? I am using ROS noetic and am relatively new to ROS and c++ so I may very well be reading over something simple.
+Thanks for your help!
+
+Originally posted by DuffRumkins on ROS Answers with karma: 3 on 2023-04-12
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2023-04-12:
+Your callback argument looks different from the example from the ROS Answers, can you try it with normal const instead of ConstrPtr? Or use the suggested boost::bind?
+Comment by DuffRumkins on 2023-04-12:
+I tried it with const and I get the exact same error. I also tried boost::bind, but that just gave me another similar error. Is this maybe new in noetic since the other answers would have been for an older ROS version?
+Comment by DuffRumkins on 2023-04-16:
+@ljaniec , I think you may have been correct. As I said in a reply to the answer I think defining the type in the subscriber template was causing mismatch errors. Thanks for your help!
+
+A:
+
+This roscpp subscriber callback compiles just fine in noetic:
+void VelocityCallback(const std_msgs::Float64::ConstPtr& velocity_cmd_msg) { }
+
+In c++, this code is not going to do what you want it to do:
+velocity_msg = velocity_msg;
+velocity_type = velocity_type;
+
+If the same compile error continues to happen after you fix the code, you should also try doing a clean build (if using catkin_make, delete the top-level build and devel directories in your catkin_ws.)
+
+Originally posted by Mike Scheutzow with karma: 4903 on 2023-04-16
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by DuffRumkins on 2023-04-16:
+This naming issue was indeed a problem that I completely looked over. Thanks!
+I managed to get my code to build by changing this, but I also had to remove the <std_msgs::Float64> from where I defined velocitySubscriber as a subscriber. I think the fact that I was defining the type as Float64 there while using Float64::ConstPtr in the callback function was causing a mismatch error.
+Thanks again for your help!
+

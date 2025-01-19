@@ -1,0 +1,103 @@
+Q:
+
+Can't initialize rosdep after installing ROS through conda-forge
+
+Issue:
+I installed ros-melodic through conda-forge.
+conda config --add channels conda-forge
+conda config --set channel_priority strict
+conda create --name ros --channel conda-forge ros-core ros-actionlib ros-dynamic-reconfigure ros-roslib python=3.6
+
+however when trying to initialize rosdep within the newly created ros environment, it rightfully denies the permissions to /etc/ros/ folder in the root:
+ERROR: cannot create /etc/ros/rosdep/sources.list.d:
+    [Errno 13] Permission denied: '/etc/ros'
+
+And when writing sudo rosdep init it give same error: sudo: rosdep: command not found, (though I think that's a separate issue).
+Question:
+I don't know where else to ask this but uhm, what do I need to change so that rosdep stays within the conda environment folders and doesn't try to modify root folders?
+
+Details about  conda and system ( conda info ):
+Ubuntu 18.04.4 LTS,
+[conda-forge / packages / ros-roslib 1.14.6](https://anaconda.org/conda-forge/ros-roslib)
+(ros) jek@jek-u18-04-4lts:~$ conda info
+
+     active environment : ros
+    active env location : /home/jek/anaconda3/envs/ros
+        shell level : 2
+       user config file : /home/jek/.condarc
+ populated config files : /home/jek/.condarc
+      conda version : 4.8.3
+    conda-build version : 3.18.11
+     python version : 3.7.3.final.0
+       virtual packages : __cuda=9.1
+                      __glibc=2.27
+       base environment : /home/jek/anaconda3  (writable)
+       channel URLs : https://conda.anaconda.org/conda-forge/linux-64
+                      https://conda.anaconda.org/conda-forge/noarch
+                      https://repo.anaconda.com/pkgs/main/linux-64
+                      https://repo.anaconda.com/pkgs/main/noarch
+                      https://repo.anaconda.com/pkgs/r/linux-64
+                      https://repo.anaconda.com/pkgs/r/noarch
+      package cache : /home/jek/anaconda3/pkgs
+                      /home/jek/.conda/pkgs
+       envs directories : /home/jek/anaconda3/envs
+                      /home/jek/.conda/envs
+           platform : linux-64
+         user-agent : conda/4.8.3 requests/2.23.0 CPython/3.7.3 Linux/4.15.0-91-generic ubuntu/18.04.4 glibc/2.27
+            UID:GID : 1000:1000
+         netrc file : None
+       offline mode : False
+
+Originally posted by Yev_D on ROS Answers with karma: 3 on 2020-03-25
+Post score: 0
+
+A:
+
+There's an issue here: https://github.com/ros-infrastructure/rosdep/issues/495
+There was an attempted fix here: https://github.com/ros-infrastructure/rosdep/pull/551
+But it had to be rolled back: https://github.com/ros-infrastructure/rosdep/pull/584 due to https://github.com/ros-infrastructure/rosdep/issues/582
+There's a new PR to resolve this here: https://github.com/ros-infrastructure/rosdep/pull/583
+
+Originally posted by tfoote with karma: 58457 on 2020-03-25
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Yev_D on 2020-03-25:
+ouf, that "new PR" is almost 2 yrs old.
+Thanks for the links, though they are helpful to track this issue, I won't mark them as an answer yet since, well, since it doesn't resolve the original issue ^_^
+Respectfully.
+Comment by tfoote on 2020-03-25:
+The best answer to your direct question is the diff attached to the current PR under consideration.
+Keeping this open in parallel with the known issue on the tracker isn't going to help get it resolved any sooner and anyone finding this issue should follow up there. Old questions here will just languish this is not an issue tracker that will be triaged and closed out. There's no more correct "answer" possible except to follow up back here when that the open issue has been closed. And based on past performance almost no one will follow up here on an old question to confirm that the other thread has been resolved. But if you want to commit to that it's fine.
+Comment by Yev_D on 2020-03-25:
+Yeah, I see your point about not tracking an issue on this platform. That makes sens. I also agree with this question not having its answer for the lack of development for this particular issue. Your answer on git about a work around, that's interesting. Would you mind updating your answer here to include it. Because I'm stuck on this step and not sure what to do.
+You said that ppl just drop the source file into the root. Could you please specify where or how to write the file, or how does it look?
+Comment by tfoote on 2020-03-25:
+rosdep init just fetches this file and drops it at /etc/ros/rosdep/sources.list.d/20-default.list
+$ cat /etc/ros/rosdep/sources.list.d/20-default.list 
+# os-specific listings first
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/osx-homebrew.yaml osx
+
+# generic
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/base.yaml
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/python.yaml
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/ruby.yaml
+gbpdistro https://raw.githubusercontent.com/ros/rosdistro/master/releases/fuerte.yaml fuerte
+
+# newer distributions (Groovy, Hydro, ...) must not be listed anymore, they are being fetched from the rosdistro index.yaml instead
+
+Comment by Yev_D on 2020-03-27:
+@tfoote, hey, just wanted to clarify this. Here is what I did, is this correct?
+
+Create folder "/etc/ros/rosdep/sources.list.d/20-default.list/"
+sudo mkdir /etc/ros/rosdep/sources.list.d/20-default.list
+
+Drop the sources_list.py into this folder
+cp /home/jek/Downloads/sources_list.py /etc/ros/rosdep/sources.list.d/20-default.list
+
+Comment by tfoote on 2020-03-27:
+No it's not the file source code file for processing the list but the data file referenced at that line in the file: https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/sources.list.d/20-default.list that should be put there.
+Comment by Yev_D on 2020-03-28:
+@tfoote, that didn't work. I'll just install a separate Uubuntu dedicated for ROS, for now.
+

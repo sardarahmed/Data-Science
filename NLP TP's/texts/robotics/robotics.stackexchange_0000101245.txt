@@ -1,0 +1,116 @@
+Q:
+
+ROS2 launch file: how to convert LaunchArgument to string
+
+I want to convert either a LaunchConfiguration or a LaunchArgument to a string so I can use it in a filepath later. How to do it?
+Example:
+support_package = LaunchConfiguration("support_package")
+
+declared_arguments = []
+
+declared_arguments.append(
+    DeclareLaunchArgument(
+        "support_package",
+        description="Name of the support package",
+        choices=["abb_irb_1200_support"],
+    )
+)
+
+robot_description_config = xacro.process_file(
+    os.path.join(
+        get_package_share_directory(support_package),  # FAILURE AT THIS LINE
+        "urdf",
+        "irb1200_5_90.xacro",
+    )
+)
+
+The failure is:
+Caught exception when trying to load file of format [py]: expected string or bytes-like object
+I'm not much of a Python programmer, but an str() function would be great.
+Related question:  https://answers.ros.org/question/340705/access-launch-argument-in-launchfile-ros2/
+
+Originally posted by AndyZe on ROS Answers with karma: 2331 on 2022-02-17
+Post score: 2
+
+A:
+
+Unfortunately, an str() method would not be that easy. The LaunchConfiguration is a Substitutible object, and doesn't derive from str You're going to need to use the launch.actions.OpaqueFunction action as it will give you a LaunchContext object from which you can perform substitutions:
+from pathlib import Path
+from launch import LaunchDescription, LaunchContext, LaunchService
+from launch.actions import OpaqueFunction, DeclareLaunchArgument, ExecuteProcess
+from launch.substitutions import LaunchConfiguration
+ 
+ 
+robot_description_path = Path('destination.urdf')
+ 
+ 
+def render_xacro(context: LaunchContext, support_package):
+    support_package_str = context.perform_substitution(support_package)
+    # render xacro... just dumping the support_package value in there for example.
+    robot_description_config = support_package_str
+    robot_description_path.write_text(robot_description_config)
+    print(f'wrote robot description to {robot_description_path}')
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument('support_package', default_value='hello'),
+
+        OpaqueFunction(function=render_xacro, args=[LaunchConfiguration('support_package')]),
+        ExecuteProcess(cmd=['cat', str(robot_description_path)],
+                       output='screen'),
+    ])
+
+if __name__ == '__main__':
+    ls = LaunchService()
+    ls.include_launch_description(generate_launch_description())
+    ls.run()
+
+which outputs:
+[INFO] [launch]: Default logging verbosity is set to INFO
+wrote robot description to destination.urdf
+[INFO] [cat-1]: process started with pid [31440]
+[INFO] [cat-1]: process has finished cleanly [pid 31440]
+[cat-1] hello
+        
+
+Originally posted by ChuiV with karma: 1046 on 2022-02-23
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by AndyZe on 2022-03-16:
+It seems like you are onto something and I appreciate it! But, something similar to this still does not work in my launch file. Is it b/c I don't have a main? Why so difficult? @William
+support_package_path = Path('')
+
+def load_srdf(context: LaunchContext, support_package):
+    # Convert to string
+    support_package_str = context.perform_substitution(support_package)
+    support_package_path.write_text(support_package_str)
+
+def generate_launch_description():
+    DeclareLaunchArgument(
+        "moveit_config_package",
+        default_value=["abb_irb1200_5_90_moveit_config"]
+    )
+    moveit_config_package = LaunchConfiguration("moveit_config_package")
+    # Get string path to the SRDF
+    OpaqueFunction(function=load_srdf, args=[moveit_config_package])
+    print(str(support_package_path))
+
+Prints a dot b/c the path was not evaluated:
+.
+Caught exception when trying to load file of format [py]: '.' is not a valid package
+Comment by ChuiV on 2022-03-16:
+You can think of ros2 launch in 2 steps: Description, and Execution (maybe there's better names, but those names make sense to me).
+In the description step, Launch will accumulate a list of everything it needs to do, but doesn't actually do anything.
+In the Execution step, it actually runs everything from the description.
+So by the time the Description step finishes, it just knows that there is a launch Argument ("moveit_config_package"), and an OpaqueFunction(which isn't run yet at this point.) Also note at this point, your print(str(support_package_path)) has been run, and we haven't written the support package string into that file yet!
+After the Description step, we finally start to execute stuff. Now we fetch the value of the launch argument and write the value to the file.
+The error you listed above seems to be related to how you're calling this launch script, not with your launch script itself.
+Hope that helps clarify things a bit more.
+Comment by AndyZe on 2022-03-16:
+Thanks, that's a brilliant response. I think I will copy what's done in the UR package.  https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver/blob/main/ur_moveit_config/launch/ur_moveit.launch.py
+Comment by William on 2022-03-21:
+Sounds like @ChuiV already helped you, and he's 100% right. I said something similar in a comment on the other question: https://answers.ros.org/question/340705/access-launch-argument-in-launchfile-ros2/?answer=340857#post-id-340857
+Sorry it's not intuitive to you, but there are reasons it is set up like this.
+

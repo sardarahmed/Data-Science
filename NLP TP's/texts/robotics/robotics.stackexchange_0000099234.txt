@@ -1,0 +1,86 @@
+Q:
+
+How to write header file for ROS 2 publisher
+
+Hello,
+I am relatively new to ROS 2. I have worked on ROS and can make header files for my class. I am trying to replicate the same thing for ROS 2. I am following the Pub Sub tutorial on ROS 2 documentation. However, in that they have defined the class and the main function inside one .cpp file. I want to define the class in a .h file, make a corresponding .cpp file of the class and call the entire thing in a main.cpp file
+
+Originally posted by cjoshi17 on ROS Answers with karma: 28 on 2021-06-11
+Post score: 1
+
+A:
+
+It can be done, you just need to build the files correctly. Taking the minimum publisher as an example, you can break it up into different files:
+minimal_publisher.hpp
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+
+class MinimalPublisher : public rclcpp::Node
+{
+public:
+  MinimalPublisher();
+
+ private:
+  void timer_callback();
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+  size_t count_;
+};
+
+minimal_publisher.cpp
+#include "minimal_publisher.hpp"
+
+MinimalPublisher::MinimalPublisher ()
+: Node("minimal_publisher"), count_(0)
+{  
+    publisher_ = this->create_publisher<std_msgs::msg::String>("topic", 10);
+    timer_ = this->create_wall_timer(
+      500ms, std::bind(&MinimalPublisher::timer_callback, this));
+}
+
+MinimalPublisher::timer_callback()
+{
+    auto message = std_msgs::msg::String();
+    message.data = "Hello, world! " + std::to_string(count_++);
+    RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message.data.c_str());
+    publisher_->publish(message);
+ }
+
+minimal_publisher_node.cpp
+#include "minimal_publisher.hpp"
+
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::shutdown();
+  return 0;
+}
+
+Now you just need to be able to build it correctly. If you don't care exactly, you can wrap it all into one add_executable call in the CMakeLists.txt. Or, you can build them minimal_publisher.hpp and .cpp as a library and then the minimal_publisher_node.cpp as an executable and link the library.
+
+Originally posted by 404RobotNotFound with karma: 331 on 2021-06-11
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by cjoshi17 on 2021-06-11:
+Hi,
+Thanks for solving my problem. I had defined my .h and corresponding .cpp file like you have mentioned in the answer. The step I was doing wrong was in the CMakeLists.txt. I defined an executable for my publisher.cpp, subscriber.cpp and main.cpp instead of having it all defined in one executable like this
+Wrong way:
+add_executable(talker src/publisher.cpp)
+ament_target_dependencies(talker rclcpp std_msgs)
+add_executable(listener src/subscriber.cpp)
+ament_target_dependencies(listener rclcpp std_msgs)
+add_executable(main_node src/main.cpp)
+ament_target_dependencies(main_node rclcpp std_msgs)
+Correct way:
+add_executable(main_node src/main.cpp src/publisher.cpp src/subscriber.cpp)
+ament_target_dependencies(main_node rclcpp std_msgs)
+Thanks again for solving my problem. I have been coding in python for a few months now and hence forgotten about the whole CMake definitions for C++.
+

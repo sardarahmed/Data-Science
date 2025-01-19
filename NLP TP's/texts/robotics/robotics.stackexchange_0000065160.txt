@@ -1,0 +1,112 @@
+Q:
+
+rosserial_arduino generate dependent packages before make_libraries
+
+How can I ensure my custom message packages is made before my arduino packages attempts to build?
+I have an arduino package that relies on a custom message package, relative_nav_msgs. In a standard ROS package I would call $ add_dependencies(node_name relative_nav_msgs_generate_messages_cpp) to ensure that the messages are being built before I try building my node.
+I feel like I need to call something similar before calling the rosserial_generate_ros_lib command in the CMake file. Without it, make_libraries fails to generate headers for my relative_nav_msgs packages. I found that I can hack make_libraries.py by adding a 15 second delay before it tries to generate ros_lib, this allows time for the relative_nav_msgs to be built. I would prefer a legit method though.
+I have included the packages CMake, package.xml, and the firmware CMake. Thank you for any help!
+Package CMakeLists.txt:
+cmake_minimum_required(VERSION 2.8.3)
+project(rc_read)
+
+find_package(catkin REQUIRED COMPONENTS
+  rosserial_arduino
+  rosserial_client
+  relative_nav_msgs
+)
+
+catkin_package()
+
+rosserial_generate_ros_lib(
+ PACKAGE rosserial_arduino
+ SCRIPT make_libraries.py
+)
+
+rosserial_configure_client(
+  DIRECTORY firmware
+  TOOLCHAIN_FILE ${ROSSERIAL_ARDUINO_TOOLCHAIN}
+)
+
+rosserial_add_client_target(firmware rc_read ALL)
+rosserial_add_client_target(firmware rc_read-upload)
+
+package.xml
+<?xml version="1.0"?>
+<package>
+  <name>rc_read</name>
+  <version>0.0.0</version>
+  <description>The rc_read package</description>
+
+  <maintainer email="paul@todo.todo">paul</maintainer>
+
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>relative_nav_msgs</build_depend>
+  <build_depend>rosserial_arduino</build_depend>
+  <build_depend>rosserial_client</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <run_depend>relative_nav_msgs</run_depend>
+  <run_depend>rosserial_arduino</run_depend>
+  <run_depend>rosserial_client</run_depend>
+  <run_depend>std_msgs</run_depend>
+</package>
+
+and finally my firmware CMake file:
+cmake_minimum_required(VERSION 2.8.3)
+
+include_directories(${ROS_LIB_DIR})
+
+# Remove this if using an Arduino without native USB (eg, other than Leonardo)
+add_definitions(-DUSB_CON)
+
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/../libraries)
+
+generate_arduino_firmware(rc_read
+  SRCS rc_read.cpp ${ROS_LIB_DIR}/time.cpp
+  BOARD uno
+  PORT /dev/ttyACM0
+)
+
+Originally posted by pnyholm on ROS Answers with karma: 97 on 2015-01-14
+Post score: 0
+
+A:
+
+I had the same problem and solved it like this
+cmake_minimum_required(VERSION 2.8.3)
+project(rc_read)
+
+find_package(catkin REQUIRED COMPONENTS
+  rosserial_arduino
+  rosserial_client
+  relative_nav_msgs
+)
+
+catkin_package()
+
+rosserial_generate_ros_lib(
+ PACKAGE rosserial_arduino
+ SCRIPT make_libraries.py
+)
+
+add_dependencies(rc_read_ros_lib 
+    relative_nav_msgs_generate_messages_cpp
+    relative_nav_msgs_generate_messages
+    relative_nav_msgs_generate_messages_py
+    relative_nav_msgs_generate_messages_lisp
+)
+
+rosserial_configure_client(
+  DIRECTORY firmware
+  TOOLCHAIN_FILE ${ROSSERIAL_ARDUINO_TOOLCHAIN}
+)
+
+rosserial_add_client_target(firmware rc_read ALL)
+rosserial_add_client_target(firmware rc_read-upload)
+
+Originally posted by sam_123 with karma: 70 on 2015-05-18
+This answer was ACCEPTED on the original site
+Post score: 1
+

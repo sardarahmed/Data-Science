@@ -1,0 +1,165 @@
+Q:
+
+How to publish only one message on a topic?
+
+Hi guys,
+I have written a program which continuously publishes velocity on a topic. I want to publish only one velocity message at once. In case I change my velocity I need to publish one message per velocity change. How can I do it. Here is my code:
+> #include "ros/ros.h"
+> #include "nav_msgs/Odometry.h" 
+> #include <ros/console.h>
+> #include "geometry_msgs/Pose.h"
+> #include "geometry_msgs/Twist.h"
+> #include <tf/transform_datatypes.h>
+> 
+> 
+> 
+> 
+> 
+> double quatx; double quaty; double
+> quatz; double quatw; double
+> linearposx; double linearposy;
+> 
+> void ComPoseCallback(const
+> nav_msgs::Odometry::ConstPtr& msg);
+> 
+> int main(int argc, char **argv) {
+>     ros::init(argc, argv, "Test_FK"); 
+>     ros::NodeHandle n;                 
+>     ros::Publisher Velocity_pub = n.advertise<geometry_msgs::Twist>("/RosAria/cmd_vel",10);
+>     ros::Subscriber ComPose_sub = n.subscribe("/RosAria/pose", 1000,
+> ComPoseCallback);
+> 
+>        geometry_msgs::Twist velocity;    velocity.linear.x=1;   
+> velocity.linear.y=0;   
+> velocity.linear.z=0;   
+> velocity.angular.x=0;   
+> velocity.angular.y=0;   
+> velocity.angular.z=0;
+>         //std::cout<<"xPosition"<<linearposx<<std::endl;
+> //ros::Rate loop_rate(10);
+>        while (ros::ok())
+>     {
+>         Velocity_pub.publish(velocity);   
+> ros::spinOnce();
+>     
+>    
+>     }
+>     return 0; }
+> 
+> void ComPoseCallback(const
+> nav_msgs::Odometry::ConstPtr& msg)    
+> {
+>     ROS_INFO("Seq: [%d]", msg->header.seq);
+>     ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]",
+> msg->pose.pose.position.x,msg->pose.pose.position.y,
+> msg->pose.pose.position.z);
+>     ROS_INFO("Orientation-> x: [%f], y: [%f], z: [%f], w: [%f]",
+> msg->pose.pose.orientation.x,
+> msg->pose.pose.orientation.y,
+> msg->pose.pose.orientation.z,
+> msg->pose.pose.orientation.w);
+>         linearposx=msg->pose.pose.position.x; 
+> linearposy=msg->pose.pose.position.y; 
+> quatx= msg->pose.pose.orientation.x;  
+> quaty= msg->pose.pose.orientation.y;  
+> quatz= msg->pose.pose.orientation.z;  
+> quatw= msg->pose.pose.orientation.w;
+>        tf::Quaternion q(quatx, quaty, quatz, quatw);    tf::Matrix3x3 m(q); 
+> double roll, pitch, yaw;   
+> m.getEulerYPR(yaw, pitch, roll);
+> //getRPY    ROS_INFO("Yaw: [%f],Pitch:
+> [%f],Roll: [%f]",yaw,pitch,roll);
+> 
+>    return ; }
+
+I am using pioneer 3dx robot which maintains its velocity once I give a velocity command. I don't need to send my velocity continuously.
+
+Originally posted by Tomm on ROS Answers with karma: 59 on 2016-06-29
+Post score: 0
+
+A:
+
+First, please format your code properly, it is quite hard to read.
+#include "ros/ros.h"
+#include "nav_msgs/Odometry.h" 
+#include <ros/console.h>
+#include "geometry_msgs/Pose.h"
+#include "geometry_msgs/Twist.h"
+#include <tf/transform_datatypes.h>
+
+double quatx;
+double quaty;
+double quatz;
+double quatw;
+double linearposx;
+double linearposy;
+
+void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg);
+
+int main(int argc, char **argv) 
+{
+    ros::init(argc, argv, "Test_FK"); 
+    ros::NodeHandle n;                 
+    ros::Publisher Velocity_pub = n.advertise<geometry_msgs::Twist>("/RosAria/cmd_vel",10);
+    ros::Subscriber ComPose_sub = n.subscribe("/RosAria/pose", 1000, ComPoseCallback);
+
+    geometry_msgs::Twist velocity;
+    velocity.linear.x=1;   
+    velocity.linear.y=0;   
+    velocity.linear.z=0;   
+    velocity.angular.x=0;   
+    velocity.angular.y=0;   
+    velocity.angular.z=0;
+
+    //std::cout<<"xPosition"<<linearposx<<std::endl;
+    //ros::Rate loop_rate(10);
+
+    while (ros::ok())
+    {
+        Velocity_pub.publish(velocity);   
+        ros::spinOnce();
+    }
+
+ return 0;
+ }
+
+void ComPoseCallback(const nav_msgs::Odometry::ConstPtr& msg)    
+{
+    ROS_INFO("Seq: [%d]", msg->header.seq);
+    ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]",
+        msg->pose.pose.position.x,msg->pose.pose.position.y,
+        msg->pose.pose.position.z);
+    ROS_INFO("Orientation-> x: [%f], y: [%f], z: [%f], w: [%f]",
+        msg->pose.pose.orientation.x,
+        msg->pose.pose.orientation.y,
+        msg->pose.pose.orientation.z,
+        msg->pose.pose.orientation.w);
+
+    linearposx=msg->pose.pose.position.x; 
+    linearposy=msg->pose.pose.position.y; 
+
+    quatx= msg->pose.pose.orientation.x;  
+    quaty= msg->pose.pose.orientation.y;  
+    quatz= msg->pose.pose.orientation.z;  
+    quatw= msg->pose.pose.orientation.w;
+
+    tf::Quaternion q(quatx, quaty, quatz, quatw);
+    tf::Matrix3x3 m(q); 
+
+    double roll, pitch, yaw;   
+
+    m.getEulerYPR(yaw, pitch, roll);
+
+    //getRPY    ROS_INFO("Yaw: [%f],Pitch: [%f],Roll: [%f]",yaw,pitch,roll);
+
+    return;
+}
+
+As far as I can tell, you don't change the velocity at all in this code. So why do you put the Velocity_pub.publish(velocity) within the while loop? Just publish it once before the loop and use 'ros::spin()' instead of 'ros::spinOnce()' to avoid the loop completely.
+    Velocity_pub.publish(velocity); 
+    ros::spin();
+
+Originally posted by JohnDoe2991 with karma: 305 on 2016-06-30
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,168 @@
+Q:
+
+Unable to combine MLS and mesh generation in one file
+
+Hi,
+I am able to do MLS and then also generate mesh, but I need to do both of them separately. I am not able to find a way to do it in one go. First I do MLS and save the file. And then read that file again and generate mesh.
+If I combine both I am encountering segmentation fault. The code does MLS successfully but than fails.
+The two tutorials which I tried to combine are:
+Greedy projection : http://pointclouds.org/documentation/tutorials/greedy_projection.php#greedy-triangulation
+and
+MLS : http://pointclouds.org/documentation/tutorials/resampling.php#moving-least-squares
+Also since MLS itself compute the surface normal so I commented the part of the code where normal are generated.
+Any help of pointers is greatly appreciated.
+Let me know if I ask PCL related questions somewhere else?
+My combined code is:
+
+int
+main (int argc, char** argv)
+{
+  ros::init(argc, argv, "seg"); //is the third param node name
+  ros::NodeHandle nh;
+  int p_setKSearch = 20;
+  double p_setSearchRadius = 0.025;
+  double p_setMu = 2.5;
+
+  double p_neighbours = 100;
+  double p_maxSurfAnglePiDiv = 4; // 45 degrees
+  double p_minAnglePiDiv =18; // 10 degrees
+
+  double p_maxAnglePiDiv = 1.5; // 120 degrees
+  bool p_normal_consist = false;
+  std::string p_pcd_file = "/home/aknirala/chair.pcd";
+
+  double lDv;   //Loaded double value
+  int lIv;
+  bool lBv;
+  std::string lSv;
+
+  std::cout<<"\n Getting the parameters...............";
+  if(nh.getParam("/mesh/meshParam/p_setKSearch", lIv))          p_setKSearch = lIv;
+  if(nh.getParam("/mesh/meshParam/p_setSearchRadius", lDv))     p_setSearchRadius = lDv;
+  if(nh.getParam("/mesh/meshParam/p_setMu", lDv))               p_setMu = lDv;
+
+  if(nh.getParam("/mesh/meshParam/p_neighbours", lDv))          p_neighbours = lDv;
+  if(nh.getParam("/mesh/meshParam/p_maxSurfAnglePiDiv", lDv))   p_maxSurfAnglePiDiv = lDv;
+  if(nh.getParam("/mesh/meshParam/p_minAnglePiDiv", lDv))       p_minAnglePiDiv = lDv;
+
+  if(nh.getParam("/mesh/meshParam/p_maxAnglePiDiv", lDv))       p_maxAnglePiDiv = lDv;
+  if(nh.getParam("/mesh/meshParam/p_normal_consist", lBv))      p_normal_consist = lBv;
+  if(nh.getParam("/mesh/sourceFile", lSv))      p_pcd_file = lSv;
+
+  std::cout<<"\n p_setKSearch : "<<p_setKSearch;
+  std::cout<<"\n p_setSearchRadius : "<<p_setSearchRadius;
+  std::cout<<"\n p_setMu : "<<p_setMu;
+
+  std::cout<<"\n p_neighbours : "<<p_neighbours;
+  std::cout<<"\n p_maxSurfAnglePiDiv : "<<p_maxSurfAnglePiDiv;
+  std::cout<<"\n p_minAnglePiDiv : "<<p_minAnglePiDiv;
+
+  std::cout<<"\n p_maxAnglePiDiv : "<<p_maxAnglePiDiv;
+  std::cout<<"\n p_normal_consist : "<<p_normal_consist;
+  std::cout<<"\n p_pcd_file : "<<p_pcd_file;
+
+  // Load input file into a PointCloud<T> with an appropriate type
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PCLPointCloud2 cloud_blob;
+  pcl::io::loadPCDFile (p_pcd_file, cloud_blob);
+  pcl::fromPCLPointCloud2 (cloud_blob, *cloud);     //What exactly is being converted here?
+                                                     //cloud_blob may not be of type XYZ :-)
+  //* the data should be available in cloud
+  //Convert a PCLPointCloud2 binary data blob ---> into a pcl::PointCloud<T> object
+  //Oh, so this is one of the way to load any point cloud type from a pcd file, which we do not
+  // know before reading the file to desired point type. IN this case, to PointXYZ.
+
+ 
+
+  /*
+  // Normal estimation*
+  pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+  pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (cloud);
+  n.setInputCloud (cloud);
+  n.setSearchMethod (tree);
+  n.setKSearch (p_setKSearch);      //It was 20
+  n.compute (*normals);             //Normals are estimated using standard method.
+  //* normals should not contain the point normals + surface curvatures
+
+  // Concatenate the XYZ and normal fields*
+  pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals (new pcl::PointCloud<pcl::PointNormal>);
+  pcl::concatenateFields (*cloud, *normals, *cloud_with_normals);
+  //* cloud_with_normals = cloud + normals
+
+*/
+
+  //Here Normals are being generated and then merged. But MLA (moving least square) can do that in one go.
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+
+  // Output has the PointNormal type in order to store the normals calculated by MLS
+   pcl::PointCloud<pcl::PointNormal> mls_points;
+
+   // Init object (second point type is for the normals, even if unused)
+   pcl::MovingLeastSquares<pcl::PointXYZ, pcl::PointNormal> mls;
+
+   mls.setComputeNormals (true);
+
+   // Set parameters
+   mls.setInputCloud (cloud);   //of type xyz
+   mls.setPolynomialFit (true);
+   mls.setSearchMethod (tree);
+   mls.setSearchRadius (p_setSearchRadius);     //original was 0.03
+
+   // Reconstruct
+   mls.process (mls_points);
+
+   std::cout<<"\n MLS constructed.";
+   pcl::io::savePCDFile ("bun0-mls.pcd", mls_points);
+   std::cout<<"\n MLS written.";
+
+   pcl::PointCloud<pcl::PointNormal>::Ptr mls_points_ptr (&mls_points);
+
+   // Create search tree*
+   pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);
+   tree2->setInputCloud (mls_points_ptr);
+
+  // Initialize objects
+  pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
+  pcl::PolygonMesh triangles;
+
+  // Set the maximum distance between connected points (maximum edge length)
+  gp3.setSearchRadius (p_setSearchRadius);          //It was 0.025
+
+  // Set typical values for the parameters
+  gp3.setMu (p_setMu);                                          //It was 2.5
+  gp3.setMaximumNearestNeighbors (p_neighbours);    //It was 100
+  gp3.setMaximumSurfaceAngle(M_PI/p_maxSurfAnglePiDiv); // 45 degrees   //it was 4
+  gp3.setMinimumAngle(M_PI/p_minAnglePiDiv); // 10 degrees      //It was 18
+  gp3.setMaximumAngle(M_PI/p_maxAnglePiDiv); // 120 degrees     //it was 1.5
+  gp3.setNormalConsistency(p_normal_consist);                   //It was false
+
+  // Get result
+  gp3.setInputCloud (mls_points_ptr);
+  gp3.setSearchMethod (tree2);
+  gp3.reconstruct (triangles);
+
+  // Additional vertex information
+  std::vector<int> parts = gp3.getPartIDs();
+  std::vector<int> states = gp3.getPointStates();
+  pcl::io::saveVTKFile ("/home/aknirala/mesh_Smooth.vtk", triangles);
+  // Finish
+  return (0);
+}
+
+Originally posted by aknirala on ROS Answers with karma: 339 on 2014-07-20
+Post score: 1
+
+Original comments
+Comment by sai on 2014-07-20:
+Just to know...exactly on which line, are you encountering the segmentation fault ?
+
+A:
+
+PCL has a mailing list that is probably more appropriate for this type of question: http://www.pcl-users.org/
+
+Originally posted by ahendrix with karma: 47576 on 2014-07-20
+This answer was ACCEPTED on the original site
+Post score: 0
+

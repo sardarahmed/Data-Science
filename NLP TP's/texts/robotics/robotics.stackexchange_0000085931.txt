@@ -1,0 +1,69 @@
+Q:
+
+Accessing values while iterating points in sensor_msgs::PointCloud2 from sensor_msgs::PointCloud2ConstIterator
+
+I am writing a node that subscribes to a topic of type sensor_msgs::PointCloud2.
+In the callback I want to iterate the points in the point cloud using sensor_msgs::PointCloud2ConstIterator.
+This is how I think it should be implemented (which seems to work, no serious testing so far, though):
+void callback(sensor_msgs::PointCloud2ConstPtr const& msg) {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x"),
+                                                 iter_y(*msg, "y"),
+                                                 iter_z(*msg, "z");
+    while (iter_x != iter_x.end()) {
+        // TODO: do something with the values of x, y, z
+        std::cout << *iter_x << ", " << *iter_y << ", " << *iter_z << "\n";
+        ++iter_x; ++iter_y; ++iter_z;
+    }
+}
+
+Is this about the recommended way of iterating the points in a point cloud?
+I've seen there was also an overload of the element access operator[](...). While I was trying to figure out how element access exactly works, I wrote this little callback to get an impression:
+void callback(sensor_msgs::PointCloud2ConstPtr const& msg) {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+    std::cout << *iter_x << ", " 
+        << iter_x[0] << ", " 
+        << iter_x[1] << ", "
+        << *(iter_x+1) << "\n";
+}
+
+I got an output like this:
+1.04852, 1.04852, -1.78216, 1.54717
+
+I wondered, shouldn't the last two values be identical?
+
+Originally posted by moooeeeep on ROS Answers with karma: 194 on 2018-03-16
+Post score: 0
+
+Original comments
+Comment by BhanuKiran.Chaluvadi on 2018-03-16:
+I am new to point cloud as well.  Usually i do
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromROSMsg(*input, *cloud);
+ for(auto& point : cloud->points)
+ {
+    point.x
+ }
+
+Comment by moooeeeep on 2018-03-16:
+I assumed that this would create a copy of the entire point cloud, and I'm still not sure if I can use pcl for the next step of this task...
+
+A:
+
+I found some relevant information and example code snippets here:
+
+http://docs.ros.org/kinetic/api/sensor_msgs/html/classsensor__msgs_1_1PointCloud2Iterator.html
+
+Essentially the element access operator is used for accessing the different components of each point.
+That is, the iterator iterates the points, while providing access to the coordinates and additional data members for each point via the operator[](). The field given by name in the constructor of the iterator is then found at position zero. The remaining fields are available as they are stored the PointCloud2 message. You somehow have to know the order and number and the type of the remaining fields to be safe. (Or just setup separate iterators for each data member of the points...)
+That is, one can iterate the points like this:
+void callback(sensor_msgs::PointCloud2ConstPtr const& msg) {
+    for (sensor_msgs::PointCloud2ConstIterator<float> it(*msg, "x"); it != it.end(); ++it) {
+        // TODO: do something with the values of x, y, z
+        std::cout << it[0] << ", " << it[1] << ", " << it[2] << '\n';
+    }
+}
+
+Originally posted by moooeeeep with karma: 194 on 2018-03-20
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,108 @@
+Q:
+
+first image message does not get published
+
+I have a node that among many other things, publishes images for debugging purposes. However, this does not work all the time, and some messages never get seen by other nodes.
+The messages get published from a subscription callback, if that makes a difference.
+Symptoms:
+
+The first message never gets published
+Other messages (PointCloud2) work fine
+Messages don't get published, even when callback is idle
+cv_bridge or manual message creation makes no difference
+No error messages at all
+
+I have verified that the publish method does get called, and even stepped into it. There does not seem to be a problem there.
+I am at a loss. What could be the problem?
+Edit :
+#include <ros/publisher.h>
+#include <ros/subscriber.h>
+#include <ros/node_handle.h>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/core/core.hpp>
+
+std::map<std::string, ros::Publisher> mPublishers;
+ros::Subscriber imgSub;
+
+template <class msg_type>
+ros::Publisher getPublisher(const std::string& topic)
+{
+
+  if (mPublishers.find(topic) == mPublishers.end())
+  {
+    std::ostringstream ostr;
+    ostr << "/" << "dump" << "/" << topic;
+    ros::NodeHandle mNh;
+    mPublishers[topic] = mNh.advertise<msg_type> (ostr.str(), 0, true);
+  }
+
+  return mPublishers[topic];
+}
+
+void cb(const sensor_msgs::ImageConstPtr& image_msg)
+{
+  ros::Time time = image_msg->header.stamp;
+
+  cv_bridge::CvImageConstPtr cvImage = cv_bridge::toCvShare(image_msg, "");
+  const cv::Mat& image = cvImage->image;
+
+  sensor_msgs::ImagePtr msg(new sensor_msgs::Image());
+
+  int numBytes = image.step * image.rows;
+  msg->data.resize(numBytes);
+  for (int i = 0; i < numBytes; ++i)
+  {
+    msg->data[i] = image.data[i];
+  }
+  msg->encoding = "rgb8";
+  msg->header.stamp = time;
+  msg->header.frame_id = image_msg->header.frame_id;
+  msg->height = image.rows;
+  msg->width = image.cols;
+  msg->step = image.step;
+
+  ros::Publisher pub = getPublisher<sensor_msgs::Image>("cascade_faces");
+  pub.publish(msg);
+}
+
+int main (int argc, char** argv)
+{
+    // Initialize ROS
+  ros::init (argc, argv, "my_template_alignment");
+
+  ros::NodeHandle nh;
+
+  imgSub = nh.subscribe("/camera/rgb/image_rect_color", 1, cb);
+
+  std::cout << "ready!" << std::endl;
+
+    // Spin
+  ros::spin ();
+
+  return (0);
+}
+
+Originally posted by JFReuter on ROS Answers with karma: 13 on 2011-10-21
+Post score: 0
+
+Original comments
+Comment by JFReuter on 2011-10-21:
+I have added a small example.
+Comment by Eric Perko on 2011-10-21:
+It would be much easier to debug this if you could post your code (or a link to it).
+
+A:
+
+After you create a ros publisher, it will take some time before the connections to all the subscribers are created. So when you publish a message right after you create the publisher, the message will not reach the subscribers. In your example, this is exactly what happens, when you create a new publisher in the first callback, and immediately publish a message. The second time you publish a message form the same callback, the connections are established and the messages will reach the subscribers.
+
+Originally posted by Wim with karma: 2915 on 2011-11-18
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by rhololkeolke on 2013-03-25:
+Is there a way to check if the connection has been set up?
+Comment by mbinna on 2017-10-17:
+One way is to wait until pub.get_num_connections() > 0.
+

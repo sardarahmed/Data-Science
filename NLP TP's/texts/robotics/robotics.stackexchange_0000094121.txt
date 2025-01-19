@@ -1,0 +1,107 @@
+Q:
+
+How to roslaunch cwd=node other project?
+
+I know about the roslaunch attribute cwd:
+
+cwd="ROS_HOME|node"(optional)
+If 'node', the working directory of the node will be set to the same directory as the node's executable.
+
+-- https://wiki.ros.org/roslaunch/XML/node#Attributes
+If I want to start my node in the same directory as another node's executable, how might I do that?
+In brief, I want an easier way of locating assets belonging to other projects. The simplest trick I know is to roslaunch a wrapper script wherein I sniff the location of another named project:
+#!/bin/sh
+if ! other_pkg_dir="$(rospack find other_pkg)"; then
+    echo "oh noes!"
+    exit 1
+fi
+my_package --other-package-dir="${other_pkg_dir}" $@
+
+Originally posted by rubicks on ROS Answers with karma: 193 on 2019-12-14
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-12-15:\
+
+In brief, I want an easier way of locating assets belonging to other projects.
+
+From your example it's unclear why you cannot use a regular $(find ..) roslaunch substitution arg. Please clarify.
+Comment by rubicks on 2019-12-15:
+Because
+cwd=$(find other_pkg)
+
+gives
+Invalid <node> tag: cwd must be one of 'ROS_HOME', 'node'.
+
+Comment by gvdhoorn on 2019-12-15:
+I may not have been clear. I was specifically asking about this:
+
+In brief, I want an easier way of locating assets belonging to other projects.
+
+If I understand this correctly, this is typically done using something like this (just an example):
+<arg name="resource_in_other_pkg" value="$(find other_pkg)/path/in/other/pkg/to/resource" />
+
+What's unclear to me is what you really want to do.
+You're asking a question about your selected solution, but it's unclear whether it is an actual solution for what you really want to do (ie; xy-problem).
+Comment by rubicks on 2019-12-15:
+Starting one node in another node's executable directory is what I "really want to do". I can specialize the problem to fit what roslaunch can do, but then I lose the abstraction of launching nodes in arbitrary project binary directories.
+
+A:
+
+Starting one node in another node's executable directory is what I "really want to do"
+
+with the current implementation of roslaunch this is not supported.
+So the answer to this would be: you can't.
+
+then I lose the abstraction of launching nodes in arbitrary project binary directories.
+
+This is also not really supported. It can work, but it is not recommended to depend on this.
+Accepted practice would be to use absolute paths to resources (ie: those returned by the find subst arg) and/or pass ROS args to your nodes in the args section of the node that launches them.
+Location transparency cannot be guaranteed if you start making assumptions about what the CWD is of nodes. This is exactly why using find and passing the result of that to your node and/or using ROS parameters (populated with the output of find again) is considered 'better'.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-12-15
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-12-15:
+The bash script you show is afaict unneeded: you could add this to the node element in your .launch file:
+args="--other-package-dir='$(find other_pkg)'"
+
+that should result in the same path being passed to your node. And roslaunch will complain (ie: abort the launch) if other_pkg cannot be found.
+But I believe passing absolute paths and/or using ROS params would be more robust (see previous comment).
+Comment by rubicks on 2019-12-15:
+Point taken; thank you for the explanation.
+Comment by gvdhoorn on 2019-12-15:
+And this will sound really pedantic, which is not my intention, so apologies in advance, but:
+
+Starting one node in another node's executable directory is what I "really want to do"
+
+from your other comments it does not seem to be what you really want to do.
+From this:
+
+In brief, I want an easier way of locating assets belonging to other projects.
+
+and
+
+then I lose the abstraction of launching nodes in arbitrary project binary directories.
+
+it sounds like you'd like to use paths relative to the CWD of a node and access resources through those paths. Would it be incorrect to assume that you have packages providing configuration files, or other application specific files that you'd like reusable nodes (in other packages) to load through those paths?
+Comment by rubicks on 2019-12-15:
+That assumption would indeed be incorrect. This is going to sound equally pedantic: configuration files, by definition, live under /etc/. It's unclear to me how a catkin project might contain such a file without heavily overriding its installation prefix.
+No, the files I'm interesting in consuming between projects would be things to support the execution of an executable in a way that (if done for every executable) would be duplicative to the point of impracticality. E.g.: linker scripts, LD_PRELOAD shared objects, dlopened shared objects.
+Comment by gvdhoorn on 2019-12-15:\
+
+configuration files, by definition, live under /etc/
+
+perhaps in a "regular" Linux system, but certainly not when using the normal ROS (1) work and development workflow.
+Configuration files (ie: .yaml, .rviz and similar files) would be hosted by ROS packages and located using find. This would again be to maintain location independence.
+
+No, the files I'm interesting in consuming between projects would be things to support the execution of an executable in a way that (if done for every executable) would be duplicative to the point of impracticality. E.g.: linker scripts, LD_PRELOAD shared objects, dlopened shared objects.
+
+The first is a type of files I've not seen consumed by ROS nodes very often (if at all). The latter two examples seem like files which should be either on the relevant search path(s) already or placed there using other means.
+You're the only one to know your environment, but it would ..
+Comment by gvdhoorn on 2019-12-15:
+.. seem to be one that diverges from (what is typically seen as) accepted development practices in ROS 1 environments (but of course I'm not pretending to have seen them all, nor am I claiming that what you're doing is wrong in any way).
+Re-reading your comment: especially the linker scripts sound like things which are not used at runtime. roslaunch is a runtime tool. Setting up library search paths could also be considered a runtime activity (or perhaps deployment or configuration), but in any case: what you're describing doesn't sound like what roslaunch would typically be used for. That may explain why you are having difficulty finding approaches.
+

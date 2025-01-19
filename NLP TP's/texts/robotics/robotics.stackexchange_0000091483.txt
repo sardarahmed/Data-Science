@@ -1,0 +1,367 @@
+Q:
+
+Ghost obstacles on costmap
+
+Hi everyone,
+Please give me some advices for this problem with ghost obstacles.
+My mobile robot is working with ROS (Kinetic, Ubuntu 16.0.4) using Sick sensor. My robot uses 2 Sick sensor, one is in the right-upper corner and another one is in left-bottom corner. I use ira_laser_tools to merge data of these 2 laser scanners.
+However, I am stucking at one problem:  ghost obstacles appear on the costmap, and this ghost obstacle is relative to my mobile robot. If my robot moves, the ghost obstacle relatively follow. It causes mobile robot try to avoid obstacles even though there is no real obstacles.
+I have tried to use some different laser-filter packages, but this problem still happen.
+Can you please give me some suggestion ?
+Thanks in advances
+
+I took a video about my error (ghost obstacle) as in the link below:
+https://www.youtube.com/watch?v=THt7oVjJsV8
+And, the picture within the indication for ghost obstacles here:
+
+And, the costmap configuration:
+costmap_common_params:
+footprint: [[0.44, 0.34], [0.44, -0.34], [-0.44, -0.34], [-0.44, 0.34] ]
+
+footprint_padding: 0.0
+
+transform_tolerance: 0.2
+map_type: costmap
+
+obstacle_layer:
+ enabled: true
+ obstacle_range: 1.5
+ raytrace_range: 3.0
+ inflation_radius: 0.2
+ track_unknown_space: true
+ combination_method: 1
+ min_obstacle_height: 0.1
+ max_obstacle_height: 0.5
+
+ observation_sources: laser_scan_sensor
+ laser_scan_sensor: {data_type: LaserScan, topic: scan, marking: true, clearing: true}
+
+inflation_layer:
+  enabled:              true
+  cost_scaling_factor:  10.0  # exponential rate at which the obstacle cost drops off (default: 10)
+  inflation_radius:     0.6 # max. distance from an obstacle at which costs are incurred for planning paths.
+
+static_layer:
+  enabled:              true
+  map_topic:            "map"
+
+rgbd_obstacle_layer:
+
+  enabled:               true
+
+  voxel_decay:           0.4     #seconds if linear, e^n if exponential
+
+  decay_model:           0      #0=linear, 1=exponential, -1=persistent
+
+  voxel_size:            0.05   #meters
+
+  track_unknown_space:   true   #default space is unknown
+
+  observation_persistence: 0.0  #seconds
+
+  max_obstacle_height:   2.0    #meters
+
+  unknown_threshold:     15     #voxel height
+
+  mark_threshold:        0      #voxel height
+
+  update_footprint_enabled: true
+
+  combination_method:    1      #1=max, 0=override
+
+  obstacle_range:        2.0    #meters
+
+  origin_z:              0.0    #meters
+
+  publish_voxel_map:     true   # default off
+
+  transform_tolerance:   0.2    # seconds
+
+  mapping_mode:          false  # default off, saves map not for navigation
+
+  map_save_duration:     60     #default 60s, how often to autosave
+
+  observation_sources:   rgbd1_clear rgbd1_mark rgbd2_clear rgbd2_mark
+
+  rgbd1_mark:
+
+    data_type: PointCloud2
+
+    topic: cam_1/depth/color/points
+
+    marking: true
+
+    clearing: false
+
+    min_obstacle_height: 0.15     #default 0, meters
+
+    max_obstacle_height: 2.0     #defaule 3, meters
+
+    expected_update_rate: 0    #default 0, if not updating at this rate at least, remove from buffer
+
+    observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest 
+
+    inf_is_valid: false          #default false, for laser scans
+
+    clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
+
+    voxel_filter: true           #default off, apply voxel filter to sensor, recommend on 
+
+  rgbd1_clear:
+   
+ data_type: PointCloud2
+
+    topic: cam_1/depth/color/points
+
+    marking: false
+
+    clearing: true
+
+    min_z: 0.1                   #default 0, meters
+
+    max_z: 7.0                   #default 10, meters
+
+    vertical_fov_angle: 0.7      #default 0.7, radians
+
+    horizontal_fov_angle: 1.04   #default 1.04, radians
+
+    decay_acceleration: 1.       #default 0, 1/s^2. If laser scanner MUST be 0
+
+    model_type: 0                #default 0 (depth camera). Use 1 for 3D Lida
+
+  rgbd2_mark:
+
+    data_type: PointCloud2
+
+    topic: cam_2/depth/color/points
+
+    marking: true
+
+    clearing: false
+
+    min_obstacle_height: 0.15     #default 0, meters
+
+    max_obstacle_height: 2.0     #defaule 3, meters
+
+    expected_update_rate: 0    #default 0, if not updating at this rate at least, remove from buffer
+
+    observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest 
+
+    inf_is_valid: false          #default false, for laser scans
+
+    clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
+
+    voxel_filter: true           #default off, apply voxel filter to sensor, recommend on 
+
+  rgbd2_clear:
+
+    data_type: PointCloud2
+
+    topic: cam_2/depth/color/points
+
+    marking: false
+
+    clearing: true
+
+    min_z: 0.1                   #default 0, meters
+
+    max_z: 7.0                   #default 10, meters
+
+    vertical_fov_angle: 0.7      #default 0.7, radians
+
+    horizontal_fov_angle: 1.04   #default 1.04, radians
+
+    decay_acceleration: 1.       #default 0, 1/s^2. If laser scanner MUST be 0
+
+    model_type: 0                #default 0 (depth camera). Use 1 for 3D Lida
+
+global costmap
+global_costmap:
+
+  global_frame: map
+
+  robot_base_frame: base_footprint
+
+  update_frequency: 5
+
+  publish_frequency: 2
+
+  static_map: true
+ 
+  transform_tolerance: 0.5
+  plugins:
+    - {name: static_layer,            type: "costmap_2d::StaticLayer"}
+    - {name: obstacle_layer,      type: "costmap_2d::ObstacleLayer"}
+
+    - {name: rgbd_obstacle_layer,     type: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"}
+    - {name: inflation_layer,         type: "costmap_2d::InflationLayer"}
+
+local costmap
+local_costmap:
+  global_frame: map
+  robot_base_frame: base_link
+  update_frequency: 15
+
+  publish_frequency: 5
+  static_map: false
+  rolling_window: true
+  width: 4
+  height: 4
+  resolution: 0.1
+  transform_tolerance: 0.5
+  
+  plugins:
+    - {name: obstacle_layer,      type: "costmap_2d::ObstacleLayer"}
+    - {name: rgbd_obstacle_layer,     type: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"}
+    - {name: inflation_layer,         type: "costmap_2d::InflationLayer"}
+
+  sonar_layer:
+    topics: ['sonar_0',
+            'sonar_1',
+            'sonar_2',
+            'sonar_3',
+            'sonar_4',
+            'sonar_5',
+            'sonar_6',
+            'sonar_7']
+
+Do you have any ideas about these ?
+Thank you so much
+
+Originally posted by Getchbold NT on ROS Answers with karma: 36 on 2019-04-24
+Post score: 0
+
+Original comments
+Comment by mgruhler on 2019-04-24:
+I guess it would help to see an image of your problem, as well as a description of what is there "in the real world". Also, maybe share your costmap configuration. That the obstacle is moving with the robot is suggesting that it is continuously seen by the scanner. Can you verify this?
+I've come across this in multiple scenarios:
+
+self measurement of the robot
+"ghost pixels" due to veiling effect (ScanShadowsFilter can help there)
+bad configuration of obstacle_range and raytrace_range
+discretization effects in the obstacle_layer
+
+maybe it can be narrowed down to one of those?
+Comment by Getchbold NT on 2019-04-24:
+Thank mgruhler so much for your quick help, I will prepare those kinds of data and update soon
+Comment by gvdhoorn on 2019-04-25:
+@Getchbold NT: please attach your screenshot directly to the question. I've given you sufficient karma.
+Comment by Getchbold NT on 2019-04-25:
+Thank you so much @gvdhoorn
+Comment by Getchbold NT on 2019-04-25:
+I updated the video and picture about error and cost_map configuration @mgruhler
+Comment by mgruhler on 2019-04-25:
+quite obviously, the laser scanner is actually measuring something there. So the costmap is actually doing what it is supposed to.
+So you need to figure out where those readings are coming from.
+
+actual measurement: Remove what the LiDAR is seeing there (I know, obvious :-))
+self-measurement of the robot: mount the LiDAR differently or filter the ranges where you are hitting the robot with the laser beam
+veiling effect (i.e. hitting "edges" with one beam): judging from the image/video, this could actually be the case
+other effects, like strong reflection (mirror, glas?) could also lead to those readings.
+
+If this is a problem that occurs that often, you might probably have to use a laser filter to get rid of those (single point) measurements. The ScanShadowsFilter can really help there.
+What sensor are you using exactly?
+Comment by Getchbold NT on 2019-04-25:
+@mgruhler thank you so much for your answer
+I am using Sick sensor.
+Our laboratory does not has mirror and glass.
+This problem now always happen, I cannot know how to solve this problem. I am quite new with lidar sensor and laser filter. Can you please tell me clearly how to use ScanShadowsFilter to remove these single points?.
+I can see this configuration of ScanShadowsFilter, but I do not actually whether this shadow_filter is called or not ?
+scan_filter_chain:
+
+name: shadows
+type: ScanShadowsFilter
+params:
+min_angle: 5
+max_angle: 175
+neighbors: 1
+window: 1
+
+name: dark_shadows
+type: LaserScanIntensityFilter
+params:
+lower_threshold: 100
+upper_threshold: 50000
+disp_histogram: 0
+
+The costmap configuration is used as default, I did not change anything
+Thank you so much
+Comment by mgruhler on 2019-04-25:
+Yes, a Sick sensor, but which model? LMSXXX? S300? S3000? MSR? Seeing that the scan is actually 360°, it is non of the former, but maybe an MSR?
+There is a tutorial describing the ScanShadowsFilter. Then you obviously need to fix the remappings in the respective nodes. Please update your question (or post a new one) if you have troubles with setting this up...
+Comment by Getchbold NT on 2019-04-25:
+Yes, the model of Sick sensor which i am using is: TIM551.
+Comment by Getchbold NT on 2019-04-29:
+Hi @mgruhler:  I have used ScanShadowsFilter however, the error still happen. This is the parameters for ScanShadowsFilter:
+scan_filter_chain:
+
+name: box_filter
+
+type: laser_filters/LaserScanBoxFilter
+params:
+box_frame: R_007/base_link
+max_x: 0.438
+max_y: 0.332
+max_z: 0.231
+min_x: -0.438
+min_y: -0.332
+min_z: -0.01
+
+name: shadows
+type: ScanShadowsFilter
+params:
+min_angle: 5
+max_angle: 175
+neighbors: 5
+window: 1
+
+type: LaserArrayFilter
+name: laser_median_filter
+params:
+range_filter_chain:
+- name: median_3
+
+  type: filters/MultiChannelMedianFilterFloat 
+
+  params:
+
+    number_of_observations: 3
+
+    unused: 6
+
+intensity_filter_chain:
+- name: median_3
+
+  type: filters/MultiChannelMedianFilterFloat 
+
+  params:
+
+    number_of_observations: 3
+
+    unused: 6
+
+Comment by Getchbold NT on 2019-05-02:
+I also tried to use LaserScanIntensityFilter, increase the values of raytrace_range, however the problem still happened. My robot uses 2 laser sensor, one is in right upper corner, another one is on left bottom corner. I used ira_laser_tools to merge data of 2 laser scanners
+Comment by pavel92 on 2019-05-03:
+The video link that you posted is also unavailable
+Comment by gvdhoorn on 2019-05-03:
+@Getchbold NT: why did you remove the video? Your question has lost a great deal of its value now.
+
+A:
+
+I have solved the problem. The reason is that the setting of angle_range and position of Sick sensor on the robot cause the laser beam hit the planes of robot. I solved this problem by reduce the angle_range (scan angular range). Since I am using 2 sensor at 2 corners of robot, so the angle_range is from -135 to 135 degree, I just changed to -130 to 130 degree. Or, later, locating the laser sensor a little bit far from current position to avoid collision between laser beam and robot's planes. Because the movement of robot is not smooth, robot fluctuates around the desired path. That's the reason. Thanks so much for all your help
+
+Originally posted by Getchbold NT with karma: 36 on 2019-05-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-05-03:
+So this would seem to be the first thing @mgruhler suggested in his first comment:
+
+I've come across this in multiple scenarios:
+
+self measurement of the robot
+
+Perhaps you missed that?
+

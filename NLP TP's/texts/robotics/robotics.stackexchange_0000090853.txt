@@ -1,0 +1,102 @@
+Q:
+
+Controller failed with error code INVALID_JOINTS
+
+Hello,
+I’m trying to achieve pick and place in gazebo for panda arm by using moveit+rviz to plan motion.
+I’m getting below error on the terminal from which i launch moveit_planning _execution.launch file.
+Controller panda/panda_hand_controller failed with error code INVALID_JOINTS
+
+here is my config/controllers.yaml file from moveit side
+controller_manager_ns: controller_manager
+controller_list:
+  - name: panda/panda_arm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints: 
+        - panda_joint1
+        - panda_joint2
+        - panda_joint3
+        - panda_joint4
+        - panda_joint5
+        - panda_joint6
+        - panda_joint7
+
+  - name: panda/panda_hand_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+        - panda_finger_joint1
+        - panda_finger_joint2
+
+Below is my joint_names.yaml file
+controller_joint_names: ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7', ’panda_finger_joint1’, ’panda_finger_joint2’]
+
+About moveit planning groups from setup assistant tool, below are the groups i have created. I’m using panda_arm as planning group in my code
+
+Can someone tell me how to solve or debug this issue?
+
+Update 1
+On the terminal from which i spawn gazebo and controllers i get below error
+
+Joints on incoming goal don't match the controller joints.
+
+My suspect is that these errors are occurring because of following reason
+I’m using "panda_arm " as planning group which doesn’t include finger_joints (in this case i’m doing as suggested in moveit_tutorial. ) Here can anyone suggest me how planning group should be in moveit setup_assistant?
+
+Update 2
+In gazebo, robot approaches the object and when it should open the finger joints( comparing to fake trajectory execution in rviz) robot stops the trajectory execution.
+
+Originally posted by mvish7 on ROS Answers with karma: 104 on 2019-03-11
+Post score: 1
+
+Original comments
+Comment by lab.engineering on 2019-03-11:
+Hey - I think we have the same problem, Running moveit+rviz with the Pandas current ros-melodic-franka-description.
+When you run the standard demo.launch do you get a Clump of Panda joints in the center of your workspace?
+Screenshot of MoveIt
+MoveIt! Quickstart in RViz
+I've followed the setup assistant and tried making a couple other joint configurations - but nothing yet.   : Setup_assistant_tutorial
+Could it be from the latest melodic-franka-description?
+Comment by gvdhoorn on 2019-03-11:
+@lab.engineering: it's much more likely you're running into #q272692.
+Comment by mvish7 on 2019-03-11:
+@lab.engineering: For me everything works fine in RVIZ. Even with demo.launch i'm able to see pick and place happening in RVIZ. i have problem in gazebo that panda arm  reaches till the pose where it should open up the finger joints but  finger_joints are not moving.
+Comment by mvish7 on 2019-03-11:
+@gvdhoorn: any suggestions on this issue by looking at update 2??
+
+A:
+
+I was able to solve this issue i would like to note what worked for me.
+note: I feel this answer is very specific to panda arm.
+At first why this error comes up?
+If you look into lines 541 to 552 of joint_trajectory_controller_impl.h, they are as follows
+00541   // Goal should specify all controller joints (they can be ordered differently). Reject if this is not the case
+00542   using internal::permutation;
+00543   std::vector<unsigned int> permutation_vector = permutation(joint_names_, gh.getGoal()->trajectory.joint_names);
+00544 
+00545   if (permutation_vector.empty())
+00546   {
+00547     ROS_ERROR_NAMED(name_, "Joints on incoming goal don't match the controller joints.");
+00548     control_msgs::FollowJointTrajectoryResult result;
+00549     result.error_code = control_msgs::FollowJointTrajectoryResult::INVALID_JOINTS;
+00550     gh.setRejected(result);
+00551     return;
+00552   }
+
+So error comes up because there is a mismatch between controller joints and joints on the trajectory goal which is sent by moveit.
+Second point how did i found it which joint should be removed?
+Upon observing the hand.xacro  file i noticed that panda_finger_joint2 is set to mimic panda_finger_joint1. (If someone wants to read about mimic joint then its here) so i suspected that it panda_finger_joint2 is to mimic panda_finger_joint1 then trajectory message sent by moveit should only have entry for panda_finger_joint1 .
+Anyone correct me on the reasoning i have given.
+
+Originally posted by mvish7 with karma: 104 on 2019-03-17
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by JGioia on 2021-02-13:
+Can you explain specifically what you did to fix this? I am having the exact same issue. I do not understand what you mean when you said that you removed the joint. It seems like removing it in the URDF file would cause many more issues.
+Edit: https://github.com/erdalpekel/panda_simulation/issues/20 has more details on how to fix this. I used solution 2.
+

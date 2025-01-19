@@ -1,0 +1,105 @@
+Q:
+
+Camera Pose Calibration: problem with multicam_capture_exec.py
+
+Hi all!
+I'm trying to calibrate 2 home-made stereo cameras (4 total cameras) with the camera_pose toolkit and I've problems with the multicam_capture_exec.py.
+I receive the following error:
+Waiting for Server
+Traceback (most recent call last):
+  File "/opt/ros/fuerte/stacks/camera_pose/camera_pose_calibration/src/camera_pose_calibration/multicam_capture_exec.py", line 43, in <module>
+    from camera_pose_calibration.robot_measurement_cache import RobotMeasurementCache
+  File "/opt/ros/fuerte/stacks/camera_pose/camera_pose_calibration/src/camera_pose_calibration/robot_measurement_cache.py", line 34, in <module>
+    import roslib; roslib.load_manifest('pr2_calibration_executive')
+  File "/opt/ros/fuerte/lib/python2.7/dist-packages/roslib/launcher.py", line 62, in load_manifest
+    sys.path = _generate_python_path(package_name, _rospack) + sys.path
+  File "/opt/ros/fuerte/lib/python2.7/dist-packages/roslib/launcher.py", line 93, in _generate_python_path
+    m = rospack.get_manifest(pkg)
+  File "/usr/lib/pymodules/python2.7/rospkg/rospack.py", line 167, in get_manifest
+    return self._load_manifest(name)
+  File "/usr/lib/pymodules/python2.7/rospkg/rospack.py", line 210, in _load_manifest
+    retval = self._manifests[name] = parse_manifest_file(self.get_path(name), self._manifest_name)
+  File "/usr/lib/pymodules/python2.7/rospkg/rospack.py", line 202, in get_path
+    raise ResourceNotFound(name, ros_paths=self._ros_paths)
+rospkg.common.ResourceNotFound: pr2_calibration_executive
+
+[capture_exec-24] process has died [pid 12415, exit code 1, cmd /opt/ros/fuerte/stacks/camera_pose/camera_pose_calibration/src/camera_pose_calibration/multicam_capture_exec.py baseline12/left baseline12/right baseline6/left baseline6/right/ request_interval:=interval_filtered __name:=capture_exec __log:=/home/fabio/.ros/log/ad23e236-b07d-11e1-afbb-14dae9c3e9c0/capture_exec-24.log].
+log file: /home/fabio/.ros/log/ad23e236-b07d-11e1-afbb-14dae9c3e9c0/capture_exec-24*.log
+
+Any idea?
+My launch file:
+<launch>
+
+<!-- MACHINES -->
+  <machine name="rosboromir" address="rosboromir" user="fabio" env-loader="/opt/ros/fuerte/env.sh">
+  </machine>
+
+  <machine name="rosfaramir" address="rosfaramir" user="fabio" env-loader="/opt/ros/fuerte/env.sh">
+  </machine>
+
+<!-- LAUNCH BASELINE6 ON ROSBOROMIR -->
+  <!-- Driver nodelet -->
+  <node machine="rosboromir" ns="baseline6" name="stereo_image_proc_bsl6" pkg="stereo_image_proc" type="stereo_image_proc"></node>
+  <node machine="rosboromir" ns="baseline6" name="uvc_camera_bsl6" pkg="uvc_camera" type="stereo_node">
+    <param name="left/device" value="/dev/video1" />
+    <param name="right/device" value="/dev/video2" />
+    <param name="fps" value="30" />
+    <param name="skip_frames" value="3" />
+    <param name="width" value="320" />
+    <param name="height" value="240" />
+    <param name="frame_id" value="baseline6" />
+  </node>
+
+<!-- LAUNCH BASELINE12 ON ROSFARAMIR -->
+  <!-- Driver nodelet -->
+  <node machine="rosfaramir" ns="baseline12" name="stereo_image_proc_bsl12" pkg="stereo_image_proc" type="stereo_image_proc"></node>
+  <node machine="rosfaramir" ns="baseline12" name="uvc_camera" pkg="uvc_camera" type="stereo_node">
+    <param name="left/device" value="/dev/video1" />
+    <param name="right/device" value="/dev/video2" />
+    <param name="fps" value="15" />
+    <param name="skip_frames" value="1" />
+    <param name="width" value="640" />
+    <param name="height" value="480" />
+    <param name="frame_id" value="baseline12" />
+  </node>
+
+</launch>
+
+Command line for calibration:
+roslaunch camera_pose_calibration calibrate_4_camera.launch camera1_ns:=baseline12/left camera2_ns:=baseline12/right camera3_ns:=baseline6/left camera4_ns:=baseline6/right/ checker_rows:=10 checker_cols:=5 checker_size:=0.0015
+
+EDIT:
+In the file calibrate_4_cameras.launch, the lines that give me the error are the following:
+  <!-- generate robot measurements -->
+  <node pkg="camera_pose_calibration" type="multicam_capture_exec.py" name="capture_exec" 
+        args="$(arg camera1_ns) $(arg camera2_ns) $(arg camera3_ns) $(arg camera4_ns)" output="screen">
+    <param name="cam_info_topic" value="camera_info" />
+    <remap from="request_interval" to="interval_filtered" />
+  </node>
+
+Do I need that lines to have camera calibrated? What does they do?
+EDIT2:
+I've followed the stack trace and I've found that multicam_capture_exec.py calls robot_measurement.cache.py. At the line 34 it try to import a package that is not available:
+import roslib; roslib.load_manifest('pr2_calibration_executive')
+
+I've tryed to comment out that lines and the error goes away but I'm still not able to have some output to /tf.
+
+Originally posted by oleo80 on ROS Answers with karma: 61 on 2012-06-06
+Post score: 1
+
+A:
+
+In Fuerte, pr2_calibration has been split into two (slightly refactored) stacks: calibration and pr2_calibration. The pr2_calibration package always had its API marked "unstable", but it appears that this code was developed against the pr2_calibration_executive (which has gone away). You can find a (possibly updated) robot_measurement_cache.py in calibration_launch/src/calibration_executive.
+
+Originally posted by fergs with karma: 13902 on 2012-06-11
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Athoesen on 2014-01-08:
+Did they ever solve this problem?  I'm trying to use camera_pose_calibration in Hydro with 3 Kinects and it's not going well.
+Comment by fergs on 2014-01-14:
+I'm not aware of anyone maintaining the camera_pose_calibration stack, so I very much doubt that it has been fixed.
+Comment by Athoesen on 2014-01-15:
+In that case, what method are people using for multiple Kinects to combine them in RViz?  I've looked all over and I can't find anything on the wiki or just by Googling.  And asking on here has been unresponsive.
+

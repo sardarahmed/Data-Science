@@ -1,0 +1,80 @@
+Q:
+
+Optional ROS package (and catkin) dependencies
+
+Is there (going to be) support for specifying optional dependencies for ROS packages in both package.xml and CMakeLists.txt?
+Rationale: I do some optional resource generation during the build process (optional robot parts), and then I want to merge all these generated resources in a common resource. So this common resource needs to be built only after the resource generation for the parts has finished. But I still need to preserve the optionality of the various parts.
+
+Originally posted by peci1 on ROS Answers with karma: 1366 on 2015-09-15
+Post score: 3
+
+A:
+
+There is no planned support for optional dependencies. Here is some related reading:
+
+http://answers.ros.org/question/83726/catkin-optional-build-dependency/
+http://answers.ros.org/question/202251/policy-on-run_depends-for-external-optional-binary-packages/
+
+Edit: Adding example of looking for dependencies conditionally in CMake
+First let me explain the find_package(catkin REQUIRED COMPONENTS ...) mechanism.
+This:
+find_package(catkin REQUIRED COMPONENTS foo bar baz)
+
+message("Libraries: ${catkin_LIBRARIES}")
+
+Is the same as:
+find_package(foo REQUIRED)
+find_package(bar REQUIRED)
+find_package(baz REQUIRED)
+
+message("Libraries: ${foo_LIBRARIES};${bar_LIBRARIES};${baz_LIBRARIES}")
+
+So any variable which starts with catkin_ will be the aggregate of the items you passed as COMPONENTS.
+Therefore, you can find package things one at a time and act accordingly:
+find_package(catkin REQUIRED COMPONENTS required_dep1 required_dep2)
+
+set(MY_SRCS src/main.cpp ...)
+set(MY_LINK_INCLUDE_DIRS ${catkin_INCLUDE_DIRS})
+set(MY_LINK_LIBRARIES ${catkin_LIBRARIES})
+
+find_package(optional_dep1)
+
+if(optional_dep1_FOUND)
+    list(APPEND MY_SRCS src/optional_dep1_code.cpp)
+    list(APPEND MY_LINK_INCLUDE_DIRS ${optional_dep1_INCLUDE_DIRS})
+    list(APPEND MY_LINK_LIBRARIES ${optional_dep1_LIBRARIES})
+    # Anything else you need to do to enable use of the optional dep, like add definitions
+    add_definitions("-DUSE_OPTIONAL_DEP1=1")
+endif()
+
+include_directories(include ${MY_LINK_INCLUDE_DIRS})
+
+catkin_package()
+
+add_executable(my_exec ${MY_SRCS})
+target_link_libraries(my_exec ${MY_LINK_LIBRARIES})
+
+You can imagine how you could conditionally do just about anything based on the result of optional_dep1_FOUND.
+
+Originally posted by William with karma: 17335 on 2015-09-15
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by peci1 on 2015-09-15:
+That's a pity. Imagine the combinatorial explosion of "workaround" packages which should model all combinations of optional equipement on our robot (at least 5 pieces -> 32 packages)
+Comment by William on 2015-09-15:
+There is nothing to stop you from writing your CMakeLists.txt such that it tries to find additional deps which are not listed in the package.xml and use them if found. They just won't be installed before building on the build farm. But at least from source you can install them and use them.
+Comment by William on 2015-09-15:
+If you want to include the "optional" deps on the build farm but make them optional when built from source, you can put everything in the package.xml and write your CMakeLists.txt such that it doesn't fail if a dependency is not found. The build tools will not have a problem, but others might.
+Comment by William on 2015-09-15:
+For instance, rosinstall_generator and rosdep will try to fulfill all dependencies in the package.xml and it would be up to the user to narrow down that list when building from source.
+Comment by William on 2015-09-15:
+If you want to use the "recommended" pattern that .deb files allow for, you can do what I suggest here: http://answers.ros.org/question/202251/policy-on-run_depends-for-external-optional-binary-packages/?answer=202260#post-id-202260 and patch the release repository.
+Comment by peci1 on 2015-09-15:
+The solution with custom CMakeLists.txt rules seems to be clean and I like it. However, I'm no CMake geek, so could you please point me to the right set of commands? Something like find_package(catkin QUIET COMPONENTS optional_dep); if (optional_dep_FOUND) add_dependencies(...); endif() ?
+Comment by William on 2015-09-15:
+You'd need to find_package(...) each optional item independently, I'll update my answer with an example.
+Comment by peci1 on 2015-09-21:
+Thanks, I tested this solution and it works well. The only thing is I use find_package(optional_dep QUIET) so that CMake doesn't issue a warning when the package is not found.
+

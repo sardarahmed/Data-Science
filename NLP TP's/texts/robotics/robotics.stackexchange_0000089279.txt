@@ -1,0 +1,102 @@
+Q:
+
+ROS Answers SE migration: ros2 latching
+
+I can't get message latching (transient local durability) to work in Bouncy. Here's my Python test case:
+#!/usr/bin/env python
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
+from std_msgs.msg import String
+
+class Latching(Node):
+
+    def __init__(self):
+        super().__init__('latching')
+        latching_qos = QoSProfile(depth=1,
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL)
+        pub = self.create_publisher(String, 'foo', qos_profile=latching_qos)
+        msg = String(data='test')
+        pub.publish(msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = Latching()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Ctrl-C detected, shutting down")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+When I run ros2 topic echo /foo std_msgs/String first, then run my node, I see message test published on topic /foo as expected.
+However, when I run my node before running ros2 topic echo /foo std_msgs/String, nothing shows up. Shouldn't I see the latched message?
+I wonder if this might be related to https://answers.ros.org/question/304645/ros2-robot-state-publisher-publishes-empty-robot_description/
+I'm using FastRTPS.
+Thanks.
+
+Originally posted by clyde on ROS Answers with karma: 1247 on 2018-10-14
+Post score: 8
+
+Original comments
+Comment by clyde on 2018-10-15:
+I just tested this w/ a Python listener with the same QoS. Still no luck: if the publisher runs first, then the subscriber gets the message. If the publisher runs second, the subscriber never gets the message.
+Comment by ahlyder on 2019-06-04:
+Did you ever get this to work? And if so, how?
+Comment by clyde on 2019-06-06:
+I did not. Workarounds: (1) for rviz, read the URDF from a file, not from a message. (2) publish static messages periodically, perhaps once every 5s.
+
+A:
+
+I haven't tried Bouncy, but as of today's Dashing this slightly modified code taken from the question works for me:
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
+from std_msgs.msg import String
+
+class Latching(Node):
+
+    def __init__(self):
+        super().__init__('latching_sub')
+        latching_qos = QoSProfile(depth=1,
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL)
+        sub = self.create_subscription(String, 'foo', self.callback, qos_profile=latching_qos)
+
+    def callback(self, str_msg):
+        self.get_logger().info('Got message: ' + str(str_msg))
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = Latching()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Ctrl-C detected, shutting down")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+No matter the order I run the two nodes (publisher first and subscriber second or vice-versa), I always see the callback in the subscriber called. I've tested it using FastRTPS as well.
+Hope it helps!
+PS: for reference, this issue has a good summary of the differences between ROS1 latching and transient local settings: https://github.com/ros2/ros2/issues/464.
+
+Originally posted by jubeira with karma: 1054 on 2019-07-03
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by clyde on 2019-07-03:
+This works! The upshot is that ros2 topic echo won't match transient local topics. Thanks!
+

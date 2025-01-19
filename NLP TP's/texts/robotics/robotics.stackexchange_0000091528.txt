@@ -1,0 +1,62 @@
+Q:
+
+`tf static_transform_publisher` removes link instead of linking two tf trees
+
+When using static_transform_publisher, attempting to link to coordinate systems via a common frame the publisher removes the link from one tree and places it in the other. This happens both with tf and tf2_ros, and when execucted from the command line as well as from a launch file.
+See the following example where ar_marker_master and ar_marker_0 refer to the same point in world space. Without linking the two using tf, the tf_tree looks like this:
+
+Then, we can attempt to link the two frames using:
+rosrun tf static_transform_publisher 0 0 0 0 0 0 /ar_marker_master /ar_marker_0 1000
+
+Where the resulting tree looks like this:
+
+This successfully links ar_marker_master with ar_marker_0, but notice that the link ar_marker_0 has been removed from the tree with camera_link. Shouldn't this join the two trees?
+For more context, if I run rosrun tf tf_echo /camera_color_optical_frame /ar_marker_0 to view the transformation between camera_color_optical_frame and ar_marker_0 before the adding the link, I can see:
+At time 1556317303.088
+- Translation: [-0.380, 0.338, 1.264]
+- Rotation: in Quaternion [0.966, 0.072, -0.068, 0.237]
+            in RPY (radian) [2.669, 0.166, 0.109]
+            in RPY (degree) [152.939, 9.504, 6.273]
+
+But after running static_transform_publisher:
+Exception thrown:Could not find a connection between 'camera_color_optical_frame' and 'ar_marker_0'
+
+Where did the link go?  And, if this is not the proper way to join two trees, how should I perform the transform to join the two coordinate systems?
+
+Originally posted by ceres on ROS Answers with karma: 86 on 2019-04-26
+Post score: 1
+
+A:
+
+The transforms are stored in a tree, every frame can have at most one parent. Thus when you publish a new transform like that you are effectively reattaching the transform to the other branch of the tree. If you want to connect two disconnected trees you have to connect them at the root.
+If you have something like an ar tag. You can compute the transform from camera_link to ar_marker0 Tca through the camera. Then if you know the transfrom from the world to the ar_marker0 (Twa) you publsh the transform from world to camera_link (Twc) as the as known transform minus the computed transform. Twc = Twa - Tca  This is just Twc + Tca == Twa solving for Twc which is the missing link in your tree.
+
+Originally posted by tfoote with karma: 58457 on 2019-04-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by ceres on 2019-04-26:
+That makes sense. So, if I understand correctly, in your example, Twa should be the output of rosrun tf tf_echo /world /ar_marker_master and Tca should be the output of rosrun tf tf_echo /camera_link /ar_marker_0, right?
+Then using simple linear algebra, Twa = [0.400, 0.150, 0.000, 0.000, 0.000, 0.000, 1.000]-[1.261, 0.403, -0.333, 0.371, -0.358, -0.672, 0.531].
+Using that result, rosrun tf static_transform_publisher -0.858 -0.259  0.315 0.371 -0.358 -0.672  1.531 /camera_link /world 1000 should give me the link I'm looking for?
+Comment by ceres on 2019-04-29:
+Using this method aligns the two frames in the XYZ coordinates, but the rotation is off.
+Comment by tfoote on 2019-04-29:
+That sounds like a small math error, missing a component at one step possiblly.
+Comment by ceres on 2019-04-29:
+So the method is correct then? Does it matter if I use quaternions or radians for the linear transformation? In the example I gave, the first transform has no rotation, so I don't understand how there could be a missing component or math error.
+Comment by tfoote on 2019-04-29:
+If you're just doing a vector subtraction that won't work. You need to apply the transform math in sequence appropriately. The negative sign is just a math shorthand for left multiplication of the inverted full 3D matrix.
+Comment by ceres on 2019-04-29:
+Thanks for the help. I'll see if I can figure out how to do that with a 3D matrix. I'm surprised ROS doesn't have a built in method for this though.
+Comment by tfoote on 2019-04-29:
+There is no need to reproduce this functionality in ROS. This functionality is provided by several libraries that we built on top of including bullet, eigen, and kdl.
+Comment by ceres on 2019-04-29:
+I understand the point you're making, but I suppose I assumed that my original question of linking two child frames should be as straightforward as linking two parent frames since an analytical answer exists.
+Comment by tfoote on 2019-04-29:
+Yeah, it's something that's quite application specific and is something that often needs custom logic to do well which we could not provide effectively with a general solution. It's also something that can be implemented On top of the existing infrastructure so we sell to keep the API as simple as possible.
+For this specific use case, publishing the raw detection offsets might work for you. But of you want higher fidelity and consistency it's likely that your would want to add an estimator to your implementation like it's done for the odometry.
+Comment by ceres on 2019-05-01:
+I've accepted your answer regarding the static_transform_publisher as correct, but I am still unclear about how the trees should be linked. I have created a follow-up question.
+

@@ -1,0 +1,71 @@
+Q:
+
+[SOLVED] rosrun - Couldn't find executable
+
+I have installed ROS Melodic on Fedora 33 and all seems to work properly, for example, I've tried to run the turtlesim node with turtle_teleop_key and turtlesim_node and they work as expected.
+So, I created my node and put it under ~/ros_catkin_ws/src/ode_simulator, compiled with catkin build ode_simulator, all went smooth.
+Then I tried to run it, with rosrun ode_simulator ode_simulator but it gives the following error:
+[rosrun] Couldn't find executable named ode_simulator below /home/MY_NAME/ros_catkin_ws/install_isolated/share/ode_simulator
+[rosrun] Found the following, but they're either not files,
+[rosrun] or not executable:
+[rosrun]   /home/MY_NAME/ros_catkin_ws/install_isolated/share/ode_simulator
+
+However the package exists and is found by ROS, since running rospack find ode_simulator gives:
+/home/MY_NAME/ros_catkin_ws/install_isolated/share/ode_simulator
+
+My CMakeLists.txt is quite long and mostly commented out, but the following lines are present and not commented:
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(ode_simulator src/ode_simulator.cpp src/ode_simulator_node.cpp src/simulator_odefun.cpp)
+target_link_libraries(ode_simulator ${catkin_LIBRARIES})
+
+From these lines I understand that there should be an executable called ode_simulator, but it seems that there isn't one.
+This is what is present in the ode_simulator folder in ~/ros_catkin_ws/src/ode_simulator, command ls *:
+CMakeLists.txt  package.xml
+
+config:
+ode_simulator_params.yaml
+
+include:
+ode_simulator  simulator_odefun.h
+
+launch:
+ode_simulator.launch
+
+src:
+ode_simulator.cpp  ode_simulator_node.cpp  simulator_odefun.cpp
+
+Of course there is source ~/ros_catkin_ws/install_isolated/setup.zsh in my .zshrc.
+Any help is appreciated, if more info is needed please tell me and I'll provide it.
+
+Originally posted by 0novanta on ROS Answers with karma: 18 on 2021-11-10
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-11-11:
+There isn't really a need to edit the titles of questions that have an answer. The green checkmark they show on the index page already clearly communicates there is an accepted answer.
+Comment by 0novanta on 2021-11-11:
+I know that there is the green checkmark, but when looking for posts on, e.g., Google I find it helpful to know if a question has been solved or not.
+
+A:
+
+You appear to be using an install space, but don't have an install(..) command in your CMakeLists.txt which actually installs your ode_simulator node (or at least: your CMakeLists.txt quotes don't show any).
+It's likely that's the problem: roslaunch uses your install space (ie: install_isolated) as you source it, but the binary will only be present in the devel_isolated space.
+To fix this, you'd have to make sure to install(..) the ode_simulator executable.
+
+Having written that: I would actually advise you, unless you have a good reason, to not use your bootstrap Catkin workspace as a regular "development" workspace.
+Instead, create a new workspace which extends/overlays the install_isolated space of your bootstrap workspace, and then do all of your own development in that second workspace.
+Benefits: faster compile times (as only your second workspace will need to be crawled and built), you can use the devel space of your second workspace (install(..) is not absolutely necessary any more) and you don't risk running into problems mucking up your bootstrap workspace.
+If you want to make things "more like on Ubuntu" (or: systems for which binaries are distributed) and you have the permissions, you could consider running catkin_make_isolated --install-space=/opt/ros/melodic. That would copy the install space of your bootstrap repository to /opt/ros/melodic, exactly like on other systems. You would then still use a second workspace to work on your own packages, but it would extend /opt/ros/melodic instead of a directory in your $HOME directory.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-11-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by 0novanta on 2021-11-10:
+I'm sorry I did not update the question, I did exactly as you said: new workspace that overlays install_isolated and it works like a charm!
+

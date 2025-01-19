@@ -1,0 +1,43 @@
+Q:
+
+Dynamixel 2.0 - Execute Joint Trajectories
+
+Hello,
+I have been using dynamixel_motor package which provides joint_trajectory_action_controller.py to send trajectory_msgs/JointTrajectory to my manipulator. Is there something similar in DynamixelSDK or dynamixel_workbench? From what I can tell from their tutorials, it is only possible to send a single joint command (to either a single motor, or multiple connected motors).
+Update (6/4/18):
+dynamixel_motor package does this through set_multi_position_and_speed(self, valueTuples) by calling self.sync_write(DXL_GOAL_POSITION_L, tuple(writeableVals)) with writeableVals = (sid, loPositionVal, hiPositionVal, loSpeedVal, hiSpeedVal). Would something like this work in dynamixel_workbench by setting position and speed using Goal_Position for ControlTableItem? If so, how would I call it using writeRegister()?
+Thanks
+
+Originally posted by JoshMarino on ROS Answers with karma: 592 on 2018-06-01
+Post score: 0
+
+Original comments
+Comment by Darby Lim on 2018-06-03:
+Sorry, that example is not supported in DynamixelSDK and Dynamixel Workbench. But you can get other example how to control manipulator using it in OpenManipulator
+Comment by Darby Lim on 2018-06-06:
+You can refer this link http://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_workbench/#library
+Comment by JoshMarino on 2018-06-07:
+Do you know if it would work to send a goalPosition and goalSpeed at the same time, would they both be accepted or just one? If so, I might be able to use bulkWrite().
+
+A:
+
+I was able to figure it out for trajectory_msgs/JointTrajectory by using the following:
+  ROS_INFO("Joint trajectory consists of %ld points.", jointTrajectory.points.size());
+  ros::Time trajectoryStartTime = ros::Time::now();
+  for (int i = 0; i < jointTrajectory.points.size(); i++)
+  {
+    while ( (ros::Time::now() - trajectoryStartTime).toSec() < jointTrajectory.points[i].time_from_start.toSec() )
+    {
+      continue;
+    }
+    int32_t speed = dxl_wb_->convertVelocity2Value(dxl_id_[index], jointTrajectory.points[i].velocities[0]);
+    int32_t position = dxl_wb_->convertRadian2Value(dxl_id_[index], jointTrajectory.points[i].positions[0]);
+    dxl_wb_->itemWrite(dxl_id_[index], "Profile_Velocity", speed);
+    dxl_wb_->goalPosition(dxl_id_[index], position);
+    ROS_INFO("Writing position to Dynamixel motor #%d: [%d, %d] at time %f.", dxl_id_[index], position, speed, (ros::Time::now() - trajectoryStartTime).toSec());
+  }
+
+Originally posted by JoshMarino with karma: 592 on 2018-06-18
+This answer was ACCEPTED on the original site
+Post score: 0
+

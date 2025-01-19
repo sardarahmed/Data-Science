@@ -1,0 +1,137 @@
+Q:
+
+How can I get the values of a IMU from the serial message received in Simulink via UART?
+
+I try to read IMU sensor data from an Arduino mega 2560 UART with serial receive block of Arduino support package for simulink. The IMU can send binary packets and also nmea packets and I can configure it to any output. When the serial recieve block output is directly used, it displays just the numbers between 0-255. l need help about how to parse the coming data which contains the euler angles that I want to use.
+Here is binary structure ;
+"s","n","p",packet type(PT),Address,Data Bytes (D0...DN-1),Checksum 1,Checksum 0
+The PT byte specifies whether the packet is a read or a write operation, whether it is a batch operation, and the length of the batch operation (when applicable). The PT byte is also used by the UM7 to respond to commands. The specific meaning of each bit in the PT byte is given below.
+Packet Type (PT) byte;
+7 Has Data,
+6 Is Batch,
+5 BL3,
+4 BL2,
+3 BL1,
+2 BL0,
+1 Hidden,
+0 CF
+Packet Type (PT) Bit Descriptions;
+7...Has Data: If the packet contains data, this bit is set (1). If not, this bit is cleared (0). 
+6...Is Batch: If the packet is a batch operation, this bit is set (1). If not, this bit is cleared (0) 
+5:2..Batch Length (BL): Four bits specifying the length of the batch operation. Unused if bit 7 is cleared. The maximum batch length is therefore 2^4 = 16 
+1...Hidden: If set, then the packet address specified in the “Address” field is a “hidden” address. Hidden registers are used to store factory calibration and filter tuning coefficients that do not typically need to be viewed or modified by the user. This bit should always be set to 0 to avoid altering factory configuration.
+0...Command Failed (CF): Used by the autopilot to report when a command has failed. Must be set to zero for all packets written to the UM7.
+The address byte specifies which register will be involved in the operation. During a read operation (Has Data = 0), the address specifies which register to read. During a write operation (Has Data = 1), the address specifies where to place the data contained in the data section of the packet. For a batch read/write operation, the address byte specifies the starting address of the operation.
+The "Data Bytes" section of the packet contains data to be written to one or more registers. There is no byte in the packet that explicitly states how many bytes are in this section because it is possible to determine the number of data bytes that should be in the packet by evaluating the PT byte.
+If the Has Data bit in the PT byte is cleared (Has Data = 0), then there are no data bytes in the packet and the Checksum immediately follows the address. If, on the other hand, the Has Data bit is set (Has Data = 1) then the number of bytes in the data section depends on the value of the Is Batch and Batch Length portions of the PT byte.
+For a batch operation (Is Batch = 1), the length of the packet data section is equal to 4*(Batch Length). Note that the batch length refers to the number of registers in the batch, NOT the number of bytes. Registers are 4 bytes long.
+For a non-batch operation (Is Batch = 0), the length of the data section is equal to 4 bytes (one register). The data section lengths and total packet lengths for different PT configurations are shown below.
+The two checksum bytes consist of the unsigned 16-bit sum of all preceding bytes in the packet, including the packet header.
+Read Operations;
+To initiate a serial read of one or more registers aboard the sensor, a packet should be sent to the UM7 with the "Has Data" bit cleared. This tells the device that this will be a read operation from the address specified in the packet's "Address" byte. If the "Is Batch" bit is set, then the packet will trigger a batch read in which the "Address" byte specifies the address of the first register to be read.
+In response to a read packet, the UM7 will send a packet in which the "Has Data" bit is set, and the "Is Batch" and "Batch Length" bits are equivalent to those of the packet that triggered the read operation. The register data will be contained in the "Data Bytes" section of the packet.
+here is an Example Binary Communication Code;
+{
+uint8_t Address;
+uint8_t PT;
+uint16_t Checksum;
+uint8_t data_length;
+uint8_t data[30];
+} 
+UM7_packet;
+// parse_serial_data.This function parses the data in ‘rx_data’ with length ‘rx_length’ and attempts to find a packet in the data. If a packet is found, the structure ‘packet’ is filled with the packet data.If there is not enough data for a full packet in the provided array, parse_serial_data returns 1. If there is enough data, but no packet header was found, parse_serial_data returns 2.If a packet header was found, but there was insufficient data to parse the whole packet,then parse_serial_data returns 3. This could happen if not all of the serial data has been received when parse_serial_data is called.If a packet was received, but the checksum was bad, parse_serial_data returns 4. If a good packet was received, parse_serial_data fills the UM7_packet structure and returns 0.
+
+uint8_t parse_serial_data( uint8_t* rx_data, uint8_t rx_length, UM7_packet* packet )
+{
+uint8_t index;
+// Make sure that the data buffer provided is long enough to contain a full packet The minimum packet length is 7 bytes
+if( rx_length < 7 )
+  {
+  return 1;
+  }
+// Try to find the ‘snp’ start sequence for the packet
+for( index = 0; index < (rx_length – 2); index++ )
+  {
+  // Check for ‘snp’. If found, immediately exit the loop
+  if( rx_data[index] == ‘s’ && rx_data[index+1] == ‘n’ && rx_data[index+2] == ‘p’ )
+    {
+    break;
+    }
+  }
+uint8_t packet_index = index;
+// Check to see if the variable ‘packet_index’ is equal to (rx_length - 2). If it is, then the above loop executed to completion and never found a packet header.
+if( packet_index == (rx_length – 2) )
+  {
+  return 2;
+  }
+// If we get here, a packet header was found. Now check to see if we have enough room left in the buffer to contain a full packet. Note that at this point, the variable ‘packet_index’contains the location of the ‘s’ character in the buffer (the first byte in the header)
+if( (rx_length – packet_index) < 7 )
+  {
+  return 3;
+  }
+// We’ve found a packet header, and there is enough space left in the buffer for at least the smallest allowable packet length (7 bytes). Pull out the packet type byte to determine the actual length of this packet
+uint8_t PT = rx_data[packet_index + 3];
+// Do some bit-level manipulation to determine if the packet contains data and if it is a batch.We have to do this because the individual bits in the PT byte specify the contents of the packet.
+uint8_t packet_has_data = (PT >> 7) & 0x01; // Check bit 7 (HAS_DATA)
+uint8_t packet_is_batch = (PT >> 6) & 0x01; // Check bit 6 (IS_BATCH)
+uint8_t batch_length = (PT >> 2) & 0x0F; // Extract the batch length (bits 2 through 5)
+// Now finally figure out the actual packet length
+uint8_t data_length = 0;
+if( packet_has_data )
+  {
+  if( packet_is_batch )
+    {
+    // Packet has data and is a batch. This means it contains ‘batch_length' registers, each // of which has a length of 4 bytes
+    data_length = 4*batch_length;
+    }
+  else // Packet has data but is not a batch. This means it contains one register (4 bytes)
+    {
+    data_length = 4;
+    }
+  }
+else // Packet has no data
+  {
+  data_length = 0;
+  }
+// At this point, we know exactly how long the packet is. Now we can check to make sure we have enough data for the full packet.
+if( (rx_length – packet_index) < (data_length + 5) )
+  {
+  return 3;
+  }
+// If we get here, we know that we have a full packet in the buffer. All that remains is to pullout the data and make sure the checksum is good. Start by extracting all the data
+packet->Address = rx_data[packet_index + 4];
+packet->PT = PT;
+// Get the data bytes and compute the checksum all in one step
+packet->data_length = data_length;
+uint16_t computed_checksum = ‘s’ + ‘n’ + ‘p’ + packet_data->PT + packet_data->Address;
+for( index = 0; index < data_length; index++ )
+  {
+  // Copy the data into the packet structure’s data array
+  packet->data[index] = rx_data[packet_index + 5 + index];
+  // Add the new byte to the checksum
+  computed_checksum += packet->data[index];
+  }
+// Now see if our computed checksum matches the received checksum 
+// First extract the checksum from the packet
+uint16_t received_checksum = (rx_data[packet_index + 5 + data_length] << 8);
+received_checksum |= rx_data[packet_index + 6 + data_length];
+// Now check to see if they don’t match
+if( received_checksum != computed_checksum )
+  {
+  return 4;
+  }
+// At this point, we’ve received a full packet with a good checksum. It is already fully parsed and copied to the ‘packet’ structure, so return 0 to indicate that a packet was processed.
+return 0;
+}
+
+A:
+
+I think there are two issues here - one is that you are referring to your IMU as though you were communicating with it, but in reality you are communicating with the Arduino, not the IMU. 
+The packet structure has nothing to do with the fact that you are seeing numbers between 0-255 because those numbers appear with communication between the Arduino and Simulink, not between the IMU and the Arduino. 
+The Simulink block only reads one byte - you need to concatenate/parse the data coming back from that block instead of just displaying the data as though it were a uint8 format.
+:EDIT:
+I use Matlab (command-line scripting) and not Simulink, so I can't say for sure if Simulink does or does not have a parse block, but all serial packets are different so that, coupled with the fact that I didn't see anything after a cursory search, would lead me to believe there is no Simulink block that will do everything for you. 
+My advice would be to make a Matlab function block and simply paste in the serial parse example that you've shown and modify it until it parses the message you are expecting.
+Again I would caution you that the serial packet you will receive from the Arduino is not the packet that is coming from the IMU. You need a parser on the Arduino to read the IMU, then you need to transmit the results of that to the PC. You can just save the entire packet from the IMU and re-broadcast the same packet to the PC, but again, that's something you need to configure on both the Arduino and the PC. 
+I could give advice now about an outline for parsing a serial message, but (1) you already have example code and (2) my advice would be to follow the packet structure, which is not defined because it's whatever you want it to be. 
+

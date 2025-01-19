@@ -1,0 +1,180 @@
+Q:
+
+The 'stomp' configuration parameter was not found
+
+I am trying to use STOMP Planner by following the documentation. As per the documentation, I installed the STOMP from the source in ROS Melodic (Ubuntu 18.04.6 LTS). Unfortunately, the command roslaunch panda_moveit_config demo_stomp.launch is throwing following error:
+[ERROR] [1684923835.899294129]: The 'stomp' configuration parameter was not found
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  Unable to initialize planning plugin
+[move_group-5] process has died [pid 22522, exit code -6, cmd /home/ravi/ws_moveit/devel/lib/moveit_ros_move_group/move_group --debug __name:=move_group __log:=/home/ravi/.ros/log/12f2b1ec-fa1d-11ed-89a8-181deaf411ae/move_group-5.log].
+log file: /home/ravi/.ros/log/12f2b1ec-fa1d-11ed-89a8-181deaf411ae/move_group-5*.log
+
+Please note that I already have panda_moveit_config, as mentioned here. Furthermore, I can run the demo.launch based on the documentation, as shown below:
+roslaunch panda_moveit_config demo.launch rviz_tutorial:=true
+
+I assume the STOMP error is due to an installation/configuration issue. Surprisingly I have not touched anything. Moreover, the error appears even when MoveIt is installed from the source.
+Below is a screenshot of RViz:
+
+BTW, I can see stomp, stomp_moveit, and stomp_plugins packages in my workspace as shown below:
+$ catkin build
+...
+[build] Found 52 packages in 0.0 seconds.
+[build] Package table is up to date.
+...
+Starting  >>> moveit_core
+Finished  <<< moveit_resources                     [ 0.1 seconds ]
+Finished  <<< ros_industrial_cmake_boilerplate     [ 0.1 seconds ]
+Starting  >>> stomp                                               
+Finished  <<< stomp                                [ 0.4 seconds ]
+Finished  <<< moveit_core                          [ 0.7 seconds ]
+Starting  >>> chomp_motion_planner                                
+Starting  >>> moveit_controller_manager_example                   
+Starting  >>> moveit_visual_tools                                 
+Starting  >>> stomp_moveit                                        
+Finished  <<< moveit_kinematics                    [ 0.4 seconds ]
+Finished  <<< moveit_ros_robot_interaction         [ 0.3 seconds ]
+Starting  >>> moveit_ros_benchmarks                               
+Finished  <<< stomp_moveit                         [ 0.3 seconds ]
+Starting  >>> stomp_plugins                                       
+Finished  <<< moveit_ros_perception                [ 0.8 seconds ]
+Finished  <<< stomp_plugins                        [ 0.3 seconds ]
+Finished  <<< moveit_ros_move_group                [ 0.6 seconds ]
+Finished  <<< moveit                               [ 0.1 seconds ]
+...
+[build] Summary: All 52 packages succeeded!
+
+Any workaround to fix this issue, please?
+Update
+I am debugging the issue. So I would like to share the progress below:
+
+The error is coming from stomp_planner.cpp#L756
+I added the following snippet just above it to see the values:
+std::string param_value;
+nh.getParam(param, param_value);
+ROS_INFO_STREAM("The '" << param << "' parameter is: " << param_value << " and namespace: "<< nh.getNamespace());
+
+It printed the following:
+[ INFO] [1685011022.181549319]: The 'stomp' parameter is:  and namespace: /move_group/planning_pipelines/stomp
+
+Suprisingly, I can see the param via rosparam
+$ rosparam list | grep stomp
+/move_group/planning_pipelines/stomp/jiggle_fraction
+/move_group/planning_pipelines/stomp/manipulator/group_name
+/move_group/planning_pipelines/stomp/manipulator/optimization/control_cost_weight
+/move_group/planning_pipelines/stomp/manipulator/optimization/initialization_method
+/move_group/planning_pipelines/stomp/manipulator/optimization/max_rollouts
+/move_group/planning_pipelines/stomp/manipulator/optimization/num_iterations
+/move_group/planning_pipelines/stomp/manipulator/optimization/num_iterations_after_valid
+/move_group/planning_pipelines/stomp/manipulator/optimization/num_rollouts
+/move_group/planning_pipelines/stomp/manipulator/optimization/num_timesteps
+/move_group/planning_pipelines/stomp/manipulator/task/cost_functions
+/move_group/planning_pipelines/stomp/manipulator/task/noise_generator
+/move_group/planning_pipelines/stomp/manipulator/task/noisy_filters
+/move_group/planning_pipelines/stomp/manipulator/task/update_filters
+/move_group/planning_pipelines/stomp/panda_arm/group_name
+/move_group/planning_pipelines/stomp/panda_arm/optimization/control_cost_weight
+/move_group/planning_pipelines/stomp/panda_arm/optimization/initialization_method
+/move_group/planning_pipelines/stomp/panda_arm/optimization/max_rollouts
+/move_group/planning_pipelines/stomp/panda_arm/optimization/num_iterations
+/move_group/planning_pipelines/stomp/panda_arm/optimization/num_iterations_after_valid
+/move_group/planning_pipelines/stomp/panda_arm/optimization/num_rollouts
+/move_group/planning_pipelines/stomp/panda_arm/optimization/num_timesteps
+/move_group/planning_pipelines/stomp/panda_arm/task/cost_functions
+/move_group/planning_pipelines/stomp/panda_arm/task/noise_generator
+/move_group/planning_pipelines/stomp/panda_arm/task/noisy_filters
+/move_group/planning_pipelines/stomp/panda_arm/task/update_filters
+/move_group/planning_pipelines/stomp/planning_plugin
+/move_group/planning_pipelines/stomp/request_adapters
+/move_group/planning_pipelines/stomp/start_state_max_bounds_error
+
+Moreover, this param is not empty and contains long values as shown below
+$ rosparam get /move_group/planning_pipelines/stomp | wc -l
+115
+
+The similar question has was asked here but no response.
+
+A:
+
+Based on the workaround suggested at ros-planning/panda_moveit_config/issues/131, I submitted a pull request. Basically, the following two files need to be modified, as shown below:
+
+panda_moveit_config/config/stomp_planning.yaml
+
+stomp/panda_arm:
+  group_name: panda_arm
+  optimization:
+    num_timesteps: 60
+    num_iterations: 40
+    num_iterations_after_valid: 0
+    num_rollouts: 30
+    max_rollouts: 30
+    initialization_method: 1 #[1 : LINEAR_INTERPOLATION, 2 : CUBIC_POLYNOMIAL, 3 : MININUM_CONTROL_COST]
+    control_cost_weight: 0.0
+  task:
+    noise_generator:
+      - class: stomp_moveit/NormalDistributionSampling
+        stddev: [0.05, 0.8, 1.0, 0.8, 0.4, 0.4, 0.4]
+    cost_functions:
+      - class: stomp_moveit/CollisionCheck
+        collision_penalty: 1.0
+        cost_weight: 1.0
+        kernel_window_percentage: 0.2
+        longest_valid_joint_move: 0.05
+    noisy_filters:
+      - class: stomp_moveit/JointLimits
+        lock_start: True
+        lock_goal: True
+      - class: stomp_moveit/MultiTrajectoryVisualization
+        line_width: 0.02
+        rgb: [255, 255, 0]
+        marker_array_topic: stomp_trajectories
+        marker_namespace: noisy
+    update_filters:
+      - class: stomp_moveit/PolynomialSmoother
+        poly_order: 6
+      - class: stomp_moveit/TrajectoryVisualization
+        line_width: 0.05
+        rgb: [0, 191, 255]
+        error_rgb: [255, 0, 0]
+        publish_intermediate: True
+        marker_topic: stomp_trajectory
+        marker_namespace: optimized
+
+panda_moveit_config/launch/stomp_planning_pipeline.launch.xml
+
+<launch>
+  <!-- Stomp Plugin for MoveIt! -->
+  <arg name="planning_plugin" value="stomp_moveit/StompPlannerManager" />
+
+  <arg name="start_state_max_bounds_error" value="0.1" />
+  <arg name="jiggle_fraction" value="0.05" />
+  <!-- The request adapters (plugins) used when planning.
+       ORDER MATTERS -->
+  <arg name="planning_adapters" default="default_planner_request_adapters/AddTimeParameterization
+                                       default_planner_request_adapters/FixWorkspaceBounds
+                                       default_planner_request_adapters/FixStartStateBounds
+                                       default_planner_request_adapters/FixStartStateCollision
+                                       default_planner_request_adapters/FixStartStatePathConstraints" />
+
+  <param name="planning_plugin" value="$(arg planning_plugin)" />
+<param name="request_adapters" value="$(arg planning_adapters)" />
+  <param name="start_state_max_bounds_error" value="$(arg start_state_max_bounds_error)" />
+<param name="jiggle_fraction" value="$(arg jiggle_fraction)" />
+
+  <!-- Add MoveGroup capabilities specific to this pipeline -->
+  <!-- <param name="capabilities" value="" /> -->
+  <rosparam command="load" file="$(find panda_moveit_config)/config/stomp_planning.yaml" />
+
+  <!-- Load parameters for both groups, panda_arm and manipulator -->
+  <!-- <group ns="$(arg arm_id)_arm">
+  <rosparam command="load" file="$(find panda_moveit_config)/config/stomp_planning.yaml" />
+    <param name="group_name" value="$(arg arm_id)_arm" />
+</group>
+<group ns="manipulator">
+  <rosparam command="load" file="$(find panda_moveit_config)/config/stomp_planning.yaml" />
+    <param name="group_name" value="manipulator" />
+  </group> -->
+
+</launch>
+
+Pleae feel free to check the pull request for more info.
+

@@ -1,0 +1,83 @@
+Q:
+
+About response function in a server file
+
+Hello everybody,
+I am a newer to ROS. I defined a srv file:
+
+float64 HeadYawSet
+float64 HeadPitchSet
+---
+float64 HeadYaw
+float64 HeadPitch
+
+I am going to write a server to get the value from "HeadYawSet" and "HeadPitchSet" simultaneously acquire joint data to put them in HeadYaw and HeadPitch. And my code is below:
+def Receive(req):
+#Motion= ALproxy("ALMotion")
+    names = "HeadYaw"
+    fractionMaxSpeed = 0.1
+    useSensors  = True 
+    HeadYaw = Motion.getAngles(names, useSensors)
+    Motion.setAngles(names, req.HeadYawSet,fractionMaxSpeed)
+    names = "HeadPitch"
+    HeadPitch=Motion.getAngles(names, useSensors)
+    Motion.setAngles(names, req.HeadPitchSet, fractionMaxSpeed)
+    req.HeadYaw= HeadYaw;
+    req.HeadPitch= HeadPitch;
+    #print "HeadYawSet:" %(req.HeadPitchSet)
+    #return headResponse( [HeadYaw, HeadPitch] )
+
+##ROS is responsible for communicating the sub-processes with naoqi, it reads any data from the robot and give them to all the sub
+##processes and it gets all the data from sub-processes and send them to the robot. NAOQI---ROS---PROCESSES
+def receive_server():
+    rospy.init_node('head')
+    s = rospy.Service('receiving_on_head', head, Receive)
+    print "Ready to receive the head joint values"
+
+    rospy.spin()
+
+if __name__ == "__main__":
+    receive_server()
+
+it gave me strange errors when I run my client code in C++
+Traceback (most recent call last):
+File "/opt/ros/diamondback/stacks/ros_comm/clients/rospy/src/rospy/impl/tcpros_service.py", line 600, in _handle_request
+response = convert_return_to_response(self.handler(request), self.response_class)
+File "head.py", line 34, in Receive
+req.HeadYaw= HeadYaw;
+AttributeError: 'headRequest' object has no attribute 'HeadYaw'
+[ERROR] [WallTime: 1310328838.362102] Error processing request: 'headRequest' object has no attribute 'HeadYaw'
+None
+Can anybody help me a bit here? Thank you so much!
+
+Originally posted by Gauss Lee on ROS Answers with karma: 13 on 2011-07-10
+Post score: 0
+
+A:
+
+You probably want something like:
+def Receive(req):
+#Motion= ALproxy("ALMotion")
+    names = "HeadYaw"
+    fractionMaxSpeed = 0.1
+    useSensors  = True 
+    HeadYaw = Motion.getAngles(names, useSensors)
+    Motion.setAngles(names, req.HeadYawSet,fractionMaxSpeed)
+    names = "HeadPitch"
+    HeadPitch=Motion.getAngles(names, useSensors)
+    Motion.setAngles(names, req.HeadPitchSet, fractionMaxSpeed)
+
+    # new code 
+    resp = headResponse()
+    resp.HeadYaw= HeadYaw
+    resp.HeadPitch= HeadPitch
+    return resp
+
+Assuming that your service is in a file called head.srv
+Note that for headResponse to be defined you may also need to add a line like this towards the top of your source:
+from your_pkg.srv import *
+
+Originally posted by fergs with karma: 13902 on 2011-07-10
+This answer was ACCEPTED on the original site
+Post score: 1
+

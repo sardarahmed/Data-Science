@@ -1,0 +1,56 @@
+Q:
+
+difference between receiving a reference or a Ptr in a callback
+
+assume 2 callbacks:
+void cb1(const MsgType &);
+void cb2(const MsgType::ConstPtr &);
+
+In the case of cb2, each time a message is received a new object is created, i.e. memory allocation occurs. Well unless it's a nodelet, in which case the memory was allocated by the sender... but I'm not talking about that...
+What about cb1? Is it the same object each time, i.e. memory does not need to be allocated if the message is the same size? That could save some time when dealing with large messages...
+EDIT:
+Since nobody understood my question, I'll try to reformulate. Actually I'd love to look at the actual code that does the deserialization and calls the callback function. Can somebody points it to me?
+Here is 2 possible implementations of the message queue. This is pseudo code... but which concept is closer to the actual implementation?
+// implementation that does not allocate the memory for each new message
+class MessageQueue {
+    queue<MsgType::SerializedType> serialized_msgs_;
+    MsgType deserialized_msg_; //this object is allocated only once and reused
+
+    void process() {
+        deserialized_msg_.deserialize(serialized_msgs_.front());
+        serialized_msgs_.pop();
+        notify_callback( deserialized_msg_ ); //pass by const reference
+    }
+};
+
+// another implementation that allocates new memory each time
+class MessageQueue {
+    queue<MsgType::SerializedType> serialized_msgs_;
+
+    void process() {
+        // allocate a new object each time
+        MsgTypePtr deserialized_msg(new MsgType);
+        deserialized_msg->deserialize(serialized_msgs_.front());
+        serialized_msgs_.pop();
+        notify_callback(deserialized_msg);
+    }
+};
+
+In the first implementation, if we are dealing with a message that is always the same size, then no allocation is required at all which makes the code super efficient.
+
+Originally posted by brice rebsamen on ROS Answers with karma: 1001 on 2013-09-19
+Post score: 2
+
+Original comments
+Comment by alfa_80 on 2013-09-19:
+As far as I understood, both of them don't require coping. In other words, the first callback with reference creates just an alias(no memory allocation involved) and the other one creates a const pointer(no memory allocation involved as well).
+
+A:
+
+MsgType::ConstPtr is a typedef to a boost::shared_ptr<const MsgType>. What you win with a MsgType::ConstPtr is that you can store it and control its lifecycle, eg. for use outside the callback without incurring an extra copy.
+With a plain const MsgType& the message data will go out of scope with the callback, and you'll have to make a copy to access the data from outside the callback.
+
+Originally posted by Adolfo Rodriguez T with karma: 3907 on 2013-09-19
+This answer was ACCEPTED on the original site
+Post score: 4
+

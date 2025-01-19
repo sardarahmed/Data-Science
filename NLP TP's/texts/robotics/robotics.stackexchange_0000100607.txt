@@ -1,0 +1,52 @@
+Q:
+
+how to edit move_base in turtlebot3 to not use dijkstra and use other algorithms like A* search or carrot planner
+
+I am new to ROS and I recently learned about the navigation stack and SLAM on turtlebot3. The regular navfn of turtlebot3 uses dijkstra algorithm. By simply setting the use_dijkstra=false the behavior of the global planner can be changed to use A* search instead.
+I am having trouble finding the code or the file where I can actually make changes to the script and set use_dijkstra to false.
+I'm not sure but i believe these changes must be made to move_base.launch
+
+Originally posted by Victor_Kash on ROS Answers with karma: 50 on 2021-11-20
+Post score: 1
+
+A:
+
+global_planner provides an implementation of a fast, interpolated global planner for navigation. This class adheres to the nav_core::BaseGlobalPlanner interface specified in the nav_core package.
+use_dijkstra is one of the parameters of this global_planner
+Reference: http://wiki.ros.org/global_planner
+move_base is also part of Navigation stack but it provides an implementation of an action (see the actionlib package) that, given a goal in the world, will attempt to reach it with a mobile base. The move_base node links together a global and local planner to accomplish its global navigation task. It supports any global planner adhering to the nav_core::BaseGlobalPlanner interface.
+Reference: http://wiki.ros.org/move_base
+For turtlebot3 implementation, take a look at this example: https://github.com/NVIDIA-AI-IOT/turtlebot3/blob/master/turtlebot_apps/turtlebot_navigation/param/global_planner_params.yaml. Notice the initial parameters:
+GlobalPlanner:                                  # Also see: http://wiki.ros.org/global_planner
+  old_navfn_behavior: false                     # Exactly mirror behavior of navfn, use defaults for other boolean parameters, default false
+  use_quadratic: true                           # Use the quadratic approximation of the potential. Otherwise, use a simpler calculation, default true
+  use_dijkstra: true                            # Use dijkstra's algorithm. Otherwise, A*, default true
+  use_grid_path: false                          # Create a path that follows the grid boundaries. Otherwise, use a gradient descent method, default false
+
+And how the launch file calls for those parameters: https://github.com/NVIDIA-AI-IOT/turtlebot3/blob/master/turtlebot_apps/turtlebot_navigation/launch/includes/move_base.launch.xml
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find turtlebot_navigation)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />   
+    <rosparam file="$(find turtlebot_navigation)/param/local_costmap_params.yaml" command="load" />   
+    <rosparam file="$(find turtlebot_navigation)/param/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/dwa_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/move_base_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/global_planner_params.yaml" command="load" />
+    <rosparam file="$(find turtlebot_navigation)/param/navfn_global_planner_params.yaml" command="load" />
+    <!-- external params file that could be loaded into the move_base namespace -->
+    <rosparam file="$(arg custom_param_file)" command="load" />
+
+Originally posted by osilva with karma: 1650 on 2021-11-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Mike Scheutzow on 2021-11-20:
+@Victor_Kash standard ros has multipe "global planner" implementations: two of the implementations are named navfn and global_planner. I believe that navfn does not implement the A* algorithm. So first you will need to change the move_base configuration to use global_planner, then you would change the global_planner configuration to use A*.
+Comment by Victor_Kash on 2021-11-21:
+thanks that works but upon setting use_dijkstra to false it shows it weird wall sticking behavior like this https://drive.google.com/file/d/1yr3Ejj22hQHmHARro1z8-mNVnteAgAgj/view?usp=sharing
+Comment by osilva on 2021-11-21:
+You will need to review some of your parameters. Dijkstra and A* are similar but not the same.
+Comment by Victor_Kash on 2021-11-25:
+yeah tweaking the neutral_cost seems to have solved the problem
+

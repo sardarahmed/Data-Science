@@ -1,0 +1,51 @@
+Q:
+
+Multithreading vs ROS nodes
+
+Hi,
+My Background:
+I am currently working on a project involving (Parrot A.R.) drone navigation. I require state estimation and controller module.
+Assuming the state estimator and controller are perfectly implemented, I am currently in a dilemma choosing between 2 approaches that I can think of -
+
+Solution 1:  This solution is known (or) has been implemented by someone
+
+Use C++ multithreading and run 1 loop separately in each of (a total of) 2 threads**.
+
+StateEstimator Loop: This loop provides state estimate and fills in a Thread safe queue.
+Controller Loop:  This loop accesses state estimates from the queue and sends navigation controls to the drone.
+
+(Possible) Solution 2: Use a ROS node for each, state estimator node provides state estimate (using topics) while the other controller node uses it to send control signals to the drone.
+
+===============
+My Question/Dilemma:  The second approach sounds easier to implement than the first. But I'm aware that ROS nodes run as processes while the other approach uses threads. I am not sure if the second one might work, and also how the process scheduling etc may affect my results ...
+I am looking for some advice from people's personal experience with ROS and/or drone projects,
+Thank you very much !
+
+Originally posted by malharjajoo on ROS Answers with karma: 121 on 2018-03-31
+Post score: 2
+
+A:
+
+If the two components are tightly coupled, and need to do a lot of back and forth between them (which needs some scheduling/handshaking), then a single node is probably the way to go. If the two components really are separate, then separate nodes may be advantageous. No matter how "thread safe" something starts off, it's only a few commits away from breaking that contract.
+Splitting things into multiple nodes will certainly incur an overhead - this mainly comes in the form of extra computation to serialized data back and forth between the nodes, and depends mainly on how big the data is that has to be shared. If you're dealing with high-resolution images, avoiding serialization is good. If you're dealing with a few small bytes, it may not matter.
+One of the big strengths of multiple nodes is that multiple people could work on a project at once (each on separate nodes). One other strength might be if it takes a long time to setup one component (for instance, your state estimator), you can leave that portion of the system running while restarting the other component you are still developing/debugging.
+
+Originally posted by fergs with karma: 13902 on 2018-03-31
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2018-04-01:\
+
+extra computation to serialized data back and forth between the nodes
+
+Would be good to mention nodelets here.
+Comment by malharjajoo on 2018-04-01:
+Thanks for the answer  @fergs, has helped me a bit more in understanding the overhead. My use-case (as mentioned in question) involves access to state estimate by the controller ( It's a closed feedback loop ) so I assume that it's tightly coupled ... and hence multithreading is the way to go (?)
+Comment by malharjajoo on 2018-04-01:
+Hi, @gvdhoom, that is a nice suggestion ... I've seen it being used in the stereo_image_proc node .. unfortunately I'm not sure if I have the expertise for managing nodelets  (I am sort of a beginner in ROS)
+Comment by fergs on 2018-04-01:
+@gvdhoorn -- while nodelets can certainly help with computation, and might be a route to go after you have a fully functioning system, I personally never recommend them for upfront use due to the mess it usually creates for debugging.
+Comment by gvdhoorn on 2018-04-02:
+I know, but I do feel it would be good to mention it (that's not recommending). You used "overhead - this mainly comes in the form of extra computation to serialise data back and forth between nodes" as an argument against nodes. Nodelets would seem to address that specifically.
+

@@ -1,0 +1,146 @@
+Q:
+
+How to implement service using oops concept?
+
+Hey all,
+I need to implement a service. I can do it using two separate functions or classes each for service server and client server. But my idea is to implement both service server and service client in the same class like below or using interface design pattern.
+Class Dummy 
+{
+
+private: 
+ros::ServiceClient client;
+ros::ServiceServer server;
+//constructor
+Dummy(ros::NodeHandle &nh) : m_nh(nh) {
+
+//advertising the service
+
+}
+
+bool ServiceCallBack(){};
+
+};
+And then
+Class instantiation in other class constructor.
+Now the problem is, How to initialize both server node and client node  by instantiate just one class?.
+Any idea to do using my concept or using interface concept.
+your idea is also most welcomed including any documentation about advanced ros.
+Thanks in advance
+
+Originally posted by Suri on ROS Answers with karma: 3 on 2020-04-07
+Post score: 0
+
+Original comments
+Comment by Weasfas on 2020-04-07:
+Well, technically you do not need a ServiceClient node to use the ServiceServer, you can use the rosservice call command to call the service implemented in the node. Having said that, what is the point of having both in the same node, by definition the Server node is executing always waiting for a request, if you manage to have both in the same class you will need to bind an additional thread to the class in order to execute the ros::spin of the server and not stall the Client requests. One of the characteristics of ROS is its modularity, that may be the reason by the tutorials (Server/Client)(Publisher/Subscriber) are explained in separate nodes.
+Nevertheless I am going to add my approach as an answer. I did manage to have both in a class, but you really need another thread for the server to process incoming request, if not, the nodehandle stucks.
+Comment by Suri on 2020-04-08:
+@Weasfas, thank you so much for the good explanation. I will try it in my own way, if it fits, i will come back for discuss in order to get your view.
+
+A:
+
+This is my oop approach to the problem you stated, note that I modified the service_client version of the beginners tutorial for roscpp.
+#include "ros/ros.h"
+#include <boost/thread.hpp>
+#include "beginner_tutorials/TwoIntsCustom.h"
+
+class AddTwo
+{
+  private:
+    ros::ServiceServer ss_;
+    ros::ServiceClient sc_;
+
+    ros::NodeHandle& nh_, private_nh_;
+
+  public:
+    AddTwo(ros::NodeHandle* nh, ros::NodeHandle* private_nh)
+    :nh_(*nh)
+    , private_nh_(*private_nh)
+    {
+      this->sc_ = nh_.serviceClient<beginner_tutorials::TwoIntsCustom>("add_two_ints");
+    }
+
+    ~AddTwo()
+    {
+    }
+
+    boost::thread* ss_thread_;
+
+    bool add(beginner_tutorials::TwoIntsCustom::Request& req,
+      beginner_tutorials::TwoIntsCustom::Response& res);
+    bool client_call(int a, int b);
+    bool spin_server();
+};
+
+bool AddTwo::add(beginner_tutorials::TwoIntsCustom::Request& req,
+                 beginner_tutorials::TwoIntsCustom::Response& res)
+{
+  res.sum = req.a + req.b;
+  ROS_INFO("SS: request: x=%ld, y=%ld", (long int)req.a, (long int)req.b);
+  ROS_INFO("SS: sending back response: [%ld]", (long int)res.sum);
+  return true;
+}
+
+bool AddTwo::client_call(int a, int b)
+{
+  ROS_INFO("Calling Server...");
+  this->sc_.waitForExistence();
+
+  beginner_tutorials::TwoIntsCustom srv;
+  srv.request.a = a;
+  srv.request.b = b;
+  if (this->sc_.call(srv))
+  {
+    ROS_INFO("SC: Sum: %ld", (long int)srv.response.sum);
+  }
+  else
+  {
+    ROS_ERROR("SC: Failed to call service add_two_ints");
+    return 1;
+  }
+}
+
+bool AddTwo::spin_server()
+{
+
+  this->ss_ = nh_.advertiseService("add_two_ints", &AddTwo::add, this);
+  ROS_INFO("Ready to add two ints.");
+  ros::spin();
+
+  return 0;
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "add_two_ints_server");
+  ros::NodeHandle nh, private_nh("~");
+
+  AddTwo at = AddTwo(&nh, &private_nh);
+
+  at.ss_thread_ = new boost::thread(
+    boost::bind(&AddTwo::spin_server, &at));
+
+  ros::Rate r (3.0);
+
+  for (int ia=0, ib=0 ; ia < 10 && ib < 10 ; ia++, ib++)
+  {
+    ROS_INFO("Main calling server with: a=%d, b=%d ....", ia,ib);
+    at.client_call(ia,ib);
+    r.sleep();
+  }
+
+  return 0;
+}
+
+If someone provide a better approach I will be glad to discuss it here.
+
+Originally posted by Weasfas with karma: 1695 on 2020-04-07
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by james P M on 2020-11-28:
+Why we are using boost
+Comment by Weasfas on 2020-11-29:
+@james P M, It is a personal decision, you can use instead of boost, std threads, just remember to include the necessary headers: #include <thread> for std::thread and #include <functional> for std::bind.
+

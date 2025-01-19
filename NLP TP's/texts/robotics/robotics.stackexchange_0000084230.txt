@@ -1,0 +1,100 @@
+Q:
+
+ How to subscribe to IMU data? Offboard control, PX4, MAVROS
+
+Sorry I couldn't find out how to paste code properly. I'm trying to get IMU data from px4 through MAVROS. I am doing offboard control.
+I referred from this website to make an IMU listener. (Writing a Simple Subscriber for IMU)
+Although I am not sure how to find type in classes that are used in this code.
+Right now, it isn't even going through chatterCallback even though I move px4 around and changing IMU values. Also when I run rqt_graph , it will give me imu_listener standing alone and not connected to MAVROS.
+Can anyone give me advise how to make this IMUlistener work?
+Thankyou,
+Sarah
+.#include "ros/ros.h" //take away period in the beggining
+.#include "sensor_msgs/Imu.h"
+.#include "mavros_msgs/State.h"
+
+void chatterCallback(const sensor_msgs::Imu::ConstPtr& msg)
+{
+  ROS_INFO("Hello");
+  ROS_INFO("Imu Seq: [%d]", msg->header.seq);
+  ROS_INFO("Imu Orientation x: [%f], y: [%f], z: [%f], w: [%f]", msg->orientation.x,msg->orientation.y,msg->orientation.z,msg->orientation.w);
+}
+
+mavros_msgs::State current_state;
+void state_cb(const mavros_msgs::State::ConstPtr& msg){
+    current_state = *msg;
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "imu_listener");
+
+  ros::NodeHandle n;
+
+ ros::Subscriber state_sub = n.subscribe<mavros_msgs::State>
+          ("mavros/state", 10, state_cb);
+  ros::Subscriber sub = n.subscribe<sensor_msgs::Imu>
+          ("mavros/imu/data", 1000, chatterCallback);
+
+  ros::Rate rate(20.0);
+
+  while(ros::ok() && current_state.connected){
+      ros::spinOnce();
+      rate.sleep();
+  }
+
+  for(int i = 100; ros::ok() && i > 0; --i){
+      ros::spinOnce();
+      rate.sleep();
+  }
+
+  ros::spin();
+
+  return 0;
+}
+
+Originally posted by SarahMars on ROS Answers with karma: 3 on 2017-12-04
+Post score: 0
+
+Original comments
+Comment by jayess on 2017-12-04:
+Welcome! In order to get your the code formatted correctly, you don't use the <code> or <pre> tags. What you do is paste your code, highlight it, then click the preformatted text (101010) button.
+Comment by SarahMars on 2017-12-06:
+Oh ok thank you for the information!
+
+A:
+
+This may be a hardware issue. Try publishing the topic yourself without the IMU and see if you can get the callback to execute. You can do this with the command line as seen in the wiki:
+rostopic pub /mavros/imu/data sensor_msgs/Imu "header:
+  seq: 0
+  stamp: {secs: 0, nsecs: 0}
+  frame_id: ''
+orientation: {x: 0.0, y: 0.0, z: 0.0, w: 0.0}
+orientation_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+angular_velocity: {x: 0.0, y: 0.0, z: 0.0}
+angular_velocity_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+linear_acceleration: {x: 0.0, y: 0.0, z: 0.0}
+linear_acceleration_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"
+
+Now, the easy way to do this is to type rostopic pub /mavros/imu/data sensor_msgs/Imu in the terminal then hit the tab key twice and it'll fill in the rest for you. Next, hit Enter and it'll publish this message for you.
+If your callback executes you'll that it may be a hardware issue versus something being wrong with your code, or at least the callback portion of it. Although, if you're following the MAVROS PX4 ROS  offboard tutorial you may be missing certain portions of code such as keeping the keeping the vehicle armed. If it doesn't receive any commands for a certain amount of time (faster than 2Hz) then
+
+the commander will fall back to the last mode the vehicle was in before entering Offboard mode
+
+Update
+You do not have to publish like this (from the terminal) to get your callbacks to execute. You do, however, need to have something publishing on that topic. What I mean is, a callback is only executed when it receives data. Therefore, if nothing is publishing then callbacks are not executed. That's why you weren't seeing your callback doing anything, there was nothing being published.
+I highly recommend that you go through the tutorials to make sure that you understand how the publish and subscribe system works along with the other basics of ROS.
+
+Originally posted by jayess with karma: 6155 on 2017-12-04
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by SarahMars on 2017-12-05:
+Thank you so much for your reply. After I ran your command once in the terminal, it is working fine!
+Do I have to publish the topic like this all the time if I want to access new data, or is there any other way doing this (like changing source files)?
+Comment by SarahMars on 2017-12-05:
+Also once you publish using "rostopic pub /mavros/imu/data sensor_msgs/Imu" it will continue to have settings for publishing the data, right?
+Comment by jayess on 2017-12-05:
+I'm glad that you know it works. If this solved your problem please click on the checkmark to set this answer as correct.
+

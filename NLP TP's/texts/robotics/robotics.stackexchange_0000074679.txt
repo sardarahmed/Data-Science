@@ -1,0 +1,67 @@
+Q:
+
+Save images kinect - 30fps
+
+I have to record a dataset using the kinect, it should contains RBG images and depth images..
+Using this code:
+char filename[80];
+int i=0,j=0;
+
+void imageCallbackdepth(const sensor_msgs::ImageConstPtr& msg)
+{
+    // convert message from ROS to openCV
+    cv_bridge::CvImagePtr cv_ptr;
+
+    try
+    {
+        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1);
+
+    }
+
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+     
+      sprintf(filename,"depth_%d.png", i++);
+      cv::imwrite(filename,cv_ptr->image);
+}
+
+void imageCallbackrgb(const sensor_msgs::ImageConstPtr& msg)
+{
+    //The same for RGB
+}
+
+I have a couple of questions:
+How can I make sure that I'm saving images at 30fps? Am I not missing any frame? How can I change this parameter?
+Saving RBG and depth at the same time and adding another sensor (stereocamera) doesn't effect that?
+My program is correct, is it the right way to do this?
+
+Originally posted by ROSkinect on ROS Answers with karma: 751 on 2016-06-20
+Post score: 0
+
+A:
+
+My recommendation is to use existing tools: If you want to reuse the data with a ROS node, record a bagfile, e.g.:
+rosbag record -o kinect-data /tf /the-rgb-image-topic /the-depth-image-topic /the-camera-info-topic 
+
+If you want the raw images, use image_saver from the image_view package:
+rosrun image_view image_saver image:=/the-rgb-image-topic &
+rosrun image_view image_saver image:=/the-depth-image-topic
+
+If you still want to do it from your code, maybe because you need to be absolutely sure you get every frame, you can use the sequence number of the message to check whether you lost something. It's some integer you can access via msg->header->seq. It should always increase by one.
+Also have a look at the approximate time synchronizing message filter, which can help you get associated rgb and depth in a single callback.
+You will record with 30Hz if your machine is fast enough. If not, there are few things you can do.
+P.S: Just some general C++ advise: Don't use global variables if you can avoid it. Static variables within the callback functions would make more sense here.
+
+Originally posted by Felix Endres with karma: 6468 on 2016-06-20
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by MichaelKorn on 2016-06-20:
+I think for depth images the encoding muss be specified, e.g.: rosrun image_view image_saver image:=/camera/depth/image_raw _encoding:=16UC1 _filename_format:="depth%04i.png"
+Comment by Felix Endres on 2016-06-21:
+Didn't know that. Thanks.
+

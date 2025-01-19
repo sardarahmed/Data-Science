@@ -1,0 +1,159 @@
+Q:
+
+robot_pose_ekf wrong output with "good input"
+
+I'm not be able to understand why I get a wrong pose from robot_pose_ekf. I'm using a kinect on a table and connected to the workstation to find the turtlebot position orientation and publish the result in /vo. Kinect is tracking a pattern marker and find a pose.
+I want to use odometry and imu to have a better result and have a pose when kinect can't see the marker.
+My issue is /vo, /odom, and imu/data has similar orientation but ekf find something very different and I can't understand why.
+Here is my tf tree to see how I work:
+/vo:
+header:    seq: 479   stamp: 
+    secs: 1370526479
+    nsecs: 1198623   frame_id: odom child_frame_id: base_footprint pose:   pose: 
+    position: 
+      x: 0.109848357611
+      y: 0.0184851177529
+      z: 0.00108856573807
+    orientation: 
+      x: -0.0155068317083
+      y: 0.00236792210117
+      z: -0.726064768505
+      w: 0.687447367477   covariance: [0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10000.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10000.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-06]
+
+/odom
+header: 
+  seq: 5144
+  stamp: 
+    secs: 1370526478
+    nsecs: 985132932
+  frame_id: odom
+child_frame_id: base_footprint
+pose: 
+  pose: 
+    position: 
+      x: 0.122778090562
+      y: 0.0180749352772
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: -0.754709580223
+      w: 0.656059028991
+  covariance: [0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000.0]
+
+/imu/data:
+header: 
+  seq: 5154
+  stamp: 
+    secs: 1370526479
+    nsecs: 318391084
+  frame_id: gyro_link
+orientation: 
+  x: 0.0
+  y: 0.0
+  z: -0.641532116852
+  w: 0.767096175878
+orientation_covariance: [1000000.0, 0.0, 0.0, 0.0, 1000000.0, 0.0, 0.0, 0.0, 1e-06]
+
+and robot_pose_ekf/odom:
+header: 
+  seq: 3340
+  stamp: 
+    secs: 1370526479
+    nsecs: 618319034
+  frame_id: odom
+pose: 
+  pose: 
+    position: 
+      x: 0.0979321075308
+      y: -0.0259189421082
+      z: -0.00496891294622
+    orientation: 
+      x: 3.68249858201e-06
+      y: -4.82461122176e-05
+      z: 0.970055184809
+      w: -0.242884614753
+  covariance: [5.493486503712613e-07, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.493486503712613e-07, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0987278074026108e-06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.877878440724317, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.877878440724317, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.493333772345698e-10]
+
+And how I construct the odometry msg:
+ void readAndSendVo()
+  {
+    tf::TransformListener lisVo;
+    tf::StampedTransform transformVo;
+    nav_msgs::Odometry vo;
+    std::string odomFrame = "/null";
+    try
+      { 
+
+    odomFrame = "/odom";
+    lisVo.waitForTransform(odomFrame, "/base_marker", ros::Time(0), ros::Duration(1.0) );
+    lisVo.lookupTransform(odomFrame, "/base_marker", ros::Time(0), transformVo);
+      
+    vo.pose.pose.position.x = transformVo.getOrigin().x();
+    vo.pose.pose.position.y = transformVo.getOrigin().y();
+    vo.pose.pose.position.z = transformVo.getOrigin().z();
+    vo.pose.pose.orientation.x = transformVo.getRotation().x();
+    vo.pose.pose.orientation.y = transformVo.getRotation().y();
+    vo.pose.pose.orientation.z = transformVo.getRotation().z();
+    vo.pose.pose.orientation.w = transformVo.getRotation().w();
+
+    vo.header.stamp = ros::Time::now();
+    vo.header.frame_id = "odom";
+    vo.child_frame_id = "base_footprint";
+
+    vo.pose.covariance[0] = 0.001;
+    vo.pose.covariance[7] = 0.001;
+    vo.pose.covariance[14] = 0.001;
+    vo.pose.covariance[21] = 10000.1;
+    vo.pose.covariance[28] = 10000.1;
+    vo.pose.covariance[35] = 0.000001;
+
+    m_pubVo.publish(vo);
+       
+      }
+    catch (tf::TransformException ex)
+      {
+    ROS_ERROR("%s",ex.what());
+      }
+  }
+
+I have synchronized computer with: ntpdate -q 192.168.1.XXX (my master IP)
+and I have calibrated gyro and odom. EDIT: sudo ntpdate 192.168.1.XXX (my master IP)
+My /vo pose is always correct, I can see the marker on the robot with rviz on a camera windows. And even when I put a 10^-12 covariance the output is strange.
+Sometimes I can read a warm msg with no device connected for the kinect but Kinect is working well. Maybe is because the kinect is not connected to the turtlebot but on the workstation.
+EDIT:
+I have some error messages:
+"Robot pose ekf diagnostics discovered a potential problem"
+And sometines imu/data send me very strange data very different from /odom and /vo.
+"[Openni/Camera] No devices connected.... waiting for devices to be connected"
+But I use openni_launch. When I use robot_pose_ekf with vo as false I have also vo sensor activated. Can I work with this solution ?
+Imu/data increase without robot movement ! Around 0.1 degree/sec !
+Yet, I have done calibration... so I disabled it but I'm still have the same problem.
+The ekf algorithm increments too quickly turtlebot position.
+
+Originally posted by jep31 on ROS Answers with karma: 411 on 2013-06-06
+Post score: 0
+
+Original comments
+Comment by weiin on 2013-06-06:
+just a note: 'ntpdate -q' does a query only, and does not set the time. you need to 'sudo ntpdate ' in order to sync
+Comment by weiin on 2013-06-06:
+some troubleshooting: remove /imu and /vo as ekf inputs. ie see if only /odom topic going through ekf will affect the output. then add /vo. then add /imu. (i'm suspecting /imu is creating the error.. just a hunch)
+Comment by jep31 on 2013-06-06:
+I did your new sync with same result. I can see the msg vo, imu and odom sensor activated but often vo goes deactivated and return activated quickly. I have also the msg: "Robot pose ekf diagnostics discovered a potential problem"and "No devices connected.... waiting for devices to be connected"
+Comment by jep31 on 2013-06-06:
+Often imu orientation is very different from odom orientation, is that normal ? And if no, how can I fix it ?
+
+A:
+
+Not sure what imu you are using. If you are using one that uses magnetometer (compass) to get orientation data, it might be affected by magnetic fields around it. Check this by placing your robot stationary and see if /imu/data orientation values drift.
+
+Originally posted by weiin with karma: 2268 on 2013-07-04
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by jep31 on 2013-07-07:
+Yes It does, position is moving in stationary position because velocity has some noise sometimes. I prefer not to use it for now. I'm writing a new kalman filter because this package is not enable to use global sensor anyway.
+

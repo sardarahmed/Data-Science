@@ -1,0 +1,71 @@
+Q:
+
+Applying rotations to coordinate frames using TF
+
+Hello,
+I have two frames on my robot, /base_link and /frame_imu. The imu is positioned 90deg in the positive yaw direction relative to the robot center(or /base_link). So basically a roll in the imu's coordinate frame would correspond to a pitch in the robot's coordinate frame. From what I understand I should be able to use TF's transform_broadcaster to broadcast this transformation:
+  tf::Transform transform;
+  transform.setOrigin( tf::Vector3(0.0, 0.0, 0.0) );
+  transform.setRotation( tf::createQuaternionFromRPY(0,0,M_PI/2) );
+  tf_broadcast->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/base_link", "imu_frame"));
+
+At first I thought if I just use TF's lookupTransform I could get the correct transformation between frames(my imu's frame_id is set to /imu_frame):
+void imuCallback(const sensor_msgs::Imu::ConstPtr& msg){
+tf::StampedTransform transform;
+
+listener->waitForTransform("/base_link",
+                                    msg->header.frame_id,
+                                    msg->header.stamp,
+                                    ros::Duration(3.0));
+
+listener->lookupTransform("/base_link",
+                                  msg->header.frame_id,
+                                  msg->header.stamp,
+                                  transform);
+
+That just gives me the transformation (0,0,M_PI/2), then I could use TF's transformQuaternion to actually perform the rotation from the imu's frame to the robot's frame:
+geometry_msgs::QuaternionStamped imu_quat = geometry_msgs::QuaternionStamped();
+imu_quat.header = msg->header;
+imu_quat.quaternion = msg->orientation;
+geometry_msgs::QuaternionStamped q_robot;
+listener->transformQuaternion("base_link",msg->header.stamp,imu_quat, imu_quat.header.frame_id, q_robot);
+tf::Quaternion quatquat;
+tf::quaternionMsgToTF(q_robot.quaternion,quatquat);
+tf::Matrix3x3(quatquat).getEulerYPR(new_yaw,new_pitch,new_roll);
+
+What happens is if my imu reads a (Yaw,Pitch,Roll) of say (80,10,120) I would expect my (new_roll,new_pitch,new_yaw) to be (80,90,120) but instead I get (170,10,120) so it just adds the yaw factor. Is trasnformQuaternion the right method for what I want to achieve? Any help to point me in the right direction would be greatly appreciated.
+EDIT/UPDATE:
+Well I don't think the twists really made a difference. I imagined that if my frame transformation setup is:
+  tf::Transform transform;
+  transform.setOrigin( tf::Vector3(0.0, 0.0, 0.0) );
+  transform.setRotation( tf::createQuaternionFromRPY(0,0,M_PI/2) );
+  tf_broadcast->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/base_link", "imu_frame"));
+
+And I have the twists set up like so:
+        geometry_msgs::Twist robot_twist;
+        listener.lookupTwist("/imu_frame","/base_link",ros::Time(0),ros::Duration(3.0),robot_twist);
+
+Then if I perform a roll on my /imu_frame, I should see an angular velocity increase on the pitch(robot_twist.angular.y) of my /base_link , but I still see the angular velocity of roll(robot_twist.angular.x) increasing on /base_link . It may be that I am not doing the broadcast of frame transforms correctly
+
+Originally posted by obotic on ROS Answers with karma: 41 on 2013-10-06
+Post score: 1
+
+A:
+
+It looks like you put in a 90 degree yaw at the top.  Note that you used the fixed axis RPY method.
+That is the right method and the right output.  With the euler angle conventions used here(ZYX) yaw is evaluated first, thus a transform of a yaw only will only effect the yaw terms.  Your assertion that pitch becomes roll only happens if you don't change your reference frame after applying the transformation. But transformQuaternion puts you into base_link coordinate frame.
+
+Originally posted by tfoote with karma: 58457 on 2013-10-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by obotic on 2013-10-06:
+Sorry I meant to say "(new_roll,new_pitch,new_yaw) to be (80,100,120)" not (80,90,120)
+Comment by obotic on 2013-10-06:
+Ok I think I understand what you are saying, but let's say my imu was mounted 40deg in the positive yaw relative to /base_link. Now if the imu sees a roll, the /base_link needs to interpret the imu's roll as a combination of pitch and yaw. I know the yaw is 40(I think) but how would I know the pitch
+Comment by tfoote on 2013-10-06:
+Ahh if you're trying to deal with these rotation rates you don't want to be expressing them as quaternions(positions) but as twists. tf has a basic API for twists, but you will need to understand the math and do it correctly yourself.  PS kdl has a good library for doing operations with twists.
+Comment by obotic on 2013-10-07:
+Thanks I think this may be the solution to our problem, I will test it out and post an update.
+

@@ -1,0 +1,101 @@
+Q:
+
+Moveit Pose "unable to sample any valid states"
+
+I've been trying to get a fanuc lrmate200id to work go to a pose goal in Rviz through the move_group_interface. If I set a simple position goal using move_group.setPositionTarget(x,y,z,"tool0"), moveit is able to plan a path. However, if I use either setOrientationTarget, or setPoseTarget, moveit is never able to figure out a path. The block of code I've borrowed/modified is below:
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "move_group_interface_tutorial");
+  ros::NodeHandle node_handle;  
+  ros::AsyncSpinner spinner(1);
+  spinner.start();
+
+static const std::string PLANNING_GROUP = "manipulator";
+  moveit::planning_interface::MoveGroup move_group(PLANNING_GROUP);
+
+ moveit::planning_interface::PlanningSceneInterface planning_scene_interface;  
+
+const robot_state::JointModelGroup *joint_model_group = move_group.getCurrentState()->getJointModelGroup(PLANNING_GROUP);
+
+namespace rvt = rviz_visual_tools;
+moveit_visual_tools::MoveItVisualTools visual_tools("odom_combined");
+visual_tools.deleteAllMarkers();
+
+ ros::Publisher display_publisher = node_handle.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
+  moveit_msgs::DisplayTrajectory display_trajectory;
+
+visual_tools.loadRemoteControl();
+
+  ROS_INFO("Reference frame: %s", move_group.getPlanningFrame().c_str());
+  ROS_INFO("Reference frame: %s", move_group.getEndEffectorLink().c_str());
+
+move_group.setPlanningTime(60*5);
+move_group.setGoalTolerance(.001);
+
+const float theta = 10*3.1416/180.0;
+double x1 = .5, x2 = 0, x3 = 0;
+geometry_msgs::Pose target_pose1;
+  target_pose1.orientation.w = 1;
+  target_pose1.position.x = x1*sin(theta/2);
+  target_pose1.position.y = x2*sin(theta/2);
+  target_pose1.position.z = x3*sin(theta/2);
+
+  //move_group.setPositionTarget(x1,x2,x3,"tool0");
+  //move_group.setRPYTarget(0,0,0,"tool0");
+  //move_group.setOrientationTarget(x1,x2,x3,1,"tool0");
+  move_group.setPoseTarget(target_pose1,"tool0");
+moveit::planning_interface::MoveGroup::Plan my_plan;
+  bool success = move_group.plan(my_plan);
+
+  ROS_INFO("Visualizing plan 1 (pose goal) %s",success?"":"FAILED");    
+  /* Sleep to give Rviz time to visualize the plan. */
+  sleep(5.0);
+
+  ros::shutdown();  
+  return 0;
+}
+
+any ideas on how to proceed would be most appreciated!
+thanks,
+Josh
+
+Originally posted by jbeck28 on ROS Answers with karma: 101 on 2017-02-03
+Post score: 0
+
+Original comments
+Comment by JoshMarino on 2017-02-04:
+Not to sound repetitive, but are the pose and orientation targets reachable? Can try set random joint state target and get the pose of the end effector link from that. Another option is to try changing the motion planner being used.
+Comment by jbeck28 on 2017-02-07:
+I've seen trying a different motion planner come up on online. However, I'm not sure what my options are. Is there somewhere I can read about what motion planner options I have?
+Comment by dvolosnykh on 2017-04-12:
+setOrientationTarget() accepts raw quaternion values, but you try to pass position coordinates instead. When managing positions and orientations I highly recommend you to use tf (or even tf2) package for you calculations. Then convert it to target message format via tf::convertXXX() methods family.
+
+A:
+
+Hi! i don't known if it helps but here my way of planning:
+First, i do a planning by joints, in other words i do the "Planning to a joint-space goal" from the move_group_interface_tutorial.cpp
+Second i do a reading of eef position with this code:
+  geometry_msgs::PoseStamped robot_pose;
+  robot_pose = group.getCurrentPose();
+
+  geometry_msgs::Pose current_position;
+  current_position = robot_pose.pose;
+
+  /*Retrive position and orientation */
+  geometry_msgs::Point exact_pose = current_position.position;
+  geometry_msgs::Quaternion exact_orientation = current_position.orientation;
+
+  ROS_INFO("Reference frame : %s",group.getPlanningFrame().c_str());
+  ROS_INFO("Reference frame : %s",group.getEndEffectorLink().c_str());
+
+  std::cout<<"Robot position : "<<exact_pose.x<<"\t"<<exact_pose.y<<"\t"<<exact_pose.z<<std::endl;
+  std::cout<<"Robot Orientation : "<<exact_orientation.x<<"\t"<<exact_orientation.y<<"\t"<<exact_orientation.z<<"\t"<<exact_orientation.w<<std::endl;
+
+Third with the coordinates that i read on the step 2, i do the planning by coordinates, in other words, the "Planning to a Pose goal" from move_group_interface_tutorial.cpp
+And thats about it, that way my coordinates are always valid
+Hope it helped
+
+Originally posted by FábioBarbosa with karma: 137 on 2017-02-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

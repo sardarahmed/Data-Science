@@ -1,0 +1,61 @@
+Q:
+
+No matching function for call to ‘ros::NodeHandle::param’
+
+I have the following line of C++ code:
+private_nh_.param("max_desired_publish_freq", max_desired_publish_freq_, double(5.0));
+
+and the type of the variable max_desired_publish_freq_ is double_t.
+This builds fine on an x86_64 machine (my machine) as well as on the 64 bit ROS build jobs, but for some reason, it fails on i386 builds with the following error:
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp: In member function ‘bool rail_object_detector::Detector::start()’:
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:56:32: error: no matching function for call to ‘ros::NodeHandle::param(const char [25], double_t&, double)’
+16:08:17                      double(5.0));
+16:08:17                                 ^
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:56:32: note: candidates are:
+16:08:17 In file included from /opt/ros/indigo/include/ros/ros.h:45:0,
+16:08:17                  from /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/include/rail_object_detector/detector.h:17,
+16:08:17                  from /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:5:
+16:08:17 /opt/ros/indigo/include/ros/node_handle.h:2039:8: note: template<class T> void ros::NodeHandle::param(const string&, T&, const T&) const
+16:08:17    void param(const std::string& param_name, T& param_val, const T& default_val) const
+16:08:17         ^
+16:08:17 /opt/ros/indigo/include/ros/node_handle.h:2039:8: note:   template argument deduction/substitution failed:
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:56:32: note:   deduced conflicting types for parameter ‘const T’ (‘long double’ and ‘double’)
+16:08:17                      double(5.0));
+16:08:17                                 ^
+16:08:17 In file included from /opt/ros/indigo/include/ros/ros.h:45:0,
+16:08:17                  from /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/include/rail_object_detector/detector.h:17,
+16:08:17                  from /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:5:
+16:08:17 /opt/ros/indigo/include/ros/node_handle.h:2071:5: note: template<class T> T ros::NodeHandle::param(const string&, const T&)
+16:08:17    T param(const std::string& param_name, const T& default_val)
+16:08:17      ^
+16:08:17 /opt/ros/indigo/include/ros/node_handle.h:2071:5: note:   template argument deduction/substitution failed:
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:56:32: note:   candidate expects 2 arguments, 3 provided
+16:08:17                      double(5.0));
+
+This seems to indicate that the function for getting parameters from the parameter server with default values in the code does not exist in the 32-bit version of ROS; but that seems unlikely.
+Any help figuring out what's really going on here would be greatly appreciated!
+
+Originally posted by banerjs on ROS Answers with karma: 5 on 2017-02-03
+Post score: 0
+
+A:
+
+The answer is in the error output:
+16:08:17 /opt/ros/indigo/include/ros/node_handle.h:2039:8: note:   template argument deduction/substitution failed:
+16:08:17 /tmp/binarydeb/ros-indigo-rail-object-detector-1.0.2/src/rail_object_detector/detector.cpp:56:32: note:   deduced conflicting types for parameter ‘const T’ (‘long double’ and ‘double’)
+16:08:17                      double(5.0));
+16:08:17                                 ^
+
+Both long double and double are valid types; evidently, the compiler you're using can't disambiguate them.
+This is outside my realm of knowledge; I'm not sure if people run into this often or if there's a typical fix. But it seems to me that you should be able to explicitly declare and initialize a typed variable on the line before and use that:
+double x=5.0;
+private_nh_.param("max_desired_publish_freq", max_desired_publish_freq_, x);
+
+Originally posted by kramer with karma: 1470 on 2017-02-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by banerjs on 2017-02-05:
+Of course! I didn't notice that line with long double. double_t must be parsed as a long double on 32-bit. Thanks!
+

@@ -1,0 +1,50 @@
+Q:
+
+Opposite direction of rotation calculated by Gyro and Accelerometer
+
+I have just started learning how to fuse the data measured by the gyro and accelerometer to estimate the attitude of an IMU in Matlab.  I have no problem estimating or understanding the Euler angles calculated from at set of gyro data. But when I calculate the Euler angles from the accelerometer data, the rotation always seem to go in the opposite direction to that of the gyro's.
+(note:the order of rotation is X(Phi) -> Y(Theta) -> Z(Psi))
+To troubleshoot, I ran a very simple experiment where I first fixed the x-axis parallel to the ground with the y-axis pointing straight down. Then I gradually rotated the object around the x-axis positively (CCW) by roughly ~+40°.  All the signs and direction of rotation follow the right-hand-rule and right-hand-curl rule.
+For clarity I attach the following drawing to associate sections of the accelerometer data to the state of rotation (note: +x-axis points out of the page):
+
+The accelerometer data looks correct. ay stays pointing downward for the first few seconds and logs a value of -1g before rotating.  As the object frame rotates around the x-axis (positively or CCW), ay decreases in magnitude as az increases its.
+I expect the Phi-delta measured by gyro should start with 0 deg and end with ~+40 deg because the rotation is positive (CCW), if we ignore the noise, drift, and accumulation of error due to numerical integration - the calculated graph pretty much agrees.
+Then with the accelerometer, I expect the Phi to go from -90 deg to -45 deg. The slope should be positive because, again, the rotation is identical and is positive (CCW). Phi-delta is positive, whereas the Phi values should remain negative because the frame position is still CW or negative away from the horizontal orientation.  But when I calculate the Phi, I get the complete opposite:
+
+I am not sure what is wrong in my thought process and hope someone can point out or correct that for me.
+
+A:
+
+Welcome to Robotics, KMC!
+One thing I noticed is that your equation gives $\phi=\arctan2(-a_y,-a_z)$, but you're calculating it as $\phi=\arcsin(-a_y/\cos(\theta))$. If your sensor is oriented as depicted then I would expect $a_x$ to be around zero, which would make $\theta = \arcsin(a_x)$ also around zero. This, then, would make $\cos(\theta)$ around 1, which would leave your calculation as basically $\phi \approx \arcsin(-a_y)$.
+Since your y values are ranging from about -1 to about -0.75, I would then expect your values as-calculated to be around $\arcsin(-(-1)) = +90^\circ$ to about $\arcsin(-(-0.75)) = 48.6^\circ$, which seems to be pretty close to what you're getting in your plots.
+Just for sanity, because your starting values are easy, I took your other formula, $\phi = \arctan2(-a_y, -a_z)$ and evaluated it at the start. You've got $a_y \approx -1$ and $a_z \approx 0$, which gives $\phi = \arctan2(-(-1),-0)$, or $\phi \approx 90^\circ$. This seems odd, because in your drawing we can see that the rotation should be -90, like you mention in your post.
+So then I went back to your equations in matrix form:
+$$
+\left[\array{
+a_x \\
+a_y \\
+a_z \\
+}\right] = \left[\array{\sin(\theta) \\
+-\cos(\theta)\sin(\phi) \\
+-\cos(\theta)\cos(\phi)}\right]
+$$
+If I divide row 2 by row 3 then I get the following:
+$$
+\frac{a_y}{a_z} = \frac{-\cos(\theta)\sin(\phi)}{-\cos(\theta)\cos(\phi)}
+$$
+The $-\cos(\theta)$ cancels on top and bottom, leaving
+$$
+\frac{a_y}{a_z} = \frac{\sin(\phi)}{\cos(\phi)}
+$$
+Which reduces to
+$$
+\frac{a_y}{a_z} = \tan(\phi)
+$$
+and then solve for $\phi$ with $\arctan$:
+$$
+\phi = \arctan2(a_y, a_z) \\
+$$
+I'm not sure where the negative signs came from in your $\phi=\arctan2(-a_y,-a_z)$ but if you do this without the negative signs then I think your numbers come out correct. I wouldn't continue to use the version that relies only on $a_y$ and $a_x$ because $a_x$ is not really a valid input for the $\phi$ calculation.
+I'd also recommend (as always) using the Madgwick filter for anything to do with IMU handling. It looks like your units are $\times10^6$, too, so I'd double-check that you're in proper engineering units before trying to push them through the filter.
+

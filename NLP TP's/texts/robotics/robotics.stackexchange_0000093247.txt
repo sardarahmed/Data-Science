@@ -1,0 +1,97 @@
+Q:
+
+No stdout logging output in ROS2 using launch
+
+Hi all,
+I am unable to see any logging output from stdout when using ros2 launch, and I need some help figuring out what's going on / if this is expected. For example this cpp file:
+int main(int argc, char** argv)
+{
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<rclcpp::Node>("a_test_node");
+
+  RCLCPP_DEBUG(node->get_logger(), "test log debug");
+  RCLCPP_INFO(node->get_logger(), "test log info");
+  RCLCPP_WARN(node->get_logger(), "test log warn");
+  RCLCPP_ERROR(node->get_logger(), "test log error");
+
+  rclcpp::spin(node);
+
+  return 0;
+}
+
+and this launch file:
+import launch
+import launch_ros.actions
+
+def generate_launch_description():
+    return launch.LaunchDescription([
+        launch_ros.actions.Node(
+            package='test_pkg',
+            node_executable='test_node',
+            node_name='test_node',
+            output={
+                'stdout': 'screen',
+                'stderr': 'screen',
+            }
+        ),
+    ])
+
+only outputs:
+jlangsfeld@swri-jlangsfeld-thinkpad-T560:~/Workspaces/ros2$ ros2 launch test_pkg log_test.launch.py
+[INFO] [launch]: All log files can be found below /home/jlangsfeld/.ros/log/2019-09-11-13-45-19-657412-swri-jlangsfeld-thinkpad-T560-18153
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [test_node-1]: process started with pid [18163]
+[test_node-1] [WARN] [test_node]: test log warn
+[test_node-1] [ERROR] [test_node]: test log error
+
+I've tried other output options too with no luck. For example, using own_log for both stdout and stderr means separate log files are created but the stdout one always is completely empty. Any thoughts / suggestions?
+Thanks,
+Josh
+
+Originally posted by jdlangs on ROS Answers with karma: 971 on 2019-09-11
+Post score: 10
+
+Original comments
+Comment by stevemacenski on 2019-09-11:
+can you try output="screen" without the json? That's what I usually do
+ex. https://github.com/ros-planning/navigation2/blob/master/nav2_bringup/launch/nav2_navigation_launch.py#L81
+I see the warn and error, but not info, perhaps because you didnt set to screen in general
+Comment by jdlangs on 2019-09-11:
+Yes, I've tried the single string, which should just be a shortcut for setting both stdout and stderr directly. Are you saying you don't see info outputs either when you run launch files?
+Comment by stevemacenski on 2019-09-11:
+No, I do see them with just the simple string
+Comment by 942951641@qq.com on 2021-06-22:
+in foxy, log can output to ~/.ros/log.
+but i found there is a delay time to log file than screen,
+i found log file will increase 4096kb every time, so is it flush when buffer is fulled ?
+how to set immedialy output every line ?
+
+A:
+
+This turned out to be connected with the known issue of subprocesses from launch having their stdout streams buffered (https://github.com/ros2/launch/issues/188). There is a emulate_tty flag that has recently been added to the ExecuteProcess action that defaults to False. Setting it to True in my launch file (through the Node action constructor) fixes the problem. Eventually it may default to True. (https://github.com/ros2/launch/pull/286)
+
+Originally posted by jdlangs with karma: 971 on 2019-09-16
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by khassanov on 2019-10-10:
+Could you share your snippet reaches emulate_tty, please?
+Comment by mvoellmy on 2019-12-13:
+I added the emulate_tty=True flag here and the outputs worked for me again.
+Node(
+    package='package_name',
+    node_executable='package_exec',
+    output='screen',
+    emulate_tty=True,
+    arguments=[('__log_level:=debug')]
+)
+
+Comment by MrCheesecake on 2020-07-15:
+Does this work with Dashing or only newer versions? 
+I'm getting: [ERROR] [launch]: Caught exception in launch (see debug for traceback): __init__() got an unexpected keyword argument 'emulate_tty'
+Comment by jdlangs on 2020-07-16:
+The keyword was added during Eloquent development. But as of Foxy, this problem should be gone because all logging now comes out on stderr which won't buffer output.
+Comment by mantangL on 2020-10-21:
+i have same problem in dashing version.[ERROR] [launch]: Caught exception in launch (see debug for traceback): init() got an unexpected keyword argument 'emulate_tty'. how can you solve it?
+

@@ -1,0 +1,42 @@
+Q:
+
+RViz odometry arrows displaced from base_link
+
+Hello,
+I'm observing a phenomenon in RViz that I did not think was possible.  I'm using a Python script to move a TurtleBot around a square and I'm monitoring the motion using RViz on my desktop computer.  Both machines are running the latest Electric debs and the TurtleBot runs Ubuntu 10.04 while the desktop runs 11.10.  Both machines are time synced using ntpdate to a common server (ntp.ubuntu.com).
+The phenomenon is illustrated in the image below.
+
+As you can see, the Odometry arrows become detached from the robot base.  This happens a few seconds after I start the robot moving and the degree of displacement can vary over time.  The image here shows a particularly large displacement.  I didn't think this was possible since I'm viewing the motion in the /odom frame.  Also, I was unable to reproduce the problem when running the same experiment on a different base controller (ArbotiX) on a different robot.
+I'm guessing I am missing something fundamental about the connection between the /odom frame and the base_link frame of the robot: can someone straighten me out?
+Thanks!
+
+patrick
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2012-07-08
+Post score: 2
+
+Original comments
+Comment by joq on 2012-07-08:
+Perhaps the /tf messages are being delay over a wifi link?
+
+A:
+
+Thanks @joq.  I am only running RViz on the desktop. Everything else is running on the TurleBot's laptop so I'm not sure where the delay would creep in.  However, I think I just figured it out.
+The TurtleBot launch file runs an robot_pose_ekf node that combines wheel odometry with the gyro info.  So what I need to display in RViz is not what's published on the /odom topic but what is published on the /robot_pose_ekf/odom_combined topic, remapped to /robot_pose_ekf/odom in the TurtleBot launch file.
+Unfortunately, robot_pose_ekf publishes this data as a geometry_msgs/PoseWithCovarianceStamped message rather than a nav_msgs/Odometry message so one can't display it as an Odometry Display type and get the nice "Keep" feature to display the history. In fact, the /robot_pose_ekf/odom topic is not even listed when selecting the Pose Display type presumably because of the Covariance part.
+So I wrote a small script to subscribe to /robot_pose_ekf/odom and republish the data as a nav_msgs/Odometry message type, adding 'base_footprint' as the child_frame_id.  Now I can display /robot_pose_ekf/odom in RViz as Odometry arrows and they line up perfectly with the robot base as I would expect.
+
+Originally posted by Pi Robot with karma: 4046 on 2012-07-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by weiin on 2012-07-08:
+robot_pose_ekf broadcasts the /odom->/base_footprint transform, so the data in topic /robot_pose_ekf/odom is encapsulated in that transform. You can also display this data using the robot model as described here: http://www.ros.org/wiki/rviz/DisplayTypes/RobotModel (show trail gives the history)
+Comment by weiin on 2012-07-08:
+also note the difference between /odom frame and /odom topic, hence the displacement in the picture in your question
+Comment by Pi Robot on 2012-07-08:
+Thanks @weiin.  Somehow I missed the "show trail" option all these years.  The one catch seems to be that the length of the history does not appear to be adjustable so I can't capture the entire path as I can with the Odometry arrows.  In any event, it's good to have both options.
+Comment by Partha on 2015-05-23:
+Thanx! your post helped a lot in our project as well!..We were facing the same difficulty and could resolve with your help!
+

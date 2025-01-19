@@ -1,0 +1,132 @@
+Q:
+
+How to get OpenCV 4 working with ROS Melodic?
+
+I'm trying to run ROS Melodic with Opencv 4.2.0 on windows
+What is wrong with my CMAKELISTS?
+I have added opencv to my system path, but Catkin_make always gives this error:
+Could not find a configuration file for package "OpenCV" that is compatible
+  with requested version "4.2.0".
+  The following configuration files were considered but not accepted:
+    C:/opt/rosdeps/x64/CMake/OpenCVConfig.cmake, version: 3.4.1
+
+The version it finds is the opencv shipped with ROS melodic distribution.
+How do I change where CMAKE searches?
+This is my CMake:
+cmake_minimum_required(VERSION 2.8.3)
+project(nav_ross)
+
+add_compile_options(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  std_msgs
+  message_generation
+  cv_bridge
+  image_transport
+  pcl_ros
+  sensor_msgs
+  visualization_msgs
+  dynamic_reconfigure
+  geometry_msgs
+)
+
+find_package(OpenCV 4.2.0 REQUIRED)
+
+add_message_files(
+   FILES
+   nav_msg.msg
+ )
+
+ generate_messages(
+   DEPENDENCIES
+   std_msgs
+   visualization_msgs
+   geometry_msgs
+ )
+
+ generate_dynamic_reconfigure_options(
+    cfg/post-process-config.cfg
+ )
+
+catkin_package(
+  CATKIN_DEPENDS roscpp rospy std_msgs message_runtime cv_bridge image_transport pcl_ros sensor_msgs visualization_msgs geometry_msgs
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ../../cpp
+cfg/cpp/nav_ross
+)
+
+add_library(iasdk_static STATIC ../../cpp/radarclient.cpp ../../cpp/tcpradarclient.cpp ../../cpp/tcpsocket.cpp ../../cpp/timer.cpp ../../cpp/threadedclass.cpp)
+
+add_executable(Movement-Detector Movement-Detector.cpp)
+target_link_libraries(Movement-Detector ${catkin_LIBRARIES} ${OpenCV_LIBS})
+add_dependencies(Movement-Detector nav_ross_generate_messages_cpp)
+
+add_executable(talker1 talker1.cpp)
+target_link_libraries(talker1 ${catkin_LIBRARIES} ${OpenCV_LIBS} iasdk_static)
+add_dependencies(talker1 nav_ross_generate_messages_cpp ${devel2_pkg_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+add_executable(Mobile_Platform Mobile_Platform.cpp)
+target_link_libraries(Mobile_Platform ${catkin_LIBRARIES} ${OpenCV_LIBS} iasdk_static)
+add_dependencies(Mobile_Platform nav_ross_generate_messages_cpp ${devel2_pkg_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+Originally posted by wgengland on ROS Answers with karma: 11 on 2020-03-24
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-03-24:
+A quick comment: please realise this is not really something ROS or Catkin specific, but very likely a generic CMake question.
+Reason I write this is that as such, you could post this question on fora dedicated to CMake support, which most likely have a much more active user community on Windows. This means a higher chance of getting answers, and a higher chance of finding someone (or someones) with experience with CMake on Windows.
+Not saying you can't get any answers here, but it seems inefficient to limit your query (and search space) to "ROS CMake Windows" while it's really "CMake Windows".
+
+A:
+
+Your CMake and error are pretty clear:
+Could not find a configuration file for package "OpenCV" that is compatible
+  with requested version "4.2.0".
+  The following configuration files were considered but not accepted:
+    C:/opt/rosdeps/x64/CMake/OpenCVConfig.cmake, version: 3.4.1
+
+It is looking for 4.2.0 but found your installed version 3.4.1.
+In your CMakeLists:
+find_package(OpenCV 4.2.0 REQUIRED)
+
+It requires this version. You have a version mismatch.
+
+Originally posted by stevemacenski with karma: 8272 on 2020-03-24
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by wgengland on 2020-03-25:
+Thanks for the help, but I do have this version installed. It seems ROS distro also comes with 3.4.1 and the find package command finds this old version, not the new one.
+Comment by stevemacenski on 2020-03-25:
+Are you sure its installed? How are you sure? Verify that first please.
+Comment by wgengland on 2020-03-25:
+Yes I'm sure - it's very confusing.
+I can see the directory it has installed: C:\opencv
+with config.cmake containing:
+set(OpenCV_VERSION 4.2.0)
+set(PACKAGE_VERSION ${OpenCV_VERSION})
+set(PACKAGE_VERSION_EXACT False)
+set(PACKAGE_VERSION_COMPATIBLE False)
+if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)
+set(PACKAGE_VERSION_EXACT True)
+set(PACKAGE_VERSION_COMPATIBLE True)
+endif()
+if(PACKAGE_FIND_VERSION_MAJOR EQUAL 4
+AND PACKAGE_FIND_VERSION VERSION_LESS PACKAGE_VERSION)
+set(PACKAGE_VERSION_COMPATIBLE True)
+endif()
+Comment by stevemacenski on 2020-03-25:
+That cmake shows nothing- you set a variable to 4.2.0 and then just check that its 4.2.0. That equivalent to
+String version = 4.2.0
+If version == 4.2.0 (good)
+Comment by wgengland on 2020-03-30:
+this is the binary that installed so I do have this version
+

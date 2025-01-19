@@ -1,0 +1,73 @@
+Q:
+
+Best Practice: URDF descriptions, real robots, gazebo plugins and dependencies
+
+Most complex URDF models use quite a few gazebo plugins. This often means that a dependency to "gazebo_plugins" (or other plugins) exists in the manifest.xml, which in turn means the inclusion of gazebo itself as a dependency. On a real robot or any setup that never simulates the robot model, this is a quite needless and heavyweight dependency. Are there any best practices for working around this in a systematic fashion, so one has a basic URDF model without gazebo dependencies, as well as a simulation version with all gazebo controllers?
+I have a few ideas involving two packages, using ENV tags in xacro files and so on, but that seems rather cumbersome to me.
+/edit: So here's the scenario that motivated my question: I have a vehicle model in the hector_ugv_description package. This contains the basic urdf file. For this model, I want to pull the low poly hokuyo UTM-30LX urdf model from the hector_sensors_description package. I also want to use a sonar sensor from another package on the vehicle, which uses a custom plugin (that has to be built for the sensor to work in gazebo). So from what I gather, I have to make 6 packages:
+Not depending on anything gazebo, for use on real robot (only urdf/xacro and containing gazebo tags):
+
+hector_ugv_description
+hector_sensors_description
+hector_sonar_description
+
+Depending on gazebo for use in simulation (so plugins are properly built when building with rosmake)
+
+hector_ugv_gazebo (depends on needed plugins, hector_ugv_description, hector_sensors_gazebo and hector
+sonar_gazebo)
+
+hector_sensors_gazebo (depends on
+needed plugins and hector_sensors_description)
+
+hector_sonar_gazebo (depends on
+needed plugins and hector_sonar_description)
+
+Originally posted by Stefan Kohlbrecher on ROS Answers with karma: 24361 on 2012-02-08
+Post score: 7
+
+A:
+
+Perhaps I'm not interpreting your question correctly, but if you wanted to be able to load your urdf in a real-robot situation, you could use the line:
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find my_robot_description)/urdf/my_robot.urdf.xacro'" />
+
+or something similar. What I've always seen done is that there are two main files: one urdf that describes only the solid bodies of the robot (named with the .urdf.xacro extension), and one with only the controller descriptions (named with the .gazebo.xacro extension). You then provide two separate wrapper urdf files to be included in your launch files.
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find my_robot_description)/urdf/robot_real_world.urdf.xacro'" />
+
+or
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find my_robot_description)/urdf/robot_simulator.urdf.xacro'" />
+
+The file "robot_real_world.urdf.xacro would look like this:
+<robot name="robot"
+       xmlns:xacro="http://www.ros.org/wiki/xacro"
+       xmlns:xi="http://www.w3.org/2001/XInclude">
+  <include filename="$(find my_robot_description)/urdf/body.urdf.xacro" />
+</robot>
+
+And the file "robot_simulator.urdf.xacro" would look like this:
+<robot name="robot"
+       xmlns:xacro="http://www.ros.org/wiki/xacro"
+       xmlns:xi="http://www.w3.org/2001/XInclude">
+  <include filename="$(find my_robot_description)/urdf/body.urdf.xacro" />
+  <include filename="$(find my_robot_description)/urdf/body_controllers.gazebo.xacro" />
+</robot>
+
+If you have all of these urdf files in a separate package, your real world robot doesn't need to depend on gazebo at all. You can just reference these files by name, regardless of whether that package is built or not.
+EDIT:
+If you want to avoid large dependencies, you don't have to depend on "{}_description" packages. They don't get built, so there's no point in having them as a dependency. It will throw a run-time error if the package doesn't exist though. That's your only problem.
+
+Originally posted by DimitriProsser with karma: 11163 on 2012-02-08
+This answer was ACCEPTED on the original site
+Post score: 7
+
+Original comments
+Comment by Stefan Kohlbrecher on 2012-02-09:
+Ok makes sense, after looking at how it's done for pr2 and turtlebot I adapted our stuff to look similar. Thanks!
+Comment by Stefan Kohlbrecher on 2012-02-08:
+Hi, I did an edit with a example scenario. Thanks for the answer so far :)
+Comment by kump on 2018-10-03:
+What is supposed to be in the body_controllers.gazebo.xacro file? Can you post some example? Would transmission tags be in the gazebo.xacro file or the urdf.xacro file?
+Comment by kump on 2018-10-09:
+I guess everything that is in the  tags, right? So in my case just gazebo-ros controll plugin.
+Comment by kump on 2018-10-09:
+What is the use case for robot description URDF file other than for simulation?
+

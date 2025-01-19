@@ -1,0 +1,66 @@
+Q:
+
+ROS2 plugin does not load for clang-tidy
+
+I have a MoveIt2 PR that creates a new plugin. It's working great except CI does not pass for galactic. Strangely, CI does pass for galactic-testing and rolling.
+It looks like there have not been any commits to the pluginlib repo in 9 months so I think galactic and galactic-testing should be the same.
+Here's a link to my PR. The terminal printout when CI fails is:
+
+Error: mponent_container_mt-2] [ERROR]
+[1634151469.735356961]
+[moveit_servo.servo_calcs]: Exception
+while loading the smoothing plugin
+'online_signal_smoothing::ButterworthFilterPlugin':
+'MultiLibraryClassLoader: Could not
+create object of class type
+online_signal_smoothing::ButterworthFilterPlugin
+as no factory exists for it. Make sure
+that the library exists and was
+explicitly loaded through
+MultiLibraryClassLoader::loadLibrary()'
+Error: ROR]
+[component_container_mt-2]: process
+has died [pid 16245, exit code 1, cmd
+'/opt/ros/galactic/lib/rclcpp_components/component_container_mt
+--ros-args -r __node:=servo_container -r __ns:=/'].
+
+Originally posted by AndyZe on ROS Answers with karma: 2331 on 2021-10-14
+Post score: 0
+
+Original comments
+Comment by AndyZe on 2021-10-14:
+One maybe-unusual thing is that I created a plugin within the same package as the base class. I think the base class and the actual plugins are usually in different packages.
+Comment by gvdhoorn on 2021-10-14:
+galactic-testing is a MoveIt specific "thing" AFAICT (here, a Docker image name, hosted at ghcr.io/ros-planning/moveit2). It's not a branch of pluginlib, nor is there a ROS 2 package repository which has a galactic-testing version.
+The way you refer to it in your question implies you are under the impression it is something part of the regular ROS 2 repositories / distribution channels.
+Could you clarify?
+Comment by AndyZe on 2021-10-19:
+I'm sure you're probably right. So the question boils down to, why does the galactic docker image cause issues but galactic-testing does not...
+Comment by AndyZe on 2021-10-19:
+Maybe it's due to this clang-tidy: pedantic?
+      - IMAGE: galactic-ci
+        CLANG_TIDY: pedantic
+      - IMAGE: galactic-ci-testing
+
+Comment by gvdhoorn on 2021-10-20:
+Seeing as it's so MoveIt specific, should you not ask the people who set this up?
+Comment by henningkayser on 2021-10-20:
+galactic-testing is simply using a docker image that uses the ros2-testing repository for galactic. Since the build works just fine without clang_tidy: pedantic, I'm pretty sure it's an issue with the plugin configuration and clang. There are plenty of other plugins in MoveIt that work just fine with clang, though.
+My thought is that the plugin base itself doesn't have a library target that is separate from the plugin. It's only provided with a simple header file. Since the base class is purely abstract, clang will only create a vtable in the plugin translation unit. The classloader has no way to access the vtable of the plugin base before loading the plugin itself. I wonder if pure virtual plugin base classes are even really supported of if they should be inline or at least need some default constructors/destructors.
+Comment by AndyZe on 2021-10-20:
+They are making some suggestions. Removing CLANG_TIDY: pedantic does fix it. I'll try a better way.
+
+A:
+
+We finally found a solution that works for the clang compiler. It involved:
+
+Careful declaration of constructors/destructors
+A separate libary for the plugin base class
+
+I'm not sure which of these were necessary.
+Full details in Henning's commits here:  https://github.com/ros-planning/moveit2/pull/676
+
+Originally posted by AndyZe with karma: 2331 on 2021-10-21
+This answer was ACCEPTED on the original site
+Post score: 0
+

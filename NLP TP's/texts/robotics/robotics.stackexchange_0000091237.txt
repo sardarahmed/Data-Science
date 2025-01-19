@@ -1,0 +1,41 @@
+Q:
+
+tf2 patterns for high update rates
+
+I'm looking for a good pattern for using tf2 to provide two things:
+
+A set of static transforms for the robot that define things like the wheel positions and sensor locations. These are fixed but they need to be used in a variety of nodes. The transforms come from URDF mainly but there may be some calculated from parameter input when a node starts or from a launch file.
+A high-update-rate transform from the world frame to the robot's frame, produced and used only in a small number of nodes.
+
+The problem we have is that we want to be able to get the static transforms in a lot of nodes, but we don't want the overhead of distributing the high rate transform to every node, just the small number that need it. I hope someone has a nice solution within tf2 for this, but I'm happy to hear any other suggestions.
+
+Originally posted by Geoff on ROS Answers with karma: 4203 on 2019-04-03
+Post score: 0
+
+A:
+
+A set of static transforms for the robot that define things like the wheel positions and sensor locations. These are fixed but they need to be used in a variety of nodes. The transforms come from URDF mainly but there may be some calculated from parameter input when a node starts or from a launch file.
+
+You're probably aware of it, but "static transforms" in TF2 are broadcast using a latched publisher, which means they won't be periodically published at all, but rather retrieved once and then stored in clients (ie: buffers). See  wiki/tf2: Adding static transform support
+All fixed joints in URDFs/XACROs are broadcast as static transforms. static_transform_publisher from tf2_ros also only publishes static transforms.
+Under the hood, two topics are used: /tf for regular TF broadcasts (things that change dynamically) and /tf_static (transforms that don't).
+
+The problem we have is that we want to be able to get the static transforms in a lot of nodes, but we don't want the overhead of distributing the high rate transform to every node, just the small number that need it.
+
+There are various approaches one could think of, but remapping might be an easy one: instead of broadcasting the transforms with high update rate onto /tf, remap it to some other topic. Then make the "small number that need it" subscribe to that topic, instead of the regular /tf (remapping again). That should prevent uninterested nodes from being spammed by the high-rate broadcasts, while leaving everything else unchanged.
+Some tricks with muxing might be needed to make sure that those high-rate nodes would also still get the regular broadcasts on /tf.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-04-03
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-04-03:
+It would perhaps be nice if tf2_ros::TransformListener could subscribe to multiple, user defined topics carrying TFMessages, as it would avoid the need for muxing in a remapped setup. But that is not supported right now.
+Comment by Geoff on 2019-04-03:
+Remapping sounds like the way to go. It's not ideal but it will do the job of isolating the high-rate data from everything else.
+Comment by gvdhoorn on 2019-04-04:
+Another approach could be to subsample /tf for nodes that don't need high update rates, such as was done in the DRC. Would probably still need remapping (to prevent msgs from being broadcast on /tf at a high rate still).
+Such subsampling was done in combination with either custom UDP bridges or with multi-master setups where the nodegraph locally ran high rate versions of topics, but only forwarded msgs to another nodegraph at a lower rate.
+Doable, but complex, especially if you start to create many "islands" in this way.
+

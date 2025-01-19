@@ -1,0 +1,66 @@
+Q:
+
+How to use transformListener to lookup very early Transform?
+
+Now I have a .bag file,which contains some transform.
+Q:I want use tf.listener.lookupTransform() to get transform,but it throws exception
+Requested time 976052877.783882021 but the earliest data is at time 1533652658.077350788,.....
+
+I read the reference of listener.lookupTransform(),ros::Time(0) means use current time.
+So,what can I do to get the history Transform?
+My code:
+   try
+        {
+            _tf_listener.waitForTransform(_base_frame, _map_frame, 
+                ros::Time(0), ros::Duration(10.0) );
+            _tf_listener.lookupTransform(_base_frame,_map_frame,
+                ros::Time(0),_map_to_base);
+        }
+        catch(tf::TransformException te)
+        {
+            ROS_ERROR("%s",te.what());
+            ros::Duration(1.0).sleep();
+            continue;
+        }
+...
+
+Originally posted by Miaow on ROS Answers with karma: 5 on 2018-08-07
+Post score: 0
+
+A:
+
+The standard transform listener has a finite buffer size after which it 'forgets' earlier transforms so you won't be able to look them up any more.
+You can create a transform listener with a very long duration of buffer like this:
+ros::Duration tfCacheDuration;
+tfCacheDuration = tfCacheDuration.fromSec(600);   // ten minute tf buffer!
+tfListener = new tf::TransformListener(tfCacheDuration);
+
+You can then use this to lookup transforms further in the past, as long as your bag file contains transforms for that time. I've never tried to see how long you can make this buffer, you could try hours and see what happens.
+Hope this helps.
+EDIT :
+The TransformListener object contains a buffer of transforms which begins to fill up once the object has been created. Because of this the object needs to have been instantiated for a short period of time before it can lookup any transforms at all and it cannot lookup transforms before the time at which it was created.
+In your case you'll want to create a single TransformListener when you're node starts and continue to use that same object the whole time your node is running. This way the largest possible buffer of transforms can be built up.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2018-08-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Miaow on 2018-08-07:
+Thanks.I followed your way,but it still didn't work.
+ros::Duration tfCacheDuration;
+tfCacheDuration = tfCacheDuration.fromSec(55759976);
+tf::TransformListener tf_listener(tfCacheDuration);
+tf_listener.lookupTransform(_base_frame, _map_frame, ros::Time(0),_map_to_base);
+
+Comment by PeteBlackerThe3rd on 2018-08-08:
+See my edit above which should clarify how this works.
+Comment by PeteBlackerThe3rd on 2018-08-08:
+Plus you've set a buffer duration of two and a half years, which is probably a bit excessive!
+Comment by Miaow on 2018-08-11:
+Thanks for your answer. Because the 'tf' is from a ".bag",it may be many years old.(You can see it in the console log in my question.).
+Comment by Miaow on 2018-08-11:
+I solved it by another way:
+1st. I can get 'scan' message from '.bag', and it has the same timestamp which I just need.
+2nd. I use the timestamp to make a transform, then call transformPose() to get the right 'tf'.
+

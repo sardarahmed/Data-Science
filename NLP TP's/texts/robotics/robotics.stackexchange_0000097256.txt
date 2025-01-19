@@ -1,0 +1,151 @@
+Q:
+
+Segmentation fault (core dumped)
+
+I wrote a node but when I rosrun this node I got Segmentation fault (core dumped). Anyone can help? Thanks!
+#include <ros/ros.h>
+#include <csignal>
+#include <iostream>
+
+#include <arm_moveit/range_msg.h>
+#include <gazebo_msgs/GetModelState.h>
+#include <gazebo_msgs/ModelStates.h>
+#include <geometry_msgs/Point.h>
+const std::string TOPIC = "/gazebo/get_model_state";
+const float TABLE_HEIGHT = 0.766;
+const float TABLE_LENGTH = 2.0;
+const float TABLE_WIDTH = 0.7;
+
+class object_pose
+{
+private:
+  ros::NodeHandle n;
+  ros::Publisher range_publisher;
+  ros::ServiceClient client;
+  ros::Subscriber subsriber;
+  geometry_msgs::Point tapping_range[2];
+  arm_moveit::range_msg msg;
+
+public:
+  object_pose();
+  ~object_pose();
+  void callback(const gazebo_msgs::ModelStates::ConstPtr &robot_model_state);
+  void connectServiceAndPublisher();
+};
+void object_pose::callback(const gazebo_msgs::ModelStates::ConstPtr &robot_model_state)
+{
+  ROS_INFO("callback function reached");
+  geometry_msgs::Pose table_position;
+  int table_index = -1;
+  std::vector<std::string> model_names = robot_model_state->name;
+  for (size_t i = 0; i < model_names.size(); i++)
+  {
+    if (model_names[i] == "table")
+      table_index = i;
+  }
+  table_position = robot_model_state->pose[table_index];
+  ROS_INFO_STREAM("Table Position:" << std::endl << table_position);
+  // defines tapping starting point
+  tapping_range[0].x = table_position.position.x + TABLE_WIDTH / 0.5f;
+  tapping_range[0].y = table_position.position.y - TABLE_LENGTH / 0.5f;
+  tapping_range[0].z = table_position.position.z + TABLE_HEIGHT;
+
+  // defines tapping ending point
+  tapping_range[1].x = table_position.position.x - TABLE_WIDTH / 0.5f;
+  tapping_range[1].y = table_position.position.y + TABLE_LENGTH / 0.5f;
+  tapping_range[1].z = table_position.position.z + TABLE_HEIGHT;
+
+  ROS_INFO_STREAM("tapping_range:" << std::endl << tapping_range[0]);
+  ROS_INFO_STREAM("tapping_range:" << std::endl << tapping_range[1]);
+  msg.another_field = 2;
+  msg.points.push_back(tapping_range[0]);
+  msg.points.push_back(tapping_range[1]);
+  range_publisher.publish(msg);
+
+}
+object_pose::object_pose()
+{
+}
+void object_pose::connectServiceAndPublisher()
+{
+  range_publisher = n.advertise<arm_moveit::range_msg>("/tapping_range_topic", 1);
+  object_pose obj;
+  subsriber = n.subscribe("/gazebo/model_states", 1, &object_pose::callback, &obj);
+}
+
+object_pose::~object_pose()
+{
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "object_pose");
+  if (argc != 1)
+  {
+    ROS_INFO("usage: object_pose 'name'");
+    return 1;
+  }
+  object_pose obj_pose;
+  obj_pose.connectServiceAndPublisher();
+  ros::spin();
+  return 0;
+}
+
+range_msg.msg is defined as:
+geometry_msgs/Point[] points
+uint8 another_field
+
+When I rosrun this node, I got:
+[ INFO] [1602045185.242760021, 27.755000000]: callback function reached
+[ INFO] [1602045185.243352804, 27.755000000]: Table Position:
+position: 
+  x: 1.1
+  y: 0
+  z: 0
+orientation: 
+  x: 0
+  y: 0
+  z: 0
+  w: 1
+
+[ INFO] [1602045185.243392476, 27.755000000]: tapping_range:
+x: 2.5
+y: -4
+z: 0.766
+
+[ INFO] [1602045185.243423741, 27.755000000]: tapping_range:
+x: -0.3
+y: 4
+z: 0.766
+
+Segmentation fault (core dumped)
+
+Originally posted by sueee on ROS Answers with karma: 5 on 2020-10-06
+Post score: 0
+
+A:
+
+Where does the output come from? In the code you post, there is not this specific output.
+One thing I noticed is the following.
+  object_pose obj;
+  subsriber = n.subscribe("/gazebo/model_states", 1, &object_pose::callback, &obj);
+
+You shouldn't do this, as you instantiate a new object obj and bind the subscriber to the callback function of this object. However, obj goes out of scope and is destroyed as soon as you leave the connectServiceAndPublisher function. Thus, the address of the object obj is invalid and whatever the bound callback is pointing to is not existing anymore.
+It should be:
+  subsriber = n.subscribe("/gazebo/model_states", 1, &object_pose::callback, this);
+
+This way, you bind to the callback function of the class instance.
+See the roscpp_tutorial and especially the last sentence of the Subscriptions section
+
+Originally posted by mgruhler with karma: 12390 on 2020-10-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sueee on 2020-10-12:
+Thanks a lot! This solves my problem
+Comment by mgruhler on 2020-10-13:
+@sueee great. Please mark this answer as correct by clicking on the check mark next to it. Thanks.
+Comment by shrini96 on 2022-09-22:
+Just to comment further on this answer: Segmentation fault occurs when your program tries to access a variable or piece of memory that it does not have access to. As @mgruhler mentioned, obj runs out of scope at the end of the function connectServiceAndPublisher().
+

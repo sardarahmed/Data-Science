@@ -1,0 +1,73 @@
+Q:
+
+Fix subcriber rate and drop other messages
+
+I have an IMU topic that is published at ~1kHz and I want my suscriber ton only process 1 message out of 50, discarding the other messages. Is there a c++ way to do this ?
+I am aware of the throttle command but that's not what I am looking for.
+
+Originally posted by jeanpolochon on ROS Answers with karma: 140 on 2017-07-26
+Post score: 3
+
+A:
+
+Subscriber Counter Throttle
+Keep a counter in the callback that returns without doing anything unless counter % 50 == 0- but there is a deserialization performance hit involved there
+Standard Throttle
+The topic_tools throttle should not have the deserialization penalty depending on how ShapeShifter works.
+Nodelet Throttle
+A nodelet version of throttle would be nice to eliminate additional copies between throttle and your subscriber- and it turns out it already exists: http://wiki.ros.org/nodelet_topic_tools (is there any reason why there should be a non-nodelet version of throttle that isn't just a wrapper around the nodelet?).  You would have to make your subscriber a nodelet and put it into the same nodelet manager as the throttle.  Copying 50 messages a second is not a big proportion of the cpu being compared to the resources required for handling the other 950 messages, so maybe the nodelet isn't worth the trouble.
+Additionally, in looking at the code for this nodelet throttle it appears to be using a template system rather than the generic ShapeShifter message that the regular throttle uses, which means it is deseerializing and reserializing everything, making it slower than regular throttle as the test result below shows.
+The template system also requires you to create your own nodelet that instantiates the type you want to throttle, which is non-trivial, but there is an Image example and I've made an imu nodelet throttle.
+Queue Throttling
+A different and hacky approach is to keep track of time since the last processed subscribed message in your callback, and do a blocking sleep with the remaining 1/50th of a second while also having a  subscriber queue_size of 1.
+
+If the queue is full and a new message
+arrives, the oldest message will be
+thrown out. Additionally, the message
+is not actually deserialized until the
+first callback which needs it is about
+to be called.
+
+http://wiki.ros.org/roscpp/Overview/Publishers%20and%20Subscribers#Queueing_and_Lazy_Deserialization
+Test Results
+
+A python node publishing Imu at 1000 Hz takes about 14% cpu.
+regular throttle takes about 7% cpu
+nodelet throttle (in a wrapper) takes 10% cpu
+Queue overflow method with rospy node takes 2% cpu, though the queue isn't getting updated properly.
+Queue overflow with cpp node takes 5% cpu and timing seems solid
+The python node subscribing to Imu (and doing nothing with it) at the throttled 50 hz is negligible.
+Python imu subscriber without throttling takes 8% cpu
+C++ imu subscriber without throttling takes 7% cpu
+
+One unexpected result is that a python subscriber plus regular throttle doesn't run any faster than a python or C++ node subscribing to the full rate Imu topic.
+The rospy queue throttling node got increasingly behind with the messages it was receiving, while the C++ version worked fine and so far is the best solution for the most efficient throttle.
+All the code is on https://github.com/lucasw/topic_throttle
+
+Originally posted by lucasw with karma: 8729 on 2017-07-26
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by jeanpolochon on 2017-07-27:
+Yeah obviously but the fact is that I need to save as much CPU as possible so I was looking for a solution that prevent the call of my callback function. Is there any solution to do that ?
+Comment by gvdhoorn on 2017-07-27:
+No. Something needs to throttle the pub rate of the sending party. It's either the middleware, an intermediate node or the receiver. The work will have to be done somewhere.
+'Easiest' would probably be to lower the pub rate of the IMU. If you want to avoid callbacks, don't send messages.
+Comment by jeanpolochon on 2017-07-27:
+Thanks for your answer. The problem is, I cannot lower the publishing rate and adding an intermediate node will increase CPU use. I will go for the counter since at least it will avoid some useless operations.
+Comment by gvdhoorn on 2017-07-27:
+So does the IMU not have a ROS node? How is it publishing the messages? Could you not publish 1/50 msgs there? Or do you have other consumers that need the 1kHz rate?
+Comment by jeanpolochon on 2017-07-27:
+The imu topic is published by a ros node that only serves as a bridge from a propretary library (used by several sensors) and I cannot modify that for now.
+Comment by gvdhoorn on 2017-07-27:
+If you can't change the node that forms the bridge, then I'm afraid there is no way to change this. Contrary to some other middlewares, ROS1 does not separate communication from computation, meaning that you can't change anything about the communication part without changing the source of the node.
+Comment by lucasw on 2017-07-27:
+I added some additional suggestions above, though they are more questions than answers- maybe someone else could weigh in on what is happening in the code or a set of comparison tests could be set up.
+Comment by gvdhoorn on 2017-07-27:
+The nodelet throttle is a good suggestion, but it would not avoid having those msgs being published first. If that is not a problem for OP, then it would be a viable option.
+Comment by jeanpolochon on 2017-07-31:
+Thanks Lucas for all these tests ! However some of your links are pointing to are not pointing to the right github page (page not found).
+Comment by lucasw on 2017-07-31:
+I renamed some of the files (the queue throttler now uses ShapeShifter so isn't Imu specific), fixed the links.
+

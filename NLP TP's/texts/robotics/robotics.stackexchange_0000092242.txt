@@ -1,0 +1,119 @@
+Q:
+
+How have a static map to understand its GPS coordinates?
+
+I am using rviz, gazebo, and a Clearpath Husky with GPS, IMU, encoders, and LIDAR to simulate autonomous navigation in an outdoor environment.
+Using robot localization I have an ekf_odom and ekf_map node combined with a navsat_transform working like a charm to localize me in the GPS world. These setup outputs the transforms from map->odom->baselink nicely.
+The problem I have been running into over the past couple days is how do I properly specify a static map/map_server so that it overlays my gazebo 3D world and so that each time a spawn the robot it is properly localized within the static map in rviz. This is not well documented in and tutorial and has been quite frustrating.
+I think it has something to do with the datum, or a static transform for the map from the UTM frame but I cannot be sure, and messing around with the launch files for a week has not gotten me any closer to the answer. If you need to see any launch files let me know and I'll update the post ASAP.
+
+Originally posted by JackB on ROS Answers with karma: 977 on 2019-06-27
+Post score: 2
+
+A:
+
+Below is the launch file, which I call hybrid_localization because it allows you to have pose in two different map referenced frames fused into a single ekf. I know that is bad practice to have to absolute position's fused together because it causes jitter.
+This however is predicated on the fact that where you have GPS you will not be able to use AMCL and where you have AMCL you will not have GPS. In my experience on a university campus this holds true, and I have found this setup very useful.
+I would like to pretend that the launch and config files "explain themselves", but I understand they probably do not, and therefore will be happy to field questions, or provide more information to anyone who is interested.
+hybrid_localization.launch
+
+<launch>
+   <arg name="amcl_map_frame" default="map_amcl"/>
+       <arg name="map_file" default="/home/administrator/philbart_config/maps/pma_23_09_2020_8_15.yaml"/>
+   <arg name="ekf_localization_map_file" default="/home/administrator/philbart_config/ekf_localization_map.yaml"/>
+   <arg name="navsat_transform_file" default="/home/administrator/philbart_config/navsat_transform.yaml"/>
+
+   <!---Static Transform world-to-map_amcl -->
+       <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_amcl_broadcaster" args="-13.62 19.02 0 -0.121 0 0 world $(arg amcl_map_frame)" />
+
+      <!---Static Transform world-to-map -->
+      <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_broadcaster" args="0 0 0 0 0 0 world map" />
+
+     <!---AMCL Map -->
+     <node name="map_server_amcl" pkg="map_server" type="map_server" args="$(arg map_file)">
+           <param name="frame_id" value="$(arg amcl_map_frame)" />
+           <remap from="map" to="$(arg amcl_map_frame)"/>
+          <remap from="map_metadata" to="$(arg amcl_map_frame)_metadata"/>
+     </node>
+
+     <!---AMCL Node -->
+    <include file="$(find husky_navigation)/launch/amcl.launch">
+          <arg name="global_frame_id" default="$(arg amcl_map_frame)"/>
+          <arg name="map_topic" default="$(arg amcl_map_frame)"/>
+          <arg name="tf_broadcast" default="false"/>
+    </include>
+
+    <!--- Global EKF -->
+   <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_map" output="screen">
+        <rosparam command="load" file="$(arg ekf_localization_map_file)" />
+       <remap from="/odometry/filtered" to="/odometry/filtered_map"/>
+    </node>
+
+    <!--- Navsat Transform Node-->
+    <node pkg="robot_localization" type="navsat_transform_node" name="navsat_transform" output="screen">
+          <rosparam command="load" file="$(arg navsat_transform_file)" />
+          <remap from="odometry/filtered" to="odometry/filtered_map"/>
+          <remap from="gps/fix" to="/piksi_reference/piksi/navsatfix_best_fix"/>
+    </node>
+
+</launch>
+
+Where ekf_localization_map.yaml is:
+ map_frame: map
+ odom_frame: odom
+ base_link_frame: base_link
+ world_frame: map
+
+ imu0: /gx5/imu/data
+ imu0_config: [false, false, false,
+          true,  true,  false,
+          false, false, false,
+          true,  true,  true,
+          true,  true,  true]
+imu0_nodelay: true
+imu0_differential: false
+imu0_relative: false
+imu0_queue_size: 10
+imu0_remove_gravitational_acceleration: true
+
+odom0: /husky_velocity_controller/odom
+odom0_config: [false, false, false,
+           false, false, false,
+           true,  true,  true,
+           false, false, true,
+           false, false, false]
+odom0_queue_size: 10
+odom0_nodelay: true
+odom0_differential: false
+odom0_relative: false
+
+odom1: odometry/gps
+odom1_config: [true,  true,  false,
+           false, false, false,
+           false, false, false,
+           false, false, false,
+           false, false, false]
+odom1_queue_size: 10
+odom1_nodelay: true
+odom1_differential: false
+odom1_relative: false
+odom1_rejection_threshold: 2.0
+
+pose0: /amcl_pose
+pose0_config: [true, true, false,
+          false, false, true,
+          false, false, false,
+          false, false, false,
+          false, false, false]
+pose0_queue_size: 10
+pose0_nodelay: true
+pose0_differential: false
+pose0_relative: false
+pose0_rejection_threshold: 2.0
+
+use_control: false
+
+Originally posted by JackB with karma: 977 on 2020-10-02
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,73 @@
+Q:
+
+Ignore package in colcon but not catkin?
+
+catkin ignores packages when they have COLCON_IGNORE in them. (https://github.com/ros-infrastructure/catkin_pkg/blob/35137d5522fc4b4140bf24d4d35373a1ff74e4e9/src/catkin_pkg/packages.py#L47)
+I'd like to have ros1 and ros2 packages in parallel in two subdirectories of the same git repository and not get this error:
+CMake Error at CMakeLists.txt:4 (find_package):
+  By not providing "Findcatkin.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "catkin", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "catkin" with any
+  of the following names:
+
+    catkinConfig.cmake
+    catkin-config.cmake
+...
+
+--packages-skip exists but has to be typed in every time there is a build, I don't see a blacklist option to add to a colcon config to ignore it for all following builds.
+Building with catkin produces (more innocuous) warnings:
+[build] Warning: Skipping package `foo2` because it has an unsupported package build type: `ament_cmake`
+[build] Note: Available build types:                                                               
+[build]  - `cmake`                                                                                 
+[build]  - `catkin` 
+
+And then those can be eliminated with --blacklist.
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2018-10-24
+Post score: 0
+
+A:
+
+mixins
+sudo apt install python3-colcon-mixin
+
+src/my/mixins/skip.mixin:
+{
+  "build": {
+    "skip": {
+      "packages-skip": ["foo1",
+                        "foo2",
+                        "bar",
+                        ],
+    }
+  }
+}
+
+src/my/mixins/index.yaml:
+mixin:
+    - skip.mixin
+
+Then:
+colcon mixin add skip file://`pwd`/src/my/mixins/index.yaml
+colcon mixin update skip
+fetching links: file:///home/lucasw/ros2_ws/src/my/mixins/index.yaml ...
+  fetching file:///home/lucasw/ros2_ws/src/my/mixins/skip.mixin ...
+  * /home/lucasw/.colcon/mixin/skip/skip.mixin
+
+And run update if the index or mixin file/s change, and build with
+colcon build --mixin skip
+
+More on colcon mixins: https://github.com/colcon/colcon-mixin-repository
+
+Originally posted by lucasw with karma: 8729 on 2018-11-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Dirk Thomas on 2018-11-02:
+Hopefully in the near future you won't need to create your own local index.yaml for this but can just pass --mixin-file path/to/skip.mixin...
+Comment by Dirk Thomas on 2018-11-03:
+The mixing doesn't provide persistence either and seems to be more effort than the options mentioned in the other answer.
+

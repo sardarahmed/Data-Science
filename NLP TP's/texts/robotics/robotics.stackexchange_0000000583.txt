@@ -1,0 +1,23 @@
+Q:
+
+Inverse kinematics with joint contraints
+
+I have a manipulator having 4 revolute joints with some movement limitations. So, when I apply inverse kinematics, I'm getting results which are out of limits. Please provide me an algorithm that implements inverse kinematics considering joint limitations.
+
+A:
+
+4 joints gives you 4 degrees of freedom only. Therefore, if you use inverse kinematics on the full 6 degrees of freedom, not all positions have a solution, and if it does, it there is generally only one unique solution.
+I am therefore assuming that you are only trying to fix some of the positions, for example, x, y and z coordinates, but not the orientation (the 3 rotation axes) of the end effector.
+It is a non-linear system, however, at any point, you can linearise it. It is likely that the inverse kinematics applied already repeatedly linearises the problem and performs some type of gradient descent.
+To alter a solution, you can find the null-space of the linearised system of equations, and use that vector to modify your solution towards the joint limits.
+To do this, you simply differentiate your system of equations to obtain a linearisation, so for example, you get:
+$\Delta \alpha \vec{a}+\Delta \beta\vec{b}+\Delta \gamma\vec{c}+\Delta \delta\vec{d}=
+\left[\begin{matrix}\vec{a}&\vec{b}&\vec{c}&\vec{d}\end{matrix}\right]
+\left[\begin{matrix}\Delta \alpha \\\Delta \beta\\\Delta \gamma\\\Delta \delta\end{matrix}\right]
+=
+\left[\begin{matrix}\Delta x\\\Delta y\\\Delta z\end{matrix}\right]$, where $\alpha$, $\beta$, $\gamma$, $\delta$ are the angles of the revolute joints, with appropriate coefficients.
+Finding the null-space means finding the $\Delta \alpha$, $\Delta \beta$, $\Delta \gamma$, $\Delta \delta$ such that $\Delta x, \Delta y, \Delta z = 0$. You can do this easily (choose from gaussian elimination, matrix divide etc.)
+If you modify the angles by a small multiple of the null-space vector over many iterations, you should eventually get within the joint constraints (if it is possible). You just need to decide on the direction (check each angle, and if it is not within range, it should provide the appropriate angle).
+If your inverse kinematics algorithm/code takes initial joint angles to start it off, you can put the new joint angles back in here so that the x, y and z positions don't drift away from the desired positions. This also allows you to take larger steps with the null-space vector (which otherwise tends to make the position tracked start to become less inaccurate).
+In some cases, the null-space may contain more than one vector. This would occur if you only wanted to fix two of the degrees of freedom. In this case, in each iteration, you can modify using only one or both of the vectors. Similar logic can be applied to get the angles within the constraints - just decide on the direction in which to apply each vector by checking if each revolute joint angle is within the constraints, and if not, it will give you a direction to apply the vector.
+

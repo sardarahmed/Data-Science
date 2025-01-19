@@ -1,0 +1,125 @@
+Q:
+
+How to turn existing Qt widgets into rqt plugin?
+
+i have been trying to read all the forums and tutorials , but i dont know where to start. Please guide this noob.
+so there are two parts to my question.
+i want to make a custom rqt plugin using Qt 5.7. I have already created the user interface in Qt 5.7. so how can i integrate it into ROS(so that it appears as one of the rqt plugins)
+a) i have went through the tutorial of how to create a cpp rqt plugin . I dont know what to do after i create all the files(Cmakelist.txt,  package.xml, plugin.xml, my_plugin.cpp, my_plugin.h). What to do after that? how can i ensure i can see the rqt plugin in the rqt plugin list. Am i missing anything?
+b) this user interface is actually for a moving vehicle(teleoperation). How to use callback/Signal and Slot function to ensure i can communicate(send commands ) via the user interface?
+#in Qt, when i click New project -> Import project,i cant see Import ROS project. i tried to run Qt thru terminal but to no avail.
+Anyone who could at least guide about how to do would be very beneficial to me. Thank you.
+
+Originally posted by Azhar on ROS Answers with karma: 100 on 2016-12-05
+Post score: 0
+
+A:
+
+I've just done this- it's confusing, right? Especially when the documentation is so spread out. Here are some hints (I'm assuming you're using C++):
+A. Start by cloning the example package here.  Make sure it compiles and shows up as a plugin.
+B. Add your Qt files into that example package. You're going to compile the Widget as a library and link against it. I put the Qt headers into "include/rqt_gauges" and the cpp and ui files into "src/rqt_gauges."
+C. In CMakeLists, add the Widget library (for me, it was called "qcgaugewidget":
+## The library that defines the Qt stuff
+
+add_library(qcgaugewidget SHARED src/rqt_gauges/qcgaugewidget.cpp)
+
+## Specify libraries to link a library or executable target against
+
+target_link_libraries(qcgaugewidget
+  ${catkin_LIBRARIES}
+  ${qt_LIBRARIES}
+)
+
+D. Now add a library for the plugin. It links against your widget library:
+## Declare a cpp library
+
+add_library(${PROJECT_NAME}
+    ${rqt_gauges_SRCS}
+    ${rqt_gauges_MOCS}
+    ${rqt_gauges_UIS_H}
+    )
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(${PROJECT_NAME}
+  qcgaugewidget
+  ${catkin_LIBRARIES}
+  ${qt_LIBRARIES}
+)
+
+E. You'll probably run into lots of issues with CMakeLists. It's finnicky. I would just depend on the rqt_gauges example as much as possible.
+F. Sorry, I didn't use signals and slots. I hacked it with a pointer instead. Somebody else will have to help you there.
+G. You don't need to use QtCreator as your editor. You can use any text editor (even gedit) and compile with catkin_make, like usual for ROS.
+
+Originally posted by AndyZe with karma: 2331 on 2016-12-05
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Azhar on 2016-12-06:
+Thank you so much! i am currently stuck in Step A.  I can build the it using Qt creator. However, when i run it( Green play icon), a window which says custom executable pops out.I am not sure which is my executable file for this project. Once i figured it, i would continue with the rest of the steps
+Comment by AndyZe on 2016-12-07:
+Why don't you try building it outside of QtCreator? Assuming you cloned it to ~/Desktop/catkin_ws/src, do this:
+cd ~/Desktop/catkin_ws
+catkin_make
+source ~/Desktop/catkin_ws/devel/setup.bash
+rqt --force-discover
+
+Then you should see the plugin.
+Comment by Azhar on 2016-12-13:
+Thanks so much for the guidance! This is what i have come up so far.
+https://github.com/azhar92/GUI-for-AV.git
+However, i am stuck with another error. Would really appreciate if you could help.
+Comment by Azhar on 2016-12-13:
+[ 16%] Building CXX object test1/CMakeFiles/mainwindow.dir/src/rqt_test1/mainwindow.cpp.o
+/home/azhar/catkin_ws/src/test1/src/rqt_test1/mainwindow.cpp:2:24: fatal error: mainwindow.h: No such file or directory
+#include "mainwindow.h"
+^
+compilation terminated.
+Comment by Azhar on 2016-12-13:
+compilation terminated.
+make[2]: *** [test1/CMakeFiles/mainwindow.dir/src/rqt_test1/mainwindow.cpp.o] Error 1
+make[1]: *** [test1/CMakeFiles/mainwindow.dir/all] Error 2
+make: *** [all] Error 2
+Invoking "make -j8 -l8" failed
+Comment by AndyZe on 2016-12-13:
+That's an easy one. Change it to #include "rqt_test1/mainwindow.h"
+Comment by Azhar on 2016-12-14:
+Yeap thanks! That works!
+Comment by Azhar on 2016-12-14:
+Failed to load nodelet [rqt_test1::MyPlugin_1] of type [rqt_test1::MyPlugin]: MultiLibraryClassLoader: Could not create object of class type rqt_test1::MyPlugin as no factory exists for it. Make sure that the library exists and was explicitly loaded through MultiLibraryClassLoader::loadLibrary()
+Comment by Azhar on 2016-12-14:
+RosPluginlibPluginProvider::load_explicit_type(rqt_test1::MyPlugin) failed creating instance
+PluginManager._load_plugin() could not load plugin "rqt_test1::MyPlugin": RosPluginlibPluginProvider.load() could not load plugin "rqt_test1::MyPlugin
+Comment by Azhar on 2016-12-14:
+^New error which i think something to do with the the plugin.xml or CMakelists and adding target_link_libraries.
+Would be great if you could help me out!
+Comment by fonstein on 2017-01-05:
+Hi! I've been following your guidance above. Thank you so much for a lot of help. However, I'm stuck. At this point I get an error similar as above regarding the .h file;
+catkin_ws/src/rqt_mypkg_test/include/rqt_cpp_test/ui_mainwindow.h:13:29: fatal error: QtWidgets/QAction: No such file or directo
+Comment by fonstein on 2017-01-05:
+The only thing is that it can find the other .h file that is included in the exact same way and located in the same folder. Any ideas why?
+Comment by fonstein on 2017-01-05:
+Also, the example you included in A; I can get the python plugin to work, but not the one for C++. The plugin shows, but it won't show
+Comment by AndyZe on 2017-01-05:
+Can you post a link to your repo?
+Comment by fonstein on 2017-01-09:
+Sorry for the late reply. Here is my repo: https://github.com/fonstein/rqt_test
+Comment by fonstein on 2017-01-09:
+I fixed the last error, but have a new one: catkin_ws/src/rqt_mypkg_test/include/rqt_cpp_test/my_plugin.h:25:7: error: ‘MyPluginWidget’ in namespace ‘Ui’ does not name a type
+Comment by AndyZe on 2017-01-09:
+Quick guess here: Try Ui::MainWindow. Referring to your mainwindow.ui file, I don't see 'MyPluginWidget' defined anywhere.
+Compare to this file, where 'MyPluginWidget' is defined:
+https://github.com/lucasw/rqt_mypkg/blob/master/rqt_example_cpp/src/rqt_example_cpp/my_plugin.ui
+Comment by fonstein on 2017-01-11:
+Thanks, that worked! I've gotten catkin to build now, but when I try to start rqt I get: RosPluginProvider._parse_plugin_xml() could not parse. Got any ideas as what the problem is? I've updated my repo
+Comment by 130s on 2017-01-15:
+If the documentation is "spread out" (I don't know what that means) and you've found the solution for your problem then please consider updating it ;)
+Comment by Azhar on 2017-01-17:
+I havent found a solution to it. However, i am experimenting with rqt_dynamic_reconfigure to emulate the same feature.
+Comment by WLAN13 on 2019-03-27:
+Hi, I have got a problem, pretty similar to yours, I know it's now two years later, but maybe someone could help me? I am completely stuck at the moment.
+https://answers.ros.org/question/319450/turn-existing-gui-into-rqt-plugin-errors-in-plugin_bridgeh/
+Thanks!
+Comment by mdgonzales1998 on 2019-07-05:
+I've tried cloning the example package but it will not show up in rqt. I've tried using rqt --force-discover and that doesn't work either. It does not show up in --plugin-list either.
+

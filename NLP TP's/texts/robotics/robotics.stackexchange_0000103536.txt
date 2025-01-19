@@ -1,0 +1,39 @@
+Q:
+
+Steer to a pose for a differential drive robot
+
+I am working on a diff-drive robot that needs to go and dock into a docking station to charge when the battery is low. The charging socket is on the back of the robot, like a vacuum cleaner, so this movement will have to be done in reverse, much like parking a car. I have a diagram that might help you understand the situation better:
+
+From a ROS perspective, all related perception will be in the base_link frame, so that my robot will effectively be at $(0, 0, 0)$ at all times, and the docking station will be detected in this frame. Let's assume for now that the docking station is at $(x_g, y_g, \theta_g)$ as shown in the figure. In the ROS implementation, I'd be working with geometry_msgs/PoseStamped messages.
+I need to be able to write geometry_msgs/Twist messages to the cmd_vel topic in order to make the robot move. Because this is a diff-drive robot, I know that I can only control linear.x and angular.z fields of the particular Twist message.
+I would like to know if the control law expressed below is valid or not:
+/**
+  * pose -> The desired pose (geometry_msgs/PoseStamped)
+  * command -> the resulting joint commands (geometry_msgs/Twist)
+  */
+
+double lin_vel_gain = 0.3;
+double ang_vel_gain = 0.1;
+
+/* Find the linear error */
+double linear_error = std::hypot(pose.position.x, pose.position.y);
+
+/* Find the angular error */
+double angular_error = std::atan2(pose.position.y, pose.position.x);
+
+command.linear.x = lin_vel_gain * linear_error;
+command.angular.z = angular_vel_gain * angular_error;
+
+I would also like to know how I can make this better, I was thinking of designing it according to a more classical path-planner, like this:
+
+How would I go about obtaining these intermediate poses?
+Any help, including literature and code samples are greatly appreciated.
+Thanks!
+
+A:
+
+To your question around the control math being valid, it appears to be mathematically OK, but it's not clear it will work in practice. Moves are usually profiled where you set an end point. Your math (a P-filter controller) will technically never reach the charger since it will slow down as it approaches and will never fully align with it for the same reason. Also the update rate on locating the charger will have to come in very quickly compared to the motion since theta will change as the robot starts moving.
+My thoughts are that you should line up the robot using theta (with either a PID filter or oscillate around the center point) and move towards the charger at a set (slow) speed until the robot hits the charger. Don't be fancy with velocity. Focus on steering and just move slowly.
+I have accomplished this with a camera that locates an LED on the charger and steers towards it with a slow set/steady forward speed. When the voltage on the charging pin appears, I stop forward motion. If it takes too long, it stops, backs up and tries again.
+You have more than one question so should probably break it up.
+

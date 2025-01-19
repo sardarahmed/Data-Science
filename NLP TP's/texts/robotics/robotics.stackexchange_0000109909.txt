@@ -1,0 +1,75 @@
+Q:
+
+Reading a vector of structs as parameters in ROS2
+
+I would like to be able to read ROS2 parameters of the form:
+/**:
+  ros__parameters:
+    people:
+      - name: "Alice"
+        age: 30
+        grade: "A+"
+      - name: "Bob"
+        age: 25
+        grade:  "B-"
+
+From what I can tell, there doesn't seem to be a great way to do this in ROS2.
+The workaround I've been using looks like this:
+/**:
+  ros__parameters:
+    people_id: 
+      - "Alice"
+      - "Bob"
+
+    people:
+      Alice: 
+         name:  "Alice"
+         age:  30
+         grade: "A+"
+      Bob: 
+         name:  "Bob"
+         age:   25
+         grade:  "B-"
+
+This method works alright.   However, It's a pain to need to forward declare all the people you want to configure.   (In this example we could technically drop the name field since that's what we're using for the ID.)
+In ROS1 I would just read the people parameter as yaml and parse it directly, without the need to forward declare.
+Another option I've tried (and least like) is just declaring vectors of everything
+/**:
+  ros__parameters:
+    names: ["Alice", "Bob"]
+    ages:  [30     , 25]
+    grades:["A+"   , "B-" ]
+
+for this simple example it's ok, however, I find it easy to get an "off by 1" error when your're configuring more complex objects.  It also doesn't support default of name, age, grade if you don't want to specify in your config.
+
+A:
+
+Im working on the same problem and have found a workaround that lets you get parameters from a yaml file like you would in ROS1 without forward declaring them as is the default in ROS2.
+You need to set the node options in your nodes constructor to accept undeclared parameters and to automatically declare parameters from overrides.
+rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(true)
+
+And your yaml file...
+/your_node_namespace:  
+  your_node_name:
+    ros__parameters:
+
+      people:     
+        Alice:
+          name: "Alice"
+          age: 30
+          grade: "A+"
+        Bob:
+          name: "Bob"
+          age: 25
+          grade: "B-"
+
+You can then use the get_parameters() ROS2 api to get all the people parameters by specifying people as a prefix. This puts the people key value pairs into a std::map as shown below.
+std::map<std::string, rclcpp::Parameter> people_map;
+node->get_parameters("people", people_map);
+
+So your params would be accessible from the map as a key value pair where the key is a string "Alice.age" and value is a rclcpp parameter which can be utilized with rclcpp built in methods .as_int() or .as_double() or .as_string() etc.
+This isnt perfect as I'd prefer the people params in a struct rather than a map. You also have to be careful not to redeclare parameters that are specified in the yaml file as it will throw a ROS error. If you want to be able to forward declare parameters AND load them from a yaml file youll have to implement logic to check whether the node already has the parameter.
+  if (!node->has_parameter("your_param")) {
+    node->declare_parameter("your_param", your_param_default);
+  } 
+

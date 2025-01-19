@@ -1,0 +1,127 @@
+Q:
+
+PointCloud2 and PointField
+
+The documentation on the PointCloud2 and PointField messages is a bit sparse and I'm having some difficulty understanding it. I've found the following documentation for these messages PointCloud2 PointField.
+If we want to send a 2d image (320x240 pixels) with depth & intensity data that are both floats, I imagine we the object should be populated like this (note this is only pseudo code so there are syntax errors) but its not clear to me if this is completely correct.
+PointCloud2 msg;
+
+msg.height = 240;
+msg.width = 320;
+
+msg.point_step = 8;
+msg.row_step = msg.width*msg.point_step; 
+msg.is_bigendian = false;
+
+bool is_dense = true;
+
+msg.fields[0].name = "depth";
+msg.fields[0].offset = 0;
+msg.fields[0].datatype = FLOAT32;
+msg.fields[0].count = ???;
+
+msg.fields[1].name = "intensity";
+msg.fields[1].offset = 0;
+msg.fields[1].datatype = FLOAT32;
+msg.fields[1].count = ???;
+
+int byteIdx = 0
+for(i = 0; i < depth.size();i++) 
+{
+  msg.data[byteIdx++].count = (uint8_t)(depth[i] >>0);
+  msg.data[byteIdx++].count = (uint8_t)(depth[i] >>8);
+  msg.data[byteIdx++].count = (uint8_t)(depth[i] >>16);
+  msg.data[byteIdx++].count = (uint8_t)(depth[i] >>24);
+  msg.data[byteIdx++].count = (uint8_t)(intensity[i] >>0);
+  msg.data[byteIdx++].count = (uint8_t)(intensity[i] >>8);
+  msg.data[byteIdx++].count = (uint8_t)(intensity[i] >>16);
+  msg.data[byteIdx++].count = (uint8_t)(intensity[i] >>24);
+}
+
+So my primary questions are ...
+
+What is the count value for a field ? Seems to me that this should always be set to 1, when would this not be set to 1?
+What is the purpose of the is_dense field? Does it change how the bytes should be formatted in the msg.data    property?
+Are there any examples of populating this message or additional documentation that people could point me to?
+
+Thanks
+
+Originally posted by kabla002 on ROS Answers with karma: 31 on 2016-05-16
+Post score: 3
+
+A:
+
+First off, you probably don't want to send a PointCloud2, buth rather a Depth Image. The difference is:
+
+a PointCloud2 has euclidean x/y/z coordinates, not depth
+a Depth Image has depth, not x/y/z
+
+A Depth Image can later be converted into a PointCloud2, given the camera parameters. Some more tips:
+
+There is no dedicated message type for depth images; use sensor_msgs/Image instead. See REP-118.
+Publish the camera parameters as CameraInfo messages on a separate topic.
+Then you can simply shove those two topics into a depth_image_proc/point_cloud_xyz nodelet, which will convert the depth image into a PointCloud2. (BTW, that's also a good place to look for the code example that you were asking about).
+
+To answer the second of your questions:
+
+What is the purpose of the is_dense field? Does it change how the bytes should be formatted in the msg.data property?
+
+That's answered very shortly in the PointCloud2 comments. Basically it's like this:
+
+A PointCloud2 can be organized or unorganized. Unorganized means that height == 1 (and therefore width == number of points, since height * width must equal number of points). Organized means something like height == 240, width == 320, and that's usual for point clouds that come from a 3D camera. The useful thing about this is that there is a one-to-one mapping between a pixel and a point, which allows more efficient algorithms.
+A PointCloud2 can be dense or non-dense. Dense means that there are no invalid points, non-dense means the opposite. An invalid point is one that has all x/y/z values set to std::numeric_limits<float>::quiet_NaN().
+
+Strictly speaking, these two things are orthogonal (that's why it makes sense to keep the concepts separate), but in 99.9% of cases it's coupled:
+
+Organized clouds are non-dense. The reason is that you need invalid points to "fill up" the point cloud for pixels that don't have a valid measurement.
+Unorganized clouds are dense. While this doesn't have to be the case, it's simply a waste of memory and CPU to put invalid points into an unorganized cloud.
+
+The is_dense flag is used a lot inside the PCL; mostly, there is logic like "if the cloud is not dense, iterate over all points and remove the invalid points; otherwise, proceed".
+One final tip: Instead of filling out the PointCloud2 message fields directly, it's much more comfortable to fill out a pcl::PointCloud<T> message instead and publish it via pcl_ros, which will do the conversion to a PointCloud2 automatically.
+
+The count property of the fields is still a bit confusing
+
+From the PCL docs:
+
+COUNT - specifies how many elements does each dimension have. For example, x data usually has 1 element, but a feature descriptor like the VFH has 308. Basically this is a way to introduce n-D histogram descriptors at each point, and treating them as a single contiguous block of memory.
+
+(This documentation is about the PCD file format, but this part is true for PointCloud2 as well).
+Most "common" fields like x, y, z all have count == 1 each. Both rbg and rgba have count == 1 for the whole color tuple (because they are represented as 3 or 4 chars concatenated into a float -- you can see why I recommend not filling the PointCloud2 message directly).
+If you want a list of all PCL point types that have count > 1, look at common/include/pcl/impl/point_types.hpp. All point types that end in a number have the respective count (e.g., pcl::FPFHSignature33 has count == 33).
+I've uploaded a small test program to this gist that publishes a PointCloud<pcl::FPFHSignature33>. If you do a rostopic echo /cloud, you'll see this:
+header: 
+  seq: 37
+  stamp: 
+    secs: 1463732445
+    nsecs: 246704000
+  frame_id: some_frame
+height: 1
+width: 1
+fields: 
+  - 
+    name: fpfh
+    offset: 0
+    datatype: 7
+    count: 33
+is_bigendian: False
+point_step: 132
+row_step: 132
+data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 92, 187, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+is_dense: True
+
+Each point has a single field with a count of 33 and datatype 7, meaning float[33]. Since a float takes 4 bytes, point_step == 4 * 33 = 132, and row_step == width * point_step = 132. The line p.histogram[15] = 23.42f; from my gist translates to the four bytes 41, 92, 187, 65 in the middle of the binary blob data.
+
+Originally posted by Martin Günther with karma: 11816 on 2016-05-17
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by kabla002 on 2016-05-19:
+Thanks for your reply! The is dense field makes sense to me now and I will use the image message instead. The count property of the fields is still a bit confusing, It might be helpful if you wanted a field that was longer than a double or 3 bytes long or something like that, does that make sense?
+Comment by Martin Günther on 2016-05-20:
+I've updated my answer!
+Comment by kabla002 on 2016-05-21:
+Thank you again! Your description and example were very helpful. Seems to me your answer should be added to the documentation.
+Comment by nckswt on 2016-10-27:
+Or, at the very least, accepted =p
+

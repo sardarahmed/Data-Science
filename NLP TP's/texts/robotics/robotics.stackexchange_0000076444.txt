@@ -1,0 +1,241 @@
+Q:
+
+Segmentation fault (core dumped) : PCL tutorial
+
+Hey, I am new to ROS (Version Jade-1.11.20) and want to work with pointclouds. I followed the first ROS PCL tutorial as written in http://wiki.ros.org/pcl/Tutorials . However, rosrun leads to the following error output:
+rosrun my_pcl_tutorial example input:=/narrow_stereo_textured/points2
+Segmentation fault (core dumped)
+
+Normally, that would mean that pointers are screwed up, but as I simply copy-pasted the code from the tutorial, the following example.cpp file should be correct:
+#include <ros/ros.h>
+// PCL specific includes
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+
+ros::Publisher pub;
+
+void 
+cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
+{
+  // Container for original & filtered data
+  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2; 
+  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
+  pcl::PCLPointCloud2 cloud_filtered;
+
+  // Convert to PCL data type
+  pcl_conversions::toPCL(*cloud_msg, *cloud);
+
+  // Perform the actual filtering
+  pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+  sor.setInputCloud (cloudPtr);
+  sor.setLeafSize (0.1, 0.1, 0.1);
+  sor.filter (cloud_filtered);
+
+  // Convert to ROS data type
+  sensor_msgs::PointCloud2 output;
+  pcl_conversions::fromPCL(cloud_filtered, output);
+
+  // Publish the data
+  pub.publish (output);
+}
+
+int
+main (int argc, char** argv)
+{
+  // Initialize ROS
+  ros::init (argc, argv, "my_pcl_tutorial");
+  ros::NodeHandle nh;
+
+  // Create a ROS subscriber for the input point cloud
+  ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
+
+  // Create a ROS publisher for the output point cloud
+  pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
+
+  // Spin
+  ros::spin ();
+}
+
+Could it be that I need to manually download and put /narrow_stereo_textured/points2 in the same folder as example.cpp? I assumed that it gets taken from the library, but maybe this assumption is wrong. If you need any further code or info, just tell me (you would have to give all instructions though).
+I also had a problem incorporating the package before as can be read in http://answers.ros.org/question/244268/package-not-found-ros-pcl-tutorial/?answer=244289#post-id-244289 .
+GDB bt output:
+        (gdb) bt
+    #0  0x00007ffff402ea70 in boost::math::lanczos::lanczos_initializer<boost::math::lanczos::lanczos17m64, long double>::init::init() ()
+       from /usr/lib/libpcl_sample_consensus.so.1.7
+    #1  0x00007ffff40066be in ?? () from /usr/lib/libpcl_sample_consensus.so.1.7
+    #2  0x00007ffff7dea10a in call_init (l=<optimized out>, argc=argc@entry=1, 
+        argv=argv@entry=0x7fffffffd9c8, env=env@entry=0x7fffffffd9d8)
+        at dl-init.c:78
+    #3  0x00007ffff7dea1f3 in call_init (env=<optimized out>, 
+        argv=<optimized out>, argc=<optimized out>, l=<optimized out>)
+        at dl-init.c:36
+    #4  _dl_init (main_map=0x7ffff7ffe1c8, argc=1, argv=0x7fffffffd9c8, 
+        env=0x7fffffffd9d8) at dl-init.c:126
+    #5  0x00007ffff7ddb30a in _dl_start_user () from /lib64/ld-linux-x86-64.so.2
+    #6  0x0000000000000001 in ?? ()
+    #7  0x00007fffffffddd1 in ?? ()
+    #8  0x0000000000000000 in ?? ()
+(gdb)
+
+Originally posted by anonymous28046 on ROS Answers with karma: 65 on 2016-09-23
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-09-23:
+Probably easiest to run your node in GDB and debug it. You can do this either directly (starting the node binary from lib in your devel space), or by using a launch prefix: wiki/roslaunch/nodes in gdb.
+Comment by anonymous28046 on 2016-09-23:
+Well, this is difficult for me to grasp. I built a launch file in my_pcl_tutorial/launch and tried to run it with the prefixes, but it did not work. Could you give step by step instructions for simply doing what I am supposed to do?
+Comment by gvdhoorn on 2016-09-23:
+The first would be to actually tell us what "did not work".
+Comment by anonymous28046 on 2016-09-23:
+I never used GDB :>. Would gdb example invoked in the lib/my_pcl_tutorial workspace be sufficient? The output is attached to the question. Additionally, I have not written launch files until yet and find it hard to transfer the launch files written in tutorials to my specific example.
+Comment by anonymous28046 on 2016-09-23:
+The launch file (probably something wrong there):
+<launch>
+  <group ns="example1">
+    <node pkg="my_pcl_tutorial" name="sim" type="example"/>
+  </group>
+</launch>
+
+I am listening to gdb tutorials on youtube now.
+I am wondering if it is easier to debug with qtcreator.
+Comment by gvdhoorn on 2016-09-23:
+gdb example would work, yes. Start the rest of your application (ie: other nodes, and a roscore). After that, return to gdb, enter r (short for run) and press enter. That should start your node. Wait for the crash, enter bt (backtrace), enter. Copy/paste the backtrace in your question.
+Comment by gvdhoorn on 2016-09-23:
+Make sure to compile your node with debug symbols though.
+Comment by gvdhoorn on 2016-09-23:
+And this may all seem overly complicated to solve your problem, but if you're going to be working in C/C++, knowing how to use gdb for tracking down a simple SEGFAULT is a really valuable skill.
+re: qt creator: also possible. But that is basically gdb with a UI.
+Comment by gvdhoorn on 2016-09-23:
+And your launch file "does not work", because you did not add the launch-prefix as the wiki page showed you. But if you don't need a set of nodes, then not using a launch file is also ok.
+Comment by anonymous28046 on 2016-09-23:
+I added the bt output. Regarding the launchfile, I thought the prefix was for commands (like -f, -type etc.), not for the file itself. What do you mean with compiling with debug symbols? Setting "break main" before running? I am thankful for your suggestions and see the importance of debugging.
+Comment by gvdhoorn on 2016-09-24:
+launch-prefix is an attribute of the node roslaunch element (see wiki/roslaunch/XML/node - Attributes). It is node specific, so you'll have to add it to the <node .. /> line in your launch file.
+Comment by gvdhoorn on 2016-09-24:
+As to your backtrace: your node was not compiled with debug symbols. You'll wan to compile your workspace (or at least the containing pkg) with something like -DCMAKE_BUILD_TYPE=Debug. Then try again.
+Comment by gvdhoorn on 2016-09-24:
+Just a guess: are you trying to compile & run this on a system with C++11 enabled by default, but are using PCL 1.7? If so, disable C++11 support: binary releases of PCL 1.7 are not compatible with that. See this Q/A for instance (note the bt).
+Comment by anonymous28046 on 2016-09-24:
+I am still searching for a solution, but do not have access to my work laptop until Monday morning. I tried to replicate the issue with my personal computer on a virtual machine, but after invoking the command simply nothing happens, its pending. :>
+Comment by anonymous28046 on 2016-09-24:
+Regarding the PCL 1.7 that could be the issue I guess. I am using ROS indigo/jade and according to http://www.ros.org/reps/rep-0003.html I should be using C++03. What is the easiest way to turn of C++11 in gcc? A few are here: http://stackoverflow.com/questions/16886591/how-do-i-enable-c11-in-gcc
+Comment by gvdhoorn on 2016-09-24:
+REP-3 just lists the requirements/conventions for ROS pkgs. Users (such as you) and external developers can do whatever they want. But in the PCL1.7-C++11 problem, it's a binary incompatibility between code compiled with C++11 enabled and the binary distribution of the PCL libs.
+Comment by gvdhoorn on 2016-09-24:
+As to how to disable C++11: what I really meant is that you need to make sure that you're not inadvertently compiling with C++11 enabled. Newer GCC versions will do that, as will clang. You haven't given us any info on your platform or OS (or installed compilers), so that's a first thing to do.
+Comment by anonymous28046 on 2016-09-24:
+The OS is Ubuntu 14.04 and the compiler is 99% gcc. I do CMake and build in qtcreator after writing the code.
+Comment by anonymous28046 on 2016-09-26:
+I finally have my laptop back. gcc -v delivers:
+gcc version 4.8.4 (Ubuntu 4.8.4-2ubuntu1~14.04.3)
+
+Comment by anonymous28046 on 2016-09-26:
+Regarding debugging, I saw this thread where you helped: here
+So I invoked catkin_make -DCMAKE_BUILD_TYPE=RelWithDebInfo and did gdb again. After r, it stops after a few lines. What now?
+Comment by anonymous28046 on 2016-09-26:
+Well, the segmentation error does not occur anymore. Running rosrun my_pcl_tutorial example input:=/narrow_stereo_texturd/points2 now simply does nothing as it did on my home computer. Even deleting all the my_pcl_tutorials folders and rebuilding did not help. Whats that ROS magic again :(
+Comment by gvdhoorn on 2016-09-26:
+One of the work-arounds for the PCL1.7 with C++11 issue is to compile your node with debug symbols, which you've done by using RelWithDebInfo. That is a problem with PCL btw, not ROS.
+GCC 4.8.4 should not enable C++11 by default, but perhaps something else is. I don't know.
+Comment by gvdhoorn on 2016-09-26:\
+
+Running rosrun [..] now simply does nothing as it did on my home computer
+
+Which seems to indicate that you no longer run into the SEGFAULT problem. Do you get any output on the output topic? Not getting anything on the terminal is normal: the program is not supposed to print anything there.
+Comment by anonymous28046 on 2016-09-26:
+What I mean by nothing is that the node starts, but then idles endlessly without quitting again. rostopic echo /output during the idle does not spit out anything.
+Comment by gvdhoorn on 2016-09-26:
+and what is the output of rostopic info /narrow_stereo_textured/points2 and rostopic hz /narrow_stereo_textured/points2?
+Comment by anonymous28046 on 2016-09-26:
+1st:
+rostopic info /narrow_stereo_textured/points2
+Type: sensor_msgs/PointCloud2
+
+Publishers: None
+
+Subscribers: 
+ * /my_pcl_tutorial (http://RNGX2016:44913/)
+
+Comment by anonymous28046 on 2016-09-26:
+2nd:
+rostopic hz /narrow_stereo_textured/points2
+subscribed to [/narrow_stereo_textured/points2]
+
+Comment by anonymous28046 on 2016-09-26:
+I inserted ROS_INFO("example running..."); at the beginning of the main function in example.cpp and CMake and build it again. It does not print out anything on the console..
+Comment by gvdhoorn on 2016-09-26:\
+
+Publishers: None
+
+Well, I'm guessing that is your problem: nothing is publishing to the /narrow_stereo_textured/points2 topic. So your PCL filtering node will never get a message, and it will never publish anything.
+Are you sure you have a publisher on that topic?
+Comment by gvdhoorn on 2016-09-26:\
+
+Whats that ROS magic again :(
+
+and I understand this can be frustrating, but comments like that aren't really constructive.
+Afaict, this is not a ROS problem (as in: the infrastructure or tooling), but something else.
+Comment by anonymous28046 on 2016-09-26:
+You are right, I just feel that my limited knowledge really hinders me in finding a solution, sorry about that comment. I simply do not understand, why running catkin_make again suddenly removed the segmentation error without me changing anything in the code. Similar things have happened before.
+Comment by gvdhoorn on 2016-09-26:
+As I wrote earlier: one of the work-arounds for that PCL1.7+C++11 problem (assuming that is actually what is wrong here) is to compile with debug symbols enabled. By running catkin_make -DCMAKE_BUILD_TYPE=RelWithDebInfo, you have done exactly that. Hence, it now works. Nothing magical.
+Comment by anonymous28046 on 2016-09-26:
+And surely the ROS_INFO should be printed to the console as it is at the beginning of the main function. Does the code not get updated after editing, CMake and build? (or catkin_make)
+Regarding the publisher, the code from the Tutorial is likely correct, unless they do not explain an important step.
+Comment by gvdhoorn on 2016-09-26:
+Just to make sure: what is the output of rostopic list?
+The code will be correct, but that doesn't mean that you have a publisher running for that topic. Note also that the tutorial gives a few alternatives for the specific command line you are using (for OpenNI devices fi).
+Comment by gvdhoorn on 2016-09-26:\
+
+Does the code not get updated after editing, CMake and build? (or catkin_make)
+
+It should. Note that CMake is not needed (nor should you ever use it directly when using catkin_make).
+Are you still using rosrun, or roslaunch now? If the latter, add output=screen.
+Comment by anonymous28046 on 2016-09-26:
+output:
+rostopic list
+/narrow_stereo_textured/points2
+/output
+/rosout
+/rosout_agg
+
+Comment by gvdhoorn on 2016-09-26:
+Please run rostopic list without your tutorial node running. If you have a roscore in a separate terminal, please restart that as well. Afterwards, run rostopic list. What kind of 3D sensor are you trying to use? A kinect?
+Comment by anonymous28046 on 2016-09-26:
+I feel CMake is automatically done when opening the project in qtcreator.
+Anyway, I closed qtcreator now and invoked catkin_make and now it is printing it out. I used rosrun.
+Comment by anonymous28046 on 2016-09-26:
+Output:
+rostopic list
+/rosout
+/rosout_agg
+
+Oh, is that the mistake? I thought you do not need any 3D sensor as input, as it is provided by the library? So you are supposed to provide data by yourself? I do not have a 3D sensor, but an example 3D .pcd file.
+Comment by anonymous28046 on 2016-09-26:
+If you like, you can write an answer now with the catkin_make -DCMAKE_BUILD_TYPE=RelWithDebInfo info, as that solved the original problem.
+Comment by gvdhoorn on 2016-09-26:
+The node you copy/pasted expects input PointClouds on the input topic, it will not by itself do anything with files. You can use the pcd_to_pointcloud node to publish a .pcd. That could function as input for your tutorial node.
+Comment by anonymous28046 on 2016-09-26:
+That should be enough information to dig more into the structure of ROS code and make it work. Thank you for being so helpful and patient. Is there a way to directly throughput the pointcloud made from rosrun pcl_ros pcd_to_pointcloud 3D.pcd to the input topic?
+Comment by gvdhoorn on 2016-09-26:
+Well, you could use a remapping argument (as you did for your PCL tutorial node) to make pcd_to_pointcloud publish on the input topic. But personally I would make the consumer (example in this case) change its input topic instead. That feels more logical to me, but either will work.
+
+A:
+
+(based on information provided in the comments)
+This looks like the PCL1.7<->C++11 incompatibility.
+I'd try to find out whether you are enabling/forcing C++11 compilation somehow, but a work-around would be to compile with Debug symbols enabled.
+Either run catkin_make with -DCMAKE_BUILD_TYPE=Debug or -DCMAKE_BUILD_TYPE=RelWithDebInfo.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-09-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ksb on 2019-08-13:
+For me it didn't work with -DCMAKE_BUILD_TYPE=Debug. Instead it worked when compiling in Release mode.However, the solution to this which I found is https://github.com/felixendres/rgbdslam_v2/issues/8#issuecomment-74255104
+

@@ -1,0 +1,724 @@
+Q:
+
+Raspberry Pi quadcopter thrashes at high speeds
+
+I am attempting to build a Raspberry Pi based quadcopter. So far I have succeeded in interfacing with all the hardware, and I have written a PID controller that is fairly stable at low throttle. The problem is that at higher throttle the quadcopter starts thrashing and jerking. I have not even been able to get it off the ground yet, all my testing has been done on a test bench. I have ruled out bad sensors by testing each sensor individually, and they seem to be giving correct values. Is this a problem with my code, or perhaps a bad motor? Any suggestions are greatly appreciated.
+Here is my code so far:
+QuadServer.java:
+package com.zachary.quadserver;
+
+import java.net.*;
+import java.io.*;
+import java.util.*;
+
+import se.hirt.pi.adafruit.pwm.PWMDevice;
+import se.hirt.pi.adafruit.pwm.PWMDevice.PWMChannel;
+
+public class QuadServer {
+    private static Sensor sensor = new Sensor();
+
+    private final static int FREQUENCY = 490;
+
+    private static double PX = 0;
+    private static double PY = 0;
+
+    private static double IX = 0;
+    private static double IY = 0;
+
+    private static double DX = 0;
+    private static double DY = 0;
+
+    private static double kP = 1.3;
+    private static double kI = 2;
+    private static double kD = 0;
+
+    private static long time = System.currentTimeMillis();
+
+    private static double last_errorX = 0;
+    private static double last_errorY = 0;
+
+    private static double outputX;
+    private static double outputY;
+
+    private static int val[] = new int[4];
+
+    private static int throttle;
+
+    static double setpointX = 0;
+    static double setpointY = 0;
+
+    static long receivedTime = System.currentTimeMillis();
+
+    public static void main(String[] args) throws IOException, NullPointerException {
+
+        PWMDevice device = new PWMDevice();
+        device.setPWMFreqency(FREQUENCY);
+
+        PWMChannel BR = device.getChannel(12);
+        PWMChannel TR = device.getChannel(13);
+        PWMChannel TL = device.getChannel(14);
+        PWMChannel BL = device.getChannel(15);
+
+        DatagramSocket serverSocket = new DatagramSocket(8080);
+
+        Thread read = new Thread(){
+                public void run(){
+                    while(true) {
+                    try {
+                            byte receiveData[] = new byte[1024];
+                            DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+                            serverSocket.receive(receivePacket);
+                            String message = new String(receivePacket.getData());
+                            throttle = (int)(Integer.parseInt((message.split("\\s+")[4]))*12.96)+733;
+                            setpointX = Integer.parseInt((message.split("\\s+")[3]))-50;
+                            setpointY = Integer.parseInt((message.split("\\s+")[3]))-50;
+
+                        receivedTime = System.currentTimeMillis();
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+        };
+        read.start();
+
+        while(true)
+        {
+            Arrays.fill(val, calculatePulseWidth((double)throttle/1000, FREQUENCY));
+
+            double errorX = -sensor.readGyro(0)-setpointX;
+            double errorY = sensor.readGyro(1)-setpointY;
+
+            double dt = (double)(System.currentTimeMillis()-time)/1000;
+
+            double accelX = sensor.readAccel(0);
+            double accelY = sensor.readAccel(1);
+            double accelZ = sensor.readAccel(2);
+
+            double hypotX = Math.sqrt(Math.pow(accelX, 2)+Math.pow(accelZ, 2));
+            double hypotY = Math.sqrt(Math.pow(accelY, 2)+Math.pow(accelZ, 2));
+
+            double accelAngleX = Math.toDegrees(Math.asin(accelY/hypotY));
+            double accelAngleY = Math.toDegrees(Math.asin(accelX/hypotX));
+
+            if(dt > 0.01)
+            {
+
+                PX = errorX;
+                PY = errorY;
+
+                IX += errorX*dt;
+                IY += errorY*dt;
+
+                IX = 0.95*IX+0.05*accelAngleX;
+                IY = 0.95*IY+0.05*accelAngleY;
+
+                DX = (errorX - last_errorX)/dt;
+                DY = (errorY - last_errorY)/dt;
+
+                outputX = kP*PX+kI*IX+kD*DX;
+                outputY = kP*PY+kI*IY+kD*DY;
+                time = System.currentTimeMillis();
+            }
+
+            System.out.println(setpointX);
+
+            add(-outputX+outputY, 0);
+            add(-outputX-outputY, 1);
+            add(outputX-outputY, 2);
+            add(outputX+outputY, 3);
+
+            //System.out.println(val[0]+", "+val[1]+", "+val[2]+", "+val[3]);
+            if(System.currentTimeMillis()-receivedTime < 1000)
+            {
+                BR.setPWM(0, val[0]);
+                TR.setPWM(0, val[1]);
+                TL.setPWM(0, val[2]);
+                BL.setPWM(0, val[3]);
+            } else 
+            {
+                BR.setPWM(0, 1471);
+                TR.setPWM(0, 1471);
+                TL.setPWM(0, 1471);
+                BL.setPWM(0, 1471);
+            }
+
+        }
+    }
+
+    private static void add(double value, int i)
+    {
+        value = calculatePulseWidth(value/1000, FREQUENCY);
+        if(val[i]+value > 1471 && val[i]+value < 4071)
+        {
+            val[i] += value;
+        }else if(val[i]+value < 1471)
+        {
+            //System.out.println("low");
+            val[i] = 1471;
+        }else if(val[i]+value > 4071)
+        {
+            //System.out.println("low");
+            val[i] = 4071;
+        }
+    }
+
+    private static int calculatePulseWidth(double millis, int frequency) {
+        return (int) (Math.round(4096 * millis * frequency/1000));
+    }
+}
+
+Sensor.java:
+package com.zachary.quadserver;
+
+import com.pi4j.io.gpio.GpioController;
+import com.pi4j.io.gpio.GpioFactory;
+import com.pi4j.io.gpio.GpioPinDigitalOutput;
+import com.pi4j.io.gpio.PinState;
+import com.pi4j.io.gpio.RaspiPin;
+import com.pi4j.io.i2c.*;
+import com.pi4j.io.gpio.GpioController;
+import com.pi4j.io.gpio.GpioFactory;
+import com.pi4j.io.gpio.GpioPinDigitalOutput;
+import com.pi4j.io.gpio.PinState;
+import com.pi4j.io.gpio.RaspiPin;
+import com.pi4j.io.i2c.*;
+
+import java.net.*;
+import java.io.*;
+
+public class Sensor {
+    static I2CDevice sensor;
+    static I2CBus bus;
+    static byte[] accelData, gyroData;
+    static long accelCalib[] = new long[3];
+    static long gyroCalib[] = new long[3];
+
+    static double gyroX = 0;
+    static double gyroY = 0;
+    static double gyroZ = 0;
+
+    static double accelX;
+    static double accelY;
+    static double accelZ;
+
+    static double angleX;
+    static double angleY;
+    static double angleZ;
+
+    public Sensor() {
+        //System.out.println("Hello, Raspberry Pi!");
+        try {
+            bus = I2CFactory.getInstance(I2CBus.BUS_1);
+
+            sensor = bus.getDevice(0x68);
+
+            sensor.write(0x6B, (byte) 0x0);
+            sensor.write(0x6C, (byte) 0x0);
+            System.out.println("Calibrating...");
+
+            calibrate();
+
+            Thread sensors = new Thread(){
+                    public void run(){
+                        try {
+                            readSensors();
+                        } catch (IOException e) {
+                        System.out.println(e.getMessage());
+                    }
+                    }
+            };
+            sensors.start();
+        } catch (IOException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private static void readSensors() throws IOException {
+        long time = System.currentTimeMillis();
+        long sendTime = System.currentTimeMillis();
+
+        while (true) {
+            accelData = new byte[6];
+            gyroData = new byte[6];
+            int r = sensor.read(0x3B, accelData, 0, 6);
+            accelX = (((accelData[0] << 8)+accelData[1]-accelCalib[0])/16384.0)*9.8;
+            accelY = (((accelData[2] << 8)+accelData[3]-accelCalib[1])/16384.0)*9.8;
+            accelZ = ((((accelData[4] << 8)+accelData[5]-accelCalib[2])/16384.0)*9.8)+9.8;
+            accelZ = 9.8-Math.abs(accelZ-9.8);
+
+            double hypotX = Math.sqrt(Math.pow(accelX, 2)+Math.pow(accelZ, 2));
+            double hypotY = Math.sqrt(Math.pow(accelY, 2)+Math.pow(accelZ, 2));
+
+            double accelAngleX = Math.toDegrees(Math.asin(accelY/hypotY));
+            double accelAngleY = Math.toDegrees(Math.asin(accelX/hypotX));
+
+            //System.out.println((int)gyroX+", "+(int)gyroY);
+
+            //System.out.println("accelX: " + accelX+" accelY: " + accelY+" accelZ: " + accelZ);
+
+            r = sensor.read(0x43, gyroData, 0, 6);
+            if(System.currentTimeMillis()-time >= 5)
+            {
+                gyroX = (((gyroData[0] << 8)+gyroData[1]-gyroCalib[0])/131.0);
+                gyroY = (((gyroData[2] << 8)+gyroData[3]-gyroCalib[1])/131.0);
+                gyroZ = (((gyroData[4] << 8)+gyroData[5]-gyroCalib[2])/131.0);
+
+                angleX += gyroX*(System.currentTimeMillis()-time)/1000;
+                angleY += gyroY*(System.currentTimeMillis()-time)/1000;
+                angleZ += gyroZ;
+
+                angleX = 0.95*angleX + 0.05*accelAngleX;
+                angleY = 0.95*angleY + 0.05*accelAngleY;
+
+                time = System.currentTimeMillis();
+            }
+            //System.out.println((int)angleX+", "+(int)angleY);
+            //System.out.println((int)accelAngleX+", "+(int)accelAngleY);
+        }
+    }
+
+    public static void calibrate() throws IOException {
+        int i;
+        for(i = 0; i < 3000; i++)
+        {
+            accelData = new byte[6];
+            gyroData = new byte[6];
+            int r = sensor.read(0x3B, accelData, 0, 6);
+            accelCalib[0] += (accelData[0] << 8)+accelData[1];
+            accelCalib[1] += (accelData[2] << 8)+accelData[3];
+            accelCalib[2] += (accelData[4] << 8)+accelData[5];
+
+            r = sensor.read(0x43, gyroData, 0, 6);
+            gyroCalib[0] += (gyroData[0] << 8)+gyroData[1];
+            gyroCalib[1] += (gyroData[2] << 8)+gyroData[3];
+            gyroCalib[2] += (gyroData[4] << 8)+gyroData[5];
+            try {
+                Thread.sleep(1);
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+        gyroCalib[0] /= i;
+        gyroCalib[1] /= i;
+        gyroCalib[2] /= i;
+
+        accelCalib[0] /= i;
+        accelCalib[1] /= i;
+        accelCalib[2] /= i;
+        System.out.println(gyroCalib[0]+", "+gyroCalib[1]+", "+gyroCalib[2]);
+    }
+
+    public double readAngle(int axis)
+    {
+        switch (axis)
+        {
+            case 0:
+                return angleX;
+            case 1:
+                return angleY;
+            case 2:
+                return angleZ;
+        }
+
+        return 0;
+    }
+
+    public double readGyro(int axis)
+    {
+        switch (axis)
+        {
+            case 0:
+                return gyroX;
+            case 1:
+                return gyroY;
+            case 2:
+                return gyroZ;
+        }
+
+        return 0;
+    }
+
+    public double readAccel(int axis)
+    {
+        switch (axis)
+        {
+            case 0:
+                return accelX;
+            case 1:
+                return accelY;
+            case 2:
+                return accelZ;
+        }
+
+        return 0;
+    }
+}
+
+Edit:
+I have re-written my code in C++ to see if it will run faster but it's still running at about the same speed(about 15 ms per cycle or about 66 Hz).
+This is my new code in C++:
+#include <wiringPi.h>
+#include <wiringPiI2C.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+#include <string.h>
+#include <string>
+#include <iostream>
+#include <unistd.h>
+
+#include <boost/thread.hpp>
+
+#include <time.h>
+
+#include <cmath>
+
+#define axisX 0
+#define axisY 1
+#define axisZ 2
+
+#define kP 20
+#define kI 0
+#define kD 0
+
+#define FREQUENCY 490
+
+#define MODE1 0x00
+#define MODE2 0x01
+#define SUBADR1 0x02
+#define SUBADR2 0x03
+#define SUBADR13 0x04
+#define PRESCALE 0xFE
+#define LED0_ON_L 0x06
+#define LED0_ON_H 0x07
+#define LED0_OFF_L 0x08
+#define LED0_OFF_H 0x09
+#define ALL_LED_ON_L 0xFA
+#define ALL_LED_ON_H 0xFB
+#define ALL_LED_OFF_L 0xFC
+#define ALL_LED_OFF_H 0xFD
+
+// Bits
+#define RESTART 0x80
+#define SLEEP 0x10
+#define ALLCALL 0x01
+#define INVRT 0x10
+#define OUTDRV 0x04
+
+#define BILLION 1000000000L
+
+using namespace std;
+
+double accelCalX = 0;
+double accelCalY = 0;
+double accelCalZ = 0;
+
+double gyroCalX = 0;
+double gyroCalY = 0;
+double gyroCalZ = 0;
+
+double PX;
+double PY;
+
+double IX = 0;
+double IY = 0;
+
+double DX;
+double DY;
+
+double lastErrorX;
+double lastErrorY;
+
+int throttle = 1471;
+
+int sensor = wiringPiI2CSetup(0x68);
+int pwm = wiringPiI2CSetup(0x40);
+
+array<int,4> motorVal;
+
+struct timespec now, then;
+
+int toSigned(int unsignedVal)
+{
+    int signedVal = unsignedVal;
+    if(unsignedVal > 32768)
+    {
+        signedVal = -(32768-(unsignedVal-32768));
+    }
+    return signedVal;
+}
+
+double getAccel(int axis)
+{
+    double X = (toSigned((wiringPiI2CReadReg8(sensor, 0x3B) << 8)+wiringPiI2CReadReg8(sensor, 0x3C)))/1671.8;
+    double Y = (toSigned((wiringPiI2CReadReg8(sensor, 0x3D) << 8)+wiringPiI2CReadReg8(sensor, 0x3E)))/1671.8;
+    double Z = (toSigned((wiringPiI2CReadReg8(sensor, 0x3F) << 8)+wiringPiI2CReadReg8(sensor, 0x40)))/1671.8;
+
+    X -= accelCalX;
+    Y -= accelCalY;
+    Z -= accelCalZ;
+    Z = 9.8-abs(Z-9.8);
+
+    switch(axis)
+    {
+        case axisX:
+            return X;
+        case axisY:
+            return Y;
+        case axisZ:
+            return Z;
+    }
+}
+
+double getGyro(int axis)
+{
+    double X = (toSigned((wiringPiI2CReadReg8(sensor, 0x43) << 8)+wiringPiI2CReadReg8(sensor, 0x44)))/1671.8;
+    double Y = (toSigned((wiringPiI2CReadReg8(sensor, 0x45) << 8)+wiringPiI2CReadReg8(sensor, 0x46)))/1671.8;
+    double Z = (toSigned((wiringPiI2CReadReg8(sensor, 0x47) << 8)+wiringPiI2CReadReg8(sensor, 0x48)))/1671.8;
+
+    X -= gyroCalX;
+    Y -= gyroCalY;
+    Z -= gyroCalZ;
+
+    switch(axis)
+    {
+        case axisX:
+            return X;
+        case axisY:
+            return Y;
+        case axisZ:
+            return Z;
+    }
+}
+
+void calibrate()
+{
+    int i;
+    for(i = 0; i < 1500; i++)
+    {
+        accelCalX += (toSigned((wiringPiI2CReadReg8(sensor, 0x3B) << 8)+wiringPiI2CReadReg8(sensor, 0x3C)))/1671.8;
+        accelCalY += (toSigned((wiringPiI2CReadReg8(sensor, 0x3D) << 8)+wiringPiI2CReadReg8(sensor, 0x3E)))/1671.8;
+        accelCalZ += (toSigned((wiringPiI2CReadReg8(sensor, 0x3F) << 8)+wiringPiI2CReadReg8(sensor, 0x40)))/1671.8;
+
+        gyroCalX += (toSigned((wiringPiI2CReadReg8(sensor, 0x43) << 8)+wiringPiI2CReadReg8(sensor, 0x44)))/1671.8;
+        gyroCalX += (toSigned((wiringPiI2CReadReg8(sensor, 0x45) << 8)+wiringPiI2CReadReg8(sensor, 0x46)))/1671.8;
+        gyroCalX += (toSigned((wiringPiI2CReadReg8(sensor, 0x45) << 8)+wiringPiI2CReadReg8(sensor, 0x46)))/1671.8;
+        usleep(1000);
+    }
+
+    accelCalX /= i;
+    accelCalY /= i;
+    accelCalZ /= i;
+    accelCalZ -= 9.8;
+
+    gyroCalX /= i;
+    gyroCalY /= i;
+    gyroCalZ /= i;
+
+    cout << accelCalX << " " << accelCalY << " " << accelCalZ << "\n";
+}
+
+int calculatePulseWidth(double millis, int frequency) {
+    return (int)(floor(4096 * millis * frequency/1000));
+}
+
+void add(double value, int i)
+{
+    value = calculatePulseWidth(value/1000, FREQUENCY);
+    if(motorVal[i]+value > 1471 && motorVal[i]+value < 4071)
+    {
+        motorVal[i] += value;
+    }else if(motorVal[i]+value < 1471)
+    {
+        //System.out.println("low");
+        motorVal[i] = 1471;
+    }else if(motorVal[i]+value > 4071)
+    {
+        //System.out.println("low");
+        motorVal[i] = 4071;
+    }
+}
+
+void getThrottle()
+{
+    int sockfd,n;
+    struct sockaddr_in servaddr,cliaddr;
+    socklen_t len;
+    char mesg[1000];
+
+    sockfd=socket(AF_INET,SOCK_DGRAM,0);
+
+    bzero(&servaddr,sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(8080);
+    bind(sockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
+
+    while(true)
+    {
+        len = sizeof(cliaddr);
+        n = recvfrom(sockfd,mesg,1000,0,(struct sockaddr *)&cliaddr,&len);
+        mesg[n] = 0;
+        string message(mesg);
+        string values[5];
+
+        int valIndex = 0;
+        int lastIndex = 0;
+        for(int i = 0; i < message.length(); i++)
+        {
+            if(message[i] == ' ')
+            {
+                values[valIndex] = message.substr(lastIndex+1, i);
+                lastIndex = i;
+                valIndex++;
+            }
+        }
+        values[valIndex] = message.substr(lastIndex+1, message.length());
+
+        throttle = calculatePulseWidth(((stoi(values[4])*12.96)+733)/1000, FREQUENCY);
+    }
+}
+
+void setAllPWM(int on, int off) {
+    wiringPiI2CWriteReg8(pwm, ALL_LED_ON_L, (on & 0xFF));
+    wiringPiI2CWriteReg8(pwm, ALL_LED_ON_H, (on >> 8));
+    wiringPiI2CWriteReg8(pwm, ALL_LED_OFF_L, (off & 0xFF));
+    wiringPiI2CWriteReg8(pwm, ALL_LED_OFF_H, (off >> 8));
+}
+
+void setPWM(int on, int off, int channel) {
+    wiringPiI2CWriteReg8(pwm, LED0_ON_L + 4 * channel, (on & 0xFF));
+    wiringPiI2CWriteReg8(pwm, LED0_ON_H + 4 * channel, (on >> 8));
+    wiringPiI2CWriteReg8(pwm, LED0_OFF_L + 4 * channel, (off & 0xFF));
+    wiringPiI2CWriteReg8(pwm, LED0_OFF_H + 4 * channel, (off >> 8));
+}
+
+void setPWMFrequency(double frequency) {
+    double prescaleval = 25000000.0;
+    prescaleval /= 4096.0;
+    prescaleval /= frequency;
+    prescaleval -= 1.0;
+    double prescale = floor(prescaleval + 0.5);
+    int oldmode = wiringPiI2CReadReg8(pwm, MODE1);
+    int newmode = (oldmode & 0x7F) | 0x10;
+    wiringPiI2CWriteReg8(pwm, MODE1, newmode);
+    wiringPiI2CWriteReg8(pwm, PRESCALE, (floor(prescale)));
+    wiringPiI2CWriteReg8(pwm, MODE1, oldmode);
+    usleep(50000);
+    wiringPiI2CWriteReg8(pwm, MODE1, (oldmode | 0x80));
+}
+
+void initSensor()
+{
+    wiringPiI2CWriteReg8(sensor, 0x6B, 0x0);
+    wiringPiI2CWriteReg8(sensor, 0x6C, 0x0);
+}
+
+void initPWM()
+{
+    setAllPWM(0, 0);
+    wiringPiI2CWriteReg8(pwm, MODE2, OUTDRV);
+    wiringPiI2CWriteReg8(pwm, MODE1, ALLCALL);
+    usleep(50000);
+    int mode1 = wiringPiI2CReadReg8(pwm, MODE1);
+    mode1 = mode1 & ~SLEEP;
+    wiringPiI2CWriteReg8(pwm, MODE1, mode1);
+    usleep(50000);
+    setPWMFrequency(FREQUENCY);
+}
+
+double millis(timespec time)
+{
+    return (time.tv_sec*1000)+(time.tv_nsec/1.0e6);
+}
+
+double intpow( double base, int exponent )
+{
+    int i;
+    double out = base;
+    for( i=1 ; i < exponent ; i++ )
+    {
+        out *= base;
+    }
+    return out;
+}
+
+int main (void)
+{
+
+    initSensor();
+    initPWM();
+
+    cout << "Calibrating..." << "\n";
+    calibrate();
+
+    boost::thread server(getThrottle);
+
+    clock_gettime(CLOCK_MONOTONIC, &then);
+
+    while(true)
+    {
+        motorVal.fill(throttle);
+
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        double dt = (millis(now)-millis(then))/1000;
+
+        then = now;
+
+        double accelX = getAccel(0);
+        double accelY = getAccel(1);
+        double accelZ = getAccel(2);
+
+        double hypotX = sqrt(intpow(accelX, 2)+intpow(accelZ, 2));
+        double hypotY = sqrt(intpow(accelY, 2)+intpow(accelZ, 2));
+
+        double accelAngleX = (180/3.14)*(asin(accelY/hypotY));
+        double accelAngleY = (180/3.14)*(asin(accelX/hypotX));
+
+        double errorX = -getGyro(0);
+        double errorY = getGyro(1);
+
+        PX = errorX;
+        PY = errorY;
+
+        IX += errorX*dt;
+        IY += errorY*dt;
+
+        IX = 0.95*IX+0.05*accelAngleX;
+        IY = 0.95*IY+0.05*accelAngleY;
+
+        DX = (errorX-lastErrorX)*dt;
+        DY = (errorY-lastErrorY)*dt;
+
+        lastErrorX = errorX;
+        lastErrorY = errorY;
+
+        double outputX = kP*PX+kI*IX+kD*DX;
+        double outputY = kP*PY+kI*IY+kD*DY;
+
+        add(outputY, 0);//-outputX+
+        add(outputY, 1);//-outputX-
+        add(outputY, 2);//outputX-
+        add(outputY, 3);//outputX+
+
+        setPWM(0, motorVal[0], 12);
+        setPWM(0, motorVal[1], 13);
+        setPWM(0, motorVal[2], 14);
+        setPWM(0, motorVal[3], 15);
+    }
+}
+
+In addition two of the motors seem like they are lagging when I turn the quadcopter fast in one direction. Also for some strange reason the quadcopter seems less responsive to P gain; I have it at 20 in the C++ version and it is working about the same as when I had it at 1.5 in the java version.
+Edit:
+After doing some more testing I have determined that reading from the MPU6050 and writing to the PCA9685 board that I am using to control the ESCs is the source of the delay. Does anybody know how to speed this up?
+Edit:
+I managed to speed up my code to about 200 Hz by changing the i2c baud rate, but the quadcopter is still thrashing. I have spent hours trying to tune the pid controller, but it doesn't seem to help at all.
+
+A:
+
+So, I figured out that the problem was vibration. I first tried using a running average to smooth the data that I was getting from my MPU, but the delay that it created made it oscillate a lot, so I tried a low pass filter instead, which worked GREAT! Thank you to everyone for your help!
+

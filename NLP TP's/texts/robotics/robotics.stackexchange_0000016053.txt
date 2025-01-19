@@ -1,0 +1,95 @@
+Q:
+
+How to tringulate many projections of a point to optimal postion?
+
+Suppose we have many images for the same scene (with known poses already,using for ex: a GPS ), and the same feature appear in more than 2 images .
+How to use all the available info to compute as precisely as possible the 3d-reconstruction of the scene? (actually ,I want a dense map but let's start with a point)
+For 2 images , it's a least square problem solved with OpenCV function: cv2.tringulatePoints
+
+but for many, how to find the best estimate?
+any ideas on the subject? [no problem with dense math]
+
+A:
+
+I will assume, similar to OpenCV, that each camera is a pinhole camera, so you already corrected for things like lens distortion. In this case each visible point in 3D space $(x,y,z)$ gets projected into camera coordinates using
+$$
+\begin{bmatrix}
+x'_i \\ y'_i \\ z'_i
+\end{bmatrix} = R_i \,
+\begin{bmatrix}
+x \\ y \\ z
+\end{bmatrix} + \vec{t}_i, \\
+u_i = \alpha_i\,\frac{x'_i}{z'_i} + \gamma_i, \\
+v_i = \beta_i\,\frac{y'_i}{z'_i} + \delta_i,
+$$
+where $R_i$ is the rotation matrix of camera $i$, which determines the orientation of the camera, $\vec{t}_i$ is the position of camera $i$ in reference frame of the camera itself, $u_i$ and $v_i$ are the pixel coordinates of the point in the image of camera $i$, and $\alpha_i$, $\beta_i$, $\gamma_i$ and $\delta_i$ are camera parameters that scale and translate the projected coordinates into the pixel coordinates of camera $i$.
+
+For the least squares problem it will be assumed that for each camera its parameters $R_i$, $\vec{t}_i$, $\alpha_i$, $\beta_i$, $\gamma_i$ and $\delta_i$ are known and that the pixel coordinates $u_i$ and $v_i$ of the point that has to be triangulated are known as well. In this case the least squares problem can be formulated as follows
+$$
+(x,y,z) = \arg\min_{x,y,z} \sum_{i\in\mathcal{I}} (\hat{u}_i - u_i)^2 + (\hat{v}_i - v_i)^2 \\
+\text{s.t.} \begin{bmatrix}
+\hat{x}'_i \\ \hat{y}'_i \\ \hat{z}'_i
+\end{bmatrix} = R_i \,
+\begin{bmatrix}
+x \\ y \\ z
+\end{bmatrix} + \vec{t}_i, \\
+\hat{u}_i = \alpha_i\,\frac{\hat{x}'_i}{\hat{z}'_i} + \gamma_i, \\
+\hat{v}_i = \beta_i\,\frac{\hat{y}'_i}{\hat{z}'_i} + \delta_i,
+$$
+where $\mathcal{I}$ is the set of all indices of the cameras which see the considered point. You could also add weights to each quadratic term in the summation, for example to reduce the influence of bad or low resolution cameras. The error terms in the summation are also known as the reprojection errors.
+I suspect that this problem is not convex, mainly due to the division by $\hat{z}'_i$. However I do suspect that if you would use an initial guess that is well within the viewing frustum of each camera that it would converge to the global minimum in most cases. This optimization problem can be solved with methods like gradient decent or Newton's method where the gradient can be calculated with
+$$
+\nabla f = 2\,\sum_{i\in\mathcal{I}} (\hat{u}_i - u_i)\,\nabla\hat{u}_i + (\hat{v}_i - v_i)\,\nabla\hat{v}_i, \\
+\nabla\hat{u}_i = \frac{\alpha_i}{\hat{z}_i'}\,R_i^\top \left(
+\begin{bmatrix}1 & 0 & 0\end{bmatrix}^\top - \frac{\hat{x}_i'}{\hat{z}_i'} \begin{bmatrix}0 & 0 & 1\end{bmatrix}^\top
+\right), \\
+\nabla\hat{v}_i = \frac{\beta_i}{\hat{z}_i'}\,R_i^\top \left(
+\begin{bmatrix}0 & 1 & 0\end{bmatrix}^\top - \frac{\hat{y}_i'}{\hat{z}_i'} \begin{bmatrix}0 & 0 & 1\end{bmatrix}^\top
+\right).
+$$
+In a similar way the hessian can be calculated as well, but its expression gets a bit long and does not add that much to this answer.
+I have not found a source for the problem formulation above, but I did found a source which suggested a fast way of minimizing the maximum value of of the $p$-norm of $\begin{bmatrix}\hat{u}_i - u_i & \hat{v}_i - v_i\end{bmatrix}^\top$, while also adding the constraints that $\hat{z}_i' > 0$. So this problem formulation, without the extra constraints, can be characterized as $(\ell_\infty,\ell_p)$, whereas my problem formulation can be characterized as $(\ell_1,\ell_2)$.
+
+A non-iterative way would be linear least squares triangulation.
+This method searches for the depth of the point of each camera ($z'_i$) and the 3D position at the same time. Namely, when ignoring disturbances in the pixels coordinates of the point, the set of all 3D points which would get projected to the same pixel coordinates would span a line. This line would go through the cameras position and the actual 3D position. By rewriting the first equations, then for each camera the following equation can be formulated
+$$
+z_i'
+\begin{bmatrix}
+\frac{x_i'}{z_i'} \\ \frac{y_i'}{z_i'} \\ 1
+\end{bmatrix} = z_i'
+\begin{bmatrix}
+\frac{u_i - \gamma_i}{\alpha_i} \\ \frac{v_i - \delta_i}{\beta_i} \\ 1
+\end{bmatrix} = 
+R_i \,
+\underbrace{\begin{bmatrix}
+x \\ y \\ z
+\end{bmatrix}}_{\vec{x}} + \vec{t}_i.
+$$
+Solving the third row of the above equation for $z_i'$ gives $z_i' = R_{i,3}\,\vec{x} + \vec{t}_{i,3}$, where $R_{i,3}$ is the third row of $R_i$ and $\vec{t}_{i,3}$ is the third element of $\vec{t}_i$. Substituting this back into the top two rows of the equation above gives
+$$
+\left(\vec{u}_i\,R_{i,3} - R_{i,1:2}\right)\,\vec{x} = 
+\vec{t}_{i,1:2} - \vec{u}_i\,\vec{t}_{i,3}, \\
+\vec{u}_i = 
+\begin{bmatrix}
+\frac{u_i - \gamma_i}{\alpha_i} \\ \frac{v_i - \delta_i}{\beta_i}
+\end{bmatrix},
+$$
+where $R_{i,1:2}$ are the firs two rows of $R_i$ and $\vec{t}_{i,1:2}$ are the first two elements of $\vec{t}_i$. All these equations can be combined into one system of linear equation by using
+$$
+\underbrace{\begin{bmatrix}
+\vec{u}_1\,R_{1,3} - R_{1,1:2} \\
+\vec{u}_2\,R_{2,3} - R_{2,1:2} \\
+\vdots \\
+\vec{u}_n\,R_{n,3} - R_{n,1:2}
+\end{bmatrix}}_{A\in\mathbb{R}^{2n\times3}}\,\vec{x} = 
+\underbrace{\begin{bmatrix}
+\vec{t}_{1,1:2} - \vec{u}_1\,\vec{t}_{1,3} \\
+\vec{t}_{2,1:2} - \vec{u}_2\,\vec{t}_{2,3} \\
+\vdots \\
+\vec{t}_{n,1:2} - \vec{u}_n\,\vec{t}_{n,3}
+\end{bmatrix}}_{b\in\mathbb{R}^{2n}},
+$$
+where $n$ is the number of cameras (so $\mathcal{I} = \{1,2,\cdots,n\}$) and has the least squares solution for $\vec{x}$ given by $(A^\top\,A)^{-1}\,A^\top\,b$. The inverse of $A^\top\,A$ should exist when using two or more (unique) cameras, so you should always be able to find a solution. The downside of this approach would be that it does not take into consideration the uncertainty of the direction of the line which get amplified more the larger $z_i'$ is and it would require more memory, especially for a large number of cameras.
+
+I did do some testing with both methods and found that with the first could diverge when a bad initial guess was used. For this I did not use the constraints that $\hat{z}_i' > 0$, so adding this might avoid this. But when it did converge it would often get a slightly better answer than the second method, probably because the second method does not take into consideration the possibility that the pixel coordinates might be slightly of. So the best option might be to first use the second method to get a good initial guess for the first method, however you might already consider that this initial guess is already good enough. When a very large number of cameras is used then it might also be an option to first use only a small subset of the cameras in the second method to obtain the initial guess and then use all cameras for the first method.
+

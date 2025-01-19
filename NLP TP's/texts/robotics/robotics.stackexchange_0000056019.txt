@@ -1,0 +1,191 @@
+Q:
+
+Problem including rosbag.h
+
+Hi there,
+trying to work with Rosbag CookBook I get following error when I try to catkin_make:
+~/ws/src/main.cpp:98: error: undefined reference to 'rosbag::Bag::Bag()'
+~/ws/src/main.cpp:149: error: undefined reference to 'rosbag::Bag::~Bag()'
+~/ws/src/main.cpp:149: error: undefined reference to 'rosbag::Bag::~Bag()'
+collect2: ld returned 1 exit status
+make[2]: *** [/home/...] Error 1
+make[1]: *** [...] Error 2
+make: *** [all] Error 2
+Invoking "make" failed
+
+C++ code:
+#include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <boost/foreach.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+using namespace rosbag;
+rosbag::Bag bag;
+//    bag.open("test.bag", rosbag::bagmode::Write);
+//    bag.close();
+
+CMakeLists:
+FIND_PACKAGE(OpenGL)
+find_package(PkgConfig REQUIRED)
+find_package(ASSIMP QUIET)
+find_package(rosbag REQUIRED)
+if (NOT ASSIMP_FOUND)
+  pkg_check_modules(ASSIMP assimp)
+endif()
+if (NOT ASSIMP_FOUND)
+  message(WARNING "ASsimp not found, not building synthetic views")
+endif()
+if( ${ASSIMP_VERSION} STRGREATER "2.0.0" )
+  message(STATUS "Found assimp v3")
+  set(EXTRA_SOURCES)
+  set(EXTRA_LIBRARIES assimp)
+else()
+  message(STATUS "Building assimp v3")
+  set(ASSIMP_INCLUDE_DIRS ./assimp/include)
+  aux_source_directory(./assimp/contrib/clipper EXTRA_SOURCES_clipper)
+  aux_source_directory(./assimp/contrib/ConvertUTF EXTRA_SOURCES_ConvertUTF)
+  aux_source_directory(./assimp/contrib/irrXML EXTRA_SOURCES_irrXML)
+  aux_source_directory(./assimp/contrib/poly2tri/poly2tri/common EXTRA_SOURCES_poly2tri)
+  aux_source_directory(./assimp/contrib/poly2tri/poly2tri/sweep EXTRA_SOURCES_poly2tri_sweep)
+  aux_source_directory(./assimp/contrib/unzip EXTRA_SOURCES_unzip)
+  aux_source_directory(./assimp/contrib/zlib EXTRA_SOURCES_zlib)
+  aux_source_directory(./assimp/code EXTRA_SOURCES)
+  set(EXTRA_SOURCES ${EXTRA_SOURCES} ${EXTRA_SOURCES_clipper} ${EXTRA_SOURCES_ConvertUTF} ${EXTRA_SOURCES_irrXML} ${EXTRA_SOURCES_poly2tri} ${EXTRA_SOURCES_poly2tri_sweep} ${EXTRA_SOURCES_unzip} ${EXTRA_SOURCES_zlib})
+  set(EXTRA_LIBRARIES)
+endif()
+
+# create the 2d rendering library
+
+add_library(${PROJECT_NAME}_2d renderer2d.cpp)
+target_link_libraries(${PROJECT_NAME}_2d ${OpenCV_LIBRARIES})
+install(TARGETS ${PROJECT_NAME}_2d
+      DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)
+
+# create the 3d rendering library
+set(SOURCES model.cpp renderer3d.cpp utils.cpp)
+include_directories(BEFORE ${ASSIMP_INCLUDE_DIRS})
+include_directories(BEFORE ${rosbag_INCLUDE_DIRS})
+
+find_package(OpenCV REQUIRED)
+find_package(rosbag REQUIRED)
+
+INCLUDE_DIRECTORIES(SYSTEM ${OpenCV_INCLUDE_DIR}
+                       ${OPENGL_INCLUDE_DIR}
+                       ${rosbag_INCLUDE_DIR}
+)
+
+if (${USE_GLUT})
+  add_definitions(-DUSE_RENDERER_GLUT=1)
+
+  find_package(GLUT)
+  include_directories(SYSTEM ${GLUT_INCLUDE_DIR})
+
+  # add a glut version of the renderer
+  add_library(${PROJECT_NAME}_glut ${SOURCES}
+                               renderer_glut.cpp
+                               ${EXTRA_SOURCES}
+  )
+  target_link_libraries(${PROJECT_NAME}_glut ${EXTRA_LIBRARIES}
+                                         ${OpenCV_LIBRARIES}
+                                         ${OPENGL_LIBRARIES}
+                                         ${GLUT_LIBRARIES}
+                                         freeimage
+  )
+  install(TARGETS ${PROJECT_NAME}_glut
+      DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  )
+else()
+  # add an OSMesa version of the renderer
+  add_library(${PROJECT_NAME}_osmesa ${SOURCES}
+                                 renderer_osmesa.cpp
+                                 ${EXTRA_SOURCES}
+  )
+
+  target_link_libraries(${PROJECT_NAME}_osmesa ${EXTRA_LIBRARIES}
+                                           ${OpenCV_LIBRARIES}
+                                           OSMesa GLU
+                                           freeimage
+  )
+  install(TARGETS ${PROJECT_NAME}_osmesa
+      DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  )
+endif()
+
+# add an executable to render views to a file
+ADD_EXECUTABLE(view_generator main.cpp)
+
+SET_PROPERTY(TARGET view_generator PROPERTY DEBUG_POSTFIX ${ASSIMP_DEBUG_POSTFIX})
+find_package(rosbag REQUIRED)
+
+TARGET_LINK_LIBRARIES(view_generator ${EXTRA_LIBRARIES})
+
+if (${USE_GLUT})
+  target_link_libraries(view_generator ${PROJECT_NAME}_glut)
+else()
+  target_link_libraries(view_generator ${PROJECT_NAME}_osmesa)
+endif()
+target_link_libraries(view_generator ${PROJECT_NAME}_2d)
+
+SET_TARGET_PROPERTIES(view_generator PROPERTIES
+                                 OUTPUT_NAME view_generator
+)
+
+install(TARGETS view_generator
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# add some executables
+add_subdirectory(apps)
+
+Already put the following in package.xml:
+<build_depend>rosbag</build_depend>
+<run_depend>rosbag</run_depend>
+
+Distro: Groovy (Installed via pre built packages.)
+Ubuntu: 12.04 LTS
+me@mypc:~/ws$ env | grep ros
+ROS_ROOT=/opt/ros/groovy/share/ros
+ROS_PACKAGE_PATH=/opt/ros/groovy/share:/opt/ros/groovy/stacks
+LD_LIBRARY_PATH=/opt/ros/groovy/lib
+CPATH=/opt/ros/groovy/include
+PATH=/opt/ros/groovy/bin:/usr/lib/lightdm/lightdm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
+PYTHONPATH=/opt/ros/groovy/lib/python2.7/dist-packages
+PKG_CONFIG_PATH=/opt/ros/groovy/lib/pkgconfig:/usr/local/lib/pkgconfig
+CMAKE_PREFIX_PATH=/opt/ros/groovy
+ROS_ETC_DIR=/opt/ros/groovy/etc/ros
+
+and $rospack find rosbag:
+/opt/ros/groovy/share/rosbag
+
+Regards,
+O3
+
+Originally posted by o3p7s5 on ROS Answers with karma: 86 on 2013-12-10
+Post score: 0
+
+Original comments
+Comment by lindzey on 2013-12-10:
+Can you go ahead and include your whole CMakeLists.txt file?
+Comment by o3p7s5 on 2013-12-11:
+Updated my question with hole CMakeLists.
+Comment by o3p7s5 on 2013-12-11:
+Ooopst... wrong one. Edited again. :)
+Comment by lindzey on 2013-12-11:
+OK. That's not a standard catkin CMakeLists.txt file, and I don't know enough cmake to even know where to start debugging it. Can you get a minimal rosbag reader working, using the CMakeLists.txt template generated by catkin_create_pkg?
+
+A:
+
+You need to explicitly link your executable or libraries against rosbag_LIBRARIES like any other libraries using target_link_libraries.
+
+Originally posted by tfoote with karma: 58457 on 2013-12-15
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by o3p7s5 on 2013-12-19:
+Thank you for this answer, Im gonna try it out soon.
+

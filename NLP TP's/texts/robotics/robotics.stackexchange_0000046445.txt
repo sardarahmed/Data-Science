@@ -1,0 +1,111 @@
+Q:
+
+Robot_pose_ekf does not publish the robot pose
+
+Hello
+I would like to use the robot_pose_ekf for the pose estimation.My sensor package is just IMU and laser. So I do not have any encoders, and thought of using the odometry of the hector_ mapping. But the robot_pose_ekd does not pucblish the pose. This is the output of the status by
+rosservice call /robot_pose_ekf/get_status
+status: Input:
+ * Odometry sensor
+   - is NOT active
+   - received 0 messages
+   - listens to topic /scanmatch_odom
+ * IMU sensor
+   - is NOT active
+   - received 82 messages
+   - listens to topic /imu/data
+ * Visual Odometry sensor
+   - is NOT active
+   - received 0 messages
+   - listens to topic 
+Output:
+ * Robot pose ekf filter
+   - is NOT active
+   - sent 0 messages
+   - pulishes on topics /robot_pose_ekf/odom and /tf
+
+And this is my launch file
+<launch>
+    <param name="use_sim_time" value="true"/>
+    <node name="rosplay" pkg="rosbag" type="play" args="test5.bag --clock "/>
+    <node name="hector_mapping" pkg="hector_mapping" type="hector_mapping" output="screen">
+        <param name="pub_map_odom_transform" value="true"/>
+    <param name="map_frame" value="map"/>
+        <param name="base_frame" value="scanmatcher_frame"/>
+        <param name="odom_frame" value="scanmatcher_frame"/>
+    
+    <param name="map_resolution" value="0.025"/>
+    <param name="map_update_distance_thresh" value="0.4"/>
+    <param name="map_update_angle_thresh" value="0.9"/>
+    <param name="map_multi_res_levels" value="3.6"/>
+
+    
+ </node>
+
+    <node pkg="tf" type="static_transform_publisher" name="baselink_laser" args="0 0 0 0 0 0 /scanmatcher_frame /laser 10"/>
+    <!--node pkg="tf" type="static_transform_publisher" name="laser_imu" args="0 0 0 0 0 0 /laser /base_imu 10"/-->
+    <!--node pkg="tf" type="static_transform_publisher" name="baselink_camera" args="0 0 0 0 0 0 /base_link /camera 10"/-->
+
+    <node pkg="tf" type="static_transform_publisher" name="corner_a" args="0.45 0.3 0 0 0 0 /scanmatcher_frame /corner1 10"/>
+    <node pkg="tf" type="static_transform_publisher" name="corner_b" args="0.45 -0.3 0 0 0 0 /scanmatcher_frame /corner2 10"/>
+    <node pkg="tf" type="static_transform_publisher" name="corner_c" args="-0.45 -0.3 0 0 0 0 /scanmatcher_frame /corner3 10"/>
+    <node pkg="tf" type="static_transform_publisher" name="corner_d" args="-0.45 0.3 0 0 0 0 /scanmatcher_frame /corner4 10"/>
+
+    <!--
+    EKF to fuse IMU and hector_mapping odometry
+    -->
+    
+    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
+    <param name="output_frame" value="odom"/>
+    <param name="freq" value="30.0"/>
+    <param name="sensor_timeout" value="1.0"/>
+    <param name="odom_used" value="true"/>
+    <param name="imu_used" value="true"/>
+    <param name="vo_used" value="false"/>
+    <param name="debug" value="false"/>
+    <param name="pub_odometry" value="true"/>
+    <param name="self_diagnose" value="false"/>
+    <remap from="odom" to="scanmatch_odom"/>
+    <remap from="imu_data" to="imu/data"/>
+    
+
+    </node>
+
+    <!-- Start an rviz node with a custom configuration for the viewpoint, map_server, trajectory, laser scans, etc -->
+    <node pkg="rviz" type="rviz" output="screen" name="rviz" args="-d $(find pow_analyzer)/launch/pow_rviz.vcg"/>
+
+</launch>
+
+Any help??
+
+Originally posted by Astronaut on ROS Answers with karma: 330 on 2012-12-10
+Post score: 0
+
+A:
+
+robot_pose_ekf is a node that fuses odometry and IMU. You need to provide odometry for it to work, in particular when you enable the odom_used parameter. Note that the node does not use the TF odometry transform but it needs a real odometry message, including position, velocity and the uncertainty covariance matrix.
+
+Originally posted by Lorenz with karma: 22731 on 2012-12-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Astronaut on 2012-12-10:
+but I do not have encoders. So should I disable the  odom_used parameter??Is it possible to provide an fake odometry from hector_mapping ??I mean it must be other option than using the real encoder odometry or??
+Comment by Lorenz on 2012-12-10:
+If you disable it, robot_pose_ekf will be useless since you'd have only one input. As I said before, I think you are close to the limits of your approach. To improve, you'll have to use real odometry based on encoders.
+Comment by Astronaut on 2012-12-10:
+But @ Stefan Kohlbrecher and @ dornhere suggested to use  odometry from hector_mapping and put into robot_pose_ekf . So this odometry is not from encoders. Means must be some option that robot_pose_ekf takes this odomtry .
+Comment by Lorenz on 2012-12-10:
+It provides a PoseWithCovarianceStamped which is not an Odometry message. It is missing velocity information. You can try to generate that by computing it based on position data but the results probably won't be satisfying. In my experience, Odometry from scan matching just never worked good enough.
+Comment by Astronaut on 2012-12-10:
+He suggested to use  the undocumented "pub_odometry" parameter, which leads to odometry getting published on the "scanmatch_odom" topic. Than feed that into robot_pose_ekf  .
+Comment by Lorenz on 2012-12-10:
+Apparently, it does not. Otherwise your robot_pose_ekf node would have received messages on that topic. Verify your topic names and types. rostopic info and rxgraph can help here.
+Comment by Astronaut on 2012-12-11:
+Well i wrote a node that subscribe to a hectorMapping pose (poseupdate) and publish it as odometry. Now the robot_pose_ekf receive odometry massages but still can not publish the robot pose.
+Comment by Kevin on 2012-12-11:
+Have you tried visual odometry? Probably not as good as real encoders, but if you have a camera, they may work good enough.
+Comment by Astronaut on 2012-12-11:
+no. I did not tried. As I need to calibrate the camera first, Though that fake odometry from hector_mapping or Gmapping could work
+

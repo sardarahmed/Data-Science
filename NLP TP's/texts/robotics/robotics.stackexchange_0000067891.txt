@@ -1,0 +1,58 @@
+Q:
+
+how to integrate kobuki auto docking command in roscpp or python
+
+Hello
+I am using Turtlebot with Kobuki base.
+I would like to drive the robot to a goal position close enough to the docking station using C++ client in ROS, then when the robot reaches the goal, I would like to call the actionlib command that would take the robot to its docking station.
+I could not find any pointer to this. The only tutorial on ROS wiki I found only shows how to test autodocking by starting two launch files, but I could not find any way to code this either in python or C++.
+Any help would be appreciated
+Anis
+
+Originally posted by Anis on ROS Answers with karma: 253 on 2015-06-03
+Post score: 1
+
+A:
+
+I know this is an old question, but I thought I would post my answer since I just had to figure this out for myself.
+In the above code the node for the action client, and the goal type are incorrectly defined. The node should be dock_drive_action and the goal type should be kobuki_msgs::AutoDockingGoal. Below is a working version of some code to call the docking action:
+  // Create the client
+  actionlib::SimpleActionClient<kobuki_msgs::AutoDockingAction> docking_ac("dock_drive_action", true);
+  docking_ac.waitForServer();
+  
+  // Create goal object
+  kobuki_msgs::AutoDockingGoal goal;
+  
+  // Assign initial state
+  actionlib::SimpleClientGoalState dock_state = actionlib::SimpleClientGoalState::LOST;
+  
+  // Send the goal
+  docking_ac.sendGoal(goal);
+  
+  ros::Time time = ros::Time::now();
+  
+  // Monitor progress
+  while (!docking_ac.waitForResult(ros::Duration(3))) {
+    
+    dock_state = docking_ac.getState();
+    ROS_INFO("Docking status: %s",dock_state.toString().c_str());
+    
+    if (ros::Time::now() > (time+ros::Duration(10))) {
+      ROS_INFO("Docking took more than 10 seconds, canceling.");
+      docking_ac.cancelGoal();
+      break;
+    }// end if
+  }// end while
+
+Hopefully someone can find this useful.
+
+Originally posted by Steven_Daniluk with karma: 606 on 2016-03-06
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Gonzalo Hernández R on 2016-04-29:
+Someone found it useful! =D
+Comment by ejat on 2017-04-15:
+how to make the kobuki to perform auto docking program automatically when it detects that the battery is low? then how to add that program to my current go to specific coordinate?
+

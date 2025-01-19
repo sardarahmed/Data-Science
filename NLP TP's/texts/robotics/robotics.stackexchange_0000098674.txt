@@ -1,0 +1,81 @@
+Q:
+
+Stopping teleop without shutting down SMACH state-machine
+
+I'm building a mobile robot that is using SMACH for high-level task management. I'm starting of trying to give users the ability to chose between between exploration and teleoperation. I have no issues setting up the the state-machine, and and the transistions between states seems to work fine. Both teleop and exploration starts up after adding the user-input.
+The issue I'm running into is when I want to stop the teleop_twist_keyboard-node, and transistion back to mode select state(teleop or exploration). The only way that seem to stop teleop is using CTRL-C, and that shuts down the whole program, including the state-machine. I thought about using threading, but teleop seems to allready be using it, so I'm not sure if that is the correct path to pursue.
+Have anyone been able to find a way to stop the teleop_twist_keyboard-node and without shutting down the state-machine?
+I will gladly post code, but I'm not sure what to post for this one.
+UPDATE:
+I am now able to stop teleop without shutting down the state-machine with the help of subprocess.Popen. But now it won't let me control the robot from the terminal, and quits teleop preemptively. This the two main states I'm switching between:
+class RoamMode(smach.State):
+     def init(self):
+          smach.State.init(self, outcomes= ['Exploraiton mode selected', 'Teleoperation mode selected', 'Wrong key'])
+
+     def execute(self, userdata):
+          user_input = input('Press T for Teleoperation mode, or press E for Exploration mode')
+
+          if user_input == 'T':
+              return 'Teleoperation mode selected'
+           elif user_input =='E':
+              return 'Exploraiton mode selected'
+           else:
+              return 'Wrong key'
+
+class RoamTeleOp(smach.State):
+    def init(self):
+       smach.State.init(self, outcomes=['Teleoperation stopped'])
+
+    def execute(self, userdata):
+       tp_process = subprocess.Popen('python3 run_teleop.py', shell=True)
+       if tp_process.poll() == None:
+          tp_process.kill()
+          rospy.sleep(10.)
+          return 'Teleoperation stopped'
+
+This is the other file I'm running with subprocess.Popen('python3 run_teleop.py', shell=True):
+import rospy
+import roslaunch
+
+package = 'teleop_twist_keyboard'
+executable = 'teleop_twist_keyboard.py'
+node = roslaunch.core.Node(package, executable)
+launch = roslaunch.scriptapi.ROSLaunch()
+launch.start()
+process = launch.launch(node)
+rospy.spin()
+
+Originally posted by DanEB on ROS Answers with karma: 3 on 2021-03-29
+Post score: 0
+
+Original comments
+Comment by Tahir M. on 2021-03-29:
+You can kill the teleop_node from your script.
+Comment by DanEB on 2021-03-29:
+You sugest using another thread to kill the node, while it's running?
+EDIT:
+Still have not figured out a practical way of killing the node while it's running with rosnode.kill_nodes. Even tried with threading, but that made all sorts of mess.
+Comment by mgruhler on 2021-03-30:
+Why do you want to shut down the teleop node? wouldn't it make more sense to extend it with a key to basically quit it, could be a service or a simple topic that you publish on additionally to the regular twist topic, that your state machine listens to and then transitions back out? You could additionally extend the teleop node to be triggered/enabled by the state machine
+Comment by DanEB on 2021-03-30:
+The way that teleop is implemented it made sense to me to stop the node, rather than running it through a topic with with some kind of key-interrupt. I am still unsure on how to actually make a topic that I can interrpt, since the communication is two-ways. I will closer into your suggestions. As a beginner to ROS I may be overcomplicating this matter. Your help is appreaciated.
+
+A:
+
+Would https://wiki.ros.org/twist_mux be of any help?
+I'd set that up with 2 inputs: from the exploration commands and one for the teleop/
+That still does not directly cover stopping the exploration command generation in Smach, but you could implement that by subscribing to the teleop topic in the RoamMode state and then calling self.preempt() when there is a message received (and it's not already preempting etc)
+
+Originally posted by Loy with karma: 141 on 2021-04-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by DanEB on 2021-04-03:
+This fixes it! I am a bit puzzled right now, because I am sure I checked twist_mux a few days ago, and it was not supported for Noetic?
+Anyways, thank you!
+Comment by mgruhler on 2021-04-06:
+might very well be that it just slipped in with the latest sync...
+Comment by DanEB on 2021-04-06:
+I just realized that it was yocs_cmd_vel_mux that I have been looking at.
+

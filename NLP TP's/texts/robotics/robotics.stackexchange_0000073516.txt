@@ -1,0 +1,57 @@
+Q:
+
+subscribe one variable from big topic msg
+
+Hi,
+I am using PID pkg that requires a std_msgs float type from topic but I am publishing this variable from a big topic that is the state of the plant (has several floats, integers and booleans)
+When I try to subscribe to the variable, a new topic appears with the same namespace but without data.
+For example:
+The velocity is publishing inside movement_manager/velocity which is a custom msg called: StatusPlant.msg with movement_manager/status, movement_manager/config , etc.
+I want to link the PID float message subscribed from movement_manager topic in order to do the PID controller but without luck.
+The way I am doing it is with a parameter in a launchfile:
+<node name="pid_controller" pkg="pid" type="controller" output="screen">
+  <param name="state_topic" value="movement_manager/velocity"/>
+  ...
+</node>
+
+I tried with remap too but nothing changed.
+Anybody knows the way to do it without publishing again the same velocity in a separate float message?
+
+Originally posted by pmarinplaza on ROS Answers with karma: 330 on 2016-04-24
+Post score: 1
+
+A:
+
+That would be a nice feature, though there could be ambiguous cases with the same names  (it could always default to the actual topic which it looks like rostopic echo does, unless it doesn't match the expected type then try the message field), or some other character than / could be required.
+topic_tools transform can relay message fields:
+rostopic pub /test geometry_msgs/Point "{x: 1.0, y: 2.0, z: 3.0}" -r 1
+
+Then
+rosrun topic_tools transform /test /test/z std_msgs/Float64 'm.z'
+
+This is neat:
+rosrun topic_tools transform /test /test/xy opencv_apps/Point2D 'm.x, m.y'
+
+or
+rostopic pub /test sensor_msgs/Image "{header: auto, height: 0, width: 0, encoding: '', is_bigendian: 0, step: 0, data: ''}"  -r 1
+
+rosrun topic_tools transform /test /test/header std_msgs/Header 'm.header'
+
+and then test/z, test/xy, or test/header exist for any node that wants them.
+If ros could do it automatically ideally it would not do it in the subscriber (requiring the overhead of transporting and receiving an entire Image for example just for a few bytes of a field), but would be essentially launching something like the topic_tools transform behind the scenes.
+
+Originally posted by lucasw with karma: 8729 on 2016-04-24
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by pmarinplaza on 2016-04-25:
+Thak works properly. Thanks. The way I did it is by roslaunch:
+<node name="publish_velocity" pkg="topic_tools" type="transform"
+args="/movement_manager/status_info /movement_manager/velocity std_msgs/Float64 m.trc.velocity" />
+
+Comment by samarth.robo on 2019-12-19:
+Those who got the error ERROR: Wrong input topic (or topic field):, please be aware of a namespace bug in transform.
+Comment by lucasw on 2021-10-11:
+The namespace bug has been fixed, but there is another issue with transform that appears only the first time transform is run for a given roscore session #q349655
+

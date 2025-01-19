@@ -1,0 +1,89 @@
+Q:
+
+MoveIt!2 UR Driver: Parameter has invalid type
+
+I have built ROS2 Galactic, Moveit2 and Main Branch of UR Driver https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver on Ubuntu. By starting like the tutorial from driver with MoveIt I got the following error on different parameters:
+[rviz2-3] [INFO] [1639652465.916282193] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.00852234 seconds
+[rviz2-3] [INFO] [1639652465.917162913] [moveit_robot_model.robot_model]: Loading robot model 'ur'... 
+[rviz2-3] [ERROR] [1639652465.936346953] [moveit_background_processing.background_processing]: Exception caught while processing action 'loadRobotModel': parameter 'robot_description_planning.joint_limits.shoulder_pan_joint.max_position' has invalid type: Wrong parameter type, parameter {robot_description_planning.joint_limits.shoulder_pan_joint.max_position} is of type {double}, setting it to {string} is not allowed.
+
+It comes from a yaml File like this:
+joint_limits:   shoulder_pan_joint:
+    # acceleration limits are not publicly available
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 330.0
+    max_position: !degrees  360.0
+    max_velocity: !degrees  120.0
+    min_position: !degrees -360.0
+       shoulder_lift_joint:
+    # acceleration limits are not publicly available
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 330.0
+    max_position: !degrees  360.0
+    max_velocity: !degrees  120.0
+    min_position: !degrees -360.0   elbow_joint: [....]
+
+And loaded in a Launch File:
+[....] 
+description_package = LaunchConfiguration("description_package") 
+[....] 
+joint_limit_params = PathJoinSubstitution(   [FindPackageShare(description_package), "config", ur_type, "joint_limits.yaml"]) 
+[....] 
+robot_description_content = Command(
+       [ [....] " ",
+           "joint_limit_params:=",
+           joint_limit_params,
+           " ",[....]   ]) 
+robot_description = {"robot_description": robot_description_content} 
+[....] 
+rviz_config_file = PathJoinSubstitution(    [FindPackageShare(moveit_config_package), "rviz", "view_robot2.rviz"] ) 
+rviz_node = Node(    
+    package="rviz2",
+    condition=IfCondition(launch_rviz),
+    executable="rviz2",
+    name="rviz2_moveit",
+    output="log",
+    arguments=["-d", rviz_config_file],
+    parameters=[
+       robot_description,
+       robot_description_semantic,
+       ompl_planning_pipeline_config,
+       robot_description_kinematics,
+       robot_description_planning,
+       octomap_config,
+       octomap_updater_config,]
+    ,)
+[....]
+
+Is there anything wrong with the Launch File, Ubuntu, MoveIt!2 or ROS2 configuration, that it tries to load it as string?
+Perhaps it could have something to do with it:
+I am not allowed now to publish a double with to_string to the RCLCPP Logger. It was absolutely working under Foxy on the same Machine.
+
+RCLCPP_INFO(LOGGER, std::to_string(q.x()));
+
+Originally posted by FlorianSp on ROS Answers with karma: 46 on 2021-12-20
+Post score: 0
+
+A:
+
+it begins with "!degrees". I've never seen yaml files containing values that start with such string. Is that supported usage?
+
+It has been supported in the past, for example http://wiki.ros.org/rosparam#YAML_Format
+Possibly related: https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver/issues/140
+The current robot description for UR robots still uses this YAML tag, so I think it's been fixed since this question was posted:
+https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/blob/ros2/config/ur5e/joint_limits.yaml#L18
+
+Originally posted by danzimmerman with karma: 337 on 2023-06-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by 130s on 2023-06-27:
+Thanks, I've never known that format. Converted your comment as an answer and marked as an answer hoping OP agrees.
+

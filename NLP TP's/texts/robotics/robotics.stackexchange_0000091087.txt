@@ -1,0 +1,56 @@
+Q:
+
+Help with PointCloud2 Data
+
+Hello,
+I am using a Raspberry Pi with Lubuntu 16.04, ROS Kinetic, a tim 561 and a package called sick_scan to get data from the LIDAR. I can use sick_scan to publish PointCloud2 data to the topic /cloud and I can visualize data with rviz. The end goal for my LIDAR is to be able to get distance data from it. So I want it to tell me what the distance to the things around it is. I am having some issues with this though as I am not really sure where to start. Would I be able to extract distance data from directly from the PointCloud2 data and if so how, or would there be some intermediary steps?
+I have successfully followed this tutorial to convert PointCloud2 to PointCloud but I'm not really sure if this is the right direction to go in. I'm also not really sure what the difference between the PointCloud2 and PointCloud  is. I noticed though that the data looks very different, is this by design or my mistake? (I will post a comparison below).
+I also found this tutorial that changes a PointCloud to a rangeImage, would this be helpful?
+I would also like to add that I am beginner and PointCloud2 is by far the most complex data type I have worked with. I am used to the simpler data types, so any help would be truly appreciated as I am sure that I am missing some key understanding about this data type.
+Thanks!
+/output data after converting to PointCloud:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/94446be55b5cf833285ece9bf11067bb
+
+Originally posted by tracsat on ROS Answers with karma: 3 on 2019-03-24
+Post score: 0
+
+A:
+
+The actual measurement of a laser scanner is the distance. So ideally you should be able to go through the code of the driver and publish that data into a custom message. Performance wise, that is the best option.
+However, let me give you a simpler solution.
+For your reference, this is the PointCloud2 message definition. Essentially, the large array data contains x,y,z location of the points in the point cloud. All you need to do is to parse the data array, obtain x,y,z for each point and then calculate the euclidean distance where (0,0,0) is the location of the sensor / frame.
+The parsing logic is simple. Your message has height 1, width 811 and point_step 16. You can verify the numbers by checking
+width*point_step == row_step*height
+
+The fields give you information about parsing the data. Each group of 16 numbers in the array data gives you x,y,z and intensity for a single point in the point cloud. First 1-4 numbers represent x as a 32 bit float, 5-8 represents y, 9-12 represents z, 13-16 represents the intensity. All you then need to do is convert the data  to 32 bit float in little endian.
+Libraries should exist where all this is done. However, if you are into reinventing the wheel or couldn't find one, this will get you home.
+
+Originally posted by janindu with karma: 849 on 2019-03-24
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by tracsat on 2019-03-24:
+Ah ok this makes a lot of sense thank you! I had come to a similar conclusion after reading through a bunch of blog posts but I was getting stuck on the float32 part - I was not aware that a float32 could be represented this way.
+Thank you for the link for converting to a float32. I notice the solution that was taken says that it assumes that the data is not little endian, however I believe my data is. Is there a way around this? This is my first time encountering endian so I am not sure how much of an issue it may be.
+Thanks again!
+Comment by janindu on 2019-03-24:
+In little endian, the bytes are ordered in reverse compared to big endian. So all you have to do is to follow the same implementation but use the bytes in reverse order.
+Comment by tracsat on 2019-03-24:
+Ok that makes a lot of sense thank you!
+I just have one more thing if you don't mind. I noticed that the solution uses a special datatype they have to define 'uchar'. Would I also need this? Or would a simple int type work?
+Thanks
+Comment by janindu on 2019-03-24:
+uchar is simply unsigned char type data. Even though the name says char it's essentially a numeric variable. Its size is 8 bits so can take values from 0-255. int, on the other hand, is 32 bits in size at least. So you can't represent 4 bytes (you can, but that's a headache) using int variable. unsigned char is a fundamental data type in C++ so I don't see any reason not to use it. Ref : Data Types in C++
+Comment by tracsat on 2019-03-24:
+Thanks that makes a lot of sense. I was not aware that uchar was a fundamental type.
+Comment by gvdhoorn on 2019-03-25:\
+
+Libraries should exist where all this is done. However, if you are into reinventing the wheel or couldn't find one
+
++1 to this. Manually converting or iterating over PointCloud messages is not needed. Just use one of the conversion functions available.
+Comment by Petros ADLATUS on 2022-05-20:
+@janindu may I could add a short question to the saving with little endian format?
+

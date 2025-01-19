@@ -1,0 +1,23 @@
+Q:
+
+Hector SLAM, Matching algorithm
+
+I'm trying to understand the scan-matching part of Hector SLAM (PPT summary). It seems a little difficult to understand, in some cases, how is it possible to actually perform the alignment of the scans. Can anyone explain about it?
+In my case, I'm working with a simulation. I'm moving my robot in a corridor-like featureless environment (only two walls) and I don't get a map. Nevertheless, if I move in a sinewave motion, I'm able to get a map. Moreover, if I have an additional feature, the algorithm even shows the real path as long as this feature is seen (right part of the image), otherwise it shows a very weird-looking oscillatory path which does not resemble a sinewave at all. Something important to notice is that the width of the map is pretty accurate (real=4m, map's=4.014m), and the length of the movement is also somehow accurate (real=15m, map's= 15.47). I'm using a Hokuyo URG-04LX laser range finder, no odometry, no IMU. I'm running in Ubuntu 14.04 and using ROS Indigo.
+
+I more or less understand how Hector works, but I have no idea about why I'm getting this map and specially trajectory.
+Thank you.
+
+A:
+
+Imagine someone put you in a wheelchair and blindfolded you, then let you reach your arm out and touch a wall. You could tell how far away the wall was, but as long as you were pushed parallel to the wall, how would you know how far you had gone? You can't count steps or see the end of the hall, so you do not have a way to index your samples of where the wall is. 
+In a similar way, you have handicapped your robot in the simulation. You state you are using aHokuyo URG 04LX, and you also state that your hall is 15 meters long. The range on that scanner is 4 meters, so it cannot "see" the end of the hall and cannot use that information to index its scans. You are also not providing any odometry, so it can't guess where to index the scans either. 
+SLAM is simultaneous localization and mapping - if the current "image" (scan) looks just like the previous image, and you provide no odometry, it does not update its position and thus you do not get a map. This is true as long as you move parallel to the wall, which is your problem case. 
+When you advance or retreat from a wall (feature) within range, as you do when you take the sinusoidal path, the images are different from one scan to the next. The algorithm looks for the rotation and translation that yields a "best fit" between those two different images and assumes that the difference between the two was due to motion, updates its estimate of location accordingly, then indexes that scan to the new position.
+Regarding the path you are shown, I would look for a range issue somewhere, probably in a tangent expression. Always use atan2 instead of atan whenever possible to avoid errors due to quadrant location; (-y)/x and y/(-x) both evaluate to -(y/x) inside an atan expression but those are two totally different angles. :EDIT: See below, but this may also be due to a lack of features. 
+RECOMMENDATIONS
+Get a scanner that has a range greater than the hall length, OR reduce the hall length, OR start your craft within "sight" of the end of the hall, OR add features such as alcoves/recesses along the hall to give the algorithm a key point with which it can localize and index. 
+A final note regarding the alcoves: (In Bruges reference) they must be spaced closer together than the twice the maximum scan range because the craft is operating in the center of the hall. Distance to wall (squared) + distance to alcove (squared) = max range (squared). You need a new feature to enter the frame before the old feature leaves, so if the max distance to one alcove is sqrt (max range (squared) - distance to wall (squared)), then the spacing needs to be less than (or equal, if you enjoy pain and borderline cases) double that distance. Finally note that this is assuming your scanner has a 360 degree view and can see the feature behind it until it passes the maximum scanning range. In actuality your scanner has a 240 degree field of view, but I'll let you work that math out on your own. 
+:EDIT:
+With a little further reflection, I don't know that a straight, infinitely long wall (which is what you have if both ends are out of range) is sufficient to provide lateral position estimation. This may also help to explain your weird path. As an easy check, try putting it within sight of the end of the hall without your feature to see if you get the smooth sine you would expect. Then I would add alcoves at the 1x spacing I described above (range^2 - (wall dist)^2) and see if that also fixes it. I would do both of these before hunting through the algorithm for trig out of range errors. 
+

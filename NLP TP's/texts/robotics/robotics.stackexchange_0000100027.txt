@@ -1,0 +1,123 @@
+Q:
+
+Need help linking header to its source file
+
+I have a C++ header file that contains some function prototype. I have another C++ source file that contains the function definition. Here is my CMakeLists.txt:
+find_package(catkin REQUIRED COMPONENTS
+  geometry_msgs
+  rospy
+  std_msgs
+  roscpp
+  sensor_msgs
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(Keys scripts/Controls/Keys.cpp)
+add_executable(Navigation scripts/missions/navigation.cpp)
+add_executable(GPS scripts/missions/gps.cpp)
+
+add_dependencies(Keys ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(Navigation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(GPS ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(Keys ${catkin_LIBRARIES})
+target_link_libraries(Navigation ${catkin_LIBRARIES})
+target_link_libraries(GPS ${catkin_LIBRARIES})
+
+My header file:
+#pragma once
+
+#include <sensor_msgs/NavSatFix.h>
+#include <ros/ros.h>
+
+class Localization{
+public:
+
+    // Function Prototypes
+    void receiver(const sensor_msgs::NavSatFixConstPtr&);
+    double bearing(void);
+    double hubeny(void);
+    double pythagorean(void);
+    double fuzzy(void);
+
+    // Constructors
+    Localization(ros::NodeHandle);
+    ~Localization();
+private:
+    // Data types
+    double latitiude;
+    double longitude;
+    double altitude;
+    const std::string topic {"/mavros/global_position/global"};
+};
+
+void Localization::receiver(const sensor_msgs::NavSatFixConstPtr& fix){
+    if (fix->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
+        ROS_INFO("No fix.");
+        return;
+    }
+    latitiude = fix->latitude;
+    longitude = fix->longitude;
+    altitude = fix->altitude;
+
+    ROS_INFO("Latitude: %f | Longitude: %f | Altitude: %f", latitiude, longitude, altitude);
+};
+
+Localization::Localization(ros::NodeHandle nh){
+    ros::Subscriber location = nh.subscribe(topic, 1, &Localization::receiver, this);
+    ros::spin();
+};
+
+My source file for C++:
+#include "gps.h"
+
+double Localization::bearing(void){
+    return 0.0;
+}
+
+double Localization::hubeny(void){
+    return 0.0;
+}
+
+double Localization::pythagorean(void){
+    return 0.0;
+    }
+
+When I tried to use catkin_make, I received the following errors:
+/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o: In function `_start':
+(.text+0x20): undefined reference to `main'
+collect2: error: ld returned 1 exit status
+quantum_drone/CMakeFiles/GPS.dir/build.make:112: recipe for target '/home/kannachan/drone/devel/lib/quantum_drone/GPS' failed
+make[2]: *** [/home/kannachan/drone/devel/lib/quantum_drone/GPS] Error 1
+CMakeFiles/Makefile2:1245: recipe for target 'quantum_drone/CMakeFiles/GPS.dir/all' failed
+make[1]: *** [quantum_drone/CMakeFiles/GPS.dir/all] Error 2
+Makefile:140: recipe for target 'all' failed
+make: *** [all] Error 2
+Invoking "make -j8 -l8" failed
+
+Originally posted by ModernNoob on ROS Answers with karma: 3 on 2021-09-04
+Post score: 0
+
+A:
+
+This is not ROS-related, but is a CMake question.
+You're compiling all of your source files (ie: .cpp) as individual executables (via add_executable(..)).
+The linker will expect a int main(..) function in each of those .cpps in that case.
+It doesn't find one, hence the error message.
+I would suggest to become a bit more proficient with CMake, as it will make many things less confusing and/or complex. And not just in/with ROS, but in general when writing and building programs.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-09-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Mike Scheutzow on 2021-09-05:
+@ModernNoob
+
+You could spend some more time studying a roscpp tutorial like WritingPublisherSubscriber.
+Don't rush into using classes in your code. ROS works perfectly fine if you use global variables and regular c-style functions. Try to get some ROS code working this way first so you start to understand the ROS API.
+

@@ -1,0 +1,122 @@
+Q:
+
+Contact Sensor doesn't work in Gazebo 9
+
+I'm trying to create contact sensor with Gazebo 9 + ROS Melodic, here is my code:
+test.urdf.xacro
+<?xml version="1.0"?>
+<robot name="test" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+   <link name="chassis">
+    <inertial>
+      <mass value="100" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <inertia ixx="16.66666" ixy="0.0" ixz="0.0" iyy="41.66665" iyz="0.0" izz="41.66665" />
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="2 1 1" />
+      </geometry>
+    </visual>
+    <collision name="chassis_collision">
+      <geometry>
+        <box size="2 1 1" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="bumper"><box size="0.1 0.1 0.1" />
+    <visual>
+      <geometry>
+        <box size="0.1 0.1 0.1" />
+      </geometry>
+    </visual>
+    <collision name="bumper_collision">
+      <geometry>
+        <box size="0.1 0.1 0.1" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="chassis_bumper_joint" type="fixed">
+    <parent link="chassis" />
+    <child link="bumper" />
+    <origin xyz="1 0.5 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <gazebo reference="bumper">
+    <sensor name="bumper_sensor" type="contact">
+      <always_on>true</always_on>
+      <update_rate>30</update_rate>
+      <contact>
+        <collision>sensor_collision</collision>
+      </contact>
+      <plugin name="bumper_plugin" filename="libgazebo_ros_bumper.so">
+        <bumperTopicName>bumper_sensor</bumperTopicName>
+        <frameName>bumper</frameName>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+</robot>
+simple.world
+<?xml version="1.0" encoding="utf-8"?>
+<sdf version="1.4">
+<world name="default">
+    <include>
+        <uri>model://sun</uri>
+    </include>
+    <gravity>0 0 -9.8</gravity>
+    <include>
+        <uri>model://ground_plane</uri>
+    </include>
+</world>
+</sdf>
+launch file
+<launch>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch&quot;&gt;
+&lt;arg name=&quot;world_name&quot; value=&quot;$(find simulation_app)/worlds/simple.world"/>
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+    <arg name="verbose" value="true"/>
+  </include>
+
+  <param name="robot_description" command="$(find xacro)/xacro --inorder $(find simulation_app)/urdf/test.urdf.xacro" />
+  <node pkg="gazebo_ros" type="spawn_model" name="spawn_urdf" args="-urdf -param robot_description -model test"/>
+
+</launch>
+I expect to get something when bumper touches ground plane since chassis has inertial but instead I'm getting empty states in bumper_sensor topic when it happens:
+header:
+    seq: 6693
+    stamp: 
+        secs: 257
+        nsecs: 555000000
+    frame_id: "bumper"
+        states: []
+
+Does anybody know if I'm missing something?
+
+Originally posted by Tony on Gazebo Answers with karma: 1 on 2019-10-10
+Post score: 0
+
+A:
+
+Ok, so the catch was that I'm using xacro instead of urdf... This video explains everything in details, in short - when you use xacro, it will be converted to sdf where collision names will be completely different (in my case bumper_collision turned into chassis_fixed_joint_lump__bumper_collision_collision_1) so to make it work:
+Convert xacro to urdf (yes, "xacro xacro ", it's not a typo):
+rosrun xacro xacro test.urdf.xacro > test.urdf
+Convert urds to sdf:
+gz sdf -p test.urdf > test.sdf
+Get the right collision name from sdf file and use it in xacro for sensor collision
+<collision>chassis_fixed_joint_lump__bumper_collision_collision_1</collision>
+
+Hopefully it will help somebody to not run into the same issue I did
+
+Originally posted by Tony with karma: 1 on 2019-10-11
+This answer was ACCEPTED on the original site
+Post score: 0
+

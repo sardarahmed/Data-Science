@@ -1,0 +1,68 @@
+Q:
+
+Global Costmap Updating Mysteriously
+
+Hello everyone! I'm experiencing some weird behavior while using costmaps in move_base which I hope someone can shed some light on.
+Thanks in advance to anyone who bothers with reading this wall of text and formulating a reply. Please let me know if I missed some important detail, and I'll be happy to add more information to this! :)
+But first...
+What I'm Trying to Achieve
+I want to access costmap data directly, i.e. read the values from the map while knowing how to related them to /map coordinates. This is not complicated, and I believe I've achieved it with tf (I might have to debug it a bit, but that's beside the point). Seeing as I'm using Python, using the Costmap2D API is out of the question.
+As such, I developed...
+My Approach
+Given that the costmap is only published once in /move_base/global_costmap/costmap, and then updated via /move_base/global_costmap/costmap_updates, I've written a small Python node that continuously listens to these, updates the main map and then serves them on a GetMap service.
+This would allow me to have access to the latest costmap as an OccupancyGrid whenever I needed it, which is fine for my purposes. Furthermore, serving the map over a service only on-demand should be substantially easier on bandwidth than constantly publishing all updates.
+While testing this with rviz, I stumbled upon...
+The Problem
+In short, it seems that the costmap that rviz shows is different than the one I'm getting on the /move_base/global_costmap/costmap topic.
+I have changed my code to act as a simple passthrough (receiving the costmap on the /move_base/global_costmap/costmap topic and publishing it elsewhere) and restarting my node leads me to see, in rviz, an updated map without any messages being published in /move_base/global_costmap/costmap (which is monitored with a rostopic echo.
+In other words, if I move the robot's 2D pose estimate around, leading it to "pollute" the global costmap with whatever trash it's picking up on its sensors, and then restart my node, this new data will be on the costmap published by my node, which at this point accesses only the /move_base/global_costmap/costmap topic which, according to the rostopic echo I'm starting at the beginning of the session, has only a single message being published since the beginning of the session (sequence number seq is zero).
+What I'm doing is basically:
+self._global_costmap = rospy.wait_for_message("/move_base/global_costmap/costmap", OccupancyGrid)
+
+to get the first costmap, and then
+rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, self.costmap_cb)
+
+to integrate the updates. For testing purposes, self.costmap_cb is limited to:
+self._costmap_pub.publish(self._global_costmap)
+
+i.e. it publishes the "initial" map every time an update is received, without touching it at all.
+My Theory
+I'm thinking that rviz uses the aforementioned Costmap2D API to get updated maps. This way, when I set up a new display pointing to /move_base/global_costmap/costmap, it "knows" it's a costmap, and accesses the API to get the latest version instead of the barebones version published in that topic. Somehow, in ways I couldn't figure out on my own, it "knows" which costmap the topic (with a completely different name) refers to, and is somehow messing with my custom node and topic.
+My Set-up:
+
+Xubuntu 14.04
+ROS Indigo
+Latest versions of packages from repos
+
+Originally posted by Gonçalo S. Martins on ROS Answers with karma: 18 on 2018-04-26
+Post score: 0
+
+Original comments
+Comment by Troski on 2018-04-27:
+it should be /map not \map.
+Comment by Gonçalo S. Martins on 2018-04-27:
+Corrected, thanks!
+
+A:
+
+I'm not sure I follow everything in your setup, but here's a couple of things that might help you understand what's goin on.
+As you already saw, the data can be published in one of two places. costmap and costmap_updates
+The data will be published in updates unless one of the following is true .
+
+The always_send_full_costmap parameter is true code
+The costmap changes size/origin code
+There is a new subscriber. The publisher uses a variant of the traditional advertise function to ensure the full grid is published to new subscribers.
+
+Originally posted by David Lu with karma: 10932 on 2018-04-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Gonçalo S. Martins on 2018-05-03:
+Thank you very much for your reply! I'll mark it as accepted as it answers my questions.
+So new subscribers get the full map, which makes sense. But how does this happen with no new messages being delivered to rostopic echo /move_base/global_costmap/costmap?
+Comment by David Lu on 2018-05-03:
+I'm not sure. Sorry.
+Comment by Gonçalo S. Martins on 2018-05-04:
+No problem, thank you very much for your answer! I'll sift through the code and (hopefully) figure it out :)
+

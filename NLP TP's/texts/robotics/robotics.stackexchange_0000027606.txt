@@ -1,0 +1,88 @@
+Q:
+
+Inertia matrices and double precision ODE
+
+Hi All,
+I have a problem with the precision of ODE.
+The environment that I'm trying to use is:
+
+Ubuntu trusty
+ROS Indigo
+Gazebo 6
+
+The model of my robot (about 0.4 metre tall) has links as small as this and mass of 0.025kg:
+  <geometry>
+    <box size="0.045 0.022 0.0325"/> // Units in metre
+  </geometry>
+
+And this is the inertial element, with the real values, for the same link:
+   <inertial>
+    <pose frame=''>0 0 0 0 -0 0</pose>
+    <mass>0.0243577</mass>
+    <inertia>
+      <ixx>3.12641e-06</ixx>
+      <ixy>0</ixy>
+      <ixz>0</ixz>
+      <iyy>6.25435e-06</iyy>
+      <iyz>0</iyz>
+      <izz>5.09279e-06</izz>
+    </inertia>
+  </inertial>
+
+So the problem that I have is that the moments of inertia are too small and the model becomes unstable.
+I have tried scaling the values for the inertia matrix, but no the geometry, collisions, mass, etc. This had some reasonable behaviour with Gazebo 2.2, but with Gazebo 6 the inertial values are too big and the robot bounces with any slight movement.
+I also was thinking in increasing the precision on ODE to double, but I haven't find any tutorial to do this.
+I know that converting the measurement units to millimetres consistently across the model and ROS could fix the problem, but I'd prefer some more transparent solution rather than converting units back and forth and managing different units for the physical robot and the simulation.
+Do you have any recommendation to deal with this?
+EDIT:
+After applying debz and hsu recommendations, I also realised that my joint controller was using incorrect method to control the joint position. With all the corrections the model works without problems.
+Thanks,
+Germán
+
+Originally posted by gecastro on Gazebo Answers with karma: 23 on 2016-01-13
+Post score: 0
+
+A:
+
+I think it is a recurrent problem. I faced the same instability with a recent project. What might happen is not that ODE can't handle small doubles variable as many previous topics suggest (inertial e-06 is quite OK). But the way your joints are defined might be the cause. If the inertials are small, then your links are easy to move. One link moves, disturb an other one through the joint that links them, and so on. This happens because your joints are too perfect, they transfer too much energy. At the end your robot shakes and can even explode.
+I solved my case by playing with these parameters (not all of them are necessarily relevant). Increasing damping limits the mutual physical actions between your links. Increasing friction set up a lower limit for velocity before the joints actually transfer the energy coming from the action of one of the links.
+  <axis>
+    <xyz>0 0 1</xyz>
+    <dynamics>
+      <friction>friction</friction>
+      <damping>damping</damping>
+    </dynamics>
+  </axis>
+  <physics>
+    <ode>
+      <cfm_damping>cfm_damping</cfm_damping>
+      <implicit_spring_damper>implicit_spring</implicit_spring_damper>
+    </ode>
+  </physics>
+
+I use these parameters (my damping is that hight because I use strong PID controllers on my joints. You'd better take a value between 0 and 1):
+friction = 0.01
+damping = 6
+cfm_damping = 1
+implicit_spring = 1
+
+I hope this helps.
+
+Originally posted by debz with karma: 198 on 2016-01-13
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gecastro on 2016-01-14:
+Some of those values help a bit, specially when applied to the world, not just to the joint.
+But I still can't get a stable model. I'm trying to model some Dynamixel servos, but given the size (small moments of inertia) and torque (), gazebo doesn't like it...
+The parameter that seems to work the best is reducing max_step_size between  0.0001-0.00001, but still get some jitter in the joints.
+Comment by debz on 2016-01-14:
+The only small things I can suggest:
+
+verify your inertials (using the gazebo client, view->inertials). They should fit to the collision geometry of your links. If only one link hasn't right inertial, the entire robot gets shaky.
+I use the following parameters: max_step_size = 0.002, solver type = quick, sor = 1.4, constraints cfm = 0, erp = 1.
+
+Comment by gecastro on 2016-01-14:
+Original values fit with the collision. But when using gazebo 2.2 I gave up and ended scaling them by 100, which even if it is wrong had acceptable stability/performance. Now, with gazebo 6, I'm trying to get rid of the scaling. MOIs are calculated using basic shapes (box, cylinder, sphere) from here https://en.wikipedia.org/wiki/List_of_moments_of_inertia
+

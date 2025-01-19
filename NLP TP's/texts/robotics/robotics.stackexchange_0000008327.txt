@@ -1,0 +1,27 @@
+Q:
+
+Transforming angular velocity?
+
+I have the following system here:
+https://i.stack.imgur.com/DKIDk.jpg
+
+Basically, I have a range finder which gives me $R_s$ in this 2D model. I also have the model rotate about the Centre of Mass, where I have angular values and velocities Beta ($\beta$) and BetaDot ($\dot{\beta}$).
+I can't see, for the life of me, how to figure the formula for the angular velocity in the Range Finder frame. How am I supposed to do this? I have all the values listed in those variables. The object there doesn't move when the vehicle/system pitches. It's stationary.
+
+A:
+
+I think your diagram is missing an angle for the laser angle with respect to the vehicle body -- I'm going to call that angle $\alpha$, see this diagram for clarity:
+
+Since it seems you are tracking an object with your laser, I imagine the point of this is to predict the angular velocity of that object in the vehicle frame. So your laser is scanning in 2D, providing range at a number of angles, and you want to predict what angle the object will be at in the next time step.
+In that case, you need to consider to motion of the system to figure out the motion of the target object in the laser frame. Assume the target object has position $\hat{p}$ in the world frame and $\hat{p}_L$ in the laser frame. Although it sounds like this is for a manipulator that is fixed at the base, we will still consider a moving centre of mass with position $p_0$ in the world frame. The position of the target in the world frame is then:
+$\hat{p} = p_0 + A_{\beta} \begin{bmatrix} L_z \\ -L_y \\ \end{bmatrix} + A_{\beta} R \begin{bmatrix} \cos \alpha \\ -\sin \alpha \\ \end{bmatrix} $ 
+Where $A_{\beta} = \begin{bmatrix} \cos \beta & \sin \beta \\ -\sin \beta & \cos \beta \\ \end{bmatrix}$
+Then we differentiate that to get the velocity -- which should be zero assuming your object is stationary in the world frame.
+$0 = \dot{p}_0 + \dot{\beta} J_{\beta} \begin{bmatrix} L_z \\ -L_y \\ \end{bmatrix} + R \dot{\beta} J_{\beta} \begin{bmatrix} \cos \alpha \\ -\sin \alpha \end{bmatrix} + R \dot{\alpha} A_{\beta} \begin{bmatrix} -\sin \alpha \\ -\cos \alpha \end{bmatrix} + \dot{R} A_{\beta} \begin{bmatrix} \cos \alpha \\ -\sin \alpha \end{bmatrix}$
+Where $J_{\beta} = \begin{bmatrix} -\sin \beta & \cos \beta \\ -\cos \beta & -\sin \beta \\ \end{bmatrix}$
+This then defines two equations (the z- and y-components of the above equation) in two unknowns ($\dot{R}$ and $\dot{\alpha}$).
+However, what you really need is to simply find an expression for the predicted range and laser angle ($\tilde{R}$ and $\tilde{\alpha}$) in terms of your states, the vehicle pose, ($z$,$y$,$\beta$) and target position ($\hat{z}$,$\hat{y}$).
+$\tilde{R} = \sqrt{\left( \hat{z} - \left( z + L_z \cos \beta \right) \right)^2 + \left( \hat{y} - \left( y + L_y \sin \beta \right) \right)^2}$
+$\tilde{\alpha} = \tan^{-1} \left( \frac{\hat{y} - \left( y + L_y \sin \beta \right)}{\hat{z} - \left( z + L_z \cos \beta \right) } \right) - \beta$
+Then you can apply this in an EKF according to the chat discussion. Note I have switched the axes labels and sign conventions to something that I am more used to.
+

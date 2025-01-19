@@ -1,0 +1,73 @@
+Q:
+
+Motor Controller Configuration
+
+With a group of students we are building an exoskeleton for paraplegics. I am part of the Software & Control department and we are designing the motor controller configuration. We have several requirements:
+
+Size is one of our main requirements. We want the Exoskeleton to be
+as slim as possible, so this is true for all the components as well.
+We want the motor controller to be as small as possible. 
+The motor controller has to work with a brushless DC motor
+A setpoint will be sent from a microcontroller to the motor
+controller Two or three absolute encoders need to be connected,
+this depends on the design of the joint. 
+**We are either going to
+use position or torque control 
+We need one encoder for the motor
+angle, and one for the joint angle. We might implement Series
+Elastic Actuation in our joint and then we want to be able to
+measure the deflection in the spring and thus need two encoders
+for that.
+A continuous power output in the range of 700 - 1200 Watt
+
+While exploring several off-the-shelf possibilities, we came accross the  Elmo Gold Twitter and the IOMI Pro. One of the problems of these boards, is the amount of absolute encoders that can be connected. Both the Elmo and the IOMI board can either have 1 or no absolute encoders connected.
+We came op with a solution, so that we are able to connect multiple encoders. In our exoskeleton we are going to use an EtherCAT Master-Slave configuration. The High-Level control (e.g. state-machine) is on the EtherCAT Master and sends joint angle setpoints. Our idea is to use a EtherCAT Slave as a sort of second controller, which gets the joint setpoint and the joint encoder values, calculates the motor setpoint and sends this out to a certain off-the-shelf controller like the Elmo Gold Twitter or the IOMI Pro. 
+
+My question is the following: Is this even a good solution? And what are other solution to this problem? Are there even better alternatives for a motor controller? Might it be a better idea to build and program your own motor controller? (please bare in mind that we have limited experience in that area)
+I thank you all in advance for your reply!
+Cheers!
+Nathan
+
+A:
+
+"My question is the following"
+
+Is this even a good solution?
+
+No, not really. As BendingUnit22 mentions, a motor controller... controls a motor. One motor. The biggest problem I see with this is that you've got the EtherCAT slave on the feedback line, trying to do signal processing, instead of piping the feedback directly to the motor controller. 
+The motor controller is setup for one motor. Use one motor controller for each motor you want to use. 
+
+What are other solutions to this problem? 
+
+Open-ended design problems are off-topic (you could join us in Robotics Chat and ask there if you like). That said, you haven't mentioned how you are converting from a brushless DC motor to the joint, but I'm going to guess you've got some kind of fixed gearing between the motor and the joint. 
+Your options there are to either put an encoder on the joint and do processing on the feedback signal to convert to motor units (as you've depicted), or you could put the encoder on the motor and do processing on the reference signal to convert the desired joint angle to motor units. My preference, personally speaking, would be to put the encoder on the motor. This means that all of your processing (converting between joint/motor units) is done before the motor-control loop. Processing introduces delays and those delays (negatively) affect control. 
+Something to think about, but I'm not going to speculate on your options here beyond pointing that out. You can leverage the knowledge of the fixed gearing between motor and joint to quickly scale desired joint angles to desired motor units and vice-versa, depending on where you want to put the encoder. I believe most BLDC motors come with encoders already, though generally not absolute encoders, which you would need.
+
+Are there even better alternatives for a motor controller?
+
+Terms like "good" and "better" are for you to decide; they have no quantifiable meaning on their own. Once you set a list of specifications, you can rank options by how well they meet or exceed each of the items on your list of specifications. If you can rank your specifications then it should become obvious that some options are "better" for your application than others, but again that's all dependent on the list of specifications that you generate. 
+I'll add here that I think a lot of people put cost as a specification, which is generally advisable, but they put too much emphasis on it. What matters more to you, cost or quality documentation? Cost or that the motor utilizes industry standards (NEMA bolt patterns, standard shaft sizing, reasonable power interface)? Cost or supplier's return policy? Cost or availability?
+What good is a cheap motor when you can't bolt it to any standard accessories or gearboxes? What good is a cheap motor that arrives DOA and then you can't exchange it, or when the exchange process takes 3 months? 
+I ask because these are all (absolutely colossal) problems I've actually faced on academic design projects. Some of these oversights nearly killed a couple (graded) projects I worked on.
+
+Might it be a better idea to build and program your own motor controller? 
+
+Generally speaking, yeah, I think that's a great project. Unfortunately for you, that's not the project you're supposed to be working on. You stated that you're part of the software and control department. The other people on this project are counting on you to get a motor controller done and programmed so the other teams can get their portion of the project completed. 
+A frame that can't be actuated doesn't help anyone and looks bad on everyone. 
+If this was your own pet project, then I'd say go for it, but because you're working in a team environment, where there are other people depending on you to complete your work in a timely manner, I'd say save that project for when you have time and try to find an off-the-shelf product that meets your needs for now. 
+If your teams are big enough you might be able to split this project off for yourself, after you help acquire at least passable motor controllers. The problem with designing your own is that you need to:
+
+Interface with the motor encoder, in all the formats the commercial motor controller could (or, at a bare minimum, in all the formats for the encoders you're using).
+Design the schematic for the power electronics capable of providing 1.2kW.
+Design the PCB for the schematic, including layout and trace size. 1.2kW isn't "high power" by any means, but it's enough that you're likely to blow up a couple boards before you get the design right. 
+Design the housing/mount footprint for the completed circuit. 
+Actually assemble and solder the PCB.
+Program the PCB, including the packet processing for EtherCAT if you go that route, the input processing and conditioning for the encoder feedbacks, and then the actual control algorithm for the motor speed control.
+
+This might "only" be a couple weeks of working full time, but there's generally a couple weeks of down time between completing the PCB design and receiving the boards, and like I mentioned I would be money you'll blow at least one board. You have to have everything perfect; all the component datasheets read correctly, transcribed to schematics correctly, transcribed to PCB correctly, components placed correctly, and then soldered correctly, and then programmed correctly, for the thing to work. 
+If you blow a board because you didn't place or solder or program something correctly, then you're out the turnaround time on the replacement parts. 
+If you blow a board because you didn't get the schematic right, then you're out the turnaround time on replacement boards, which again is probably a couple weeks. 
+How do you know the difference between blown by bad schematic and blown by bad construction? Good question. That'll probably take at least a week or two. 
+And the whole time, the rest of the project is stalled while everyone else on the team waits for the motor controllers. 
+You stated you or your team ("we") don't have much experience in that area. I don't know how you were thinking you might build and test your own motor controller circuit, but a breadboard is absolutely out of the question. Breadboards can only handle 0.5 to 1 Amp max, so whatever circuit you're testing with one is certainly not a 1.2kW motor controller, or even a 700W motor controller.
+

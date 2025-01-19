@@ -1,0 +1,71 @@
+Q:
+
+Can a node be a subscriber and client at the same time?
+
+I figured out how to do this, but couldn't find any documentation anywhere so I figured I'd help out anyone that is trying to do the same thing.
+
+Originally posted by Clancy on ROS Answers with karma: 38 on 2014-11-20
+Post score: 0
+
+Original comments
+Comment by Torsten on 2014-11-20:
+What do you mean with client? Are you mean that you want to call a server service? If so, yes you could do both, subscribe to regular topics and also call services from a server (being a client) in one node / nodelet.
+Comment by Clancy on 2014-11-20:
+I'll have to check out the nodelet solution. My answer will go through a couple more revisions, but I wanted to put up our immediate solution so that others can see a way of doing it. Thanks.
+
+A:
+
+Yes. A node can be a subscriber and a client at the same time.
+We needed a node that could subscribe to a topic and call a service request from another node at any given time. I couldn't find any solutions (probably because it is a relatively simple concept)... but I think there should be some documentation for other people stuck with the same problem.
+The problem we were having: Most of the service request examples have the service request being called from inside the main function. When we tried to do this, we were only able to request a service once and then the node would be caught in a spin loop. To avoid this error, we decided to move the service request into the subscriber callback function. This way it would be called whenever the subscriber heard a message.
+The basic idea:  The client is instantiated in the main function, but it needs to be used in the callback function. I made a ros::ServiceClient pointer at a global level (w.r.t. the node) and then gave it the address of the client. In the callback function I dereference the client pointer and use it to request a service.
+ void SUBSCRIBE_CALLBACK_FUNCTION (const PACKAGE_NAME::MESSAGE_NAME::ConstPtr& msg);
+    ros::ServiceClient *clientPtr; //pointer for a client
+    
+    int main (int argc, char **argv)
+    {
+    
+        ros::init(argc, argv, "MY_NODE");
+        ros::NodeHandle n;
+        ros::ServiceClient client = n.serviceClient<PACKAGE_NAME::SERVICE_NAME>("SERVICE_NAME"); //create the client
+        
+        clientPtr = &client; //give the address of the client to the clientPtr
+    
+        ros::Subscriber sub = n.subscribe<PACKAGE_NAME::MESSAGE_NAME>("TOPIC_NAME",1000,SUBSCRIBE_CALLBACK_FUNCTION); //subscribing
+    
+        ros::spin();
+    
+        return 0;
+    
+    }
+    
+    void SUBSCRIBE_CALLBACK_FUNCTION (const PACKAGE_NAME::MESSAGE_NAME::ConstPtr& msg)
+    {
+        PACKAGE_NAME::SERVICE_NAME srv;
+        srv.request.someBool= false; //just some variables to give the service some structure.
+        srv.request.someFloat = 4;
+        srv.request.someFloat = 30;
+        
+        ros::ServiceClient client = (ros::ServiceClient)*clientPtr; //dereference the clientPtr
+    
+        if(client.call(srv)) //request service from the client
+        {
+            ROS_INFO("Success = %d", srv.response.success);
+        }   
+        else
+        {
+            ROS_ERROR("Failed to call service from motor_control_node");    
+        }
+    
+    }
+
+Originally posted by Clancy with karma: 38 on 2014-11-20
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by AReimann on 2014-11-23:
+At least accept your own answer ;)
+Comment by Clancy on 2014-11-24:
+Ha! Unfortunately I don't have enough points yet.
+

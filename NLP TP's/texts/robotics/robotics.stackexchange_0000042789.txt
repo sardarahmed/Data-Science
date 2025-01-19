@@ -1,0 +1,117 @@
+Q:
+
+How to link to third party library?
+
+Hello
+I'm still working on the communication between ROS electric and Promethe Neural Network simulator and I'm trying to rosmake a node that includes Promethe C functions. I'm using the following CMakeLists.txt :
+I can rosmake witjout error but I get :
+[rosmake-0] Finished <<< promROS_connector [SKIP] No rule to make target None 
+
+And no executable in bin/ . I would know if my CMakeLists is correct and what I exactly have to use to compile with third party C compiled libraries. The ~/simulateur is in ROS_PACKAGE_PATH.
+Thanks for reading and answering.
+cmake_minimum_required(VERSION 2.4.6)
+include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+
+# Set the build type.  Options are:
+#  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
+#  Debug          : w/ debug symbols, w/o optimization
+#  Release        : w/o debug symbols, w/ optimization
+#  RelWithDebInfo : w/ debug symbols, w/ optimization
+#  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
+#set(ROS_BUILD_TYPE RelWithDebInfo)
+
+rosbuild_init()
+
+#set the default path for built executables to the "bin" directory
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
+#set the default path for built libraries to the "lib" directory
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+
+#uncomment if you have defined messages
+rosbuild_genmsg()
+#uncomment if you have defined services
+#rosbuild_gensrv()
+
+#common commands for building c++ executables and libraries
+
+#****************** INCLUDES **************************
+
+include_directories(~/simulateur/prom_user/include)
+
+include_directories(~/simulateur/libcomm/include)
+include_directories(~/simulateur/libcomm/include/protocol/virtual)
+
+include_directories(~/simulateur/prom_tools/include)
+include_directories(~/simulateur/prom_kernel/include)
+include_directories(~/simulateur/shared/include)
+
+#*******************************************************
+
+link_directories(~/simulateur/lib/Linux/comm)
+rosbuild_add_executable(prom2ROS src/prom_to_ROS.cpp)
+target_link_libraries(prom2ROS ~/simulateur/lib/Linux/comm/libcomm_debug)
+
+EDIT :
+After using :
+ target_link_libraries(prom2ROS libcomm_debug)
+
+the error is :
+   Linking CXX executable ../bin/prom2ROS
+   /usr/bin/ld: cannot find -llibcomm_debug
+   collect2: ld returned 1 exit status
+
+Does I have to set the LD_LIBRARY_PATH to allow ld to find the libcomm_debug (it is now empty - libcomm_debug is a .a static library) ?
+
+Originally posted by Erwan R. on ROS Answers with karma: 697 on 2012-07-30
+Post score: 2
+
+Original comments
+Comment by dornhege on 2012-07-30:
+Does target_link_libraries(prom2ROS -lcomm_debug) work? (libcomm_debug is already prebuild?)
+Comment by dornhege on 2012-07-30:
+Also, what is: promROS_connector?  The ~/simulateur doesn't need to be in the package path as it is not a ROS package (right? otherwise you should like via export flags in the manifest)
+Comment by ipso on 2012-07-30:
+@dornhege: remove the '-l' prefix, that should work. CMake expects library names in target_link_libraries, it is not a direct replacement for what you'd write in a linking statement for ld, as CMake performs dependency resolution on the listed libraries.
+Comment by dornhege on 2012-07-30:
+Yes, that's nicer.
+Comment by Erwan R. on 2012-07-30:
+target_link_libraries(prom2ROS libcomm_debug) is better in the sense that it throw an error - I'm editing the message for more details. Thanks for help.
+Comment by ipso on 2012-07-30:
+@Erwan R.: see my edit, I forgot to remove the lib prefix.
+Comment by Erwan R. on 2012-07-30:
+Done, it works ! Many many thanks !
+
+A:
+
+target_link_libraries(prom2ROS ~/simulateur/lib/Linux/comm/libcomm_debug)
+
+This is probably what isn't working for you. You've already specified the library search path with:
+
+link_directories(~/simulateur/lib/Linux/comm)
+
+target_link_libraries now needs the individual library names you want to link, without the paths. This:
+
+target_link_libraries(prom2ROS comm_debug)
+
+would probably be enough.
+
+Besides that, there some things I'd do differently:
+
+don't use relative paths, they are dependent on the cwd, which is fragile (not in this case, but in general they are)
+try to use an existing FindXXX script (or write one, in this case for the libraries and include paths of your simulator)
+if not available / desirable / possible, try to use find_library, find_path, etc, instead of hard coding their locations
+
+EDIT: Oops, forgot to remove the lib prefix from the library. Updated my answer above.
+
+Originally posted by ipso with karma: 1416 on 2012-07-30
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by dornhege on 2012-07-30:
+If you are a bit daring, you could also build your library with cmake and then you should be able to include that directly with catkin.
+Comment by Erwan R. on 2012-07-30:
+I'm gonna check for these find methods. That would be better than theses explicit paths (but the simulator is usually installed at user's root, even if it could change). May the  "~ " be also a problem ?
+Comment by dornhege on 2012-07-30:
+In that case I'd advise to use "the intended" method, whatever that is, for users to discover the library. If it is installed system-wide, as a normal package, standard include/linker paths might suffice.
+

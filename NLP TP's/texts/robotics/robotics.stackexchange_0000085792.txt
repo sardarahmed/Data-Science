@@ -1,0 +1,139 @@
+Q:
+
+How to load the map for multiple robot navigation?
+
+I have followed the steps in answer for this question to setup multiple robot navigation. Everything is working well except when i launch the navigation the map is not loaded and getting the below error. I have remapped map to /map but still the target frame seems to be map, how is this possible.
+[WARN] [1520794132.318544579, 556.425000000]: Timed out waiting for transform from robot2_tf/base_link to map to become available before running costmap, tf error: canTransform: target_frame map does not exist.. canTransform returned after 0.1 timeout was 0.1. 
+[ WARN] [1520794132.400360318, 556.479000000]: Request for map failed; trying again...
+
+So, how to load the map for multiple robots navigation and make them share the map.
+My launch files are as follows:
+Navigation of robots launch:
+<launch>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+ </include>
+ 
+  <!-- include our robots -->
+  <include file="$(find robot_description)/launch/myrobots.launch"/>
+
+  Run the map server 
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find robot_description)/maps/map.yaml" respawn="false" >
+    <param name="frame_id" value="/map" />
+  </node>
+
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <param name="amcl/initial_pose_x" value="1" />
+    <param name="amcl/initial_pose_y" value="1" />
+    <include file="$(find robot_description)/launch/move_base.launch" />
+  </group>
+
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2_tf" />
+    <param name="amcl/initial_pose_x" value="1" />
+    <param name="amcl/initial_pose_y" value="-1" />
+    <include file="$(find robot_description)/launch/move_base.launch" />
+  </group>
+
+</launch>
+
+multiple robots launch:
+<launch>
+  <!-- No namespace here as we will share this description. 
+       Access with slash at the beginning -->
+<param name="robot_description" textfile="$(find robot_description)/urdf/myrobot.urdf" /> 
+
+  <!-- BEGIN ROBOT 1-->
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+    <include file="$(find robot_description)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x 1 -y 1 -z 0" />
+      <arg name="robot_name"  value="Robot1" />
+    </include>
+  </group>
+
+  <!-- BEGIN ROBOT 2-->
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2_tf" />
+    <include file="$(find robot_description)/launch/one_robot.launch" >
+      <arg name="init_pose" value="-x 1 -y -1 -z 0" />
+      <arg name="robot_name"  value="Robot2" />
+    </include>
+  </group>
+</launch>
+
+Move_base launch:
+<launch>    
+  <!--- Run AMCL -->
+  <include file="$(find amcl)/examples/amcl_diff.launch" />
+
+  <!-- Define your move_base node -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <rosparam file="$(find robot_description)/src/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+    <rosparam file="$(find robot_description)/src/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find robot_description)/src/local_costmap_params.yaml"  command="load" />
+    <rosparam file="$(find robot_description)/src/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find robot_description)/src/base_local_planner_params.yaml" command="load" />
+
+  <remap from="map" to="/map" />
+  </node>
+</launch>
+
+Edit 2:
+Tf frames:
+
+rqt_graph:
+
+Originally posted by Kishore Kumar on ROS Answers with karma: 173 on 2018-03-11
+Post score: 1
+
+Original comments
+Comment by jayess on 2018-03-11:
+Can you please update your question with the relevant launch files?
+Comment by Kishore Kumar on 2018-03-14:
+I have edited the question as per your request
+Comment by Igor Muniz on 2018-03-28:
+I have the same problem here. Has anyone managed to solve it?
+Comment by nightwish on 2018-06-05:
+Did you resolve this problem?
+I am encountering the same problem.
+
+A:
+
+I managed to deal with this problem and figured out that the problem was fixed by setting amcl's use_map_topic param to true.
+<node pkg="amcl" type="amcl" name="amcl" output="screen">
+         ...
+         <param name="use_map_topic" value="true"/>
+         ... 
+</node>
+
+Hope this can help anyone with the same problem.
+
+Originally posted by nightwish with karma: 61 on 2018-06-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by topkek on 2018-06-25:
+didnt help me :(
+Comment by nightwish on 2018-06-27:
+@topkek could you give some information such as launch file, tf tree, error messages in terminal?
+Comment by topkek on 2018-06-29:
+main launch file https://pastebin.com/yQMru4Pj
+move base file https://pastebin.com/V6QzeRHP
+errors https://pastebin.com/pn6ZgZLV
+tf tree looks like the one from the question
+Comment by nightwish on 2018-06-29:
+Thank you for the information. From the error in terminal I think you need a transform tree as following
+map->odom->[your name space]/odom. You can use static_transform_publisher to do this.
+Comment by jayess on 2018-06-29:
+@topkek please ask a new question. The comments section isn't the appropriate place for this.
+Comment by topkek on 2018-06-29:
+map_server doesnt event load any map https://i.imgur.com/W4HtsSu.jpg
+Comment by jayess on 2018-06-29:
+If this is related to your other question, #q294240, then please move the discussion there. Otherwise, please create a new question.
+Comment by topkek on 2018-06-29:
+ok. i had so many questions and never got an answer...
+Comment by nightwish on 2018-06-29:
+@topkek please update as my comment in your question.
+

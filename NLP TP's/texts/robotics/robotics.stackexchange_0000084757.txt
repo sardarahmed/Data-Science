@@ -1,0 +1,74 @@
+Q:
+
+[ros2/rclcpp] Threadsafety of Node::create_publisher<>
+
+I can't find any documentation of whether or not creating and working with nodes is threadsafe in rclcpp. My specific use case is that I would like to
+create node A <- In thread 1
+rclcpp::spin(A) <- in thread 2
+Add/remove publishers/subscribers <- In thread 1
+A link to the documentation on this topic or a direct answer would be appreciated.
+
+Originally posted by ipiano on ROS Answers with karma: 35 on 2018-01-17
+Post score: 1
+
+A:
+
+Creating and destroying (allowing them to go out of scope) publishers and timers is thread-safe right now. For Subscriptions, Service Servers, and Service Clients, creation is currently thread-safe, and destroying them was intended to be, but there are some on going issues about that here:
+https://github.com/ros2/rclcpp/issues/349
+and
+https://github.com/ros2/rclcpp/pull/431
+Long term hopefully all of the actions will be thread-safe (that's the goal). Also we hope to improve the documentation soon too, but anyone could help with that I think.
+On a related note, adding and removing nodes to/from executors is also thread-safe. So you could do something like this:
+#include <thread>
+
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+
+using namespace std::chrono_literals;
+
+int main(int argc, char ** argv) {
+  rclcpp::init(argc, argv);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+
+  auto node = std::make_shared<rclcpp::Node>("test");
+  executor.add_node(node);
+
+  std::thread t([&executor]() {
+    executor.spin();
+  });
+
+  {
+    std::this_thread::sleep_for(1s);
+    auto pub = node->create_publisher<std_msgs::msg::String>("chatter");
+    std::this_thread::sleep_for(1s);
+    pub.reset();
+  }
+
+  {
+    std::this_thread::sleep_for(1s);
+    auto sub = node->create_subscription<std_msgs::msg::String>(
+      "chatter",
+      [](const std_msgs::msg::String::SharedPtr msg) {(void)msg;});
+    std::this_thread::sleep_for(1s);
+    sub.reset();
+  }
+
+  {
+    std::this_thread::sleep_for(1s);
+    executor.remove_node(node);
+    std::this_thread::sleep_for(1s);
+    executor.add_node(node);
+    std::this_thread::sleep_for(1s);
+    node.reset();
+    std::this_thread::sleep_for(1s);
+  }
+
+  executor.cancel();
+  t.join();
+}
+
+Originally posted by William with karma: 17335 on 2018-01-17
+This answer was ACCEPTED on the original site
+Post score: 0
+

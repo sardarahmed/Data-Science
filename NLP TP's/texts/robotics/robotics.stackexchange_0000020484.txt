@@ -1,0 +1,41 @@
+Q:
+
+How to PID tune a four wheel robot?
+
+Four wheel mecanum rover with a mass of approximately 50 Kg.  Each wheel has a 20:1 gearbox with encoder at the wheel (rather than the motor).
+If this was something like a robot arm I would PID tune each DOF starting with the distal joints and work my way back to the base.  This is a case of four motors collaborating to accelerate and control the total mass.  What's the best approach to doing this?
+One thought I had was to setup a tuning jig for single motor+gearbox+wheel, load it with 1/4 of the mass and tune them individually in this fashion.  This would likely work just fine.  Perhaps not the most elegant but it might do OK.
+The other one is to run the system open loop, issue a step change command, observe and record the response and use this to iterate a solution.  In many ways this is similar to the Twiddle algorithm, which is nothing more than sequential approximation and optimization.
+I'll have the hardware built next week so I can't test at the moment.  I am leaning towards tuning each motor+gearbox+wheel using the 1/4 mass jig first.  This could be followed by a fine tuning process using fine-step successive approximation to get it right with all four motors driving the entire mass.
+One of the questions I have has to do with what happens to this tuning in the context of a holonomic drive, which can move the mass in multiple directions and rotate about its axis (as well as rotate about any point on the xy plane).
+Twiddle algorithm:
+https://www.youtube.com/watch?v=2uQ2BSzDvXs
+
+A:
+
+I can think of three ways to control this robot:
+
+Do as you described and have one separate controller for each motor, tuned independently using a test fixture;
+Use a MIMO PID controller to simultaneously control the four motors;
+Use two PID controllers, one for linear speed, another for angular.
+
+The last option would take advantage of the fact that, according to the kinematic equations for a four-wheeled drive, the front and rear left wheels $W_{LF}$ and $W_{LR}$ can be combined into a single "virtual" wheel $W_L$ such that:
+$$
+\omega W_L = \frac{\omega W_{LF} + \omega W_{LR}}{2}
+$$
+Where $\omega W_L$, $\omega W_{LF}$ and $\omega W_{LR}$ are respectively the angular speeds of the virtual left, left front and left rear wheels. A virtual right wheel $W_R$ can be defined analogously. This reduces the system definition to a differential drive, for which linear and angular speeds can be computed as:
+$$
+v = \frac{r (\omega W_L + \omega W_R)}{2}
+$$
+$$
+\omega = \frac{\omega W_R - \omega W_L}{2l}
+$$
+Where $r$ is the wheel radius and $l$ the lateral distance between wheels. From the formulas above you get:
+$$
+\omega W_L = \frac{v}{r} - \omega l
+$$
+$$
+\omega W_R = \frac{v}{r} + \omega l
+$$
+Allowing you to use linear and angular speeds as references to control the virtual wheels. 
+

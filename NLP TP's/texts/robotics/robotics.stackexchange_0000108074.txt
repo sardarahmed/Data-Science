@@ -1,0 +1,126 @@
+Q:
+
+"No module named roslaunch" for ROS 2
+
+I am getting error No module named roslaunch when executing a ROS 2 launch file. I know this question is already asked here but it dose not seems to solve my problem as it is for ROS 1. I know that roslaunch is for ROS 1 so getting error "No module named roslaunch" for ROS 2 seems unnecessary.
+I executed this same package on one PC and it is woking fine, but because my application requires GPU, I shifted to another PC and copy pasted the package rebuilding it with colcon build --symlink-install and now I am getting this error.
+Another Post mentions that the issue is related to environment variable being set to a wrong path but in my case $ROS_PACKAGE_PATH dose not prints out anything means its empty.
+Also I did not understand to which path is is pointing to because ros 2 does not has any folder named "ros_stacks" as mentioned in export ROS_PACKAGE_PATH=/home/maneesh/ros_stacks:$ROS_PACKAGE_PATH
+Actually the error "no module name roslaunch" is arising at 29th line of the launch file "robot_description_config = xacro.process_file(xacro_file)" and when I replace the line with " robot_description_config = Command(['xacro ', xacro_file])" the error changes to "no module named rosgraph" . "rosgraph" is also a ros1 package.
+Launch File:
+import os
+
+from ament_index_python.packages import get_package_share_directory
+
+from launch import LaunchDescription
+from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch_ros.actions import Node
+import launch_ros
+
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+import xacro
+
+def generate_launch_description():
+
+    # Check if we're told to use sim time
+    use_sim_time = LaunchConfiguration('use_sim_time')
+
+    # Process the URDF file
+    pkg_path = os.path.join(get_package_share_directory('race_it'))
+    
+    #xacro_file = os.path.join(pkg_path,'description','robot.urdf.xacro')
+    xacro_file = os.path.join(pkg_path,'description', 'race_car.xacro')
+    
+    robot_description_config = xacro.process_file(xacro_file)
+    
+    default_rviz_config_path = os.path.join(pkg_path, 'config/rviz/urdf_config.rviz')
+    
+    # Create a robot_state_publisher node
+    params = {'robot_description': robot_description_config.toxml(), 'use_sim_time': use_sim_time}
+    node_robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[params]
+    )
+    
+    
+        
+    joint_state_publisher_node = launch_ros.actions.Node(
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher'
+    )
+    
+
+    rviz_node = launch_ros.actions.Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        output='screen',
+        arguments=['-d', default_rviz_config_path],
+    )
+
+    
+    gazebo = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([os.path.join(
+            get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')]),
+            launch_arguments={'world': "./src/race_it/worlds/track_4.world"}.items()
+    )
+    
+    
+    spawn_entity = launch_ros.actions.Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=['-entity', '', '-topic', 'robot_description'],
+        output='screen'
+    )
+    
+    ackermann_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=["asc"],
+)
+
+    # Launch!
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='true',
+            description='Use sim time if true'),
+
+        node_robot_state_publisher,
+        joint_state_publisher_node,
+        rviz_node,
+        gazebo,
+        spawn_entity,
+        ackermann_spawner
+    ])
+
+A:
+
+I have found the solution. The problem was that I didn't installed ros2 properly. I figured out the solution by uninstall ros2 from the system when my launch file was working and reinstalling ros2 which started giving the same error.
+After installing ros2 from the official site "https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html" a few additional modules need to be installed.
+Steps to install ros2 properly:
+
+Step 1 --> Install ros2 using: https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
+Step 2 --> sudo apt install ros-humble-xacro
+Step 3 --> sudo apt install ros-humble-joint-state-publisher-gui
+Step 4 --> sudo apt install ros-humble-gazebo-ros-pkgs
+Step 5 --> sudo apt install ros-humble-ros2-control
+Step 6 --> sudo apt install ros-humble-ros2-controllers
+Step 7 --> sudo apt install ros-humble-gazebo-ros2-control
+Step 8 --> sudo apt install ros-humble-controller-manager
+Step 9 --> sudo apt install ros-humble-joint-trajectory-controller
+Step 10 --> sudo apt install ros-humble-joint-state-broadcaster
+Step 11 --> sudo apt install ros-humble-joint-state-publisher-gui
+
+Just replace "humble" with the distro of ros you have installed. For example for foxy, you could write "sudo apt install ros-foxy-xacro".
+After installing ros2 from the official site, I ran my launch file and got error "No module named Xacro". To solve it I did "pip install xacro" which what I feel installed xacro for ros1. Due to this this, xacro which belong to ros1 was looking for roslaunch which wasn't present as I installed ros2. To correct it, I did "pip uninstall xacro", and installed xacro for my ros distro using "sudo apt install ros-humble-xacro".
+I got this command from this youtube channel: "https://www.youtube.com/@ArticulatedRobotics". It didnt specifically mentions this issue but, tells which modules to install as it proceeds with the series of videos. It has great content anyone starting with robotics.
+Hope it helps others.
+Thanks.
+

@@ -1,0 +1,57 @@
+Q:
+
+Incorrect/unexpected behavior from Trac-IK with calls to moveit::core::RobotState::setFromIK
+
+I just switched to Melodic from Kinetic (yay!) and some of our existing code base started generating infeasible trajectories (nooo!).  Upon further inspection it seems that RobotState's setFromIK was returning consecutive IK solves (of a Cartesian trajectory) with joint configuration flips (e.g., elbow, wrist, etc.).  Multiple runs with the SAME trajectory sometimes fails / sometime passes.
+The flow of the trajectory IK routine is as follows:
+
+seed joint state with an initial posture
+loop through all Cartesian trajectory points with consecutive calls to setFromIK and save resulting joint positions
+
+The code operates under the assumption that subsequent calls to setFromIK use the previous result as a seed (this has worked always in the past).  I also tried explicitly seeding on every loop iteration with setVariablePositions (vs implicitly using the previous solution) with the same random flip results.
+Switching to KDL from Trac-IK, however, resolves the issue.  With that in mind, it seems to me that somehow either the current state is not making it as a seed to Trac-IK calls, it is being ignored by Trac-IK, or the wrong result is being selected.  I don't know enough about the actual plugin communication/functionality to tell what exactly the issue is.
+Thoughts? Anyone else seeing this?  Can anyone offer insight or some direction to continue my debugging?
+
+Originally posted by BrettHemes on ROS Answers with karma: 525 on 2018-12-05
+Post score: 1
+
+Original comments
+Comment by BrettHemes on 2018-12-10:
+Follow-up posted at https://github.com/ros-planning/moveit/issues/1255
+
+A:
+
+Melodic and kinetic packages build the exact same source code.  Thus, this seems to me like it might be an issue with MoveIt.  Were you always running the lastest ros-kinetic-trac-ik debs in kinetic? If so then you should be running the exact same code in melodic that you’ve been running in kinetic for months.  Additionally trac-IK has had no changes to functionality in the last 2 years other than changes from boost to C++-11 threads.
+Might I suggest that you use the trac-IK-examples source and try to test a seed that you see is acting funny in MoveIt! With your URDF?
+
+Originally posted by pbeeson with karma: 276 on 2018-12-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by pbeeson on 2018-12-05:
+Let me also suggest you see if setFromIK() has changed within the last year or so so that it might be different in kinetic and melodic.
+Comment by gvdhoorn on 2018-12-06:
+Perhaps it would be also worth checking the MoveIt configuration package's that are being used. @BrettHemes: are you configuring the solve_type somewhere?
+Comment by BrettHemes on 2018-12-06:
+we are using solve_type: Speed (default) and have never had issues in the past
+Comment by gvdhoorn on 2018-12-06:
+I would really recommend to change that to Distance. Even if you weren't having issues before.
+Comment by BrettHemes on 2018-12-06:
+I tried out solve_type: Distance and the result is much much slower execution (>10x).  I assume this could be optimized via the timeout but I don't really like the idea of a deterministic pre-determined solve time.  I tried wrapping the call with a "max_jump_threshold" check and iterate
+Comment by BrettHemes on 2018-12-06:
+when violated up to a maximum number of iterations and this is now working (arguably I should have done this from the start).  I tested the seeding by passing bad/flipped seeds and the solver is indeed taking these into account.  It is just for some reason flipping approximately
+Comment by BrettHemes on 2018-12-06:
+1 time out of 1000 calls when it never did this before.
+Comment by BrettHemes on 2018-12-06:
+So the current result is me having to call setFromIK twice every so often (reseeding with the previous joint pose) but is working otherwise.
+Comment by gvdhoorn on 2018-12-06:
+This sounds like something that should at least deserve a mention on the moveit issue tracker.
+Comment by BrettHemes on 2018-12-06:\
+
+I would really recommend to change that to Distance. Even if you weren't having issues before.
+
+Do you have any suggestions on how to best select the timeout value in this case?
+Comment by gvdhoorn on 2018-12-07:
+No, sorry. Perhaps @pbeeson can give some guidelines.
+

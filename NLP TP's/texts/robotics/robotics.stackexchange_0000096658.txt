@@ -1,0 +1,79 @@
+Q:
+
+Moveit & UR speed scaling: Controller is taking too long to execute trajectory
+
+Hello everyone,
+I am using a UR robot and Moveit. I am using speed scaling to adjust the speed of the robot.
+This is the UR driver that I am using and this is my controllers.yaml:
+controller_list:
+  - name: ""
+    action_ns: scaled_pos_traj_controller/follow_joint_trajectory
+    type: FollowJointTrajectory
+    joints: [shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint]
+
+Like mentioned in this question I added:
+<param name="allowed_execution_duration_scaling" value="100.0"/>
+
+but with a speed of 20% I still get the error:
+Controller is taking too long to execute trajectory
+
+Even though a allowed_execution_duration_scaling value of 5 should be enough for 20% of the speed.
+With values over 50% I am not getting any error messages.
+Do I have a wrong understanding of the function of the allowed_execution_duration_scaling?
+What other ways are there to change the robot speed with moveit?
+Thanks!
+Daniel
+
+Originally posted by dschimpf on ROS Answers with karma: 21 on 2020-07-28
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-07-28:
+This should not be necessary, but it depends a bit on what exactly you are trying to do.
+As a first step: please update your question to mention which driver you are using.
+Comment by dschimpf on 2020-07-28:
+I updated my question. Please let me know if any other information may be helpful. Thank you!
+Comment by gvdhoorn on 2020-07-28:
+Based on your update: this is a "know issue". MoveIt's trajectory execution manager is not aware of any scaling on the driver/robot controller side, so it will assume 100% of the joint limits are available for execution. This will cause timeouts when executing trajectories with a robot controller configured for a lower maximum scale.
+I'm not aware of any work to fix this right now. Possible approaches:
+
+update the trajectory execution manager to be able to deal with the concept of scaling (perhaps subscribe to the appropriate topic published by the driver)
+use velocity an acceleration scaling on the MoveIt-side (ie: don't use full joint limits to parameterise trajectories)
+
+Comment by dschimpf on 2020-07-28:
+Because moveit is not aware of any scaling thought I could use the allowed_execution_duration_scaling. And by setting it to 5 my task would be allowed to last 5 times as long before a timeout. Which should be enough when executing it at 20% of the speed. I'll look into the other things. Thank you!
+Comment by dschimpf on 2021-03-02:
+@gvdhoorn Would I be able to send the planned cartesian trajectory with MoveIt through a different trajectory execution manager and then make use of the speed scaling? If so do you have some resources that show how to do this? Could I follow this tutorial (http://wiki.ros.org/Robots/TIAGo/Tutorials/trajectory_controller) to send the trajectory and be able to scale the speed?
+My main goal is to execute a cartesian trajectory (planned with MoveIt ) and be able to change the speed during the execution. I am ok with not using the MoveIt execution manager. Thanks!
+
+A:
+
+For anyone that wants to do the same thing:
+What I have decided to do now is changing the max_velocity in joint_limits.yaml (from moveit_config, created from setup assistant). I still need to have the set the speed scaling to 100%, but now the robot moves slower.
+In rviz under planning one can also set the velocity factor (from 0 - 1). That worked for plans created in rviz, but not through a C++ file.
+Second option:
+Use /ur_hardware_interface/set_speed_slider topic to change speed scaling value.
+Use trajectory from MoveIt and convert it from moveit_msgs::RobotTrajector to control_msgs::FollowJointTrajectoryGoal.
+moveit_msgs::RobotTrajectory trajectory;
+trajectory_msgs::JointTrajectory joints_combined = trajectory.joint_trajectory;
+control_msgs::FollowJointTrajectoryGoal goal;
+goal.trajectory = joints_combined;
+goal.goal_time_tolerance = ros::Duration(1.0);
+
+This can then be send to robot via action client and won't stop because of slow execution.
+actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> ac("/scaled_pos_joint_traj_controller/follow_joint_trajectory", true);
+ ac.sendGoal(goal);
+
+Originally posted by dschimpf with karma: 21 on 2020-07-28
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-03-09:\
+
+Second option: Use /ur_hardware_interface/set_speed_slider topic to change speed scaling value
+
+as long as it's clear you're changing the position of the slider on the TP, not setting the "speed scaling value" directly.
+Comment by dschimpf on 2021-03-09:
+Yes, from a node I am changing the position of the slider on the TP which changes the speed scaling value.
+

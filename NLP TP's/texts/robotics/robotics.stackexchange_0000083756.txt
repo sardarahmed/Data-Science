@@ -1,0 +1,71 @@
+Q:
+
+AttributeError: 'Point' object has no attribute 'point'
+
+I am transforming a point from source frame to target frame using tf2. Below is the code snippet:
+import tf2_ros
+import tf2_geometry_msgs
+
+transform = tf_buffer.lookup_transform(target_frame, source_frame, rospy.Time(0), rospy.Duration(1.0))
+pose_transformed = tf2_geometry_msgs.do_transform_point(point_wrt_kinect, transform)
+print pose_transformed
+
+It throws following error:
+  pose_transformed = tf2_geometry_msgs.do_transform_point(point_wrt_kinect, transform)
+  File "/opt/ros/indigo/lib/python2.7/dist-packages/tf2_geometry_msgs/tf2_geometry_msgs.py", line 59, in do_transform_point
+    p = transform_to_kdl(transform) * PyKDL.Vector(point.point.x, point.point.y, point.point.z)
+AttributeError: 'Point' object has no attribute 'point'
+
+The point is defined as follows:
+from geometry_msgs.msg import Point
+point_wrt_kinect = Point()
+point_wrt_kinect.x = -0.41
+point_wrt_kinect.y = -0.13
+point_wrt_kinect.z =  0.77
+
+However, since I am getting the above error. So I redefined the point as follows
+from geometry_msgs.msg import Point
+class MyPoint():
+    def __init__(self):
+        self.point = Point()
+
+And then initialize the point as below:
+point_wrt_kinect = MyPoint()
+point_wrt_kinect.point = Point(-0.41, -0.13, 0.77)
+
+It works! However is a there better way to do it?
+
+Originally posted by ravijoshi on ROS Answers with karma: 1744 on 2017-11-06
+Post score: 1
+
+Original comments
+Comment by NEngelhard on 2017-11-07:
+BTW: That's a really well formulated question. It contains all the info and also your current solution. (and pose_transformed should be point_stamped)
+
+A:
+
+I think the author had a PointStamped in mind when implementing the function. So you could could do something like
+ps = geometry_msgs.msg.PointStamped(point=point_wrt_kinect)
+pose_transformed = tf2_geometry_msgs.do_transform_point(ps, transform)
+
+The code for the function is here: [https://github.com/ros/geometry2/blob/indigo-devel/tf2_geometry_msgs/src/tf2_geometry_msgs/tf2_geometry_msgs.py)
+The function only uses the point-member of the passed point-variable so it for example does not check if the frame-id of a passed PointStamped-variable would fit to the frames of the transformation (the frame is here used to set the resulting frame of the returned PoseStamped).
+So in the end, do_transform_point looks like it's processing objects with Headers but ignores them and only works on the raw points and transformation.
+
+Originally posted by NEngelhard with karma: 3519 on 2017-11-07
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-11-07:
+Suggestion: give it a stamp and frame_id as well. Methods that take a PointStamped will probably assume that they can use the header.stamp and header.frame_id fields to lookup TF frames.
+Comment by NEngelhard on 2017-11-07:
+I expanded the answer a bit, the function ignores the frame of the Point. I think the function should print at least a warning if point_st.header.frame_id != transform.child_frame_id (if the point_st has a frame_id)
+Comment by gvdhoorn on 2017-11-07:
+My comment was meant more for the 'general case' where one invokes methods that take *Stamped versions of objects.
+I can see why this particular method wouldn't look at stamp, as you're already passing in the transform. But checking for the frame_id would perhaps be nice, as you write.
+Comment by ravijoshi on 2017-11-07:
+Thank you very much.
+Comment by NEngelhard on 2017-11-07:
+I opened an Issue: https://github.com/ros/geometry2/issues/273
+

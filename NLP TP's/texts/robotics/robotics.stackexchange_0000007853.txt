@@ -1,0 +1,96 @@
+Q:
+
+How to tune PID for a Y(t) = k*X(t) system?
+
+Could I have your opinions on PID type selection?
+
+System description
+
+Here comes a very simple system: $\mbox{Output}(t) = k * (\mbox{Input}(t) + \mbox{systemVariable}(t))$. $k$ is constant and $\mbox{systemVariable}(t)$ is a system variable which may change according to time.
+The goal of the whole system is to maintain system output at $0$. It has to be as close to zero as possible. The controller has to compensate the $\mbox{systemVariable}$.
+The change ($\mbox{systemVariable}$ ) is modeled by a very slow ramp.
+
+Controller description
+
+The controller's input is the output of the system. However, the measurements are always noisy, and I modeled Band-Limited White Noise into the measurements.
+After PID controller, the output goes into an integrator, since the PID controller always calculates the "change" of the plant input. 
+
+Questions
+
+My original thoughts: Add a PID controller with P=1/k is enough. Since every time the controller gets an error $e$, it can be calculated back that the compensation on controller output shall be $e/k$. However, Matlab auto-tuning always give me a PID. Why is that?
+What is the relation between P of PID and measurement noises? If P is large, the system will tend to be rambling largely, due to the noises. If P is small, the system will tend not to converge to the correct value or very slow. How to make the trade-offs? Or how to prevent system from rambling largely and get quick system responses? 
+
+Thanks a lot!
+
+A:
+
+I had problems understanding the diagram and the question. It might be because you didn't explain every step to keep the question short or just because I use some terminology differently so I'd like to go through this slowly. This is not to say that this is the right way to do it, but so that everybody is on the same page. The comments imply that others are also confused. Essentially, I would identify things differently and in control theory giving something a different name can be a major part of the solution.
+I was pretty much in WTF? mode until I saw this in the comments: r+PID_output, which gave me a hint on how this came to be. Well, at least I think.
+The ramp is not part of the plant
+No, not even if it is part of the plant. The reason is that adding the ramp makes the plant nonlinear. An LTI system is a Linear Time Invariant system. That means (among other things) shifting the input by some amount of time, should only result in a time shifted output, without changing the input value. The ramp breaks that rule.
+For the sake of some more confusion, $y = mx + n$ is also nonlinear1.
+I could come up with some gruesome simile about how you'd want to rather choke on your own innards than doing nonlinear control theory, but instead I'd say let's try to do this with linear control theory. It is able to handle the situation.
+The plant is just $k$, it's transfer function (which can be calculated now, just another benefit of kicking the ramp out) is simply:
+$$ output (t) = input(t) \cdot k \\ Output(s) = Input(s)\cdot k \\ \frac{Output(s)}{Input(s)} = k$$
+Neither noise nor integrator are part of the controller
+As you say, the noise isn't created in the controller, so why model it there?
+And the mysterious integrator is removed in a coincidently similar way to the ramp. * cough *
+We are left with the bog standard control loop without a sensor. (a sensor will never be present in this answer, the sensor in the image simply has a transfer function of 1)
+
+Finding a suitable controller for the system
+
+$P=\frac{1}{k}$ is enough. Since every time the controller gets an error e, it can be calculated back that the compensation on controller output shall be $\frac{e}{k}$. However, Matlab auto-tuning always give me a PID. Why is that?
+
+It's tempting to use the inverse of the transfer function of the system as a controller.
+That would compensate the system exactly, if you are a glas-half-full kind of person. On the other hand, if you are a glas-already-empty-again-damnit-gotta-order-another-one kind of person, it only compensates the system exactly. The subtle difference is that a model is never exact. With slight inaccuracies in the model due to real world stuff, compensating the system transfer function exactly is not a good idea.
+Adding an integral part for good measure is usually a good idea, one reason is stated here:
+
+The integral term accelerates the movement of the process towards setpoint and eliminates the residual steady-state error that occurs with a pure proportional controller. 
+
+For those about to ramp, we compensate you2
+The existence of the ramp cannot be denied. Instead of modelling it as part of the system, let's model it as the disturbance variable as can be seen in the following image named $W$
+
+hint: a click on the image leads you to the source of the image which is an article on how to simulate disturbance transfer functions with matlab
+Two important properties of a system are:
+
+how quickly it follows a change of the input, which is kinda moot, because that's constant $0$  in your case
+how quickly it can compensate a disturbance
+
+It's usually a trade-off between both. You can compare them by looking at their transfer functions.
+There's a great image showing that on a non English Wikipedia article. This is optional, so feel free to just skip this.
+Trouble is that the variables used there have different names. The block diagram with controller $G_R(s)$, system $G_S(s)$ and disturbance $D(s)$ looks like this:
+
+The disturbance transfer function is thus given as:
+$$\frac{Y(s)}{D(s)}=\frac{G_S(s)}{1+G_R(s)G_S(s)}$$
+Ok, ready? Here it comes:
+
+Don't worry if you don't have the Sauerkraut to read it, because I do.
+There are 4 plots displaying unit jumps of disturbance and input and the output responses to these using two different controllers (both PID controllers but different parameters):
+
+the $\color{blue}{\text{thin blue}}$ line is the plot of the input $w(t)$ jumping to $1$ at $t = 0$, it's basically just a horizontal line at 1
+the $\color{green}{\text{thin green}}$ line is the plot of the disturbance $d(t)$ jumping to $1$ at $t = 10$
+the $\color{blue}{\text{thick blue}}$ line is the response of the output controlled by a controller tuned for quickly adopting changes in the input. As you can see it takes the jump of the input rather well without overshooting much. The disturbance however is not compensated quickly. It causes a huge bump in the plot(up to 1.3) which never fully recovers back to 1 (where it should be) within the visible area of the diagram. You certainly don't want that.
+the $\color{red}{\text{thick red}}$ line shows the response of the output controlled by a controller tuned to quickly compensate disturbances. The response to the input jump is a disaster, but the response to the disturbance jump at $t = 10$ is barely visible. The disturbance jumps from 0 to 1, but the output only climbs to roughly 1.05 because of that. This is what you want
+
+The only difference between the two is what PID parameters were used:
+$$\color{blue}{G_R(s) = \frac{0.8(2s+1)(s+1)}{s}}$$
+$$\color{red}{G_R(s) = \frac{10(2s+1)(s+1)}{s}}$$
+There's some factor that should be rather big (10 vs. 0.8) in order to compensate disturbance well, let's call this factor $a$:
+$$G_R(s) = \frac{a(2s+1)(s+1)}{s}$$
+The generic PID controller has the transfer function
+$$G_{PID}(s) = K_p + K_i\frac{1}{s} + K_ds$$
+I conclude that multiplying all 3 PID parameters by some factor improves how well the system can handle disturbance. 
+Your system is different and your disturbance is a ramp instead of a jump. But the example shows how to analyse a system, which should help you tune your controller.
+The disturbance is also what I'd add the noise to.
+The mysterious integrator
+Now that's all nice, but what the heck is this integrator thingy supposed to be? And how is r+PID_output a hint?
+It's a feed forward compensation of the disturbance. r+PID_output is a hint because it contains the +, which indicates that this is supposed to be a feed forward. The problem is that in the block diagram, it is a separate block after the PID controller, which means in the block diagram, it is actually $r \cdot PID_{output}$, which is not how feed forward should be.
+The following image shows how a feed forward compensates disturbance: (with yet again differently named variables)
+
+The compensation of the disturbance is indeed added after the controller. As can be seen in the image, it is added via a negative summation node.
+As seen above, the controller itself should be able to handle disturbance, because it is tuned to do only that in your use case.
+A feed forward can take some workload off the controller. If you really think this is neccessary, go ahead and add the feed forward. I would keep it separate from the controller, for better readability, although adding the feed forward will basically just change some parameters of the PID controller.
+
+1 check this proof on electronics.SE
+2 with apologies to AC/DC
+

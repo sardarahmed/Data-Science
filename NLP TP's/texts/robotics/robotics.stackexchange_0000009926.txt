@@ -1,0 +1,41 @@
+Q:
+
+Calculate the uncertainty of a 6-dof pose for graph-based SLAM
+
+This question is strongly related to my other question over here.
+I am estimating 6-DOF poses $x_{i}$ of a trajectory using a graph-based SLAM approach. The estimation is based on 6-DOF transformation measurements $z_{ij}$ with uncertainty $\Sigma_{ij}$ which connect the poses. 
+To avoid singularities I represent both poses and transforms with a 7x1 vector consisting of a 3D-vector and a unit-quaternion:
+$$x_{i} = \left( \begin{matrix} t \\ q \end{matrix} \right)$$
+The optimization yields 6x1 manifold increment vectors 
+$$ \Delta \tilde{x}_i = \left( \begin{matrix} t \\ log(q) \end{matrix} \right)$$
+which are applied to the pose estimates after each optimization iteration:
+$$ x_i \leftarrow x_i \boxplus \Delta \tilde{x}_i$$
+The uncertainty gets involved during the hessian update in the optimization step:
+$$ \tilde{H}_{[ii]} += \tilde{A}_{ij}^T \Sigma_{ij}^{-1} \tilde{A}_{ij} $$
+where 
+$$ \tilde{A}_{ij} \leftarrow A_{ij} M_{i} = \frac{\partial e_{ij}(x)}{\partial x_i} \frac{\partial x_i \boxplus \Delta \tilde{x}_i}{\partial \Delta x_i} |_{\Delta \tilde{x}_i = 0}$$
+and
+$$ e_{ij} = log \left( (x_{j} \ominus x_{i}) \ominus z_{ij} \right) $$
+is the error function between a measurement $z_{ij}$ and its estimate $\hat{z}_{ij} = x_j \ominus x_i$. Since $\tilde{A}_{ij}$ is a 6x6 matrix and we're optimizing for 6-DOF $\Sigma_{ij}$ is also a 6x6 matrix.
+
+Based on IMU measurements of acceleration $a$ and rotational velocity $\omega$ one can build up a 6x6 sensor noise matrix
+$$ \Sigma_{sensor} = \left( \begin{matrix} \sigma_{a}^2 & 0 \\ 0 & \sigma_{\omega}^2 \end{matrix} \right) $$
+Further we have a process model which integrates acceleration twice and rotational velocity once to obtain a pose measurement.
+To properly model the uncertainty both sensor noise and integration noise have to be considered (anything else?). Thus, I want to calculate the uncertainty as
+$$ \Sigma_{ij}^{t} = J_{iterate} \Sigma_{ij}^{t-1} J_{iterate}^T + J_{process} \Sigma_{sensor} J_{process}^T$$
+where $J_{iterate} = \frac{\partial x_{i}^{t}}{\partial x_{i}^{t-1}}$ and $J_{process} = \frac{\partial x_{i}^{t}}{\partial \xi_{i}^{t}}$ and current measurement $\xi{i}^{t} = [a,\omega]$.
+According to this formula $\Sigma_{ij}$ is a 7x7 matrix, but I need a 6x6 matrix instead. I think I have to include a manifold projection somewhere, but how?
+
+For further details take a look at the following publication, especially at their algorithm 2:
+G. Grisetti, R. Kümmerle, C. Stachniss, and W. Burgard, “A tutorial on graph-based SLAM,” IEEE Intelligent Transportation Systems Maga- zine, vol. 2, no. 4, pp. 31–43, 2010.
+
+For a similar calculation of the uncertainty take a look at the end of section III A. in:
+Corominas Murtra, Andreu, and Josep M. Mirats Tur. "IMU and cable encoder data fusion for in-pipe mobile robot localization." Technologies for Practical Robot Applications (TePRA), 2013 IEEE International Conference on. IEEE, 2013.
+
+.. or section III A. and IV A. in:
+Ila, Viorela, Josep M. Porta, and Juan Andrade-Cetto. "Information-based compact Pose SLAM." Robotics, IEEE Transactions on 26.1 (2010): 78-93.
+
+A:
+
+Because a the pose has six degrees-of-freedom, the covariance matrix representing its uncertainty should be $6 \times 6$. To determine how the covariance matrix propagates after each new IMU measurement, you must determine the error state propagation equation, where the error is a minimal parameterization of the error in your state. How to do this for a rotation parameterized as a unit quaternion is explained in detail in Section 2 of Indirect Kalman Filter for 3D Attitude Estimation by Trawny. Note that this implementation explicitly estimates the gyroscope bias as part of the state vector. You would need to replace that with the position and add your accelerometer measurements. In fact, I recommend reading that document (or at least the first two sections) very carefully, I learned a lot the first time I read it.
+

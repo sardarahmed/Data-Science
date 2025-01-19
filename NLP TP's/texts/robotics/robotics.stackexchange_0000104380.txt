@@ -1,0 +1,18 @@
+Q:
+
+Subscribe to geometry_msgs/TransformStamped (tf) Message with message_filters ApproximateTime subscriber
+
+I am trying to use a message_filters::sync::ApproximateTime subscriber in a C++ node that must subscribe to 2 custom messages (which have a Header each), nav_msgs/OccupancyGrid Message, and a tf/tfMessage Message. The main point is I also want to subscribe to the /tf topic along with the other messages because my goal is to use data with approximate timestamp coherence; essentially get data at roughly the same time.
+Edit: Why I want to subscribe to the tf topic simultaneously: I want to know the robot's pose with respect to the map frame because I detect landmarks in the map frame. I want to know if these landmarks are within the robot's 2D laserscanner's sensing radius. I understand that the /odom topic is the true position of the robot from Gazebo, and my SLAM layer is providing the transforms /tf, so I should use /tf instead of /odom.
+However, I see that message_filters::sync::ApproximateTime can only work with messages which have a Header, and tf message does not have a header. I have 1 callback for the message_filters::sync::ApproximateTime subscriber and I want to also view the tf message at this time, how can I subscribe to the tf data? I am looking for ideas on how to program this in C++. So far I have 2 ideas:
+
+Create a custom message which has the exact definition of tf but with a Header. Subscribe to /tf topic, modify the tf message by added a Header with a timestamp, and publish this custom message. The problem with this is I have more overhead, takes up more processing, and communication bandwidth between the nodes increases.
+
+In addition to the message_filters::sync::ApproximateTime subscriber callback, use another callback in the same node that subscribes to /tf, use C++ object oriented programming (OOP) to let the two callbacks communicate with each other to know when all data is received so further processing can be done. The problem with this is it seems complicated and I am unsure if I can get an OOP C++ version of this running quickly.
+
+A:
+
+Based on what is described , you seem to missing a fundamental way in which the /tf tree in ROS should be used. Ideally you have use a tf listener to lookup transforms at a certain  time, as long as the time stamp requested is not exceeding the latest on the tf buffer you will get a transform.
+Answering your question, an implementation would be one node/class which has both the message_filters::sync::ApproximateTime and tf2_ros::TransformListener accessible and hence you can use the tfBuffer.lookupTransform function where needed.
+An important sidenote about the tf tree buffer, if requested an arbitrary timestamp (not exceeding the latest in the buffer) it performs  SLERP interpolation between to give the transform. (More info here)
+

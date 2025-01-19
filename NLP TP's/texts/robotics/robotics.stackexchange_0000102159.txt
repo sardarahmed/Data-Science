@@ -1,0 +1,94 @@
+Q:
+
+ROS2 python launch: Using argument to create file name for a launch_argument
+
+Hi!
+I like to launch gazebo with different environments (world files). But I only want to give as argument the world file name and not the full path. The full path should be created by launch file.
+How can I use a LaunchArgument to create a full file name. The following statement in the IncludeLaunchDescription is not working.
+launch_arguments={'world': pkg_tuw_gazebo + '/worlds/' + LaunchConfiguration('room') + '.world'}.items(),
+
+Thanks in advance
+There's the full code python launch file.
+import os
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.actions import SetEnvironmentVariable
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration, TextSubstitution 
+
+def generate_launch_description():
+
+    room_arg    = DeclareLaunchArgument('room', default_value=TextSubstitution(text='roblab'))
+    pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
+    pkg_tuw_gazebo = get_package_share_directory('tuw_gazebo')
+    pkg_tuw_gazebo_models = get_package_share_directory('tuw_gazebo_models')
+
+    if 'GAZEBO_MODEL_PATH' in os.environ:
+        model_path =  os.environ['GAZEBO_MODEL_PATH'] \
+            + ':' + pkg_tuw_gazebo_models + '/models'
+    else:
+        model_path =  pkg_tuw_gazebo_models + '/models'
+
+    return LaunchDescription([
+        room_arg,
+        SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value=model_path),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource( os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')),
+            # This is working, but I like to substitute cave in cave.world with my argument
+            #launch_arguments={'world': os.path.join(pkg_tuw_gazebo, 'worlds', 'cave.world')}.items(),  
+            # This is NOT working, I don't know how to access the room argument?
+            launch_arguments={'world': pkg_tuw_gazebo + '/worlds/' \
+                + LaunchConfiguration('room') + '.world'}.items(),
+        ) 
+    ])
+
+I am getting the Error:
+launch.invalid_launch_file_error.InvalidLaunchFileError: Caught exception when trying to load file of format [py]: can only concatenate str (not "LaunchConfiguration") to str
+
+Originally posted by Markus Bader on ROS Answers with karma: 847 on 2022-07-21
+Post score: 0
+
+A:
+
+You can use OpaqueFunction for this, nice example is there:
+
+https://github.com/ros-drivers/urg_node/blob/foxy-devel/launch/urg_node_launch.py
+
+Or in this accepted answer:
+
+https://answers.ros.org/question/382028/ros2-string-repr-of-parameter-within-launch-file/
+
+Originally posted by ljaniec with karma: 3064 on 2022-07-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Markus Bader on 2022-07-22:
+Thanks, I found now a way by using OpaqueFunction.
+My solution looks now like:
+def generate_launch_description():
+
+    ...
+    ...
+
+    def world_file_file_name(context):
+        file = os.path.join(pkg_tuw_gazebo, 'worlds', context.launch_configurations['room'] + '.world')
+        return [SetLaunchConfiguration('world', file)]
+
+    world_file_path_arg = OpaqueFunction(function=world_file_file_name)
+
+    return LaunchDescription([
+        DeclareLaunchArgument('room', default_value=TextSubstitution(text='empty')),
+        world_file_path_arg,
+        SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value=model_path),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource( os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')),
+        ) 
+    ])
+
+Comment by ljaniec on 2022-07-22:
+Nice, please accept the answer, if it explains everything, so it is properly marked in the queue :)
+

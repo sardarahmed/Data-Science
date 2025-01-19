@@ -1,0 +1,77 @@
+Q:
+
+How to get ROS2 parameter hosted by another Node
+
+Hello,
+I have been looking through the documentation and can not find any means to get or set parameters of other nodes than the one that has declared the parameters. Is this by design or is there a way to get the parameter with something like node.get_parameter(other_node_name, parameter_name)? I currently have parameters duplicated across configuration files because I can't figure out how to get the nodes to reach each others configurations. Any help is greatly appreciated!
+I am using ROS2 dashing.
+Thanks
+
+Originally posted by mequi on ROS Answers with karma: 111 on 2019-12-23
+Post score: 3
+
+A:
+
+In ROS 2 parameters are available via service interfaces:
+root@d0a03d7984eb:/# ros2 run demo_nodes_cpp listener &
+root@d0a03d7984eb:/# ros2 service list
+/listener/describe_parameters
+/listener/get_parameter_types
+/listener/get_parameters
+/listener/list_parameters
+/listener/set_parameters
+/listener/set_parameters_atomically
+
+In rclpy I believe there is no helper and you need to create a service client yourself and call it, similar to what is done in ros2 service
+In rclcpp there is are ParameterClient classes
+on which you can call functions like get_parameters and it will handle the service calls
+the use looks like:
+auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(my_node, "remote_node_name");
+while (!parameters_client->wait_for_service(1s)) {
+  if (!rclcpp::ok()) {
+    RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+    rclcpp::shutdown();
+  }
+  RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+}
+auto parameters = parameters_client->get_parameters({"remote_param1", "remote_param2"});
+
+you can then access them:
+std::stringstream ss;
+// Get a few of the parameters just set.
+for (auto & parameter : parameters)
+{
+  ss << "\nParameter name: " << parameter.get_name();
+  ss << "\nParameter value (" << parameter.get_type_name() << "): " <<
+    parameter.value_to_string();
+}
+
+There is also a non-blocking / asynchronous version rclcpp::AsyncParametersClient
+
+Originally posted by marguedas with karma: 3606 on 2020-01-25
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by lin404 on 2020-02-05:
+@marguedas I tried it with rclpy, but no luck. Do you mind to give me a sample in python for this? Also, seems there is no SyncParametersClient ore AsyncParametersClient like method in rclpy ? Thank you!
+Comment by marguedas on 2020-02-05:\
+
+Also, seems there is no SyncParametersClient ore AsyncParametersClient like method in rclpy ?
+
+Yes that is what I tried to say when saying " there is no helper and you need to create a service client yourself and call it". The fact thatthey don't exist make the example more verbose than in C++.
+
+Do you mind to give me a sample in python for this?
+
+I replied on https://answers.ros.org/question/343322/ros2rclpy-how-to-set-parameter-hosted-by-another-node-via-service/ with a correction to your example
+Comment by lin404 on 2020-02-05:
+@marguedas Thanks for your help a lot!
+Comment by marguedas on 2020-04-12:
+@mequi Did this answer solved your question?
+If not can you comment with what information is missing.
+If yes can you please accept the answer by clicking the checkmark on the left. This will remove the question from the unanswered list
+Comment by kmilo7204 on 2020-07-09:
+Just additional information for anyone who needs it parameter.get_value();
+Comment by rela on 2023-05-23:
+i wanted to re-use infrastructure that expected a normal service client (not a rclcpp::SyncParametersClient) so i ended up building it like like a service to /my_node_name/get_parameters and called with request->names.push_back("my_param_name") and got it from the response at response->values[0] (in my case response->values[0].string_value (check size before accessing it))
+

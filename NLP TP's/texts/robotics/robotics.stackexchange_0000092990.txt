@@ -1,0 +1,97 @@
+Q:
+
+Ament_cmake - recommended way to link a library doesn't work?
+
+I'm trying to pull in the Eigen3 library as a dependency of my library on Dashing (latest patch release, on Ubuntu), but I'm not sure the "most correct" way to do this.
+This does not build, but is what I thought was the recommendation:
+find_package(Eigen3 REQUIRED)
+ament_target_dependencies(sba Eigen3)
+
+It fails with something like:
+--- stderr: sparse_bundle_adjustment                                                                               
+In file included from /home/dan/ros2_ws/src/sparse_bundle_adjustment/src/sba.cpp:39:0:
+/home/dan/ros2_ws/src/sparse_bundle_adjustment/include/sparse_bundle_adjustment/sba.h:48:10: fatal error: Eigen/Core: No such file or directory
+ #include <Eigen/Core>
+          ^~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [CMakeFiles/sba.dir/src/sba.cpp.o] Error 1
+make[1]: *** [CMakeFiles/sba.dir/all] Error 2
+make: *** [all] Error 2
+
+This builds, and is listed as the way to do it up to ROS Crystal, with caveats:
+find_package(Eigen3 REQUIRED)
+target_link_libraries(sba Eigen3::Eigen)
+
+This builds, is not in the docs, and I know is terrible practice:
+find_package(Eigen3 REQUIRED)
+target_include_directories(sba PRIVATE ${EIGEN3_INCLUDE_DIRS})
+target_compile_definitions(sba PRIVATE ${EIGEN3_DEFINITIONS})
+
+Entire CMakeLists for context:
+cmake_minimum_required(VERSION 3.5)
+project(sparse_bundle_adjustment)
+
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 11)
+endif()
+
+find_package(ament_cmake REQUIRED)
+
+add_library(sba
+  src/sba.cpp src/spa.cpp src/spa2d.cpp src/csparse.cpp src/proj.cpp src/node.cpp src/sba_file_io.cpp)
+
+target_include_directories(sba
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+# this does not build
+find_package(Eigen3 REQUIRED)
+ament_target_dependencies(sba Eigen3)
+
+## this builds
+#find_package(Eigen3 REQUIRED)
+#target_link_libraries(sba Eigen3::Eigen)
+
+## this builds
+#find_package(Eigen3 REQUIRED)
+#target_include_directories(sba PUBLIC ${EIGEN3_INCLUDE_DIRS})
+#target_compile_definitions(sba PUBLIC ${EIGEN3_DEFINITIONS})
+
+target_compile_definitions(sba
+  PRIVATE SBA_CHOLMOD
+  )
+
+ament_export_interfaces(export_sba HAS_LIBRARY_TARGET)
+ament_export_dependencies(Eigen3)
+
+target_link_libraries(sba blas lapack cholmod cxsparse)
+
+install(DIRECTORY include/
+        DESTINATION include/)
+
+install(
+  TARGETS sba
+  EXPORT export_sba
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  INCLUDES DESTINATION include
+)
+ament_package()
+
+Originally posted by DanRose on ROS Answers with karma: 274 on 2019-08-16
+Post score: 1
+
+A:
+
+The Eigen3Config.cmake file shipped with Ubuntu Bionic is missing some standard CMake variables. Use the package eigen3_cmake_module to workaround this. This package is available in Dashing. It looks like that documentation should be updated to use a different example.
+eigen3_cmake_module instructions are in its README: https://github.com/ros2/eigen3_cmake_module#eigen3_cmake_module
+
+Originally posted by sloretz with karma: 3061 on 2019-08-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by DanRose on 2019-08-16:
+Thank you! I thought I was going crazy :-)
+

@@ -1,0 +1,45 @@
+Q:
+
+Calculate covariance matrix from x,y,z data
+
+In ROS I've recorded a bag file from a custom robot (in real world) that does not provide covariance matrix and I want to use /odom to feed an EKF, but covariance matrix is 0. How can I calculate it?
+Note:
+Covariance matrix is needed by EKF to estimate position.
+It's a sample of /odom:
+pose: 
+  pose: 
+    position: 
+      x: 0.082
+      y: 0.507
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: -0.789272088731
+      w: 0.614043622188
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist: 
+  twist: 
+    linear: 
+      x: 0.104
+      y: 0.0
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 0.0663225115758
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+A:
+
+Well, you can't estimate the covariance from the state.  You need the equations used to find the state.  
+This is because the covariance (along with the markov assumption) represents how the robot got to the state.   A robot at location (10,5,1) does not always have the same covariance matrix, right? You need to know what actions brought it to that state.
+Barring any ros-based solution (are you sure the SLAM / EKF nodes can't do this for you?) you'll have to do this:
+
+Find the kinematics model for the robot (differential drive, ackerman, whatever)
+Read in the odometery and control command, and use the kinematics equations and control inputs as the u and f() for the EKF (using this) as a reference.
+Find the Jacobian of the kinematics equations with respect to each state element
+Feed the Jacobian and control / odometery into the EKF as the F term (using this) as a reference.
+
+In case you are wondering, yes this effectively reproduces the work done by the /odom node, since the output of the kinematics equations is precisely what /odom reports. 
+

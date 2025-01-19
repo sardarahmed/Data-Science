@@ -1,0 +1,276 @@
+Q:
+
+Use robot_localization to integrate fixed overhead camera with wheel odometry
+
+Hello,
+I'm trying to integrate the wheel odometry's measurements of a Sphero robot with the position measurements obtained from a visual tracker algorithm (TLD) running on the stream of images of an overhead camera (Kinect v2).
+Since the visual tracker algorithm is giving me the 2D position of the robot, I was thinking to use the 'PoseStamped' input message type.
+The sphero's odom message contains position and twist (orientation is always the identity quaternion); I'm using the sphero ros package.
+I'm trying to use the robot localization package, but I'm a little confused and I have some questions:
+
+What does 'absolute' measurement mean? It is relative to the 'world frame'?
+The visual tracker sometimes tracks false positives in other points of the image, and sometimes loses completely the tracking, so it's right to say is subject to discrete jumps. The position obtained from the visual tracker is in a frame called 'world frame', and the position obtained from the odometry it's in another transform tree, in the odometry frame. I need the transform from the world frame to the odom frame, so, it is right to set the map frame and the world frame to the same value (world frame)? Do I need to start more than one instance of the ekf localization node?
+In the end, what's the best strategy to use in my case for the sensor fusion?
+
+This is my launch file:
+<launch>
+
+<node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" clear_params="true">
+
+  <param name="frequency" value="30"/>
+
+  <param name="sensor_timeout" value="0.1"/>
+
+  <param name="two_d_mode" value="true"/>
+
+  <param name="map_frame" value="world"/>
+  <param name="odom_frame" value="odom"/>
+  <param name="base_link_frame" value="base_link"/>
+  <param name="world_frame" value="world"/>
+
+  <param name="transform_time_offset" value="0.0"/>
+
+  <param name="odom0" value="odom"/>
+  <param name="pose0" value="robot_2d_geometry_pose"/>
+
+  <rosparam param="odom0_config">[false, false, false,
+                                  false, false, false,
+                                  true, true, false,
+                                  false, false, true,
+                                  false, false, false]</rosparam>
+
+  <rosparam param="pose0_config">[true,  true,  false,
+                                  false, false, false,
+                                  false, false, false,
+                                  false, false, false,
+                                  false, false, false]</rosparam>
+
+  <param name="odom0_differential" value="false"/>
+  <param name="pose0_differential" value="false"/>
+
+  <param name="odom0_relative" value="false"/>
+  <param name="pose0_relative" value="false"/>
+
+  <param name="print_diagnostics" value="true"/>
+
+  <param name="odom0_queue_size" value="4"/>
+  <param name="pose0_queue_size" value="5"/> <!-- default 10 -->
+
+  <param name="odom0_pose_rejection_threshold" value="5"/>
+  <param name="odom0_twist_rejection_threshold" value="1"/>
+  <param name="pose0_rejection_threshold" value="2"/>
+  <param name="twist0_rejection_threshold" value="1.2"/>
+  <param name="imu0_pose_rejection_threshold" value="0.3"/>
+  <param name="imu0_twist_rejection_threshold" value="0.1"/>
+  <param name="imu0_linear_acceleration_rejection_threshold" value="0.1"/>
+
+  <param name="debug"           value="true"/>
+
+  <param name="debug_out_file"  value="debug_ekf_localization.txt"/>
+
+  <rosparam param="process_noise_covariance">[0.5,  0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0.5,  0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0.06, 0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0.03, 0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0.03, 0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0.06, 0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0.025, 0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0.025, 0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0.04, 0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0.01, 0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0.01, 0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0.02, 0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0.01, 0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015]</rosparam>
+
+       <rosparam param="initial_estimate_covariance">[1e-9, 0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    1e-9, 0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    1e-9, 0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    1e-9, 0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    1e-9, 0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    1e-9, 0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    1e-9, 0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    1e-9, 0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    1e-9, 0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-9,  0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     1e-9,  0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     1e-9,  0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     1e-9, 0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    1e-9, 0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    1e-9]</rosparam>
+
+</node>
+
+Thank you in advance
+Update (08/09/2015)
+Thank you for being so helpful!
+First of all, part of the problem was with the way Sphero's drivers were calculating the twist, so I fixed that with visible improvements.
+Then I've did as you told me, now the filtered odometry, after a short time to converge, matches the right position and orientation.
+However the odom frame keeps on moving w.r.t. to the world frame.
+Is this normal?
+Then I wanted to ask, what's the right way to tune the process_noise_covariance matrix and the initial_estimate_covariance matrix?
+Right now I've increased the x,y,vx,vy and vyaw values of the initial_estimate_covariance and increased a little the yaw and vyaw's values:
+<rosparam param="process_noise_covariance">[0.05, 0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0.05, 0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0.06, 0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0.03, 0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0.03, 0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0.08, 0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0.025, 0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0.025, 0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0.04, 0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0.01, 0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0.01, 0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0.08, 0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0.01, 0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015]</rosparam>
+
+       <rosparam param="initial_estimate_covariance">[1e-6, 0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    1e-6, 0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    1e-9, 0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    1e-9, 0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    1e-9, 0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    1e-9, 0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    1e-6, 0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    1e-6, 0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    1e-9, 0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-9,  0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     1e-9,  0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     1e-6,  0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     1e-9, 0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    1e-9, 0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    1e-9]</rosparam>
+
+Originally posted by LazyMonkey on ROS Answers with karma: 1 on 2015-08-23
+Post score: 0
+
+A:
+
+Yes, an "absolute" measurement means a measurement that is relative to the world (typically map or odom, but can be anything) frame.
+For your setup, I would suggest the following:
+
+You need something to generate the odom->base_link transform. For some robots, the node that generates the wheel encoder-based odometry message can also broadcast the odom->base_link transform. If yours does that, I would suggest turning that on (it may be on by default). If you were to add an IMU, I would stop your robot's driver from generating the odom->base_link transform and add another ekf_localization_node instance that fuses just the odometry and IMU data, and has the world_frame parameter set to odom.
+Assuming that you have something generating the the odom->base_link transform, then I think your configuration above is pretty good. As it is, it will generate that world->odom transform. I would ditch all the _rejection_threshold settings except for pose0_rejection_threshold.  You can use that value to reject your noisy measurements from your visual tracker.
+
+EDIT
+Part of the trouble you're having is that your /odom topic is reported in the odom frame, but the filter needs to transform it to the map frame before fusing it. Since the filter itself is responsible for the map->odom transform and the headings between the two frames disagree, the transform heading keeps shifting, and you get the result you see.
+This can be fixed, however. Does your /odom topic report linear and rotational velocity? If so, you should set X velocity, Y velocity, and yaw velocity for that topic to true, rather than X, Y, and yaw. Your bag file doesn't contain any motion, so it's hard to tell whether those are reported for your robot. You can leave your pose0 configuration in your latest bag file alone. I filtered your bag file to remove the transforms created by the EKF, edited your launch file, and ran everything, and it worked for me. Here's the launch file (eliminating covariance matrices for the sake of brevity):
+<launch>
+
+  <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" clear_params="true">
+
+    <param name="frequency" value="30"/>
+
+    <param name="sensor_timeout" value="0.1"/>
+
+    <param name="two_d_mode" value="true"/>
+
+    <param name="map_frame" value="world"/>
+    <param name="odom_frame" value="odom"/>
+    <param name="base_link_frame" value="base_link"/>
+    <param name="world_frame" value="world"/>
+
+    <param name="transform_time_offset" value="0.0"/>
+
+    <param name="odom0" value="odom"/>
+    <param name="pose0" value="robot_2d_geometry_pose"/>
+
+    <rosparam param="odom0_config">[false, false, false,
+                                  false, false, false,
+                                  true, true, false,
+                                  false, false, true,
+                                  false, false, false]</rosparam>
+
+    <rosparam param="pose0_config">[true,  true,  false,
+                                  false, false, false,
+                                  false, false, false,
+                                  false, false, false,
+                                  false, false, false]</rosparam>
+
+    <param name="odom0_differential" value="true"/>
+    <param name="pose0_differential" value="false"/>
+
+    <param name="odom0_relative" value="false"/>
+
+    <param name="print_diagnostics" value="true"/>
+
+    <param name="odom0_queue_size" value="4"/>
+
+    <param name="pose0_rejection_threshold" value="2"/>
+
+    <param name="debug"           value="false"/>
+    <param name="debug_out_file"  value="debug_ekf_localization.txt"/>
+
+  </node>
+
+</launch>
+
+One thing I should change about the EKF is that it should let you turn on differential mode in this case and work. As of now, the messages get filtered out if they can't be transformed into the target frame, even if that sensor is just going to use differential mode.
+EDIT 2
+
+However the odom frame keeps on moving
+w.r.t. to the world frame. Is this
+normal?
+
+Sorry, do you mean the transform from world->odom is moving? One way to validate that everything is working is to visualize both odometry messages in rviz. If they overlay one another perfectly, then the transform is fine.
+
+Then I wanted to ask, what's the right
+way to tune the
+process_noise_covariance matrix and
+the initial_estimate_covariance
+matrix?
+
+The initial_estimate_covariance is straightforward: for every variable in the state vector that you're measuring, just make its diagonal value in the initial_estimate_covariance larger than the variances in the measurements.
+The process_noise_covariance is harder. There are methods in the literature for tuning it, but it would require you to have pretty deep knowledge of the motion model I'm using and how well it matches your system. I tend to not do very much with it.
+
+Originally posted by Tom Moore with karma: 13689 on 2015-08-29
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by LazyMonkey on 2015-08-31:
+Thanks for the answer!
+Before reading your answer I've tried to make it work just only Sphero's odometry, without the Visual Tracker, and it worked! (Even if it was a little slow on the converge).
+Comment by LazyMonkey on 2015-08-31:
+Here a screenshot, the red arrow is the robot odometry and the yellow arrow is the filtered odometry:
+
+https://www.dropbox.com/s/to00ub5dvrdges4/Screenshot%20from%202015-08-31%2014%3A47%3A58.png?dl=0
+
+Comment by LazyMonkey on 2015-08-31:
+Then I've tried your solution, first with the pose0 differential parameter set, then unset, but the Sphero odometry and the filtered odometry do not match, also, the filtered odometry contains high values of angular velocity even if the robot is still
+Comment by LazyMonkey on 2015-08-31:
+This is seen on rviz as the filtered odometry arrow keeps on spinning and never converge:
+
+https://www.dropbox.com/s/dw4eqdtnvu18625/Screenshot%20from%202015-08-31%2017%3A37%3A26.png?dl=0
+https://www.dropbox.com/s/82jyxz1uh6hhaue/Screenshot%20from%202015-08-31%2017%3A37%3A39.png?dl=0
+
+Comment by LazyMonkey on 2015-08-31:
+This is a link to a screenshot of the visual tracker running:
+
+https://www.dropbox.com/s/f1wvtr5gr5omqyb/Screenshot%20from%202015-08-31%2017%3A39%3A36.png?dl=0
+
+Comment by LazyMonkey on 2015-08-31:
+This is a link to a 15 seconds bag file with the odometry topics:
+
+https://www.dropbox.com/s/fyfh6do6zirbo8k/2015-08-31-17-43-19.bag?dl=0
+
+Comment by LazyMonkey on 2015-08-31:
+This is my (slightly) updated launch file:
+
+https://www.dropbox.com/s/0b1uiu2kdm48gqf/ekf_sphero.launch?dl=0
+
+Comment by LazyMonkey on 2015-08-31:
+I just can't understand why it's not working ...
+Comment by Tom Moore on 2015-08-31:
+I'll look into this soon. Slow convergence means you need to tweak some covariance parameters. What is the coordinate frame for you overhead tracker? For example, if the robot moves forward 1 meter when it starts, what does the tracker report?
+Comment by LazyMonkey on 2015-09-01:
+The tracking algorithm (TLD) works on one of the camera's optical coordinate frame and then a node I made converts his 2D pose data into the 'world' frame, and then encapsulates it in a PoseWithCovarianceStamped message, for robot localization.
+Comment by Tom Moore on 2015-09-01:
+Just taking a quick look at your launch file, you have X and Y set to true for two sensors. This will cause the output to jump back and forth if the covariances on those measurements are too small. If your odometry also produces velocity, I'd set vX and vY to true instead.
+Comment by Tom Moore on 2015-09-01:
+Also, start with one sensor. Make sure you're satisfied with the output, then add the second one. I'd start with odometry. Oh, and turn off debug mode. :)
+Comment by Tom Moore on 2015-09-04:
+(Make sure you turn debug mode off)
+

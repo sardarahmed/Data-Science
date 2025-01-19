@@ -1,0 +1,111 @@
+Q:
+
+How to subcribe 2 image topics with 1 node in same time?
+
+Hi buddy,
+My name is Toan. I am a newbie in ROS. Now, i'm using Kinect Camera and trying to subcribe 2 image topics with 1 node. But seem like my code is wrong something. If i try to subcribe 1 node with 1 topic is fine. In details, i make case 1 or case 2 is comment , it's work for 1 node 1 topic.
+What should i do now ?
+This is my code:
+#!/usr/bin/env python
+import sys
+import rospy
+import numpy as np
+import math
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+#------Start of Class
+class image_converter:
+    def __init__(self):
+        self.bridge = CvBridge()
+        self.image_sub = rospy.Subscriber("/kinect/rgb",Image,self.callback_rgb)      #Case 1
+        self.image_sub = rospy.Subscriber("/kinect/depth",Image,self.callback_depth)  #Case 2
+
+    def callback_rgb(self,data):
+        cv_image_rgb = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        cv2.imshow("RGB_Sub", cv_image_rgb)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            rospy.signal_shutdown('Quit')
+            cv2.destroyAllWindows()
+        
+    def callback_depth(self, data):
+        cv_image_depth = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        cv2.imshow("Depth_Sub", cv_image_depth)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            rospy.signal_shutdown('Quit')
+            cv2.destroyAllWindows()
+            
+
+def main():
+    img_cvt = image_converter()
+    rospy.init_node('image_converter', anonymous=True)
+    try:
+        rospy.spin()
+    except KeyboardInterrupt:
+        print("Shutting down")
+if __name__ == '__main__':
+    main()
+
+Error:
+(RGB_Sub:9479): Gtk-WARNING **: gtk_disable_setlocale() must be called before gtk_init()
+[xcb] Unknown request in queue while dequeuing
+[xcb] Most likely this is a multi-threaded client and XInitThreads has not been called
+[xcb] Aborting, sorry about that.
+python: ../../src/xcb_io.c:179: dequeue_pending_request: Assertion `!xcb_xlib_unknown_req_in_deq' failed.
+Aborted (core dumped)
+
+Originally posted by ToanJunifer on ROS Answers with karma: 7 on 2019-01-08
+Post score: 0
+
+A:
+
+#!/usr/bin/env python
+import sys
+import message_filters ### ADD THIS
+import rospy
+import numpy as np
+import math
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+
+#------Start of Class
+class image_converter:
+    def __init__(self):
+        self.bridge = CvBridge()
+
+        self.depth = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image)
+        self.color = message_filters.Subscriber('/camera/color/image_raw', Image)
+        
+    def callback(self,rgb,depth):
+        cv_image_rgb = self.bridge.imgmsg_to_cv2(rgb, "bgr8")
+        cv2.imshow("RGB_Sub", cv_image_rgb)
+        cv_image_depth = self.bridge.imgmsg_to_cv2(depth, "bgr8")
+        cv2.imshow("Depth_Sub", cv_image_depth)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            rospy.signal_shutdown('Quit')
+            cv2.destroyAllWindows()
+
+def main():
+    img_cvt = image_converter()
+    rospy.init_node('image_converter', anonymous=True)
+    try:
+        ts = message_filters.ApproximateTimeSynchronizer([img_cvt.color,img_cvt.depth],10,0.1)
+        ts.registerCallback(img_cvt.callback)
+        rospy.spin()
+    except KeyboardInterrupt:
+        print("Shutting down")
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by Ranjit Kathiriya with karma: 1622 on 2020-11-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Ranjit Kathiriya on 2020-11-20:
+Just change the topic and It will work fine.
+

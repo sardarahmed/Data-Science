@@ -1,0 +1,66 @@
+Q:
+
+Technique for spawning and deleting large number of models quickly
+
+We are trying to run some tests in simulation.  The procedures are roughly as follows
+
+Spawn a large number of models (currently simple spheres) at random positions
+Run some tests
+Delete the spawned models so we return to the initial state
+Repeat
+
+Currently, I am using the ros services /gazebo/spawn_sdf_model and /gazebo/delete_model to spawn and delete models respectively.
+The problem is, spawning a single model takes 200ms, deleting a single model takes 400ms.  Since I need to do this many times, this takes an extremely long time.
+Am I doing something wrong that it takes so long to spawn a simple sphere?  Is are there better ways to spawn and delete large number of models, e.g. bulk spawn, or reload the environment?
+I am currently running on a system without a GPU but with a fairly powerful CPU and CPU usage isn't maxed out.  Would using a GPU help?
+The sdf file is as simple as it gets
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="tiny sphere">
+    <static>true</static>
+    <link name="link">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <mass>1.0</mass>
+      </inertial>
+
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>0.01</radius>
+          </sphere>
+        </geometry>
+      </collision>
+
+      <visual name="visual">
+        <geometry>
+          <sphere>
+            <radius>0.01</radius>
+          </sphere>
+        </geometry>
+      </visual>
+
+    </link>
+  </model>
+</sdf>
+
+Originally posted by wongrufus on Gazebo Answers with karma: 78 on 2020-10-11
+Post score: 0
+
+A:
+
+A model is spawned by sending a message to ~/factory , and deleted by sending a request to entity_delete. The services you mention build on top of those. They do some preprocessing, handle the request, and then wait for the model to (dis)appear.
+You can write a world plugin to manage your models as a whole. I.e. provide an interface that processes the models altogether and waits for them in the end. You will get some speedup, but it's still going to take a non-trivial amount of time to complete.
+See gazebo_ros_api_plugin for reference.
+Alternatively, assuming the models are always the same, you could spawn them once, and then only randomize their poses in each iteration. This can happen instantaneously.
+
+Originally posted by nlamprian with karma: 833 on 2020-10-12
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by wongrufus on 2020-10-13:
+It seems gazebo gui gets messed up when rapidly calling /gazebo/set_model_state for many objects
+Comment by nlamprian on 2020-10-13:
+Create a world plugin to which you can send all model names and poses. Then the plugin can reposition all models in one simulation step in its update callback.
+

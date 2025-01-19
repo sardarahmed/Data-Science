@@ -1,0 +1,144 @@
+Q:
+
+why RGB and depth Image synchronization not working? [Solved]
+
+why this works ? but not the bottom one?
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/features2d/features2d.hpp>
+
+#include <iostream>
+#include <ros/ros.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <boost/foreach.hpp>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl/io/pcd_io.h>
+
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+
+#include <sstream>
+#include <string>
+
+//names that will appear at the top of each window
+static const std::string windowName = "Original Image";
+
+using namespace std;
+using namespace sensor_msgs;
+using namespace message_filters;
+
+void callback(const ImageConstPtr& image_rgb, const CameraInfoConstPtr& cam_info)
+{
+    // Solve all of perception here...
+    
+    cv::Mat image_color = cv_bridge::toCvCopy(image_rgb)->image;
+    
+    cv::imshow(windowName,image_color);
+    
+    cv::waitKey(3);
+    
+}
+
+    
+
+int main(int argc, char** argv)
+ {
+    ros::init(argc, argv, "vision_node");
+    ros::NodeHandle nh;
+
+    message_filters::Subscriber<Image> rgb_sub(nh,"/camera/rgb/image_color", 1);
+    message_filters::Subscriber<CameraInfo> info_color_sub(nh,"/camera/rgb/camera_info", 1);
+
+    TimeSynchronizer<Image, CameraInfo> sync(rgb_sub, info_color_sub, 10);
+    sync.registerCallback(boost::bind(&callback, _1, _2));
+    ros::spin();
+
+    return 0;
+}
+
+In the upper code I'm able to see the RGB image .
+BUT
+This is not giving any result.
+I'm trying to synchronize both the images and then separate then inside callback . then process the RGB image to find the object. I want ti find depth of particular pixel u,v . but this is not working when I'm trying to send both RGB and depth image.
+void callback(const ImageConstPtr& image_rgb, const ImageConstPtr& image_depth_source)
+{
+    // Solve all of perception here...
+    
+    cv::Mat image_color = cv_bridge::toCvCopy(image_rgb)->image;
+    cv::Mat image_depth = cv_bridge::toCvCopy(image_depth_source)->image;
+    
+    cv::imshow(windowName1,image_color);
+    cv::imshow(windowName2,image_depth);
+    
+    cv::waitKey(3);
+    
+}
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "vision_node");
+
+    ros::NodeHandle nh;
+    
+    message_filters::Subscriber<Image> rgb_sub(nh,"/camera/rgb/image_color", 1);
+    message_filters::Subscriber<Image> depth_sub(nh,"/camera/depth_registered/image_raw", 1);
+
+    TimeSynchronizer<Image, Image> sync(rgb_sub, depth_sub, 10);
+    sync.registerCallback(boost::bind(&callback, _1, _2));
+    ros::spin();
+
+    return 0;
+}
+
+Originally posted by PKumars on ROS Answers with karma: 92 on 2016-02-18
+Post score: 0
+
+Original comments
+Comment by PKumars on 2016-02-19:
+Hello I tried to check for the topic /camera/depth_registered/image_raw in rostopic list. but with rostopic hz it's giving no response. then I changed to /camera/depth/image and I got
+average rate: 29.960
+min: 0.031s max: 0.037s std dev: 0.00194s window: 27.
+then also I'm unable to get result.
+Comment by PKumars on 2016-02-19:
+with RGB image I got this
+subscribed to [/camera/rgb/image_color]
+average rate: 30.049
+min: 0.030s max: 0.036s std dev: 0.00210s window: 18
+average rate: 30.022.
+Comment by PKumars on 2016-02-19:
+message_filters::Subscriber rgb_sub(nh,"/camera/rgb/image_color", 1);
+message_filters::Subscriber depth_sub(nh,"/camera/depth/image", 1);
+TimeSynchronizer<Image, Image> sync(rgb_sub, depth_sub, 10);
+sync.registerCallback(boost::bind(&callback, _1, _2));
+now I'm doing this .
+Comment by PKumars on 2016-02-19:
+void callback(const ImageConstPtr& image_rgb, const ImageConstPtr& image_depth_source)
+{
+cv::Mat image_color = cv_bridge::toCvCopy(image_rgb)->image;
+cv::Mat image_depth = cv_bridge::toCvCopy(image_depth_source)->image;
+cv::imshow(windowName1,image_color);
+cv::imshow(windowName2,image_depth);}
+
+A:
+
+Are you sure that your drivers for your device are setup to publish on both of those topics? What does rostopic hz report for each topic? Are you entering your callback? Depending on how synchronized your messages are, you may also need an approximate synchronizer.
+
+Originally posted by jarvisschultz with karma: 9031 on 2016-02-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by PKumars on 2016-02-19:
+hello Thanks a lot . I solved this problem. I used Approximate-time Policy http://wiki.ros.org/message_filters#ApproximateTime_Policy
+Comment by gvdhoorn on 2016-02-26:
+I've marked @jarvisschultz answer as the answer, as he provided you with the solution.
+

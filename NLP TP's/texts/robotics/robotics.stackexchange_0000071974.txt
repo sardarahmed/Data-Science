@@ -1,0 +1,44 @@
+Q:
+
+Strange behaviour from joint_trajectory_action to ABB robot
+
+Hello friends,
+I have a very strange problem with my ABB IRB 140.
+When I use RViz to plan a motion, everything works as expected. So i tried to write a node, which uses moveit to control my IRB140. Everything works as expected through /joint_path_command (see picture).
+Problem is: On the RobotStudio side I get very strange joint values. I.e.: If I send [0.0 , 0.1, 0.2, 0.3, 0.4] from my script "simpleplanner", my robot recieves [0.0 , 0.1, 0.1, 0.1, 0.1]. Somehow it clones the value from a joint to another joint/joints. This also happens when I directly write into the /joint_trajectory_action node, thus skipping moveit.
+Since the values are correct up to /joint_path_command, I assume the problem lays in /motion_download_interface. Which is strange cause, everything works fine sending motions via Rviz.
+Thanks in advance!
+Regards - Timo
+image description http://www2.pic-upload.de/img/29714923/rqt_graph.png
+image description http://www2.pic-upload.de/img/29714920/jointpathcommand.png
+
+Originally posted by cobhc999 on ROS Answers with karma: 38 on 2016-02-12
+Post score: 0
+
+A:
+
+Your screenshot doesn't show the situation you describe in your question text, but what you're seeing is most likely the effect of the joint2-joint3 joint coupling that some ABB robots have.
+That coupling influences the joint position values reported by the RAPID runtime to the ROS driver (ie: the values don't actually correspond to the real-world angle of the joints), so the ROS driver has to compensate for that, if configured to do so. All launch files distributed through the ros-industrial/abb and ros-industrial/abb_experimental repositories set the J23_coupled launch file argument (here, for the IRB 120 fi), which gets passed on to the abb_driver nodes (here). Finally, that value is used to calculate the corrected joint angles for joint_3 (here). Both JointStates (here) and JointTrajectoryPoints (here) undergo this compensation.
+So in the case of your screenshot: joint_3 (compensated) would be joint_2 + joint_3, or 0.092507.. + 0.328967.. ~= 0.421474...
+Now whether this is correct for your IRB 140 depends on whether that robot has the same joint2-joint3 coupling. I've never worked with one, so I can't tell you. You'll have to (en|dis)able the J23_coupled parameter and see what the effect is on your simulated robot. Easiest is just to start the robot_state_visualize_...launch file and jog the robot in RobotStudio: RViz should show the exact same robot poses. You will very quickly recognise an incorrect setting for J23_coupled.
+The fact that MoveIt trajectory execution already ''works just fine' seems to suggest that the value you currently use is correct though. But it's always good to make sure.
+
+PS: if you are interested, you could install the packet-simplemessage Wireshark dissector, which will show you the JointTrajectoryPoint messages actually send by abb_driver (and received by your controller/simulator). Look for JOINT_TRAJ_PT and JOINT_POSITION messages. They should show the non-compensated angles.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-02-12
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by cobhc999 on 2016-02-12:
+Thank you very much! If I had asked earlier, this would have saved me a whole workday of debugging!
+If have seen the J23_coupled parameter before. Since the IRB2400 (which packets I modified for my IRB140) has similiar kinematics like the IRB140, I thought I could leave this parameter as it is.
+Comment by gvdhoorn on 2016-02-12:
+If both state visalisation and trajectory execution are ok with the value you have right now, then yes, you can leave it as it is.
+Comment by gvdhoorn on 2016-02-12:
+Would you be interested to contribute your IRB 140 package(s) back to the abb_experimental repository? That would be very much appreciated. There might be some (minor) work involved to make sure things conform to ROS-I conventions, but that is something we can iterate on.
+Comment by cobhc999 on 2016-02-12:
+Of course! I would be glad to return something to the community. But since I'm an amateur in ROS you would totally have to check the packages. Maybe its usable. How should I provide the packages?
+Comment by gvdhoorn on 2016-02-12:
+The easiest is probably to make a fork of the abb_experimental repository on github, add your new abb_irb140_support (and any other related pkgs) to it (in a new branch) and then submit a PR back to abb_experimental. The maintainers will review your PR and merge it if it is ok.
+

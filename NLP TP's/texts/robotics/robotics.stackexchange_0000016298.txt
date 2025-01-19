@@ -1,0 +1,56 @@
+Q:
+
+How reliable are IMUs for a long usage (6 hours) rotation (only) tracking?
+
+I know they are bad for positional tracking and drift from actual position over time but would like to know what is the situation with rotation only.
+I know Oculus DK1 used ordinary off-the-shelf cheap IMUs for rotation tracking of the user's head, as does any other VR headset, such as GearVR, where there is no positional tracking, but I haven't had chance to use them more than few minutes to know how much they (their IMUs) drift from original orientation over time.
+
+A:
+
+Welcome to Robotics, Mark! 
+IMUs are typically comprised of two core components: accelerometers and gyroscopes. They may also have a magnetometer. 
+An accelerometer measures linear acceleration, and a gyroscope measures angular velocity. 
+In order to get linear and angular position estimates, those outputs need to be integrated. I'm not sure what your background is, but integration is just an accumulation of samples with respect to time. 
+If you travel 50 km/h for an hour, you have gone 50 km. If you then go 25 km/hr for half an hour, you have gone and additional (25 * 0.5) = 12.5 km. Your total distance traveled is (50 + 12.5) = 62.5 km. Get the current speed, multiply by how long you've been going that speed, and add it to a running total. This is integration. 
+For the accelerometer, you multiply the current reading by the amount of time that has elapsed since the last reading and add that to a running total to get the current linear speed. You need to do the same over again to get current linear position. 
+In code form, it looks like:
+sampleTime = GetElapsedTime();
+linearAcceleration = GetAccelerometerOutput();
+linearSpeed = linearSpeed + linearAcceleration*sampleTime;
+linearPosition = linearPosition + linearSpeed*sampleTime;
+
+A gyroscope outputs an angular speed, so you only need to integrate once to get to the angular position:
+sampleTime = GetElapsedTime();
+angularSpeed = GetGyroscopeOutput();
+angularPosition = angularPosition + angularSpeed*sampleTime;
+
+The trouble here is that no sensors are perfect. The gyroscope and the accelerometer both have noise, biases, bias drift, etc. You integrate the sensor outputs, and integration is an accumulation of sorts, so the linear and angular position estimates "remember" all the noise.
+The noise might be zero-mean, meaning your long-term average of that signal should be the true signal, but the integration of that noise is not. 
+Consider the following example: Have your speed be solely determined by the "white noise" of a coin flip. If the coin flip is heads, you are moving forward, if it is tails, you're moving backwards. On each sample, take a step in the appropriate direction. 
+If the total results of coin flips are even heads/tails, then your position should be where you started, right? 
+If you have flipped the coin one time, is it possible for you to be 10 steps away from the starting position? No, that's not possible. You take one step per flip, so you could only possibly be 1 step away from where you started, which should be your "true position." 
+If you have flipped the coin 10 times, is it possible for you to be 10 steps away from the starting position? Now it is possible. It's very unlikely, but it's possible. 
+If you have flipped the coin 100 times, now it's pretty reasonable to assume you could be 10 steps away from the "true" position. 
+For a gyroscope, the random distance traveled each "flip" (sample) is called the "random walk" or "angle random walk," and this should be a parameter given in the datasheet.
+The angle random walk tells you how you can expect the standard deviation to change with respect to time. You can use the standard deviation with the empirical rule to estimate the possible error in your integrated angle. 
+The empirical rule says that 68 percent of measurements should fall within +/- one standard deviation, 95 percent should fall within +/- two standard deviations, and 99.7 percent should fall within +/- three standard deviations. 
+A high quality gyroscope should give the angle random walk in units of $\mbox{ARW} = \mbox{deg}/\sqrt{\mbox{hr}}$. This means your standard deviation after 1 hour should be $\mbox{ARW}*\sqrt{1}$, after two hours it would be $\mbox{ARW}*\sqrt{2}$, etc. 
+Lower quality gyroscopes give the same parameter in units of $\mbox{ARW} = \mbox{deg}/\sqrt{\mbox{s}}$, so you get to "dilate" your standard deviation on a much faster time scale.
+For example, if your datasheet gave $\mbox{ARW} = 0.01 \mbox{deg}/\sqrt{s}$, then your standard deviation after 60 seconds is $0.01 * \sqrt{60} = 0.0775 \mbox{deg}$. By the empirical rule, your actual angle is probably (68 percent sure) within +/- (1*0.0775) = +/- 0.0775 deg and almost certainly (99.7 percent sure) within +/- (3*0.0775) = +/- 0.23 deg. 
+If you had a gyro with that rating and you ran it for six hours, as you asked in your question, the standard deviation would be $0.01 * \sqrt(6*3600) = 1.47 \mbox{deg}$. Your estimate could be as far as +/- (3*1.47) = +/- 4.4 deg away.
+Some data sheets give the noise in terms of a noise power spectral density, sometimes with units of $\mbox{deg}/\mbox{s}/\sqrt{\mbox{Hz}}$. You can review IEEE Std 952-1997 for a more detailed description of the noise PSD, but section C.1.1 of that document gives a conversion of:
+$$
+N\left(^{\circ}/\sqrt{\mbox{hr}}\right) = \frac{1}{60}\sqrt{\mbox{PSD}\left[\left(\frac{^{\circ}}{\mbox{hr}}\right)^2/\mbox{Hz}\right]} \\
+$$
+Note the units there. It seems like most noise PSD are listed with units of $^{\circ}/\mbox{s}/\sqrt{hr}$, which would imply that they've already taken the square root of the proper noise PSD. That leaves the conversion to random walk as (1/60) of the listed noise PSD. 
+So, finally, for example, here is a listing of some three-axis accelerometer/gyro IMUs on Digikey. The first item you can buy in quantity (1) is the Bosch BMI160. The datasheet for that sensor gives the Output Noise for the 200 Hz data rate to be 0.07 $^{\circ}/\mbox{s rms}$.
+In the first second, at 200 Hz, there are 200 samples. The standard deviation is $0.07\sqrt{200} = 1 \mbox{deg}$. After 60 seconds there are (60*200) = 1200 samples, and the standard deviation is $0.07\sqrt{1200} = 2.4 \mbox{deg}$.
+This is the least expensive surface mount, in stock, 3 axis, exclusively accelerometer/gyro chip listed on Digikey's website (\$5.39 at the time of the writing). The most expensive is the Analog Devices ADIS16477-3BMLZ (\$610.95 at the time of writing). The datasheet for that sensor gives the random walk as 0.15 $^{\circ}/\sqrt{hr}$. 
+One minute is 0.0167 hours, so after one minute the gyro standard deviation is $0.15\sqrt{0.0167} = 0.0194 \mbox{deg}$. After two minutes, the standard deviation is $0.15\sqrt{2/60} = 0.0274 \mbox{deg}$. 
+For your six hour run, the cheapest IMU has a standard deviation of $0.07\sqrt{6*3600*200} = 145.5 \mbox{deg}$, and the most expensive has a standard deviation of $0.15\sqrt{6} = 0.367 \mbox{deg}$. Keep in mind that 95% of samples should fall within +/- 2 standard deviations.
+And, since I started writing this post, benh has written an answer that says, in part,
+
+An IMU will not drift as the accelerometers will always read against gravity.
+
+This is true if you're using accelerometers, but it will only fix the horizontal axes (typically x/y, roll/pitch). Gravity acts along the vertical axis, so rotations about the vertical axis (heading/yaw) aren't able to use the gravity vector as a means of absolute orientation reference. 
+

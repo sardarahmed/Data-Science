@@ -1,0 +1,106 @@
+Q:
+
+moving a simple object
+
+Hi All,
+I want to move an object, for example a box in 3D space, using ROS and visualize its movements in RVIZ. for this reason I wrote this node,
+#include <ros/ros.h>
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/Pose.h"
+// publisher handles
+ros::Publisher goal_pub;
+void publish_goal()
+{ 
+  geometry_msgs::PoseStamped msg;
+  msg.header.frame_id = "base_link";
+  msg.pose.position.x += 2; 
+  msg.pose.position.y = 20; 
+  msg.pose.position.z = 50;   
+  msg.pose.orientation.w = 0; 
+  msg.pose.orientation.x = -2.0; 
+  msg.pose.orientation.y = 0; 
+  msg.pose.orientation.z = 0;  
+  goal_pub.publish(msg);
+}
+int main(int argc, char** argv) 
+{
+    ros::init(argc, argv, "move_sphere");
+    ros::NodeHandle nh;
+    ros::Rate loop_rate(100);
+    goal_pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 1);
+    while (ros::ok()) 
+    {
+      publish_goal();
+      ros::spinOnce();
+      loop_rate.sleep();
+    }
+}
+
+but the object don't move. anyone can tell me what is the mistake in code.
+
+Originally posted by robot_arm on ROS Answers with karma: 1 on 2014-01-24
+Post score: 0
+
+A:
+
+Your code always publishes the same pos:
+  geometry_msgs::PoseStamped msg;
+
+msg contains default values( all zeros, false for bool )
+  msg.pose.position.x += 2; 
+
+msg.pose.position.x is now (always) 0+2, i. e. 2.!! It does not increment (I guess that'd be your intention).
+If you wish to do that define msg in global space, initialize at beginning of main and than increment in your loop like this:
+#include <ros/ros.h>
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/Pose.h"
+// publisher handles
+ros::Publisher goal_pub;
+geometry_msgs::PoseStamped msg;
+
+void publish_goal()
+{ 
+  msg.pose.position.x += 2; 
+
+  goal_pub.publish(msg);
+}
+
+int main(int argc, char** argv) 
+{
+
+  msg.header.frame_id = "base_link";
+  msg.pose.position.x = 2; 
+  msg.pose.position.y = 20; 
+  msg.pose.position.z = 50;   
+  msg.pose.orientation.w = 0; 
+  msg.pose.orientation.x = -2.0; 
+  msg.pose.orientation.y = 0; 
+  msg.pose.orientation.z = 0;  
+
+    ros::init(argc, argv, "move_sphere");
+    ros::NodeHandle nh;
+    ros::Rate loop_rate(100);
+    goal_pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 1);
+    while (ros::ok()) 
+    {
+      publish_goal();
+      ros::spinOnce();
+      loop_rate.sleep();
+    }
+}
+
+Originally posted by Wolf with karma: 7555 on 2014-01-24
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Martin Günther on 2014-01-26:
+Nope, messages are initialized with default values (0.0 for floats, false for bools etc.) in their constructor. Other than that, this answer is correct (if you always re-initialize the msg, you'll always get the same results, so nothing moves).
+Comment by Martin Günther on 2014-01-26:
+@robot_arm: There are a couple more problems with your code, but they don't stop the object from moving: 1. the quaternion isn't valid; try orientation.x = 1.0. 2. You should set header.stamp = ros::Time::now(). 3. Do you really want to move the object by 2 * 100 meters a second? Try 0.02.
+Comment by Wolf on 2014-01-27:
+Thanks Martin, you're right. I edited the answer accordingly.
+Comment by robot_arm on 2014-01-27:
+that's weird, I corrected the program and I did exaclty what you are suggested to. but nothing move.
+when I type rostopic info /pose, I got the following information: rostopic info pose Type: geometry_msgs/PoseStamped Publishers: * /move_sphere (http://d:48494/) Subscribers: None it seems that there is no node subscribed to this topic, why ?
+

@@ -1,0 +1,138 @@
+Q:
+
+error while launching robot model
+
+Hi all,
+I am trying to launch a robot model in gazebo(using ros indigo and ubuntu 14.04). But a node 'spawn_model' which is specified in launch file is automatically killed while running roslaunch and robot model is not yet launched in gazebo . My urdf file is fine and I checked it using gzsdf tool and by launching the model in Rviz. So I edited the launch file by adding respawn="true". So I am getting error "[ERROR] [1506783269.127628154, 11.257000000]: SpawnModel: Failure - model name hobo already exist.". What does this error mean? please help
+C:\fakepath\Screenshot from 2017-09-30 20:28:28.png
+launch file is :
+<launch>
+<param name="robot_description" textfile="$(find hobo_description)/urdf/hobo_description.urdf" />
+<include file="$(find gazebo_ros)/launch/empty_world.launch">
+</include>
+<node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" respawn="true" args="-param robot_description -urdf -model hobo" />
+
+urdf file is :
+<?xml version="1.0"?>
+<robot name="hobo">
+<link name="base_link">
+<visual>
+    <geometry>
+        <cylinder length="0.01" radius="0.25"/>
+    </geometry>
+    <material name="silver">
+        <color rgba="0.75 0.75 0.75 1"/>
+    </material>
+</visual>
+<collision>
+    <geometry>
+        <cylinder length="0.01" radius="0.25"/>
+    </geometry>
+</collision>
+</link>
+
+<link name="left_wheel">
+<visual>
+    <geometry>
+        <cylinder length="0.05" radius="0.05"/>
+    </geometry>
+    <material name="black"/>            
+</visual>
+<collision>
+    <geometry>
+        <cylinder length="0.05" radius="0.05"/>
+    </geometry>
+</collision>
+</link>
+
+<joint name="left_wheel_to_base" type="continuous">
+<axis xyz="0 0 1"/>
+<parent link="base_link"/>
+<child link="left_wheel"/>
+<origin rpy="0 -1.5708 0" xyz="-0.275 0 0"/>
+<inertial>
+<mass value="1.0"/>
+<inertia ixx="5.1458e-5" iyy="5.1458e-5" izz="5.1458e-5" ixy="0" ixz="0" iyz="0"/>
+</inertial>
+</joint>
+
+<link name="right_wheel">
+<visual>
+    <geometry>
+        <cylinder length="0.05" radius="0.05"/>
+    </geometry>
+    <material name="black"/>            
+</visual>
+<collision>
+    <geometry>
+        <cylinder length="0.05" radius="0.05"/>
+    </geometry>
+</collision>
+</link>
+
+<joint name="right_wheel_to_base" type="continuous">
+<axis xyz="0 0 1"/>
+<parent link="base_link"/>
+<child link="right_wheel"/>
+<origin rpy="0 -1.5708 0" xyz="0.275 0 0"/>
+<inertial>
+<mass value="0.1"/>
+<inertia ixx="5.1458e-5" iyy="5.1458e-5" izz="5.1458e-5" ixy="0" ixz="0" iyz="0"/>
+</inertial>
+</joint>
+
+<link name="box">
+<visual>
+    <geometry>
+        <box size="0.2 0.2 0.2"/>
+    </geometry>
+    <material name="orange"/>           
+</visual>
+<collision>
+    <geometry>
+        <box size="0.2 0.2 0.2"/>
+    </geometry>
+</collision>
+</link>
+
+<joint name="box_to_base" type="fixed">
+<parent link="base_link"/>
+<child link="box"/>
+<origin xyz="0 0 0.1"/>
+<inertial>
+<mass value="1.0"/>
+<inertia ixx="0.015" iyy="0.0375" izz="0.0375" ixy="0" ixz="0" iyz="0"/>
+</inertial>
+</joint>
+</robot>
+
+Originally posted by David John on ROS Answers with karma: 19 on 2017-09-30
+Post score: 0
+
+Original comments
+Comment by Ruben Alves on 2017-10-02:
+On the image we see "process has finished cleanly", so spawn_model has done his job.
+The problem maybe is just because is not loading the textures. Maybe putting your model on ~/.gazebo/models/ could solve this problem.
+
+A:
+
+Hi David,
+as Ruben indicates, your spawner of the model is not failing. I see two problems in your situation:
+1- You forgot to include the <inertial> section in each of the links of the robot. For some reason, Gazebo 7 does not show the model of the robot if you do not include an <inertial> section in each one with the proper values.
+In order to include the <inertial> include the following just after the <link> tag:
+<inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0" />
+      <inertia ixx="0.0741666666667" ixy="0.0" ixz="0.0" iyy="0.0585416666667" iyz="0.0" izz="0.0260416666667"/>
+</inertial>
+
+Bear in mind that those inertia values are just an example. You must calculate the proper ones for each link.
+2- Because Gazebo is not showing to you the model (because of the lack of <inertial>) you believe that the spawner node is not working, but it is. Actually, if you call the gazebo service for getting the state of the world it will tell you that your model is there (even if you cannot see it): rosservice call /gazebo/get_world_properties
+So the error you mention above, is not an actual error: when the spawner node has spawned the model, it dies (its job is completed), but because you have put the respawn parameter to true, the node will re-start and try to spawn again the same model with the same name inside the simulation. Since the model already exists in the simulation with that name (even if you cannot see it), then the spawner complains indicating that there is an error.
+Summarizing, just, put the respawn to false.
+I have created a video that shows how all that work, and why you are getting the errors. You can find it here: video explanation with example
+
+Originally posted by R. Tellez with karma: 874 on 2017-10-02
+This answer was ACCEPTED on the original site
+Post score: 2
+

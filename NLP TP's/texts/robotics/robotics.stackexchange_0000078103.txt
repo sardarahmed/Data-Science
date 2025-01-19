@@ -1,0 +1,82 @@
+Q:
+
+How to specify costmap_2d layers?
+
+Hi.
+I am trying to define an obstacle layer in my costmap_common_params.yaml file. As per the tutorial here, this is what I have for my layers:
+static:
+  map_topic: /map
+  first_map_only: true
+
+inflation:
+  inflation_radius: 0.1
+
+obstacles:
+  observation_sources: rtabmap
+  rtabmap: {sensor_frame: /kinect_frame_optical, data_type: PointCloud2, topic: /rtabmap/cloud_map, marking: true, clearing: true}
+
+My local_costmap_params.yaml is then
+global_frame: odom
+rolling_window: true
+
+plugins:
+  - {name: obstacles, type: "costmap_2d::ObstacleLayer"}
+  - {name: inflation, type: "costmap_2d::InflationLayer"}
+
+Unfortunately when I start move_base, I get the message
+[ INFO] [1483141055.544545392, 135.629000000]: Using plugin "static"
+[ INFO] [1483141055.767972141, 135.725000000]: Requesting the map...
+[ INFO] [1483141056.074817270, 135.945000000]: Resizing costmap to 2318 X 2368 at 0.005000 m/pix
+[ INFO] [1483141056.166230343, 135.976000000]: Shutting down the map subscriber. first_map_only flag is on
+[ INFO] [1483141056.248844376, 136.030000000]: Received a 2318 X 2368 map at 0.005000 m/pix
+[ INFO] [1483141056.276602131, 136.052000000]: Using plugin "inflation"
+[ INFO] [1483140087.785485118, 121.036000000]: Using plugin "obstacles"
+[ INFO] [1483140087.988274092, 121.200000000]:     Subscribed to Topics: rtabmap
+
+followed some time later by lots of
+[ WARN] [1483141579.312730659, 306.346000000]: Request for map failed; trying again...
+[ WARN] [1483141581.391496974, 306.847000000]: Request for map failed; trying again...
+[ WARN] [1483141583.448695892, 307.347000000]: Request for map failed; trying again...
+[ WARN] [1483141584.839228073, 307.848000000]: Request for map failed; trying again...
+[ WARN] [1483141586.776772495, 308.348000000]: Request for map failed; trying again...
+
+I assume these errors are due to the obstacles layer, since it has received the static map, and I have first_map_only set to true?
+Primarily I cannot understand why move_base is telling me that it is subscribing to topic rtabmap instead of /rtabmap/cloud_map like I specified in my config file. It seems like it is not linking the observation source with its specification, and so is using the default topic (which would be rtabmap according to the documentation).
+If I change the obstacles layer in my costmap config to
+obstacles:
+  observation_sources: "/rtabmap/cloud_map"
+  "/rtabmap/cloud_map": {sensor_frame: /kinect_frame_optical, data_type: PointCloud2, topic: /rtabmap/cloud_map, marking: true, clearing: true}
+
+then I do get
+[ INFO] [1483140087.785485118, 121.036000000]: Using plugin "obstacles"
+[ INFO] [1483140087.988274092, 121.200000000]:     Subscribed to Topics: /rtabmap/cloud_map
+
+and rqt_graph shows that rtabmap is publishing /rtabmap/cloud_map to move_base. However, I still get the "Request for map failed; trying again..." errors, and the local_costmap doesn't seem to update in rviz.
+If someone could help me with this I'd be very grateful. It's been driving me mad for hours now!
+Thanks.
+
+Originally posted by epsilonjon on ROS Answers with karma: 123 on 2016-12-30
+Post score: 2
+
+Original comments
+Comment by Humpelstilzchen on 2017-01-02:
+Seems like it prints the name of the source, not the topic name:
+/move_base:     Subscribed to Topics: laser_scan_sensor
+
+A:
+
+The message "Subscribed to Topics" is somewhat misleading... it should probably say "Subscribed to sources" since it's echoing the "observation_sources" parameter. Here's the code:
+  // get the topics that we'll subscribe to from the parameter server
+  nh.param("observation_sources", topics_string, std::string(""));
+  ROS_INFO("    Subscribed to Topics: %s", topics_string.c_str());
+
+Further down you'll see that it's actually subscribing to the topic you specified. If you turn on debug you'll see the message:
+ROS_DEBUG("Creating an observation buffer for source %s, topic %s, frame %s", source.c_str(), topic.c_str(),
+          sensor_frame.c_str());
+
+As for the message "Request for map failed; trying again..." -- David Lu is correct, that message is coming from amcl.
+
+Originally posted by clyde with karma: 1247 on 2017-01-06
+This answer was ACCEPTED on the original site
+Post score: 3
+

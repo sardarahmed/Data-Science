@@ -1,0 +1,63 @@
+Q:
+
+if condition for approximate time subscriber
+
+In my current code I subscribe to two topics using the Approximate time policy and suppose the callback is called callbackTwoTopics.
+Now there's this third that sometime published and sometimes doesn't publish, but when it does publish I'd like to call another function callbackThreeTopics instead of callbackTwoTopics.
+I know how to subscribe to three topics, but I don't know how to have a condition on a callback. Is it possible to do this in ROS cpp? If so, how?
+
+Originally posted by rav728 on ROS Answers with karma: 3 on 2019-06-09
+Post score: 0
+
+A:
+
+I don't think there is a specific way to do that using the existing sync policies. To handle your case you would have to implement a new sync policy https://github.com/ros/ros_comm/tree/melodic-devel/utilities/message_filters/include/message_filters/sync_policies
+A simpler way would probably to only sync the two high frequency topics, buffer messages on the third topic and dequeue messages from the buffer in the two-topic callback, with some timestamp checking of course.
+Edit: Here is some pseudocode to get you started but you need to put some effort into solving your problem instead of searching for an existing implementation. Please mark this question as answered if this has helped.
+void processTwo(const T1 &t1, const T2 &t2);
+void processThree(const T1 &t1, const T2 &t2, const T3 &t3);
+
+std::deque<T3> buffer_t3;
+const double sync_tolerance_seconds = 0.1;  // Some window of tolerance
+
+void callbackTwoTopics(const T1 &t1, const T2 &t2) {
+  if (buffer_t3.empty()) { 
+    // You could also do timestamp checks here and decide to buffer your 
+    // messages and wait for t3
+    processTwo(t1, t2);
+    return;
+  }
+
+  auto&& t3 = buffer_t3.front();
+  ros::Time&& stamp1 = t1.header.stamp;
+  ros::Time&& stamp3 = t3.header.stamp;
+  double time_diff_seconds = stamp1.toSeconds() - stamp3.toSeconds();
+  if (abs(time_diff_seconds) < sync_tolerance_seconds) {
+    // t3 is usable
+    buffer_t3.pop_front();
+    processThree(t1, t2, t3);
+  } else if (time_diff_seconds > 0) {
+    // t3 is too far in the future, leave it in the buffer for later
+  } else if (time_diff_seconds < 0) {
+    // t3 is too far in the past, drop it
+    buffer_t3.pop_front();
+  }
+}
+
+void callbackOtherTopic(const T3 &t3) {
+  buffer_t3.push_back(t3);
+  process();
+}
+
+Originally posted by JustinBlack02 with karma: 131 on 2019-06-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rav728 on 2019-06-09:
+Thanks for your answer. I did a quick search on implementations of buffering and dequeue messages, but couldn't find too much. Would you be able to provide an example or point me to an example that does this? Also, what would function could you use to check timestamps when dequeuing messages?
+Comment by rav728 on 2019-06-10:
+any help would be greatly appreciated @JustinBlack02 !
+Comment by JustinBlack02 on 2019-06-10:
+It's impossible to clearly answer your question, you will have to figure out how precise of a solution you want on your own. I have edited the original answer with some pseudocode.
+

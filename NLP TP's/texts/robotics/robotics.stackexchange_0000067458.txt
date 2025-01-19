@@ -1,0 +1,76 @@
+Q:
+
+Read colours from a pointcloud2 python
+
+Hi all,
+My issue is the following:
+I have a kinect sensor and I want to parse its point cloud using Python.
+I have subscribed to the topic and I am able to retrieve positional information of the pointcloud(x,y,z)
+I now also need colour information but the read_points API does not seem to provide such functionality
+Is there any other tool I can use to also extract the colours in python? It seems I am doing something wrong since taking the point in cpp is, and I cannot believe I'm saying this, easier.
+My code so far in the point extraction part is the following:
+import sensor_msgs.point_cloud2 as pc2
+...............
+# subscribe to pointcloud topic define the function that does the parsing
+def PointCloud(self, PointCloud2):
+    self.lock.acquire()
+    gen = pc2.read_points(PointCloud2, skip_nans=True, field_names=("x" , "y" , " z" ))
+    int_data = list(gen)
+    print int_data[0] #Gives first point etc
+    self.lock.release()
+
+I tried adding field_names but the read_points API made it clear it does not work that way.
+Any thoughts on a fast way to also extract colour info from my pointcloud?
+Thanks in advance,
+Panos
+
+Originally posted by panos on ROS Answers with karma: 43 on 2015-05-08
+Post score: 1
+
+A:
+
+The fix was actually to first remove the field_names from the read_points input parameters.
+That way the function output 4 values per line instead of 3.
+Taking the last value of that list and doing the required bitwise operations to retrieves the individual r,g,b values.
+My code in case someone needs it in the future is the following:
+import sensor_msgs.point_cloud2 as pc2
+import ctypes
+import struct
+...............
+# subscribe to pointcloud topic define the function that does the parsing
+def PointCloud(self, PointCloud2):
+    self.lock.acquire()
+    gen = pc2.read_points(PointCloud2, skip_nans=True)
+    int_data = list(gen)
+    for x in int_data:
+        test = x[3] 
+        # cast float32 to int so that bitwise operations are possible
+        s = struct.pack('>f' ,test)
+        i = struct.unpack('>l',s)[0]
+        # you can get back the float value by the inverse operations
+        pack = ctypes.c_uint32(i).value
+        r = (pack & 0x00FF0000)>> 16
+        g = (pack & 0x0000FF00)>> 8
+        b = (pack & 0x0000FF00)
+        print r,g,b # prints r,g,b values in the 0-255 range
+                    # x,y,z can be retrieved from the x[0],x[1],x[2]
+    self.lock.release()
+
+Originally posted by panos with karma: 43 on 2015-05-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by kapoor_amita on 2016-12-14:
+Is it possible to do it in matrix format, instead of element form.
+Comment by MartyMcFly on 2016-12-20:
+@panos Thanks for the code!!
+I think there is a typo here.  It looks like the last bit mask should be:
+b = (pack & 0x000000FF)
+
+instead of:
+b = (pack & 0x0000FF00)
+
+Comment by Srijal on 2018-06-07:
+This worked for me. Thank you!
+

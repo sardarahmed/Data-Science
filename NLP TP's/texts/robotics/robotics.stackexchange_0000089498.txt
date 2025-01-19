@@ -1,0 +1,177 @@
+Q:
+
+PR2 simulation keeps glitching/jumping in RVIZ when using /odom_combined as fixed frame
+
+Hi, I'm relatively new to ROS. I'm trying to run the PR2 robot on ROS Kinect for Ubuntu 16.04. I'm using the MoveIt stack and launching the following nodes:
+roslaunch gazebo_ros empty_world.launch
+
+roslaunch pr2_gazebo pr2.launch
+
+roslaunch pr2_moveit_config demo.launch
+
+Which resulted in this:
+https://youtu.be/OnN2UppZ3r8
+The glitching starts almost immediately as the robot starts jumping up and down with its torso. I saw that the the torso link was receiving mixed messages some sent by the robot_state_publisher. I commented out the robot_state_publisher node from the demo.launch:
+<launch
+
+  <arg name="db" default="false" />
+  <arg name="debug" default="false" />
+
+  <include file="$(find pr2_moveit_config)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+  </include>
+
+  <node pkg="tf" type="static_transform_publisher" name="virtual_joint_broadcaster_0" args="0 0 0 0 0 0 odom_combined base_footprint 100" />
+
+<!--   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+    <param name="/use_gui" value="false"/>
+    <rosparam param="/source_list">[/move_group/fake_controller_joint_states]</rosparam>
+  </node>
+ -->  
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="true" output="screen" />
+
+  <include file="$(find pr2_moveit_config)/launch/move_group.launch">
+    <arg name="allow_trajectory_execution" value="true"/>
+    <arg name="fake_execution" value="true"/>
+    <arg name="info" value="true"/>
+    <arg name="debug" value="$(arg debug)"/>
+  </include>
+
+  <include file="$(find pr2_moveit_config)/launch/moveit_rviz.launch">
+    <arg name="config" value="true"/>
+    <arg name="debug" value="$(arg debug)"/>
+  </include>
+
+  <include file="$(find pr2_moveit_config)/launch/default_warehouse_db.launch" if="$(arg db)"/>
+
+</launch>
+
+which stopped the torso jumping but would still glitch when I moved the base forward:
+https://youtu.be/k5mpx9RLZTw
+The glitching stops when I change the global fixed frame to /base_link but then the octomap does not update properly as it doesn't perceive the robot as moving. The octomap did however work when using /odom_combined.
+Any advice on how to approach this issue and for any more information needed to understand the problem please ask and I will happily provide it. Thank you
+
+Originally posted by benwex93 on ROS Answers with karma: 51 on 2018-11-04
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-11-04:\
+
+I'm using the MoveIt stack and launching the following nodes:
+
+can you clarify why you start all three of those launch files?
+Comment by benwex93 on 2018-11-04:
+I'm trying to create a teleoperation system for the pr2. I'm launching
+
+a custom world I made (I edited it to the empty_world.launch file since I get the same behavior there as well)
+
+the pr2 node to initialize the pr2 and place it in the world
+
+the moveit node for the pr2 so that I can
+
+Comment by benwex93 on 2018-11-04:
+control the pr2 arms from within RVIZ using the interactive markers. I also want the octomap to work so that the robot can map out the environment because later I will need that input later for an AI application
+Comment by gvdhoorn on 2018-11-04:
+Just to clarify: you're starting launch files, which will start multiple nodes. If any of those launch files start the same nodes, especially things that publish JointState msgs or TF frames, the "glitching" that you describe can happen.
+It's not actually glitching, the visualisation ..
+Comment by gvdhoorn on 2018-11-04:
+.. is just provided with conflicting information (from the human point of view, that is) and visualises what it receives.
+Hence my question: how did you come up with that set of launch files.
+Comment by benwex93 on 2018-11-04:
+I followed http://wiki.ros.org/pr2_simulator/Tutorials/StartingPR2Simulation for the first 2 nodes and I followed http://docs.ros.org/indigo/api/moveit_tutorials/html/doc/ros_visualization/visualization_tutorial.html#step-1-launch-the-demo-and-configure-the-plugin
+for the 3rd node
+Comment by benwex93 on 2018-11-04:
+I guess I kind of assumed they would work together. When I launched just the empty world and pr2_moveit_config without pr2.launch it doesn't insert the pr2 into gazebo. Is there any way I can figure out how to allow these nodes to run without conflicting each other?
+
+A:
+
+so @gvhoorm helped point me in the right direction, the launch files indeed initialized nodes that sent conflicting information, for example to the /robot_pose_ekf/odom_combined topic. So I commented out the robot_ekf node for the pr2_bringup.launch file in pr2_gazebo and  the glitching stopped. Now there is no /robot_pose_ekf topic being published (since there was no robot_pose_ekf node in demo.launch either) and I hope there will be no side effects from this but everything seems to be working.
+<launch>
+  
+  <!-- Controller Manager -->
+  <include file="$(find pr2_controller_manager)/controller_manager.launch" />
+
+  <!-- Fake Calibration -->
+  <node pkg="rostopic" type="rostopic" name="fake_joint_calibration"
+        args="pub /calibrated std_msgs/Bool true" />
+
+  <!-- Stereo image processing -->
+  <include file="$(find pr2_gazebo)/config/dualstereo_camera.launch" />
+
+  <!-- Start image_proc inside camera namespace-->
+  <include file="$(find pr2_gazebo)/config/r_forearm_cam.launch" />
+  <include file="$(find pr2_gazebo)/config/l_forearm_cam.launch" />
+
+  <!-- diagnostics aggregator -->
+  <node pkg="diagnostic_aggregator" type="aggregator_node" name="diag_agg" args="Robot" />
+  <group ns="diag_agg">
+    <include file="$(find pr2_gazebo)/config/pr2_analyzers_simple.launch" />
+    <!--
+    <include file="$(find pr2_gazebo)/config/pr2_analyzers.launch" />
+    -->
+  </group>
+
+  <!-- Dashboard aggregation -->
+  <node pkg="pr2_dashboard_aggregator" type="dashboard_aggregator.py" name="pr2_dashboard_aggregator"/>
+
+  <!-- Robot pose ekf -->
+ <!-- <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf" output="screen">
+    <param name="freq" value="30.0"/>
+    <param name="sensor_timeout" value="1.0"/>
+    <param name="publish_tf" value="true"/>
+    <param name="odom_used" value="true"/>
+    <param name="imu_used" value="true"/>
+    <param name="vo_used" value="false"/>
+    <remap from="odom" to="base_odometry/odom" />
+    <remap from="imu_data" to="torso_lift_imu/data" />
+  </node>
+-->
+  <!-- Base Laser dynamic_reconfigure -->
+  <node pkg="gazebo_plugins" type="hokuyo_node" name="base_hokuyo_node">
+    <param name="port" type="string" value="/etc/ros/sensors/base_hokuyo" />
+    <param name="frame_id" type="string" value="base_laser_link" />
+    <param name="min_ang" type="double" value="-2.2689" />
+    <param name="max_ang" type="double" value="2.2689" />
+    <param name="skip" type="int" value="1" />
+    <param name="intensity" value="false" />
+  </node>
+
+  <!-- Tilt Laser dynamic_reconfigure -->
+  <node pkg="gazebo_plugins" type="hokuyo_node" name="tilt_hokuyo_node">
+    <param name="port" type="string" value="/etc/ros/sensors/tilt_hokuyo" />
+    <param name="frame_id" type="string" value="laser_tilt_link" />
+    <param name="min_ang" type="double" value="-0.829" />
+    <param name="max_ang" type="double" value="0.829" />
+    <param name="skip" type="int" value="1" />
+    <param name="intensity" value="true" />
+  </node>
+
+  <!-- Buffer Server -->
+  <node pkg="tf2_ros" type="buffer_server" name="tf2_buffer_server" output="screen">
+    <param name="buffer_size" value="120.0"/>
+  </node>
+
+  <!-- Spawns the synchronizer -->
+  <node type="camera_synchronizer" name="camera_synchronizer_node" pkg="gazebo_plugins" output="screen" />
+
+  <!-- testing only: simulate torso counter weight spring to reduce load on the torso joint
+  <node name="simulate_torso_spring" pkg="pr2_gazebo" type="pr2_simulate_torso_spring.py" respawn="false" output="screen" />
+  -->
+
+</launch>
+
+what also works is to comment out:
+ <!-- <node pkg="tf" type="static_transform_publisher" name="virtual_joint_broadcaster_0" args="0 0 0 0 0 0 odom_combined base_footprint 100" />-->
+
+  <!--<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+    <param name="/use_gui" value="false"/>
+    <rosparam param="/source_list">[/move_group/fake_controller_joint_states]</rosparam>
+  </node>
+  -->
+
+from the demo.launch file of moveit, it seems these are the two sections conflicting with each other and sending out conflicting messages about the robot pose.
+
+Originally posted by benwex93 with karma: 51 on 2018-11-05
+This answer was ACCEPTED on the original site
+Post score: 0
+

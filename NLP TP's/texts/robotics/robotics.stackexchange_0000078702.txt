@@ -1,0 +1,105 @@
+Q:
+
+ROS Kinetic Eigen
+
+Since migrating from Indigo to Kinetic, i am receiving the following CMake warning:
+
+CMake Warning at /opt/ros/kinetic/share/catkin/cmake/catkin_package.cmake:166 (message):
+catkin_package() DEPENDS on 'eigen' but neither 'eigen_INCLUDE_DIRS' nor
+'eigen_LIBRARIES' is defined.
+Call Stack (most recent call first):
+/opt/ros/kinetic/share/catkin/cmake/catkin_package.cmake:102 (_catkin_package)
+src_ros/iiwa_dynamics/CMakeLists.txt:110 (catkin_package)
+
+Unfortunately I am unable to resolve this issue.
+cmake_minimum_required(VERSION 2.8.3)
+project(iiwa_dynamics)
+
+find_package(catkin REQUIRED COMPONENTS
+  geometry_msgs
+  roscpp
+  std_msgs
+  ros_utilities
+  tf_conversions
+  iiwa_ik
+)
+find_package(cmake_modules REQUIRED)
+find_package(Boost REQUIRED system filesystem date_time thread)
+find_package(Eigen3 REQUIRED)
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES iiwa_dynamics
+  CATKIN_DEPENDS
+    roscpp
+    std_msgs    
+    geometry_msgs
+    ros_utilities
+    tf_conversions
+    iiwa_ik
+  DEPENDS
+    eigen
+)
+
+include_directories(include)
+include_directories(SYSTEM ${Boost_INCLUDE_DIR} ${EIGEN_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS})
+link_directories(${catkin_LIBRARY_DIRS})
+
+add_library(${PROJECT_NAME}
+   src/iiwa_id.cpp
+   src/iiwa_dynamics_core.cpp
+ )
+
+add_executable(iiwa_dynamics_debug src/iiwa_dynamics_debug.cpp)
+ target_link_libraries(iiwa_dynamics_debug
+   ${PROJECT_NAME}
+ )
+
+target_link_libraries(${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+ add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+The corresponding package.xml:
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>ros_utilities</build_depend>
+  <build_depend>tf_conversions</build_depend>
+  <build_depend>iiwa_ik</build_depend>
+  <build_depend>eigen</build_depend>
+
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>ros_utilities</run_depend>
+  <run_depend>tf_conversions</run_depend>
+  <run_depend>iiwa_ik</run_depend>
+  <run_depend>eigen</run_depend>
+
+Any suggestion on what is going wrong?
+
+Originally posted by Florian_W on ROS Answers with karma: 15 on 2017-02-02
+Post score: 0
+
+A:
+
+catkin_package( .. DEPENDS ..) basically makes it easier for ROS pkgs to export things like compile and linker flags by gathering all flags and then putting those in the right places for you.
+For that it needs to know where those flags are stored (ie: the names of the variables), and that is what you tell it by giving it the DEPENDS arg0 [arg1 ..[]]list.
+One assumption that is made -- to avoid having to manually list all the arg0_LIBRARIES and arg1_INCLUDE_FLAGS variables yourself, is that the find_package() scripts for your dependencies have properly created and initialised those variables and that the name you provide (ie: eigen in your case) is actually the prefix used by the find-script in question.
+That last bit is a bit of a weakspot as there is no real requirement for find-scripts to do that, but it is something that Catkin assumes. But using those variable names is a recommended / best practice in CMake.
+Looking at your CMakeLists.txt, I see find_package(Eigen3 REQUIRED), but your DEPENDS argument has eigen. To know for sure we'd have to check what the find-script for Eigen3 does, but it could well be that using Eigen3 (or eigen3) in the DEPENDS list would resolve the issue you are experiencing.
+
+Edit: from this comment on ros/cmake_modules#25 I gather that the Eigen3 find-script uses a EIGEN3_ prefix.
+Note btw that the Indigo->Jade migration guide has something to say about Eigen and Eigen3 as well: Eigen CMake Module in cmake_modules.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-02-02
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Florian_W on 2017-02-02:
+using EIGEN3 in the DEPENDS resolved the porblem!
+

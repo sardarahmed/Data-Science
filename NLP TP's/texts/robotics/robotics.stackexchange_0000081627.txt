@@ -1,0 +1,48 @@
+Q:
+
+Moveit octomap plugin not updating planning_scene
+
+Hello everyone,
+I'm trying to write an OccupancyMapUpdater plugin that takes a full (or binary, I don't really care which one it is) octomap from an external topic and feed it to the planning scene.
+Right now, I'm doing it by clearing the octree of the OccupancyMapMonitor and then feeding it the message's data:
+ void ExternalOctomapUpdater::octoMsgCallback(const octomap_msgs::Octomap::ConstPtr& octo_msg)
+{
+  ROS_INFO("Received a new octomap message");
+  if (monitor_->getMapFrame().empty())
+    monitor_->setMapFrame(octo_msg->header.frame_id);
+
+  tree_->lockWrite();
+  tree_->clear();
+  octomap_msgs::readTree<octomap::OcTree>( tree_.get(),*octo_msg);
+  tree_->setResolution(octo_msg->resolution);
+  tree_->unlockWrite();
+
+  tree_->triggerUpdateCallback();
+}
+
+I basically copied the PointCloudOctomapUpdater code and replaced the references to point cloud with octomaps :)
+The plugin compiles, is recognised by ROS and moveit does executes it.
+I've setup some debug lines (removed here for clarity).
+They tell me that the callback function is called and tree_ gets cleared and updated: the number of leaves changes with the size of the octomap.I've also made sure that the resolution is right.
+But with all that, the planning scene remains empty.
+There is no error message, no crash, nothing, but the planning scene in rviz is blank and nothing gets published on the planning_scene topics.
+I have probably forgotten to call some update function or something but I can't figure what and where.
+Could someone point me in the right direction?
+
+Originally posted by Notou on ROS Answers with karma: 23 on 2017-07-04
+Post score: 1
+
+A:
+
+After a while of fiddling I now have it working!
+I still don't really know how the thing works behind the scene but it seems the planning scene only handles binary octomaps.
+I was subscribing to a octomap_full topic and when I tried listening to a octomap_binary one it started working.
+This line is nor even needed:
+tree_->setResolution(octo_msg->resolution);
+
+See this answer for context and results.
+
+Originally posted by Notou with karma: 23 on 2017-07-05
+This answer was ACCEPTED on the original site
+Post score: 0
+

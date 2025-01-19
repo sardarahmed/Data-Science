@@ -1,0 +1,53 @@
+Q:
+
+JointTrajectory Python interface
+
+Hi, I am trying to make my own environment that will be used for reinforcement learning training, with the help of gym-gazebo. I want to train a floating gripper to pick up an object from ground. The problem is, that I want to control the hardware interfaces through python, but the implementation seems unclear to me. In the gym-gazebo turtlebot camera implementation it seems simple(although they are using Twist from geometry msgs).
+How do I use JointTrajectory in the same way? When i try to run an example code like below, i get an error message that says:
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/opt/ros/kinetic/lib/python2.7/dist-packages/rospy/topics.py", line 886, in publish
+    raise ROSSerializationException(str(e))
+rospy.exceptions.ROSSerializationException: field joint_names must be a list or tuple type. Only uint8[] can be a string
+
+I've allowed the interface to affect only one joint, by adding allow_partial_joints_goal: true to the yaml file, because I want to move only one joint  with each action and it seemed a simpler solution.
+Also, is there anything that is also needed for this to work?
+I guess at first I was thinking this could be written as:
+vel_pub = rospy.Publisher('/gripper/joint_trajectory_controller/command', JointTrajectory, queue_size=5)
+
+# rest of the code
+if action == 0: #DOWN
+            vel_cmd = JointTrajectory()
+            vel_cmd.joint_names = "gripper_dummy_prismatic_joint"
+            vel_cmd.points = JointTrajectoryPoint()
+            vel_cmd.points.velocities = 0.1
+            self.vel_pub.publish(vel_cmd)
+
+Originally posted by Fiddle on ROS Answers with karma: 64 on 2017-12-20
+Post score: 0
+
+A:
+
+rospy.exceptions.ROSSerializationException: field joint_names must be a list or tuple type.
+
+Even if you want to create trajectories for single joints, joint_names must still be a list - it'll just contain only a single element. Same goes for all the fields in JointTrajectoryPoint: they are always lists (except time_from_start of course).
+So something like the following should work:
+vel_cmd.joint_names = [ "gripper_dummy_prismatic_joint" ]
+
+# create a JTP instance and configure it
+jtp = JointTrajectoryPoint()
+jtp.velocities = [0.1]
+# setup the rest of the pt
+
+vel_cmd.points.append(jtp)
+
+etc.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-12-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Fiddle on 2017-12-21:
+Thanks! That works, but now I started to wonder, if this interface is adequate, if I'd like to use continuous actions when using the RL algorithms (DDPG for example)- the implementations in the gym-gazebo are using discrete actions. Maybe this is a topic for a separate question...
+

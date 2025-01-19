@@ -1,0 +1,115 @@
+Q:
+
+Range sensor measurements do not have any effect on the produced costmap
+
+I have two ultrasound range finders attached to my robot from which i'd like to produce a costmap.
+I instantiate the costmap_2d_node with the range_sensor_layer::RangeSensorLayer plugin but the resulting costmap does not show any values when visualized in rviz.
+This is my launch config:
+<launch>
+    <node pkg="tf2_ros" type="static_transform_publisher" name="robotPos_broadcaster1" args="2.0 0.0 0.0 0 0 0 1 map base_link" />
+
+    <node pkg="tf2_ros" type="static_transform_publisher" name="proximity_broadcaster1" args="0.3 0.5 0.0 0 0  0.70710808 0.70710548 base_link proximity_front_right" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="proximity_broadcaster2" args="-0.3 0.5 0.0 0 0 0.70710808 0.70710548 base_link proximity_front_left" />
+    <node pkg="learning_tf2" type="readSensors.py" name="readSensors1" />
+
+    <node pkg="costmap_2d" type="costmap_2d_node" name="costmap_node">
+            <rosparam file="$(find learning_tf2)/params/minimal.yaml" command="load" ns="costmap" />
+    </node>
+
+</launch>
+
+This is the file params/minimal.yaml:
+footprint: [[-0.325, -0.325], [-0.325, 0.325], [0.325, 0.325], [0.46, 0.0], [0.325, -0.325]]
+
+plugins:
+  - {name: sonar, type: "range_sensor_layer::RangeSensorLayer"}
+
+sonar:
+  topics: ["/ultrasound_front_left", "/ultrasound_front_right"]
+
+The output of rosnode info /costmap_node is:
+--------------------------------------------------------------------------------
+Node [/costmap_node]
+Publications: 
+ * /costmap_node/costmap/costmap [nav_msgs/OccupancyGrid]
+ * /costmap_node/costmap/costmap_updates [map_msgs/OccupancyGridUpdate]
+ * /costmap_node/costmap/footprint [geometry_msgs/PolygonStamped]
+ * /costmap_node/costmap/parameter_descriptions [dynamic_reconfigure/ConfigDescription]
+ * /costmap_node/costmap/parameter_updates [dynamic_reconfigure/Config]
+ * /costmap_node/costmap/sonar/parameter_descriptions [dynamic_reconfigure/ConfigDescription]
+ * /costmap_node/costmap/sonar/parameter_updates [dynamic_reconfigure/Config]
+ * /rosout [rosgraph_msgs/Log]
+
+Subscriptions: 
+ * /costmap_node/costmap/footprint [geometry_msgs/PolygonStamped]
+ * /tf [unknown type]
+ * /tf_static [tf2_msgs/TFMessage]
+ * /ultrasound_front_left [sensor_msgs/Range]
+ * /ultrasound_front_right [sensor_msgs/Range]
+
+Services: 
+ * /costmap_node/costmap/set_parameters
+ * /costmap_node/costmap/sonar/set_parameters
+ * /costmap_node/get_loggers
+ * /costmap_node/set_logger_level
+
+contacting node http://HI-Z0GR8:35510/ ...
+Pid: 22374
+Connections:
+ * topic: /rosout
+    * to: /rosout
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /tf_static
+    * to: /proximity_broadcaster1 (http://HI-Z0GR8:36481/)
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /tf_static
+    * to: /robotPos_broadcaster1 (http://HI-Z0GR8:33215/)
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /tf_static
+    * to: /proximity_broadcaster2 (http://HI-Z0GR8:43631/)
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /ultrasound_front_left
+    * to: /readSensors1 (http://HI-Z0GR8:38483/)
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /ultrasound_front_right
+    * to: /readSensors1 (http://HI-Z0GR8:38483/)
+    * direction: inbound
+    * transport: TCPROS
+
+When visualizing the the map in rviz (topic /costmap_node/costmap/costmap) it just displays a plain gray area.
+However, when visualizing the ultrasound sensors (topics /ultrasound_front_left, /ultrasound_front_right) in rviz, the readings from the sensors are visualized properly.
+Do I do anything wrong or is it not possible to visualize the map in rviz?
+
+Originally posted by Philip W on ROS Answers with karma: 11 on 2018-09-17
+Post score: 0
+
+Original comments
+Comment by David Lu on 2018-09-17:
+What is the output of rosnode info /costmap_node
+Comment by Philip W on 2018-09-18:
+edited the question to include that info.
+Comment by Philip W on 2018-09-19:
+When I add output="screen" to the costmap_2d_node I get:
+[WARN] [1537336983.573230284]: Costmap2DROS transform timeout. Current time: 1537336983.5731, global_pose stamp: 0.0000, tolerance: 0.3000
+[WARN] [1537336983.636641917]: Could not get robot pose, cancelling reconfiguration
+
+Is that a problem?
+
+A:
+
+The problem was with the static transform I used to define the robots position in the world. This is just not possible with Costmap_2d.
+After removing the line
+    <node pkg="tf2_ros" type="static_transform_publisher" name="robotPos_broadcaster1" args="2.0
+0.0 0.0 0 0 0 1 map base_link" />
+
+from my launch config and adding a new node that publishes the tf transform from map to base_link with 30Hz, the map is built and updated based on the sensor readings.
+
+Originally posted by Philip W with karma: 11 on 2018-09-20
+This answer was ACCEPTED on the original site
+Post score: 0
+

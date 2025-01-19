@@ -1,0 +1,99 @@
+Q:
+
+Subscribing and publishing in the same node
+
+Edit: What I am trying to accomplish is getting multiple nodes (each node representing a robot) to share their exploration data. To achieve this sharing of data, I thought publishing to the same ros_topic would do the task. To secure the sharing, I was thinking to add multi-threading via mutex. I am yet to write code for sharing map, but I am trying to proceed as indicated by the code below.
+The reason I am trying to subscribe and publish in the same topic is because I want the functionality where I get the latest object from the ros_topic, add new data to the object, then publish it.
+
+I am trying to subscribe and publish in the same node.
+I have two such nodes (arbitrary names) -
+
+listener_talker_node
+
+and
+
+talker_listener_node
+
+#include <ros/ros.h>
+#include <std_msgs/String.h>
+#include <sstream>
+void chatterCallback(const std_msgs::String::ConstPtr& msg)
+{
+  ROS_INFO("I heard: [%s]", msg->data.c_str());
+}
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "listener_talker");
+  ros::NodeHandle n;   
+  ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter_by_listener_talker", 1000);
+  ros::Rate loop_rate(10);
+  int count = 0;
+  while (ros::ok())
+  {
+    ros::Subscriber sub = n.subscribe("chatter_by_talker_listener", 1000, chatterCallback);
+    loop_rate.sleep();
+    std_msgs::String msg;
+    std::stringstream ss;
+    ss << "listener_talker says: hello world " << count;
+    msg.data = ss.str();
+    ROS_INFO("%s", msg.data.c_str());
+    loop_rate.sleep();
+    chatter_pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+    ++count;
+  }
+  return 0;
+}
+
+The result that I expect is:
+Terminal One:
+
+The following two statements repeating till SIGINT received.
+
+[ INFO] [1452183178.353935870]: talker_listener says: hello world 6
+[ INFO] [1452182374.277333351]: I heard: [listener_talker says: hello world 82]
+
+Terminal Two:
+
+The following two statements repeating till SIGINT received.
+
+[ INFO] [1452183178.353935870]: listener_talker says: hello world 82
+[ INFO] [1452182374.277333351]: I heard: [talker_listener says: hello world 6]
+
+I have tried obtain the above result in two ways:
+
+Both nodes publish and subscribe to the same topic
+There are two topics, eg. Topic A, Topic B. node1 subscribes to TopicA and publishes to TopicB. Similarly for node2.
+
+Instead I only get the print statement of the Publisher ie.
+In Terminal 1:
+ [ INFO] [1452183178.353935870]: listener_talker says: hello world 82
+ [ INFO] [1452183178.353935870]: listener_talker says: hello world 83
+ ....
+
+In Terminal 2:
+[ INFO] [1452183178.353935870]: talker_listener says: hello world 6
+[ INFO] [1452183178.353935870]: talker_listener says: hello world 7
+....
+
+Originally posted by arttp2 on ROS Answers with karma: 123 on 2016-01-07
+Post score: 1
+
+Original comments
+Comment by dmngu9 on 2016-01-07:
+i dont get your question. you mean the data published from 1 node is subscribed and used by that node? IF that was the case, i never try it. its better to make another node for subscription ,make life easier
+
+A:
+
+Don't create Subscribers inside your while-loop. Move the initialisation of ros::Subscriber sub to somewhere else.
+Also: why three ros::Rate::sleep() statements?
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-01-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by arttp2 on 2016-01-07:
+I thought that like publishing we have to subscribe continuously, but it seems that we have to subscribe just once and whenever new data is published to the topic, callBack function is automatically called.
+

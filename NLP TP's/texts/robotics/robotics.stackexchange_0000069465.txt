@@ -1,0 +1,104 @@
+Q:
+
+ROS Installation on Red Hat7
+
+Hello,
+I'm trying to install ROS (Indigo) on Red Hat7 according to the this tutorial (http://wiki.ros.org/indigo/Installation/Source).
+When I try to install all the required dependencies using the following commands:
+$ rosdep install --from-paths src --ignore-src --rosdistro indigo -y
+
+I get the following errors:
+ERROR: the following packages/stacks could not have their rosdep keys resolved to system dependencies:
+
+rqt_robot_steering: No definition of [python-rospkg] for OS [rhel]
+catkin: No definition of [python-nose] for OS [rhel]
+class_loader: No definition of [libpoco-dev] for OS [rhel]
+urdf: No definition of [liburdfdom-headers-dev] for OS [rhel]
+...
+
+Is there any way to install all the required dependencies on Red Hat? Thank you!
+
+Edit:
+Hello,  thank you for this quick reply. I tried the following command instead
+rosdep install --from-paths src --ignore-src --rosdistro indigo --os=fedora:2
+
+Then, I received:
+#All required rosdeps installed successfully
+
+But, I got the following error messages when I go through the next step, step 2.1.3 to build the catkin workspace.
+CMake Error at /u/leejang/ros_catkin_ws/install_isolated/share/cmake_modules/cmake/Modules/FindPoco.cmake:186 (MESSAGE): Poco was not found.  Set the Poco_INCLUDE_DIR cmake cache entry to the top-level directory containing the poco include directories.  E.g /usr/local/include/ or c:\poco\include\poco-1.3.2
+
+Call Stack (most recent call first): CMakeLists.txt:7 (find_package) -- Configuring incomplete, errors occurred! <== Failed to process package 'class_loader':
+
+I think that it still has dependency problems.. Thank you.
+
+Updated!
+Yes, there was no error when I type the command:
+rosdep install --from-paths src --ignore-src --rosdistro indigo --os=fedora:21
+
+The failed package is 'class_loader':
+-- Configuring incomplete, errors occurred!
+<== Failed to process package 'class_loader':
+  Command '['/u/leejang/ros_catkin_ws/install_isolated/env.sh', 'cmake', '/u/leejang/ros_catkin_ws/src/class_loader', '-DCATKIN_DEVEL_PREFIX=/u/leejang/ros_catkin_ws/devel_isolated/class_loader', '-DCMAKE_INSTALL_PREFIX=/u/leejang/ros_catkin_ws/install_isolated', '-DCMAKE_BUILD_TYPE=Release', '-G', 'Unix Makefiles']' returned non-zero exit status 1
+
+Thank you very much for your help!
+
+Edit:
+Now, I'm facing the following error message:
+
+CMake Warning at /u/leejang/ros_catkin_ws/install_isolated/share/catkin/cmake/test/gtest.cmake:66 (message):
+  skipping gtest 'test_urdf' in project 'pr2_description'
+Call Stack (most recent call first):
+  /u/leejang/ros_catkin_ws/install_isolated/share/catkin/cmake/test/gtest.cmake:34 (catkin_add_executable_with_gtest)
+  CMakeLists.txt:94 (catkin_add_gtest)
+
+CMake Error at CMakeLists.txt:95 (target_link_libraries):
+  Cannot specify link libraries for target "test_urdf" which is not built by
+  this project.
+
+-- Configuring incomplete, errors occurred!
+ cd /u/leejang/ros_catkin_ws/build_isolated/pr2_description && /u/leejang/ros_catkin_ws/install_isolated/env.sh cmake /u/leejang/ros_catkin_ws/src/pr2_common/pr2_description -DCATKIN_DEVEL_PREFIX=/u/leejang/ros_catkin_ws/devel_isolated/pr2_description -DCMAKE_INSTALL_PREFIX=/u/leejang/ros_catkin_ws/install_isolated -DCMAKE_BUILD_TYPE=Release -G 'Unix Makefiles'
+
+I tried to search solution here, but I couldn't find..
+
+Edit:
+Thank you gvdhoorn for your kindly reply.  Now, I've completed install with ROS-common packages (NO GUI tools). I think that it's enough for my current project. So, I close this question.
+Thank you again I really appreciate your helps!
+
+Originally posted by Jangwon on ROS Answers with karma: 13 on 2015-09-01
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2015-09-02:
+Can you check that the Poco library and headers are actually installed? What is the output of find /usr -name Poco.h?
+Comment by Jangwon on 2015-09-02:
+Thank you! It wasn't there, so I installed it and the problem was solved. Now, I'm facing other problem about Eigen3, but it seems that it also wasn't my system.
+
+A:
+
+Please see whether Compiling on centos7 helps.
+
+Edit:
+
+But, I got the following error messages when I go through the next step, step 2.1.3 to build the catkin workspace.
+[..]
+
+Seems like some package depends on the Poco library, but either didn't declare it, or Poco is a transitive dependency of something on Fedora, but not on RHEL7. Can you please update your question with a bit more context? What package failed to configure?
+As to a solution / work-around: you could try to see whether you can install poco-devel manually (at least, that's what I assume it is called on RHEL). A quick search did not turn up any RHEL7 package for that though. Are you sure there were no errors when you ran the rosdep install .. --os=fedora:2 command?
+Also: remember: doing an install this way is really nothing more than a work-around. The proper way would be to contribute rosdep rules for RedHat.
+
+Edit2:
+
+  skipping gtest 'test_urdf' in project 'pr2_description'
+
+and:
+
+Cannot specify link libraries for target "test_urdf" which is not built by this project.
+
+It would seem you don't have gtest installed, which causes this line to probably fail. The next line tries to then link the test_urdf target with some other library, but since the test_urdf target doesn't exist, it fails the entire build.
+Please make sure you have gtest installed. If you can't install it, you might be able to skip all testing by appending -DCATKIN_ENABLE_TESTING=False to your catkin_make invocation. The pr2_description package will still fail though, as it hasn't been properly setup (see pr2_common/issues/241 and pr2_common/pull/238).
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-09-02
+This answer was ACCEPTED on the original site
+Post score: 3
+

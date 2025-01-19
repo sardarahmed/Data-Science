@@ -1,0 +1,22 @@
+Q:
+
+Microcontroller flashing itself
+
+Can a micro controller flash itself?
+What i mean to say is, I have an STM32F103RG with 1Mb Flash Size. 
+I have a UART Communication modem connected to it. Can i send a firmware (.HEX or .BIN) to the microcontroller via the radio verify checksums, on sucess the microcontroller saves the file into a SD Card ( via SPI ) and then restarts itself and start flashing itself reading from the file ( in the sD card )?
+Can something like this be done or an external MCU is required to carry out the flashing?
+The purpose is the microcontroller and radio will be sitting at a remote location and i need a way to change the microcontroller's firmware by sending it a firmware update file remotely. 
+
+A:
+
+Yes this is entirely possible, and as FuaZe said, it's called a bootloader.
+You essentially have two programs on your chip, each with their own memory area; the bootloader and the application. Preferably, the bootloader area is write-protected to make sure you don't accidentally destroy it.
+With the bootloader, you can use any algorithm you want. If you have enough space, the bootloader could be large enough to communicate with the outside world, get the hex file and program the application. If not, the older application can do the communication, write the hex file somewhere (external SD card for example as you said), restart to enter the bootloader and then it would read the hex file and write to flash.
+The bootloader is naturally the first program to run on restart, and it usually either has a timeout, where if there is no communication it would jump to the application, waits for an "exit bootloader" command, or with your example, checks if there is something to bootload and if not immediately jumps to the application.
+
+Note that with the bootloader, you need to be careful! You need to think about all cases where there could be power cuts in the middle of programming, or corruption of the program during write etc. In short, you need to make it bullet proof, or you may find yourself in a situation where your microcontroller is bricked. This is similar to how windows 10 bricks computers.
+If your bootloader communicates directly with the outside world to download the new firmware, you have the lowest risks. You just need to protect the bootloader itself and you should be able to recover from errors.
+If your bootloader reads the program from somewhere on the board, where the firmware is written by the application itself, you need to be sure that the application is always capable of writing new firmware to that somewhere on the board. This may not always be the case, for example because there could be bugs among other reasons. In such a case, I suggest having a read-only firmware on the board which contains the original well-tested application. A button for example could tell the bootloader that you have messed up and would like to have the original application bootloaded.
+The case with your external SD card fits better in the first case, since you can always recover with removing the SD card, writing the correct firmware on it with a computer and plugging it for bootload.
+

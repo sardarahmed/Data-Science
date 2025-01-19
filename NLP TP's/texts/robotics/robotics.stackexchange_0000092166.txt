@@ -1,0 +1,68 @@
+Q:
+
+Is the tf 'tree' persistent in any way or derived from the flow of tf topics?
+
+I am trying to get a level deeper in understanding tf. Yes there are tutorials but I have yet to find a good conceptual explanation, tied to the api, so I am just experimenting and reading bits and pieces from all over the place. A few questions:
+
+in a robot such as a turtlebot3 (but this is probably a general question) who is responsible for publishing tf topics? Is it an assumed by product of the logic that computes the odometry?
+
+is there actually a stored tf 'tree' or is it derived from the passing flow of tf topic publications?
+
+(Sorry of these are dumb questions, I am still learning.)
+
+Originally posted by pitosalas on ROS Answers with karma: 628 on 2019-06-23
+Post score: 0
+
+A:
+
+Some related Q&As first:
+
+#q270403 (what is tf)
+#q10285 (How does tf do interpolation?)
+#q210572 (what is a frame?)
+#q272400 (what does the word "transform" mean in tf?)
+
+And a link to the design sketch of tf2 and the tf: The transform library paper.
+As to your questions:
+
+in a robot such as a turtlebot3 (but this is probably a general question) who is responsible for publishing tf topics? Is it an assumed by product of the logic that computes the odometry?
+
+I'm not entirely familiar with the TB3 specifically, but in general for a mobile robot there can be a nr of publishers of TF frames. How many and what frames they publish depends on the specific setup.
+Note that "tf publishers" are typically called broadcasters, but it's essentially the same thing.
+An odometry publisher may also publish an odom frame, but it could also publish just a nav_msgs/Odometry message and leave the TF frame for some other node to publish. An example of such a node could be robot_localization, but it could really be any node.
+Many of the other frames (those that make up the kinematic structure of the robot itself) are typically published by either the robot_state_publisher (based on the urdf and the sensor_msgs/JointState messages) and/or (a) custom node(s) when there are transforms that cannot be easily calculated based on the FK that the robot_state_publisher does (kinematic structures with cycles in them fi).
+A third example of TF publishers would be external localisation or tracking systems. Those would include motion capture or optical trackers. They could publish transforms from anything to anything, but generally provide a pose of the tracked object (ie: marker) relative to the coordinate system origin of the tracking system.
+All of this feeds the "tf system".
+
+is there actually a stored tf 'tree' or is it derived from the passing flow of tf topic publications?
+
+The answer to this would actually be: "yes". I know you phrased this as an or-question, but there is a tree and it's stored. It just happens to be stored in each-and-every TF client (ie: listener) and it's based on whatever TF messages that particular client has received.
+So it's perfectly possible for instance for two clients to have a different (incomplete) view of the same TF tree: it just means that one client has received broadcasts that the other hasn't. Or hasn't yet.
+This would also be the cause of those "annoying" and "mysterious" lookup errors, and we have three categories (note: all of the "before" and "after" are local to the specific client/listener):
+
+straight errors: client just hasn't seen transform at all yet
+interpolation into the past: client has seen it, but you're asking for the transform at a timepoint before the first message was received
+interpolation into the future: client has seen it, but you're asking for the transform at a timepoint after the last message was received
+
+As #q10285 mentions: TF does interpolate, but only between states it has seen. It never extrapolates.
+You were probably asking though whether there is some central or authoritative version of the tree somewhere stored in (a) node(s). The answer to that would be: "no". All clients essentially have their own version, as TF is basically an implementation of a distributed state synchronisation system.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-06-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pitosalas on 2019-06-25:
+fantastic answers, thanks! I wonder if there is documentation that explains this that I overlooked? I have looked at all the doc and books I can find and did not have this good an explanation!
+Comment by gvdhoorn on 2019-06-25:
+I guess the assumption is that TF implements such a commonly used concept from robotics (ie: coordinate systems and transformations between those with a temporal dimension) that truly extensive documentation would not be needed. In the end it's all linear algebra hidden behind a bunch of methods on classes.
+Comment by pitosalas on 2019-06-25:
+Yes, linear algebra is just additions and multiplications, so that's not so important either. And after all the tf library is just a bunch of classes and objects, so that doesn't need any either. Really?
+Comment by gvdhoorn on 2019-06-25:
+Nowhere in my comment did I judge anyone for wanting more documentation or explanation. Nowhere in my comment did I excuse the lack of documentation by claiming that it is not needed.
+You seem to have taken this personal.
+I merely suggested a possible rationale for why the current state of things is as it is.
+Your question ("is there documentation that explains this that I overlooked?") seemed to focus on the conceptual aspects of TF. That is what I was referring to.
+Comment by pitosalas on 2019-06-25:
+Yes, sorry, I was a little rude. And you've always been super helpful on this forum so I apologize. I do think your and @peteblackerthe3d together would form a great document or FAQ on tf that at least I would have found super clarifying.
+

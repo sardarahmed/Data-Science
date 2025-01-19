@@ -1,0 +1,71 @@
+Q:
+
+ROS Answers SE migration: Losing TFs
+
+Here is my problem with TFs:
+
+I have a node publishing a topic and its related TF:
+
+pose_tf = tf.TransformBroadcaster()
+o = tf.transformations.quaternion_from_euler(roll, pitch, yaw, 'sxyz')
+pose_tf.sendTransform((pose_x, pose_y, pose_z),
+o,
+topic.header.stamp,
+topic.header.frame_id,
+main_frame)
+self.pub.publish(topic)
+
+From another node, I subscribe to this topic using
+
+rospy.Subscriber("/topic_name", TopicType, self.function)
+
+Each time this node receives a /topic_name, function self.function is executed. To obtain the TF relating the main_frame and the topic_frame I use:
+
+try:
+    (trans, rot) = self.listener.lookupTransform(
+main_frame,
+topic.header.frame_id,
+topic.header.stamp)
+except (tf.LookupException,
+tf.ConnectivityException,
+tf.ExtrapolationException):
+    rospy.logerr('Define TF for the topic!)
+
+For the first messages the lookupTransform function always generates an exception. After 1 second it starts working properly. I've tried adding a waitForTransform but I've the same problem.
+
+self.listener.waitForTransform(main_frame, topic.header.frame_id, rospy.Time(), rospy.Duration(4.0))
+
+Is it correct to put in the lookupTransform the time topic.header.stamp instead of rospy.Time(0)? (I d'ont want the last TF but the one published in this moment). Am I using function waitForTransform correctly? Any idea?
+I'm using Ubuntu 12.04 and ros fuerte. Thank you!
+UPDATE:
+If I add the waitForTransform call inside the try-exception block I can see the following (where line 277 corresponds to self.listener.waitForTransform(main_frame, topic.header.frame_id, rospy.Time(), rospy.Duration(1.0))):  
+
+bad callback: <bound method PoseEkfSlam.landmarkUpdate of <main.PoseEkfSlam instance at 0xab3f6cc>>
+Traceback (most recent call last):
+File "/opt/ros/fuerte/lib/python2.7/dist-packages/rospy/topics.py", line 678, in _invoke_callback
+cb(msg)
+File "/home/narcis/workspace/cola2/pose_ekf_slam/src/pose_ekf_slam.py", line 277, in landmarkUpdate
+rospy.Duration(1.0))
+Exception
+
+Seems that waitForTransform or maybe rospy.Duration(1.0) are generating and exception.
+
+Originally posted by narcispr on ROS Answers with karma: 307 on 2012-10-31
+Post score: 1
+
+Original comments
+Comment by Lorenz on 2012-10-31:
+Which exception do you get?
+Comment by narcispr on 2012-10-31:
+Unable to lookup transform, cache is empty, when looking up transform from frame "frame_name"
+Comment by Lorenz on 2012-10-31:
+Could you maybe post the source code that is causing the error? The callback seems to raise an error somewhere and it would be interesting what the exception is.
+
+A:
+
+Your code looks correct. It just takes a while until the TF tree evolves completely and that's where your error within the first second probably comes from. I think it is definitely possible to get exceptions during that time. However, I don't feel like waitForTransform should really throw an exception here. I'm not sure if this is a bug or an actual design decision but you might want to consider filing a ticket at the corresponding bug tracker.
+
+Originally posted by Lorenz with karma: 22731 on 2012-10-31
+This answer was ACCEPTED on the original site
+Post score: 3
+

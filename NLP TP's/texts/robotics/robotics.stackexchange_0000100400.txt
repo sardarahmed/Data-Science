@@ -1,0 +1,139 @@
+Q:
+
+No transformation when adding revolute joints to URDF
+
+Hello everyone,
+I am trying to recreate the Doosan A0509 Collaborative robot in ROS2, as part of me trying to learn ROS2 as well as how I would approach a general problem of this type*(creating a robot in ROS, and then control it)*. My goals from this project are presented as follows:
+To be able to take the robot design files provided in the doosan-robots repository, and recreate them to be able to visualise the robot in Rviz2.
+
+To be able to control the robot using the simple joint_state_publisher_gui.
+To be able to control the robot
+using MoveIt2.
+
+I have tried to study the urdf file provided under the doosan-robots repository to be able to understand how it was written, and am currently trying to do the same in my repository, so that I can at least visualise the robot using Rviz2. I am facing a couple of problems with the first step, and I would love to know from you guys how I can go about solving my problem. The detailed description of the issue is given below.
+Description of Issue:
+I am able to visulalize the entire robot only when I use "fixed" joints. Any other joint type(I tried revolute and continuous) causes the particular child link to arrive at the origin and the error message "No transformation from elbow_link to shoulder_link", in the example scenario where the joint was between links "shoulder_link" and "elbow_link".
+I am not able to understand where I am going wrong, since I am basing my understanding of the URDF mostly from the URDF tutorials from ROS2.
+Hardware and Software Information:
+Ubuntu 20.04
+ROS2 Foxy, installed from debian packages as per instructions from here.
+I can add any extra information that might be useful for this scenario, just let me know in the comments.
+Any help on this would be highly appreciated, thanks a lot!
+
+Originally posted by sampreets3 on ROS Answers with karma: 230 on 2021-10-26
+Post score: 1
+
+A:
+
+There are several bugs in your package. Mainly, you aren't launching any joint_state_publisher or joint_state_publisher_gui when the parameter gui is true. Because of this, there is no joint_states topic. This is fine when there are only fixed joints, but it leads to the error you described when there are revolute joints.
+Here's a patch that fixes your package:
+From 4ea19497bc9eace4eb3fdee135073f80cfc95c44 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Martin=20G=C3=BCnther?= <martin.guenther at dfki.de>
+Date: Wed, 27 Oct 2021 10:10:56 +0200
+Subject: [PATCH 1/1] Fix several small bugs
+
+* the "meshes" directory was not installed
+* the joint_state_publisher GUI was not launched when the argument "gui"
+  was true (default)
+* there was a unused launch argument "use_sim_time"
+* the package.xml package name for rviz2 was incorrect, so rosdep didn't
+  work
+---
+ CMakeLists.txt           |  2 +-
+ launch/display.launch.py | 12 +++++++++---
+ package.xml              |  2 +-
+ rviz/urdf_config.rviz    |  2 +-
+ 4 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0595210..f3649e1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,7 +22,7 @@ find_package(ament_cmake REQUIRED)
+ # find_package(<dependency> REQUIRED)
+ 
+ install(
+-  DIRECTORY src launch rviz 
++  DIRECTORY src launch meshes rviz 
+   DESTINATION share/${PROJECT_NAME}
+ )
+ 
+diff --git a/launch/display.launch.py b/launch/display.launch.py
+index 1618237..248f559 100644
+--- a/launch/display.launch.py
++++ b/launch/display.launch.py
+@@ -5,7 +5,7 @@ import os
+ 
+ def generate_launch_description():
+     pkg_share = launch_ros.substitutions.FindPackageShare(package='dsr_a0509_description').find('dsr_a0509_description')
+-    default_model_path = os.path.join(pkg_share, 'src/description/a0509.blue.urdf')
++    default_model_path = os.path.join(pkg_share, 'src/description/robot_a0509.urdf')
+     default_rviz_config_path = os.path.join(pkg_share, 'rviz/urdf_config.rviz')
+     
+     robot_state_publisher_node = launch_ros.actions.Node(
+@@ -20,6 +20,13 @@ def generate_launch_description():
+         name='joint_state_publisher',
+         condition=launch.conditions.UnlessCondition(LaunchConfiguration('gui'))
+     )
++
++    joint_state_publisher_gui_node = launch_ros.actions.Node(
++        package='joint_state_publisher_gui',
++        executable='joint_state_publisher_gui',
++        name='joint_state_publisher_gui',
++        condition=launch.conditions.IfCondition(LaunchConfiguration('gui'))
++    )
+     
+     rviz_node = launch_ros.actions.Node(
+         package='rviz2',
+@@ -36,10 +43,9 @@ def generate_launch_description():
+                                             description='Absolute path to robot urdf file'),
+         launch.actions.DeclareLaunchArgument(name='rvizconfig', default_value=default_rviz_config_path,
+                                             description='Absolute path to rviz config file'),
+-        launch.actions.DeclareLaunchArgument(name='use_sim_time', default_value='True',
+-                                            description='Flag to enable use_sim_time'),
+        
+         joint_state_publisher_node,
++        joint_state_publisher_gui_node,
+         robot_state_publisher_node,
+         rviz_node
+     ])
+diff --git a/package.xml b/package.xml
+index 85a48ef..fa23519 100644
+--- a/package.xml
++++ b/package.xml
+@@ -12,7 +12,7 @@
+   <exec_depend>joint_state_publisher</exec_depend>
+   <exec_depend>joint_state_publisher_gui</exec_depend>
+   <exec_depend>robot_state_publisher</exec_depend>
+-  <exec_depend>rviz</exec_depend>
++  <exec_depend>rviz2</exec_depend>
+   <exec_depend>xacro</exec_depend>
+ 
+   <export>
+diff --git a/rviz/urdf_config.rviz b/rviz/urdf_config.rviz
+index b542f86..57ed1e1 100644
+--- a/rviz/urdf_config.rviz
++++ b/rviz/urdf_config.rviz
+@@ -133,7 +133,7 @@ Visualization Manager:
+   Enabled: true
+   Global Options:
+     Background Color: 48; 48; 48
+-    Fixed Frame: base_link
++    Fixed Frame: base
+     Frame Rate: 30
+   Name: root
+   Tools:
+-- 
+2.25.1
+
+Originally posted by Martin Günther with karma: 11816 on 2021-10-27
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by osilva on 2021-10-27:
+Awesome answer. Love the idea of showing the changes in code.
+Comment by sampreets3 on 2021-10-27:
+Hello @martin-gunther, thank you so much for your detailed response. I was able to understand the mistakes I made by studying your patch. I was able to solve my problem using this as well.
+Thanks again!
+

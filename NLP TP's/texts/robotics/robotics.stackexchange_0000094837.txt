@@ -1,0 +1,63 @@
+Q:
+
+robot_localization odom wrong frame
+
+I'm having an issue with robot_localization when my sensor frames are offset from the base_link frame.
+I have robot with a realsense T265 odometry sensor, but when I run a robot_localization UKF, it places the robot frame at the odometry message instead of the sensor frame.
+TF tree:
+odom        base_link -> base_link/t265
+
+Topic:
+name: /base_link/t265/odom
+type: Odometry
+frame_id: odom
+child_frame_id: base_link/t265
+
+UKF Config:
+map_frame: map
+odom_frame: odom
+base_link_frame: base_link
+world_frame: odom
+
+odom0: /base_link/t265/odom
+
+Below I have the Odometry topic and the TF tree after the UKF is run.
+Issue: Since the odom's child_frame_id is base_link/t265, the odom topic should identify the location of that frame, not the base_link frame, right? I’m expecting the UKF to compute the odom->base_link tf such that the t265 frame will be placed at its odom message, but instead it places base_link there directly.
+
+Originally posted by jnoyola on ROS Answers with karma: 1 on 2020-02-24
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2020-02-24:
+Please attach your screenshot to the question. I've given you sufficient karma.
+Comment by jnoyola on 2020-02-24:
+Thank you. Updated the question with the screenshot.
+Comment by stevemacenski on 2020-02-24:
+What's your issue exactly? Its unclear to me.
+Comment by jnoyola on 2020-02-24:
+Updated the last sentence. Hopefully that clarifies it. This sounds like a standard use case that I’ve seen lots of discussion about, but no end to end examples.
+
+A:
+
+I went with the manual solution, manually calculating where the odom message should be for the robot frame instead of the sensor frame.
+This problem is also described in the last comment on the accepted answer here, which also suggests it must be done manually.
+To do this, I post-multiply the odom message's pose by the sensor-to-base_link transform. Then, in order to make the base_link appear to start at 0 instead of the sensor, I pre-multiply this by the base_link-to-sensor transform. Thus if your base_link-to-sensor (or sensor mount pose) transform is S, I compute
+odom_msg.pose.pose = S * odom_msg.pose.pose * S.inverse()
+
+This assumes your twists (linear and angular) are already rotated by the pose's rotation after this calculation.
+Also note it's more performant to precompute S.inverse() rather than recalculating this every frame.
+
+Originally posted by jnoyola with karma: 1 on 2020-03-02
+This answer was ACCEPTED on the original site
+Post score: -2
+
+Original comments
+Comment by jnoyola on 2020-03-03:
+Not sure why there are downvotes. It looks like this has been an issue for several years, and Steve's answer only works for putting all of the fused data in the T265 frame, which is not what I want. Please share a better solution if you have one.
+Comment by tfoote on 2020-03-03:
+@jnoyola Please consider your tone and expectations when you're writing your responses. People on this forum are volunteering their time to help answer questions. It's not our responsibility to solve your problem. https://wiki.ros.org/Support You will find that if you become confrontational people will choose to help others.
+You've accepted your own answer to the question but reading your question the other answer appears to be a better solution. I think that your use case has more details than your explaining, that external reviewers do not understand due to a partial problem statement. This especially rings true to me as your statement that you don't want "all" the fused data in the same frame, as that seems to be the opposite of computing a fused result.
+Comment by jnoyola on 2020-03-03:
+I apologize if that came across as confrontational. I was just asking an honest question, because my solution solved my problem but received downvotes, suggesting people believe there is a better solution. In the comments on the other solution, I have tried explaining in 3 different ways why that does not appear to solve the problem, but received no response.
+In response to your point here, I did not say that I don't want all the fused data in the same frame -- I simply don't want all the fused data in the T265 frame. The problem I have been trying to solve is where I have sensor A readings giving me odom-to-A and sensor B readings giving me odom-to-B and want to output odom-to-base_link. The other solution suggests I can use the T265 frame, but it seems like r_l will then interpret all sensors as providing odom-to-T265, which does not solve the problem. Please correct me if I'm misunderstanding.
+

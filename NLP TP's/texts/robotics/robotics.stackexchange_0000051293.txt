@@ -1,0 +1,187 @@
+Q:
+
+Joint configuration issues with Schunk Powerball-MoveIt integration
+
+Hello everybody,
+I am currently attempting to integrate the Schunk Powerball manipulator with MoveIt through the ROS packages developed by Fraunhofer IPA (github.com/ipa320) and experience some issues with the joint configuration.
+After running the setup assistant and following the instructions in the Industrial Robot Simulator tutorial, I get a configuration which works fine with the simulator. But if I then try to use the IPA packages by launching the respective packages instead of the simulator, I continuously get the following messages:
+[ERROR] [1369212664.452440575]: Joint 'arm_controller' not found in model 'powerball'
+[ERROR] [1369212664.452510068]: Joint '' not found in model 'powerball'
+[ERROR] [1369212664.452566988]: Joint '' not found in model 'powerball'
+[ERROR] [1369212664.452616925]: Joint '' not found in model 'powerball'
+[ERROR] [1369212664.452665534]: Joint '' not found in model 'powerball'
+[ERROR] [1369212664.452718125]: Joint '' not found in model 'powerball'
+
+I have configured the joint names as "arm_X_joint" as required by the robot's URDF description. The robot's topics use the namespace "/arm_controller/follow_joint_trajectory" instead of "/joint_trajectory_action", but I've configured this in the controllers.yaml file like written in the tutorial.
+Here are some of my launch files and the controller/joint configuration:
+moveit_planning_execution_sim.launch (this one works fine):
+<launch>
+ # The planning and execution components of MoveIt! configured to run
+ # using a simulated ROS-Industrial node
+ 
+ #-------------------------------------
+ # These actions are normally handled in the "real" robot's bringup launch file
+ #
+ # load the URDF
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find schunk_hardware_config)/powerball/urdf/powerball.urdf.xacro'" />
+ # run the robot simulator and action interface nodes
+ <include file="$(find industrial_robot_simulator)/launch/robot_interface_simulator.launch" />
+ 
+ # publish the robot state (tf transforms)
+ <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+ #-------------------------------------
+ 
+ <include file="$(find powerball_moveit)/launch/move_group.launch">
+  <arg name="publish_monitored_planning_scene" value="true" />
+ </include>
+ 
+ <include file="$(find powerball_moveit)/launch/moveit_rviz.launch"/>
+ 
+ <rosparam command="load" file="$(find powerball_moveit)/config/joint_names.yaml"/>
+ 
+</launch>
+
+moveit_planning_execution_real.launch (this one does not work):
+<launch>
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find schunk_hardware_config)/powerball/urdf/powerball.urdf.xacro'" />
+ <include file="$(find schunk_bringup)/components/powerball_solo.launch" />
+ 
+ <include file="$(find powerball_moveit)/launch/move_group.launch">
+  <arg name="publish_monitored_planning_scene" value="true" />
+ </include>
+ 
+ <include file="$(find powerball_moveit)/launch/moveit_rviz.launch"/>
+ 
+ <rosparam command="load" file="$(find powerball_moveit)/config/joint_names.yaml"/>
+ 
+</launch>
+
+controllers.yaml:
+controller_manager_ns: pr2_controller_manager
+controller_list:
+  - name: "arm_controller"
+    ns: follow_joint_trajectory
+    default: true
+    joints:
+     - arm_0_joint
+      - arm_1_joint
+      - arm_2_joint
+      - arm_3_joint
+      - arm_4_joint
+      - arm_5_joint
+      - arm_6_joint
+
+joint_names.yaml:
+controller_joint_names: ['arm_1_joint', 'arm_2_joint', 'arm_3_joint', 'arm_4_joint', 'arm_5_joint', 'arm_6_joint']
+
+Now I'm really a bit out of ideas. Does anybody have an idea where this obviously wrong joint configuration might come from? Has anybody worked on the integration of the Powerball into MoveIt yet?
+I know that this might be a little stumbling in the dark if someone hasn't worked with the IPA ROS packages before, but maybe you can give me a hint where I could continue debugging. If necessary, I can provide you with some more of my launch or configuration files.
+Thank you, best regards,
+Tobi
+
+Originally posted by jir-tobi on ROS Answers with karma: 31 on 2013-05-22
+Post score: 3
+
+A:
+
+Make sure that the urdf for the
+MoveIt Assistant was created out of
+schunk_hardware_config/powerball/urdf/powerball.urdf.xacro
+
+Try this launch file:
+I just took
+schunk_bringup/components/powerball_solo.launch
+and put it into your
+moveit_planning_execution_real.launch
+but I commented out the "upload
+joint configuration" part.(It uploads
+schunk_default_config/config/powerball_joint_configurations.yaml
+to the parameter server. But this
+yaml has a different joint config.
+And MoveIt already does this for
+you.)
+<!-- upload robot_description -->
+        <include file="$(find schunk_hardware_config)/powerball/urdf/upload_powerball.launch" />
+
+<!-- start robot_state_publisher -->
+<node pkg="robot_state_publisher" type="state_publisher" name="robot_state_publisher"/>
+
+<!-- upload joint configuration 
+<include file="$(find schunk_default_config)/launch/upload_param_powerball.launch" /> -->
+
+<!-- start arm  -->
+<include file="$(find schunk_bringup)/components/powerball.launch" />
+
+<include file="$(find powerball_moveit)/launch/move_group.launch">
+<arg name="publish_monitored_planning_scene" value="true" />
+</include>
+
+<include file="$(find powerball_moveit)/launch/moveit_rviz.launch"/>
+
+<rosparam command="load" file="$(find powerball_moveit)/config/joint_names.yaml"/>
+
+Check your controllers.yaml
+formatting.
+
+If this doesn't work recursively check all launch files called by powerball.launch for parameter server uploads (yaml files) you don't need.
+
+Can you post your
+moveit_controller_manager.launch.
+Make sure you have disabled the
+controller_manager.
+
+My moveit_controller_manager.launch
+<launch>
+  <arg name="moveit_controller_manager"
+       default="pr2_moveit_controller_manager/Pr2MoveItControllerManager"/>
+  <param name="moveit_controller_manager"
+         value="$(arg moveit_controller_manager)"/>
+
+  <arg name="controller_manager_name"
+       default="pr2_controller_manager" />
+  <param name="controller_manager_name"
+         value="$(arg controller_manager_name)"/>
+
+  <arg name="use_controller_manager" default="false" />
+  <param name="use_controller_manager"
+         value="$(arg use_controller_manager)" />
+
+  <rosparam file="$(find kurtana_moveit_config)/config/controllers.yaml"/>
+</launch>
+
+My controllers.yaml
+ controller_manager_ns:
+    pr2_controller_manager
+    controller_list:
+      - name: "katana_arm_controller"
+        ns: follow_joint_trajectory
+        default: true
+        joints:
+           - katana_motor1_pan_joint
+           - katana_motor2_lift_joint
+           - katana_motor3_lift_joint
+           - katana_motor4_lift_joint
+           - katana_motor5_wrist_roll_joint
+
+In your error message the joint
+"arm_controller" is not found.
+Somehow the controller name
+definition is parsed as a joint
+definition. You could try another
+name in your controllers.yaml and
+check how the error changes. Perhaps
+just make a completely new
+controllers.yaml.
+
+Originally posted by fivef with karma: 2756 on 2013-05-22
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by jir-tobi on 2013-05-23:
+Thanks a lot! Unfortunately, it still doesn't work although I've tried all your suggestions. Everywhere joint names appear, they are in the format arm_X_joint. I've also checked /arm_controller/joint_names and /controller_joint_names at runtime, they seem to be set correctly. Any other ideas?
+Comment by fivef on 2013-05-23:
+One last guess: in schunk_hardware_config/powerball/config/powerball_trajectory_controller.yaml the joint index starts with 1. In your controllers.yaml in starts with 0. Same for schunk_default_config /config/ powerball_joint_configurations.yaml. Please check new 5. in my answer.
+Comment by jir-tobi on 2013-05-28:
+So indeed I had to remove arm_0_joint. But the actual error was located somewhere different, that is, there was a bug in the ipa_canopen package which made these messages appear. I've fixed it and reported it back to the IPA people. Thanks a lot for your help!
+

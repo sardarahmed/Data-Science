@@ -1,0 +1,88 @@
+Q:
+
+Conversion from sensor_msgs::PointCloud2 to pcl::PointCloud
+
+Hi all,
+I am digging deep in this forum, but I'm getting lost. I am using ROS Groovy and receiving a sensor_msgs::PointCloud2 from a depth_image_proc nodelet and I want to process it using PCL 1.7. None of the solutions found in this forum are working for me, i.e., I miss some function prototype of toPCL, fromROSMsg, etc. functions.
+I would like to do something like:
+void CloudViewerPlugin::pointcloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    pcl::PointCloud<pcl::PointXYZ> cloud;
+    pcl::PCLPointCloud2 pcl_pc;
+    pcl_conversions::toPCL(*msg, pcl_pc);
+    pcl::fromPCLPointCloud2(pcl_pc, cloud);
+
+or
+void CloudViewerPlugin::pointcloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    pcl::PointCloud<pcl::PointXYZ> cloud;
+    pcl::fromROSMsg(*msg, cloud);
+
+but I found no function prototype to do this.
+
+Originally posted by madmage on ROS Answers with karma: 293 on 2014-03-07
+Post score: 10
+
+Original comments
+Comment by dornhege on 2014-03-07:
+Can you try to directly subscribe to a pcl pointcloud? There might be some pcl_ros magic going on that allows you to do so.
+Comment by madmage on 2014-03-07:
+Hi Christian,
+I already tried that solution, but:
+/opt/ros/groovy/include/ros/message_traits.h:121: error: ‘__s_getMD5Sum’ is not a member of ‘pcl::PointCloudpcl::PointXYZ’
+on the subscribe line
+(I'm following http://wiki.ros.org/pcl_ros)
+Comment by madmage on 2014-03-07:
+Sorry, I hadn't #included the right files, however, now there are two errors:
+/opt/ros/groovy/include/pcl_ros/point_cloud.h:176: error: no matching function for call to ‘createMapping(std::vector<sensor_msgs::PointField_std::allocator<void > >&, pcl::MsgFieldMap&)’
+and:
+/opt/ros/groovy/include/ros/serialization.h:134: error: ‘struct pcl::PCLHeader’ has no member named ‘deserialize’
+Comment by Rufus on 2020-04-12:
+I believe your second option fromRosMsg is only available fron Kinetic onwards
+
+A:
+
+Here's the code that successfully transforms my sensor_msgs::PointCloud2::ConstPtr to a pcl::PointCloudpcl::PointXYZ::Ptr
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
+#include <pcl_ros/transforms.h>
+
+ void cloud_cb(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input){
+    
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(*input,pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud);
+    //do stuff with temp_cloud here
+    }
+
+Some of the includes may be unnecessary ....
+
+Originally posted by bzr with karma: 256 on 2014-12-07
+This answer was ACCEPTED on the original site
+Post score: 24
+
+Original comments
+Comment by mimpho on 2015-05-30:
+and what if i want to go the other way around? from pointXYZ to sensor_msgs? do i still have to go through pcl::PointCloud2? Can you please write the code for that.
+Comment by rbaleksandar on 2015-08-19:
+Have you tested this?Because I did exactly what you have written and the temp_cloud is utterly broken.When I pass it to any PCL function that works with pcl::PointCloudpcl::PointXYZ::Ptr I get an immediate segmentation fault.The cloud I'm receiving is fine plus no errors during the build process.
+Comment by rasoo on 2016-06-28:
+CMakeFiles/listener.dir/src/listener.cpp.o: In function `void pcl::detail::FieldMapperpcl::PointXYZ::operator()pcl::fields::x()':
+listener.cpp:(.text._ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1xEEEvv[_ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1xEEEvv]+0x2a3): undefined r
+Comment by rasoo on 2016-06-28:
+eference to pcl::console::print(pcl::console::VERBOSITY_LEVEL, char const*, ...)' CMakeFiles/listener.dir/src/listener.cpp.o: In function void pcl::detail::FieldMapperpcl::PointXYZ::operator()pcl::fields::y()':
+Comment by rasoo on 2016-06-28:
+listener.cpp:(.text._ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1yEEEvv[_ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1yEEEvv]+0x2a3): undefined reference to `pcl::console::print(pcl::console::VERBOSITY_LEVEL, char const*, ...)'
+Comment by rasoo on 2016-06-28:
+CMakeFiles/listener.dir/src/listener.cpp.o: In function `void pcl::detail::FieldMapperpcl::PointXYZ::operator()pcl::fields::z()':
+listener.cpp:(.text._ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1zEEEvv[_ZN3pcl6detail11FieldMapperINS_8PointXYZEEclINS_6fields1zEEEvv]+0x2a3): undefined r
+Comment by rasoo on 2016-06-28:
+Heyii, I am also trying to do the similar things. But I am getting the above errors. Sorry for the inconvenience. I am pretty new with ROS and PCL.Can you please help me? What kind of error these are showing.. ?
+Comment by rbaleksandar on 2016-06-28:
+Here is a project of mine. I'm actually going to convert this to a more generic package and perhaps even propose to include it in ROS since there are not out-of-the-box, easy-to-use packages.
+Comment by M@t on 2017-12-05:
+I can confirm that these commands still work, so the error messages above are unlikely to be directly related.
+Comment by Petros ADLATUS on 2022-05-13:
+@bzr what is with the intensity from pointcloud2 converting to xyz?
+

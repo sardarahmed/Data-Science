@@ -1,0 +1,65 @@
+Q:
+
+Extended Kalman filtering for IMU and Encoder
+
+I am trying to fuse IMU and encoder using extended Kalman sensor fusion technique. how do I fuse IMU pitch, roll with the orientation data I obtained from the encoder. Also, how do I use my position x and Y I got from the encoder which is the only position data i have because integrating IMu acceleration to obtained position is almost impossible due to errors. 
+I guess my state are position x, y, pitch, roll and control input are velocity of the right and left wheel.
+
+A:
+
+EKF sensor fusion is achieved simply by feeding data streams from different sensors to the filter. So all you need to do is setup your implementation to accept both encoder and IMU data. This is basically a matter of providing different versions of the observation model matrix $\mathbf{H}$ that converts states to sensor measurements, one for each sensor.
+It's often the case that each sensor captures a different subset of the full state. In the case of a state as below:
+$$
+\mathbf{x} =
+\begin{bmatrix}
+x \\
+y \\
+roll \\
+pitch \\
+yaw
+\end{bmatrix}
+$$
+Encoder readings reflect $[x \quad y \quad yaw]^T$, while IMU readings reflect $[roll \quad pitch \quad yaw]^T$. This is encoded in the $\mathbf{H}$ matrices by having the number of rows match the number of captured state components, the number of columns match the full state size, and the position of non-zero elements correspond to the position of the captured components in the state vector.
+For example, the encoder observation model matrices $\mathbf{H}_{encoders}$ and  $\mathbf{H}_{IMU}$ would be defined as:
+$$
+\mathbf{H}_{encoders} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+\end{bmatrix}
+$$
+$$
+\mathbf{H}_{IMU} =
+\begin{bmatrix}
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+\end{bmatrix}
+$$
+Notice how for the matrices above:
+$$
+\mathbf{H}_{encoders} \mathbf{x} =
+\begin{bmatrix}
+x \\
+y \\
+yaw
+\end{bmatrix}
+$$
+$$
+\mathbf{H}_{IMU} \mathbf{x} =
+\begin{bmatrix}
+roll \\
+pitch \\
+yaw
+\end{bmatrix}
+$$
+All that said, I would counsel against having $(x, y)$ coordinates in a state estimated by a Kalman filter. The reason is that encoder drift error is not bounded, but grows endlessly with distance traveled — that's why we need SLAM after all. Instead I would recommend keeping track of linear and angular velocities, and integrate those over time outside of the filter to get a position estimate, if no better alternative is available. Velocity estimates can be trivially computed from encoder tick counts as below:
+$$
+v = \frac{c_L \alpha_L + c_R \alpha_R}{2 \Delta t}
+$$
+$$
+\omega = \frac{c_R \alpha_R - c_L \alpha_L}{2 l \Delta t}
+$$
+Where $(v, \omega)$ are linear and angular velocity, $(c_L, c_R)$ the tick counts,  $(\alpha_L, \alpha_R)$ coefficients that convert tick count to traveled distance, $\Delta t$ the tick collection interval, and $l$ the lateral distance between wheels.
+

@@ -1,0 +1,206 @@
+Q:
+
+Specifying plugins to local_costmap.yaml causes it to disappear
+
+As an additional feature to my navigation stack, I'd like to add social_navigation_layers (http://wiki.ros.org/social_navigation_layers) to my local costmap, to distinguish between obstacles and humans. This should add extra inflation to the local costmap, such that my teb local planner better can navigate in the environment. For this I'm trying to specify layers of both the global and local costmap in the form of plugins as specified by this tutorial: http://wiki.ros.org/costmap_2d/Tutorials/Configuring%20Layered%20Costmaps.
+The problem I'm facing is, that when specifying any plugin (including default) for my local costmap, the local costmap disappears from RViz and the topic /move_base/local_costmap/costmap returns only zero's. This ruins my navigation. If I comment out all plugins in the local costmap then everything works fine, besides that the social_navigation_layers won't be used. Specifying any and all plugins for the global costmap, then this seems to work fine. Using 'rosparam get' I can see, that the plugins are used for both the local and global costmap, despite it not working for the local costmap. If I do not specify any plugins for the local costmap then pre-Hydro parameters will be used, indicated by a warning in the terminal
+Currently I'm running Melodic (Ubuntu 18.04), but I've also tested this on Kinetic (Ubuntu 16.04) with the same issue.
+Picture of missing costmap.
+The small curved green line represents parts of an obstacle detected by the laser scanner and shown through teb markers.
+UPDATE 1:  Added .yaml files, and warning with pre-Hydro parameters.
+UPDATE 2: Changed local_costmap.yaml to the way I want them to be, added output of 'rosparam get' and picture of missing costmap from RViz.
+costmap_common.yaml
+# Common settings for costmaps
+# May be overwritten in specific global and local costmap files
+
+# Robot Footprint Parameters
+#footprint: [[0.55,0.5],[0.55,-0.5],[-0.55,-0.5],[-0.55,0.5]]   #Square robot
+#footprint_padding: 0.01
+robot_radius: 0.55    # Circular robot
+# inflation_radius: 0.35
+
+# Global Filtering Parameters
+obstacle_range: 7   
+raytrace_range: 4.0  
+
+costmap_global.yaml
+global_costmap: 
+  # Coordinate frame and tf parameters
+  global_frame: map         # Test with /map as per documentation
+  robot_base_frame: base_link
+  transform_tolerance: 1.5  
+
+  # Rate parameters
+  update_frequency: 0.5     
+  # publish_frequency: 1.0    
+
+  # Map management parameters
+  rolling_window: false
+  static_map: true
+
+  plugins:
+    - {name: static_layer,         type: "costmap_2d::StaticLayer"}
+    - {name: obstacles_layer,      type: "costmap_2d::VoxelLayer"}
+    - {name: inflation_layer,      type: "costmap_2d::InflationLayer"}
+
+  # Layer Definitions
+  static_layer:
+    map_topic: /map
+    subscribe_to_updates: true
+
+  inflation_layer:
+    # cost_scaling_factor: 10.0 # Default: 10.0
+    inflation_radius: 0.5 
+
+costmap_local.yaml
+local_costmap: 
+  # Coordinate frame and tf parameters
+  global_frame: odom
+  robot_base_frame: base_link
+  transform_tolerance: 1.0  
+
+  # Rate parameters
+  update_frequency: 10.0    
+  publish_frequency: 10.0   
+
+  # Map management parameters
+  static_map: false
+  rolling_window: true      
+  width: 10                 # The width of the map in meters. Default: 10
+  height: 10                # The height of the map in meters. Default: 10
+  resolution: 0.05          # The resolution of the map in meters/cell. Default: 0.05
+
+  plugins:
+    - {name: obstacles_layer,          type: "costmap_2d::ObstacleLayer"}
+    - {name: inflation_layer,          type: "costmap_2d::InflationLayer"}
+    - {name: social_layer,             type: "social_navigation_layers::ProxemicLayer"}
+    - {name: social_pass_layer,        type: "social_navigation_layers::PassingLayer"}
+
+  # Layer Definitions
+  inflation_layer:
+    #cost_scaling_factor: 1.0  # Default: 10.0
+    inflation_radius: 1.08
+
+rosparam get /move_base/global_costmap
+footprint: '[]'
+footprint_padding: 0.01
+global_frame: map
+height: 10
+inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflate_unknown: false,
+  inflation_radius: 0.5}
+obstacle_range: 7
+obstacles_layer: {combination_method: 1, enabled: true, footprint_clearing_enabled: true,
+  mark_threshold: 0, max_obstacle_height: 2.0, origin_z: 0.0, unknown_threshold: 15,
+  z_resolution: 0.2, z_voxels: 10}
+origin_x: 0.0
+origin_y: 0.0
+plugins:
+- {name: static_layer, type: 'costmap_2d::StaticLayer'}
+- {name: obstacles_layer, type: 'costmap_2d::VoxelLayer'}
+- {name: inflation_layer, type: 'costmap_2d::InflationLayer'}
+publish_frequency: 0.0
+raytrace_range: 4.0
+resolution: 0.05
+robot_base_frame: base_link
+robot_radius: 0.55
+rolling_window: false
+static_layer: {enabled: true, map_topic: /map, subscribe_to_updates: true}
+static_map: true
+transform_tolerance: 1.5
+update_frequency: 0.5
+width: 10
+
+rosparam get /move_base/local_costmap
+footprint: '[]'
+footprint_padding: 0.01
+global_frame: odom
+height: 10
+inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflate_unknown: false,
+  inflation_radius: 1.08}
+laser_scanner: {clearing: true, data_type: LaserScan, expected_update_rate: 9.0, marking: true,
+  sensor_frame: scan_combined, topic: /laser_unified/scan}
+observation_sources: laser_scanner
+obstacle_range: 7
+obstacles_layer: {combination_method: 1, enabled: true, footprint_clearing_enabled: true,
+  max_obstacle_height: 2.0, obstacle_range: 7, raytrace_range: 4.0}
+origin_x: 0.0
+origin_y: 0.0
+plugins:
+- {name: obstacles_layer, type: 'costmap_2d::ObstacleLayer'}
+- {name: inflation_layer, type: 'costmap_2d::InflationLayer'}
+- {name: social_layer, type: 'social_navigation_layers::ProxemicLayer'}
+- {name: social_pass_layer, type: 'social_navigation_layers::PassingLayer'}
+publish_frequency: 10.0
+raytrace_range: 4.0
+resolution: 0.05
+robot_base_frame: base_link
+robot_radius: 0.55
+rolling_window: true
+social_layer: {amplitude: 77.0, covariance: 0.25, cutoff: 10.0, enabled: true, factor: 5.0,
+  keep_time: 0.75}
+social_pass_layer: {amplitude: 77.0, covariance: 0.25, cutoff: 10.0, enabled: true,
+  factor: 5.0, keep_time: 0.75}
+static_map: false
+transform_tolerance: 1.0
+update_frequency: 10.0
+width: 10
+
+Originally posted by KimJensen on ROS Answers with karma: 55 on 2020-04-08
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-04-08:\
+
+I apparently don't have enough points to add pictures of my *_costmap_params.yaml files to this issue.
+
+and that's a good thing, as .yaml files are simply text. There is no need to post screenshots of text.
+Simply copy-paste it into your question, then select all the lines, press ctrl+k or the Preformatted Text button (ie: the one with 101010 on it).
+As to your problem: YAML is very sensitive to indentation. Make sure to have consistent and correct indentation.
+Comment by KimJensen on 2020-04-08:
+Thank you for your response. I've updated the issue with the .yaml files.
+I've focused on the indentation, so I think it should be correct.
+Comment by David Lu on 2020-04-17:
+Can you set the parameters the way you want them to be (i.e. uncomment the plugins) and then post the rosparam get / output.
+Comment by KimJensen on 2020-04-20:
+Thank you for your response. I've updated the issue with changes to the parameters, posted the output of rosparam get and inserted a picture of the missing obstacle.
+Comment by David Lu on 2020-04-20:
+Can you change it to the output of rosparam get /move_base/local_costmap?
+Comment by KimJensen on 2020-04-21:
+Yes of course. I've updated the issue with both local and global rosparam get /move_base/*_costmap
+
+A:
+
+After comparing the result of rosparam get /move_base/local_costmap for the file costmap_local.yaml with specified plugins and without (pre-Hydro parameters) I noticed two issues:
+1.The laser_scanner and observation_sources parameters were not correctly contained inside the obstacle_layer of the local costmap. To correct this I moved these two parameters from a separate .yaml file in which I specified them (loaded into the local_costmap ns inside my .launch file) and to the costmap_local.yaml specified in the following way:
+Specified in costmap_local.yaml
+  obstacle_layer:
+    observation_sources: laser_scanner
+    laser_scanner: {sensor_frame: scan_combined, data_type: LaserScan, topic: /laser_unified/scan, marking: true, clearing: true, expected_update_rate: 9.0}
+
+Notice that this must be specified inside costmap_local.yaml and not costmap_common.yaml as I set static_map: true in the costmap_global.yaml. If placed inside costmap_common.yaml a warning similar to this will occur:
+[ WARN] [1587471627.753143928, 471.157000000]: The origin for the sensor at (0.02, 0.02, -0.00) is out of map bounds. So, the costmap cannot raytrace for it.
+
+2.Default or pre-Hydro layers call the  obstacle layer in its singular form (without an s). Therefore, I changed the name of my obstacle layer plugin to be in the following form:
+Specified in costmap_local.yaml
+plugins:
+    - {name: obstacle_layer,          type: "costmap_2d::ObstacleLayer}
+
+Originally posted by KimJensen with karma: 55 on 2020-04-21
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by David Lu on 2020-04-21:
+So you're all set?
+Comment by KimJensen on 2020-04-21:
+I’m set to the extend that I have the plugins working (including social_navigation_layers), and I can publish to /people (people_msgs/People) topic to insert humans and additional inflation into my local costmap. So the problem presented is this issue seems to be resolved.
+Next step/issue is to configure the inflation of this inserted human, such that my local planner (teb) will actually adjust its path, instead of going straight through it. I want a lethal/inscribed/high cost inflation to published humans to be approx 1 meter in radius. Currently, the inserted inflation of the human has no effect on the local trajectory, which can be seen here. Changing the amplitude parameter of social_navigation_layer only has minor effects to the inflation scaling. How would you change scaling of the inflated area, such that the robot avoids the published human?
+Comment by David Lu on 2020-04-22:
+I wrote a whole paper about it: http://wustl.probablydavid.com/entry179.html
+It's not easy.
+Comment by KimJensen on 2020-04-27:
+So you are confident that this is a tweaking issue, and not something incorrect in the way that I publish messages to the /people topic, or other potential errors in the way that I implement the social_navigation_layers?
+Published message can be seen here.
+Comment by KimJensen on 2020-04-27:
+After reading your paper: Given that we're using a standard algorithm (Dijkstra) for global planner and timed elastic band (TEB) as local planner, would you then argue that the method presented in the paper is still valid for our case, as we have no added constant value of P? Finally, are there any way of introducing lethal obstacles using social_navigation_layers, as I believe TEB only accounts for those?
+

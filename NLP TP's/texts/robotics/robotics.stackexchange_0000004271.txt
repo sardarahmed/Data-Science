@@ -1,0 +1,40 @@
+Q:
+
+PD controller in C#
+
+I am currently building a line-following mobile robot. I've done all my image processing work in C#, and now I am in the control phase. I am looking for a PD controller program written in C# to start with. I've searched a lot but without success. My robot is not an Arduino based, it has a motherboard with a Core i3 CPU, and I am using a Camera not an LDR sensor.
+
+A:
+
+Your problem is not the P[I]D controller, but extracting control parameters from your system. A PID controller by itself is something like this (assuming a periodic control task):
+/* 1. get current position */
+cur_position = get_current_position();
+
+/* 2. calculate error */
+err = goal_position - cur_position;
+
+/* 3. calculate the output */
+proportional = Kp * err;
+derivative = Kd * (err - last_err);
+integral = Ki * (last_sum + err);
+output = proportional + derivative + integral;
+
+/* 4. keep history */
+last_sum += err;
+last_err = err;
+
+/* 5. apply control output */
+apply_control_output(output);
+
+where last_sum and last_err are persistent (they are defined outside the scope of the control loop, e.g. they are global or are a class member or on stack of caller who's calling the control task in a loop). In a PD controller, Ki is zero.
+Now steps 2 through 4 are very simple and probably that code runs on any C-derived language without modification. Needless to say, the control parameters Kp, Kd and Ki need to be tuned to your application (which is a problem of its own, but in this case you can just fiddle with it to get a good idea (hint: Ki is really small)). The problem is thus steps 1 and 5. Step 1 depends on your input and step 5 depends on your output.
+In step 1, you need to get an image from your camera, process it and understand how far off you are from the line. That would be your position. Note that you may also like to extract the direction of the line, in which case steps 2 through 4 could be done on 2D data! But PID rather sucks anyway and a line-following robot is not a serious application either, so you may not want to bother with that.
+Let's take an example.  Imagine you see the following image on your camera:
+
+One simple way to calculate your position with respect to the line would be to take the distance d from the center of the image to the line that needs to be followed (or to its tangent if its curved):
+
+In this case, your cur_position would be d (which would be negative if it's on the other side of the line) and your goal_position would be 0.
+This is a very simplistic solution and likely the robot may move in a weird way, since it doesn't take direction into account. If you think of the robot position as the pair of data containing distance from line and direction of line (its angle with respect to a vertical line), your goal would also be to make that (0, 0). This still doesn't take non-smooth lines in consideration.
+That done, step 5 remains. Step 5 takes the output of the controller and makes the robot follow it. This of course depends on how the robot acts. For example, if your robot has two speed-controllable wheels in the front and a passive omnidirectional one in the back for balance, then you need to tell the motors turning the wheels to maintain what speed.
+For example, if the output parameter is positive, it may mean that you are on the right side of the line. What you need would be then to turn left. To do that, you can set a higher speed for the right wheel and a lower speed. The higher the output, the higher the ratio of speed between the two wheels.
+

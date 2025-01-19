@@ -1,0 +1,53 @@
+Q:
+
+How do I make nodelet manager as fast as the individual nodes?
+
+I have two nodelets that don't talk to each other at all. Neither subscribes to anything that the other publishes. I put them under a shared nodelet manager as the first step of a larger project to integrate them with a third nodelet.
+I was surprised to discover that stapling the nodes into a single nodelet manager made them slower overall, even with a really high num_worker_threads.
+nodelets.launch:
+    <node pkg="nodelet" type="nodelet" name="twin_nodelet_manager" args="manager"> 
+        <param name="num_worker_threads" value="32" />
+    </node>
+    <node pkg="nodelet" type="nodelet" name="tweedledee" args="load wonderland/tweedledee twin_nodelet_manager" />
+    <node pkg="nodelet" type="nodelet" name="tweedledum" args="load wonderland/tweedledum twin_nodelet_manager" />
+
+nodes.launch:
+    <node pkg="wonderland" type="tweedledee" name="tweedledee" output="screen"/>
+    <node pkg="wonderland" type="tweedledum" name="tweedledum" output="screen"/>
+
+Is this consistent with other people's experience? I assume I'm not giving the nodelet manager as much of the computer's resources as I gave the pair of nodes. Is there a way to increase that?
+EDIT:
+By "not as fast" I mean that the time elapsed during the main callback increased according to std::clock.
+void mainCallback(msg) {
+  double start = std::clock();
+  // do stuff, publish
+  double elapsed = ((double)std::clock() - start) / CLOCKS_PER_SEC;
+  ROS_INFO_STREAM("elapsed: " << elapsed);
+}
+
+Originally posted by gabewb on ROS Answers with karma: 26 on 2016-08-22
+Post score: 0
+
+Original comments
+Comment by Dimitri Schachmann on 2016-08-23:
+How did you measure the fact, that they are slower? When you open up htop do you see them running in separate threads?
+Comment by gabewb on 2016-08-23:
+Edited to show method used for testing. I didn't run htop to see what resources the nodelets were getting - I'll let you know what I see.
+Comment by gvdhoorn on 2016-08-23:
+I don't think you can use std::clock() for this purpose. See this note fi (from here):
+
+if the current process is multithreaded and more than one execution core is available, std::clock time may advance faster than wall clock.
+
+Comment by gvdhoorn on 2016-08-23:
+In general I wouldn't use cpu time for benchmarking purposes.
+
+A:
+
+The problem is the use of std::clock(). The nodes themselves were single-threaded, but the nodelet manager is multithreaded, which throws off std::clock() by a lot.
+Switched to std::chrono::high_resolution_clock::now(), and the problem no longer appears.
+Thanks, gvdhoorn!
+
+Originally posted by gabewb with karma: 26 on 2016-08-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

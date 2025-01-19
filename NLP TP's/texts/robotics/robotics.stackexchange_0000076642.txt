@@ -1,0 +1,192 @@
+Q:
+
+catkin_make test fails due to undefined reference gtest help
+
+Hi helpful ROS answer-ers,
+Due to a recent epiphany I have hopped aboard the TDD train, so to give you some context I am pretty new to working with unit testing frameworks, in particular gtest. I recently began working on a simple package to handle some i/o using a phidgets board I had sitting around, and decided to start there with ROS TDD, however I have been having some issues getting off the ground.
+So I have a package setup in the following way:
+scatter_phidgets
+/src/scatter_phidgets.cpp
+/include/scatter_phidgets/scatter_phidgets.h
+/tests/utest.cpp
+my Cmakelist looks like this:
+cmake_minimum_required(VERSION 2.8.3)
+project(scatter_phidgets)
+
+add_definitions(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+  phidgets_api
+  message_generation
+)
+
+add_message_files(
+  FILES
+  DigitalInput.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS roscpp std_msgs phidgets_api message_runtime
+  DEPENDS system_lib
+)
+
+include_directories(include ${catkin_INCLUDE_DIRS})
+add_executable(phidgets src/scatter_phidgets.cpp)
+target_link_libraries(phidgets ${catkin_LIBRARIES})
+
+if (CATKIN_ENABLE_TESTING)
+  catkin_add_gtest(utest test/utest.cpp)
+  target_link_libraries(utest ${catkin_LIBRARIES})
+endif()
+
+In the header file I have a struct defined for digital inputs, digital outputs, analog outputs, along with the declaration of a single function that I wish to perform the unit test on, and looks like this:
+#ifndef SCATTER_PHIDGETS_INCLUDE_SCATTER_PHIDGETS_SCATTER_PHIDGETS_H_
+#define SCATTER_PHIDGETS_INCLUDE_SCATTER_PHIDGETS_SCATTER_PHIDGETS_H_
+
+#include <queue>
+#include <ros/ros.h>
+
+struct digital_input{
+    int channel;
+    ros::Publisher publisher;
+    ros::Subscriber subscriber;
+    bool latching = false;
+    int low_state = 0;
+    int latch_timeout = 0;
+    bool leading_edge = false;
+    int x_out_of = 0;
+    int y_sample_size = 0;
+    // ---------------------------
+    std::queue<int> values;
+    int sum = 0;
+    int publish_value = 0;
+    bool latched = false;
+    bool hold_pending = false;
+    ros::Time time_latched;
+    ros::Time hold_start;
+    uint32_t held_time;
+};
+
+struct analog_input{
+    int channel;
+    ros::Publisher publisher;
+    // ---------------------------
+    int value = 0;
+};
+
+struct digital_output{
+    int channel;
+    ros::Publisher publisher;
+    ros::Subscriber subscriber;
+    int default_state = 0;
+    // ---------------------------
+    int value_actual = 0;
+    int value_commanded = 0;
+};
+
+void updateQueue(digital_input input, int raw_state);
+
+#endif /* SCATTER_PHIDGETS_INCLUDE_SCATTER_PHIDGETS_SCATTER_PHIDGETS_H_ */
+
+My utest.cpp looks like this:
+#include "scatter_phidgets/scatter_phidgets.h"
+#include "gtest/gtest.h"
+
+TEST(TestScatterPhidgets, updatesInputQueueForInvertedLowState)
+{
+    digital_input testInput;
+    testInput.low_state = 1;
+    int testint = 0;
+    updateQueue(testInput, testint);
+    EXPECT_EQ(testInput.sum, 1);
+}
+
+int main(int argc, char **argv){
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
+
+Here's my issue: my package builds fine with catkin_make, however catkin_make tests fails with the following error:
+[100%] Building CXX object scatter_phidgets/CMakeFiles/utest.dir/test/utest.cpp.o
+Linking CXX executable /home/joe/test_catkin_ws/devel/lib/scatter_phidgets/utest
+CMakeFiles/utest.dir/test/utest.cpp.o: In function `TestScatterPhidgets_updatesInputQueueForInvertedLowState_Test::TestBody()':
+utest.cpp:(.text+0x62): undefined reference to `updateQueue(digital_input, int)'
+collect2: error: ld returned 1 exit status
+make[3]: *** [/home/joe/test_catkin_ws/devel/lib/scatter_phidgets/utest] Error 1
+make[2]: *** [scatter_phidgets/CMakeFiles/utest.dir/all] Error 2
+make[1]: *** [CMakeFiles/tests.dir/rule] Error 2
+make: *** [tests] Error 2
+Invoking "make tests -j8 -l8" failed
+
+Now I really hope that I am making some simple mistake, however I cannot for the life of me get this thing to find that function.
+What I have tried: At first I thought it simply wasn't finding the header file, however if I comment out the function call it does not complain about me using the struct that is defined in the header file.
+Can anyone shed some light on what I am doing wrong? (or even better, point me in the direction of a simplest compiling example of a ros package using gtest to perform unit tests on functions that are not within the same file as the unit tests themselves, such is the case in many examples I have seen)
+Thanks,
+Joe
+Update 10/09 6:40pm est
+Not that I think it will make a difference, but today I converted things over to catkin build from catkin_make, it does not seem to have had any effect though (not that I was expecting it to).
+Does anyone have an example of a package that successfully builds and runs gtest unit tests on functions defined in a separate header file, all of this being for ROS of course?
+Update 10/09 7:33pm est
+Removed the printout from part of the last update since it was due to an unrelated omission, my fault!
+
+Originally posted by jgilsenan on ROS Answers with karma: 181 on 2016-10-06
+Post score: 1
+
+A:
+
+So I figured out what was wrong, and I suppose that most of you out there would consider this a "beginner's mistake" however due to some reasons I will explain below, I think that this can be considered an "answer":
+The answer to my issue was sort-of provided in this answer and later sort-of-but-closer-to provided in this other answer however in my lacking of a thorough understanding of CMake, gtest, catkin, etc, I missed a crucial detail which lead me to a lot of frustration. I say "sort-of" in these cases because, although they are correct, they do not help users who, say, don't simply need a reminder that they already knew the answer. Since I can't imagine that I am the only one out there who will ever find themselves in such a position, and since this ROS documentation for gtest is practically useless for anyone who doesn't already know everything they need to know about linking, I feel it necessary to explain why I had the above-described issue and how I solved it. (in my defense, I am a self-taught Mech E pretending to be a software engineer, which is to be read: if it's something I ought to know, I probably don't know it yet).
+Leading up to writing the code that caused me so much pain, I had very little experience in proper unit testing save for some tutorials that I had followed which went smoothly and were simple. As a result I overlooked the fact that the test code for the tutorials was all in the form of libraries, and my above-posted snippets show that in the form of me trying to test a library that did not exist. My lack of understanding lead me to believe that all I had to do was include the header for the code that I wanted to test and everything would be hunky dory, I was wrong.
+If you are having similar problems as me, check if the code you want to test is even available as a library to the test code.
+I remedied this by adding the following to my CMakelists after the catkin_package() section and before the include_directories() section:
+add_library(scatter_phidgets
+    src/scatter_phidgets.cpp)
+target_link_libraries(scatter_phidgets ${catkin_LIBRARIES})
+
+Furthermore, and as mentioned in this answer and this other answer, you have to link your test executable against the library you create above. Although I admit I am still not 100% on what the background mechanics of the linking are, for me this consisted of changing this:
+if (CATKIN_ENABLE_TESTING)
+  catkin_add_gtest(utest test/utest.cpp)
+  target_link_libraries(utest ${catkin_LIBRARIES})
+endif()
+
+And modifying it so that it looks like this:
+if (CATKIN_ENABLE_TESTING)
+  catkin_add_gtest(utest test/utest.cpp)
+  target_link_libraries(utest ${catkin_LIBRARIES} scatter_phidgets)
+endif()
+
+After doing so catkin_make run_tests and catkin run_tests (now I am using catkin_tools I guess) not only successfully built my tests, but showed me that I had placed some unnecessary code in the function I was trying to test by failing the test! (which I considered a huge success, here's to TDD!)
+Additional reasons why this should be allowed as an answer:
+
+Because the gtest ROS page
+completely leaves this out, assumes
+that you already know much of this,
+and fails to provide a simplest
+working example.
+Because you can write an entire ROS package to do whatever you want,
+and it will be successful and build
+and solve world hunger and tie your
+shoes for you but it won't warn you
+that if you want to test the slew of
+ROS-agnostic functions you are bound
+to write, that you need them in a
+library.
+
+Originally posted by jgilsenan with karma: 181 on 2016-10-09
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by jgilsenan on 2016-10-09:
+I apologize if I am somehow wrong here, I am relatively new at this, and since it took a lot of skimming through existing ROS code bases to find the correlation between the library thing and the testing thing, I may be making some assumptions based on the conclusions I drew.
+Comment by jgilsenan on 2016-10-09:
+Please gently correct me as needed!
+

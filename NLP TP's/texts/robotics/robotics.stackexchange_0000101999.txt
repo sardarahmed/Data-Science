@@ -1,0 +1,88 @@
+Q:
+
+include *.xacro in *.urdf
+
+Hi all,
+I m trying to attach the intel realsense camera to my robot. My robot is in .urdf format and the camera is in *.urdf.xacro format. Is there any way to do this without converting either to another format?
+
+Originally posted by Saurabh Rahatekar on ROS Answers with karma: 45 on 2022-06-22
+Post score: 0
+
+A:
+
+yeah you can just copy the meat of the xacro into your urdf...its all the stuff in the <xacro:macro> section. alternatively, you can add a <xacro:create> tag at the end of the realsense file and then just <include> it in your urdf.
+but you should really get comfortable with xacro. its great.
+i feel your pain I had learn the xacro format while adding a _d415.urdf.xacro file too. but no. you don't need to make everything a macro and call it in a common file.
+here is an example of making a common file to call all the macros I made
+<?xml version="1.0"?>
+<robot name="arlobot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- A common file to tie together all of the bits and bobs of the entire robot
+  Modeled after turtlebot_description 
+  NOTE: All Gazebo references are gone, so simulation will have to be rebuilt if you want it -->
+
+  <!-- From $(find turtlebot_description)/urdf/common_properties.urdf.xacro -->
+  <!-- It is required by asus_xtion_pro.urdf.xacro -->
+  <xacro:property name="M_PI" value="3.1415926535897931"/>
+
+  <!-- Include 3D camera -->
+  <xacro:include filename="$(find realsense2_description)/urdf/_d415.urdf.xacro"/>
+
+  <!-- Arlo -->
+  <xacro:include filename="$(find arlo-description)/urdf/arlo_temp.urdf.xacro"/>
+
+  <!-- RPLIDAR -->
+  <!-- <xacro:include filename="$(find arlobot_ros)/urdf/asus_xtion_pro_chrisl8.urdf.xacro"/> -->
+
+  <xacro:arlobot/>
+  <xacro:stack_circles parent="base_link"/>
+  <xacro:sensor_d415 parent="plate_0_link" use_nominal_extrinsics="true" add_plug="false" use_mesh="true">
+    <origin xyz=".1945 0 .00475" rpy="0 0 0"/>
+  </xacro:sensor_d415>
+</robot>
+
+Originally posted by dwd394 with karma: 18 on 2022-06-22
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Saurabh Rahatekar on 2022-06-23:
+Hey, Thank you so much for the quick response. I will try this and get back to you if I run into any further errors.
+Comment by Saurabh Rahatekar on 2022-06-23:
+I want to add this code to my urdf file.
+Comment by dwd394 on 2022-06-23:
+so i don't think the publish_pointcloud is a xacro arg for _d415.urdf.xacro ..... your arguments topic_ns and publish_pointcloud are wrong. open the _d415.urdf.xacro and the test_d415.urdf.xacro files in the realsense2_description package to get a better idea of what is going on. i believe you are mistaking the arguments as if they are in a launch file. all you are doing in URDF is specifying dimensions for the transforms. that's it.
+the only arguments you can pass into a macro are ones that are explicitly called for in the macro.
+Comment by Saurabh Rahatekar on 2022-06-23:
+But these are the contents of test_d435_camera.urdf.xacro this file and it is called in the launch file as well.
+launch file
+urdf file
+Comment by Saurabh Rahatekar on 2022-06-24:
+I converted my robot urdf into xacro and then included the camera xacro in it. It worked perfectly. I don't know why I was holding back on xacro. Thank you for recommending this path.
+Comment by Saurabh Rahatekar on 2022-07-26:
+When I m launching the xacro from launch file, it is showing me some errors. But when I convert it to urdf using "xacro robot.urdf.xacro > model.urdf" and launch the urdf file using the same, it doesn't give me any error. Do you know why?
+Comment by dwd394 on 2022-07-26:
+i can't give any advice without knowing the error, but here is my launch file to display the urdf above.
+<?xml version="1.0" ?>
+<launch>
+  <param name="robot_description" command="$(find xacro)/xacro $(find arlo-description)/urdf/test_arlo.urdf.xacro"/>
+
+  <arg name="rviz_fixed_frame" default="base_link"/>
+  
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" required="true" args="-d $(find arlo-utilities)/config/rviz/arlo.rviz -f $(arg rviz_fixed_frame)"/>
+
+</launch>
+
+Comment by Saurabh Rahatekar on 2022-07-29:
+here is my launch file
+<launch>
+<arg name="model" default="$(find xacro)/xacro --inorder'$(find robot_bringup)/urdf/model.urdf'"/>
+<arg name="gui" default="true" />
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+<param name="robot_description" textfile="$(find robot_bringup)/urdf/model.urdf" />
+<node name="spawn_robot" pkg="gazebo_ros" type="spawn_model" respawn="false" args="-param robot_description -urdf -model fielderbot"/>
+<node name="rviz" pkg="rviz" type="rviz" args="-d $(find robot_bringup)/rviz/outdoor_ros.rviz" required="true" />
+

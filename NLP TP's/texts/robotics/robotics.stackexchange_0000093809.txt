@@ -1,0 +1,75 @@
+Q:
+
+Compute joint angles of movement without execution
+
+I am planning, executing and recording linear robot movement with computeCartesianPath().
+I would like to "simulate" this program. Essentially just computing the previously recorded movement (format: joint angles with fixed sampling frequency).
+I am not sure how to go about this without actually executing the movement on the real or simulated robot.
+
+Originally posted by cpetersmeier on ROS Answers with karma: 35 on 2019-11-13
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-11-13:
+This confuses me:
+
+I would like to "simulate" this program.
+
+but:
+
+I am not sure how to go about this without actually executing the movement on the real or simulated robot.
+
+What does "simulate" mean in the first sentence?
+Are you asking how to concatenate two trajectories?
+Comment by cpetersmeier on 2019-11-13:
+Essentially, I have a bunch of linear movements, say 400, that I want to evaluate, i.e. what joint angles would be commanded. If I compute, execute, record and log the joint angles of every single linear movement, then my program takes very long. Since I am only using IK here, I was wondering if it is possible to just compute the joint angles that would be commanded if I would execute the very same linear movement. That way, I want to save time.
+Comment by gvdhoorn on 2019-11-13:
+So you want to computeCartesianPath(..) and then process the output without sending it off for execution?
+Comment by cpetersmeier on 2019-11-13:
+Yes, exactly.
+Comment by gvdhoorn on 2019-11-13:\
+
+I would like to "simulate" this program.
+
+This will be pedantic, but: the output of computeCartesianPath(..) is not what I would call a "program". It's a series of joint angles with associated timing information. With a stretch, that could be considered similar to a (traditional) robot program containing only joint motions, but even then it would be far from an actual program.
+
+A:
+
+One of the arguments to computeCartesianPath(..) is a reference to a moveit_msgs::RobotTrajectory instance (the trajectory argument).
+That reference is used to store the result of the interpolation. For typical robots (ie: serial manipulators), the joint_trajectory field of the moveit_msgs::RobotTrajectory would be the one you'd be interested in.
+As this is just a regular trajectory_msgs/JointTrajectory you could do whatever you want with it, including iterating over all the points and inspecting the joint angles.
+
+Since I am only using IK here, I was wondering if it is possible to just compute the joint angles that would be commanded if I would execute a linear movement.
+
+It's already a trajectory in joint space, so unless I'm misunderstanding you, I don't believe you'd need to use IK here at all.
+
+Edit:
+
+It's already a trajectory in joint space, unless I'm misunderstanding you, I don't believe you'd need to use IK here at all.
+
+I thought computeCartesianPath() generates a straight line in the cartesian space and then translates that to joint angles using IK.
+
+Yes, that is what it does, more or less.
+But that is what computeCartesianPath(..) does. I still don't understand how IK is involved in your side.
+
+I figured computeCartesianPath() may look "in the past" to not command instant configuration changes.
+
+It doesn't really 'command' anything (it just interpolates), but while the function does try to minimise joint space distance between consecutive points, it is dependent on the configured IK solver to provide it with solutions. If those solutions lie very far from each other, computeCartesianPath(..) cannot avoid sometimes using a solution that would result in a configuration change.
+The jump_threshold argument can be used to configure the threshold, but again, if your IK solver returns "bad" solutions, there's only so much computeCartesianPath(..) can do.
+If you don't need microsecond-range solve times, I'd recommend using trac_ik with solve_type set to Distance.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-11-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-11-13:
+It would be good to tell us why you want to look at the trajectories. Do you want to check for configuration changes?
+Comment by cpetersmeier on 2019-11-13:
+Thanks for the answer, Ill try it that way and then report back!
+I want to check for paths that command configurations in close proximity to singularities via evaluating joint velocities.
+
+It's already a trajectory in joint space, unless I'm misunderstanding you, I don't believe you'd need to use IK here at all.
+
+I thought computeCartesianPath() generates a straight line in the cartesian space and then translates that to joint angles using IK. I figured computeCartesianPath() may look "in the past" to not command instant configuration changes.
+

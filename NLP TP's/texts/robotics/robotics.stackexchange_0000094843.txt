@@ -1,0 +1,58 @@
+Q:
+
+ROS2 Subscription Callback not called with GAZEBO
+
+Hello,
+I am having a problem on my first ROS2 node.
+I setup the turtlebot3 packages using this link (only Remote PC since I don't have a robot). Started the GAZEBO simulation using these instructions. After I run ros2 launch turtlebot3_gazebo empty_world.launch.py I can do ros2 topic echo /scan and receive data.
+After this I created a colcon pkg using this tutorial and wrote following code:
+import rclpy   
+from rclpy.node import Node   
+from sensor_msgs.msg import LaserScan   
+
+class Platooning(Node):
+    def __init__(self):
+        # ROS Stuff #
+        super().__init__("platooning")
+        self.get_logger().info("Started init Node")
+        self.sub_lidar = self.create_subscription(LaserScan, "/scan", self.lidar_callback, 10)
+        self.get_logger().info("Finished init node {}".format(self.get_name()))
+    def lidar_callback(self, msg):
+        print("Callback")
+        self.get_logger().info("I heard: {}".format(msg))
+
+def main(args=None):
+    rclpy.init(args=args)
+    control = Platooning()
+    try:
+        while(1):
+            rclpy.spin(control)
+    except Exception as e:
+        print("Exception: {}".format(e))
+    control.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+I build the package using colcon build --symlink-install --packages-select platooning and start it using ros2 run platooning main.
+The lidar_callback functions does not print anything using just gazebo, but as soon as I do ros2 topic pub /scan sensor_msgs/msg/LaserScan  -1 the lidar_callback is executed.
+Can somebody please help me?
+
+Originally posted by GeorgNo on ROS Answers with karma: 183 on 2020-02-24
+Post score: 1
+
+A:
+
+The problem was that the subscriber had a wrong quality of service profile.
+Here the fix:
+from rclpy.qos import qos_profile_sensor_data
+.
+.
+.
+self.sub_lidar = self.create_subscription(LaserScan, "/scan", self.lidar_callback, qos_profile=qos_profile_sensor_data)
+
+Originally posted by GeorgNo with karma: 183 on 2020-06-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,114 @@
+Q:
+
+libPocoFoundation.so present but can't be found on Linux arm
+
+Target OS:
+
+Ubuntu 18.04.2 LTS
+
+Target System:
+
+Linux arm 4.14.79-ti-r84 #1 SMP PREEMPT  armv7l armv7l armv7l GNU/Linux
+
+I cross-compiled the source for ROS 2 using the following tutorial (on a Ubuntu 16.04 x86_64)
+As I am building for a beagle-board (bbb), the examples are only for arm64 so i made these following changes in the cross_compile repository:
+in Dockerfile_ubuntu_arm:
+4 ARG ARM_ARCH=arm32v7
+...
+37 RUN sh -c 'echo "deb [arch=amd64,armhf] http://repo.ros2.org/ubuntu/main \
+`lsb_release -cs` main" > /etc/apt/sources.list.d/ros2-latest.list'
+
+and in entry_point.sh:
+$ export TARGET_ARCH=arm
+$ export TARGET_TRIPLE=arm-linux-gnueabihf
+
+But after the built, I exported the ros build with:
+docker cp ros2_cc:/root/cc_ws/ros2_ws .
+
+and send it in the home directory of my board.
+Then I tried to test the talker/listener examples:
+$ ros2 run demo_nodes_cpp talker
+
+and I received this error:
+Failed to load entry point 'launch': libPocoFoundation.so.50: cannot open shared object file: No such file or directory The C extension '/home/ubuntu/ros2_ws/install/lib/python3.6/site-packages/rclpy/_rclpy.cpython-36m-arm-linux-gnueabihf.so' failed to be imported while being present on the system. Please refer to 'https://githu b.com/ros2/ros2/wiki/Rclpy-Import-error-hint' for possible solutions 
+[...] 
+/home/ubuntu/ros2_ws/install/lib/demo_nodes_cpp/talker: error while loading shared libraries: libPocoFoundation.so.50: cannot open shared object file: No such file or directory
+
+same for the others entry points (start,status,list,get...).
+From the tutorial, there is a known issue with the the Poco pre-built. But these steps are included in the entry_point. Also the provided link didn't help much.
+Thank for your help.
+[EDIT]
+Downloading the missing libraries seems to fix the issue as suggested in the comments.
+For a long term-fix: Trying to get the fix submitted by alsora:
+It returns me:
+CMake Error: The source directory "/root/cc_ws/ros2_ws/build/fastcdr/-FORCE_BUILD_VENDOR_PKG=ON" does not exist.
+Specify --help for usage, or press the help button on the CMake GUI.
+---
+Failed   <<< fastcdr    [ Exited with code 1 ]
+--- stderr: poco_vendor
+CMake Error: The source directory "/root/cc_ws/ros2_ws/build/poco_vendor/-FORCE_BUILD_VENDOR_PKG=ON" does not exist.
+Specify --help for usage, or press the help button on the CMake GUI.
+---
+Failed   <<< poco_vendor        [ Exited with code 1 ]
+Aborted  <<< ament_cmake_core
+Aborted  <<< ament_flake8                               
+
+Summary: 1 package finished [4.06s]
+  2 packages failed: fastcdr poco_vendor
+  2 packages aborted: ament_cmake_core ament_flake8
+  2 packages had stderr output: fastcdr poco_vendor
+  188 packages not processed
+
+Originally posted by William Bulle on ROS Answers with karma: 40 on 2019-03-25
+Post score: 0
+
+Original comments
+Comment by alsora on 2019-03-25:
+Have you checked that libPocoFoundation.so.50 exists in your target system?
+It should be under /home/ubuntu/ros2_ws/install/lib
+That library will be compiled only if it is not already found in the system and this could create problems when cross-compiling, since it may be that your sysroot or host system includes it, but the target system does not.
+Comment by William Bulle on 2019-03-25:
+@alsora:
+you are right, the libPocoFoundation.so.50 didn't exist in /home/ubuntu/ros2_ws/install/lib. I installed on the target board and I encountered a new missing library 'libtinyxml2.so.6' which I installed also separately. Now the example works but I still receive the message Failed to load entry point 'create': No module named 'catkin_pkg' It raises the following question: why the some libraries are missing from the build I got from the cross compilation ? Is it a question of missing link while building ? Anyway, Thank you, it fixed my current problem.
+
+A:
+
+Both libPocoFoundation.so.50 and libtinyxml2.so.6 come from vendor packages, as this one https://github.com/ros2/poco_vendor
+They consist of a CMakeLists.txt file which install the specific third party library.
+In particular at build time CMake will check whether the library is already installed on the system/sysroot.
+The package will be built only if the library is not found.
+This could create problems when cross-compiling, since it may be that your sysroot or host system includes it, but the target system does not.
+As a solution, you have either to install them in the target system or make sure that they are not found while cross-compiling.
+Few days ago there have been some commits to all these vendor packages to allow their cross-compilation (before they were not reading the CMake Flags, thus the cross-compiled binaries were still x86_64).
+Moreover they added a flag FORCE_BUILD_VENDOR_PKG which should solve the problem:
+with this flag enabled, the package will always be built in the workspace, regardless of the fact if it was present in the systm or not.
+
+Originally posted by alsora with karma: 1322 on 2019-03-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by William Bulle on 2019-03-26:
+Where should I add this flag ? I tried to add it to generic_linux.cmake with set(FORCE_BUILD_VENDOR_PKG ON) but the libraries are still missing. I added it to the colcon command with the cmake-args  -FORCE_BUILD_VENDOR_PKG=ON but it returned me the error I edited in my original post.
+Subsidiary question:
+in the Dockerfile_ubuntu_arm:
+WORKDIR /ros2_ws
+RUN rosdep init
+RUN rosdep update
+RUN rosdep install --from-paths src \
+    --ignore-src \
+    --rosdistro bouncy -y \
+    --skip-keys "console_bridge \
+        fastcdr \
+        fastrtps \
+        libopensplice67 \
+        libopensplice69 \
+        rti-connext-dds-5.3.1 \
+        urdfdom_headers
+
+Is it up to date ? shouldn't be crystal instead of bouncy ?
+Comment by alsora on 2019-03-26:
+You can run colcon build --cmake-args -DFORCE_BUILD_VENDOR_PKG=ON... You need -D in front of CMake arguments.
+Note that the argument has been added few days ago, so it's available only if you are building the master branches of the vendor packages (and not the ones tagged for crystal)
+For the Dockerfile that bouncy tag should not be a problem, you could also remove it.
+

@@ -1,0 +1,69 @@
+Q:
+
+Creating custom Gazebo world files from sdf's/dae's for use with roslaunch
+
+Hi,
+I have been trying to figure this out for a couple of days now and am having trouble.  Basically I want to create a world file to be launched via roslaunch that is composed of number of model sdf's that reference local meshes from within my package (e.g., file://mesh_name.dae).  I then want to spawn one or more robots into said world using 'gazebo_ros spawn_model'.
+When using roslaunch Gazebo can't seem to find any files outside of the .gazebo folder and I get the following errors:
+Error [SystemPaths.cc:371] File or path does not exist[""]
+Error [Visual.cc:2072] No mesh specified
+I have read over the tutorials about making custom worlds at gazebosim.org but all of the tutorials use models from the Gazebo model data base (i.e., < uri>model://pioneer2dx/meshes/chassis.dae< /uri>).  There is also text on how to use spawn_model with urdf's but not collada's?
+What is the best way to do this while keeping the models local to a package?  I seem to remember seeing someone mention using Gazebo's environment variables but this seems like an awkward solution.
+Thanks,
+Brett
+
+Originally posted by BrettHemes on ROS Answers with karma: 525 on 2014-10-20
+Post score: 0
+
+A:
+
+I use a combination of converting .urdf to .sdf and custom cmake targets.
+From the CMakeLists.txt
+install(DIRECTORY meshes/
+    DESTINATION $ENV{HOME}/.gazebo/models/lwr_description/meshes
+)
+set(lwrs
+  lwr1
+  lwr2
+)
+
+foreach(lwr ${lwrs})
+  set(dir ${CMAKE_CURRENT_SOURCE_DIR}/models/${lwr})
+  install(DIRECTORY ${dir} DESTINATION $ENV{HOME}/.gazebo/models)
+
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf
+    COMMAND rosrun
+    ARGS xacro xacro ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.xacro > ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/lwr_macro.xacro ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.xacro ${CMAKE_CURRENT_SOURCE_DIR}/urdf/lwrFRI1.gazebo
+  )
+
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/models/${lwr}/model.sdf
+    COMMAND gz
+    ARGS sdf --print ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf > ${CMAKE_CURRENT_SOURCE_DIR}/models/${lwr}/model.sdf
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf ${CMAKE_CURRENT_BINARY_DIR}/${lwr}.urdf.checked
+  )
+
+  add_custom_command(
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${lwr}.urdf.checked
+    COMMAND check_urdf
+      ARGS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf > ${CMAKE_CURRENT_BINARY_DIR}/${lwr}.urdf.checked
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/${lwr}.urdf
+  )
+
+  add_custom_target("${lwr}sdf" ALL DEPENDS urdf/${lwr}.urdf models/${lwr}/model.sdf)
+endforeach()
+
+Inside the .urdf (or .xacro) the meshes are referenced as
+<mesh filename="package://lwr_description/meshes/link0_mq_dh.dae"/>
+
+which results in the following inside the .sdf (as converted by gz sdf --print):
+<uri>model://lwr_description/meshes/convex/link0_lq_dh.dae</uri>
+
+This way you do not have to model anything twice and can add everything through the usual gazebo mechanisms (i.e.  in a .world file) or add it through GUI or ROS topics ...
+
+Originally posted by andreasBihlmaier with karma: 56 on 2014-10-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

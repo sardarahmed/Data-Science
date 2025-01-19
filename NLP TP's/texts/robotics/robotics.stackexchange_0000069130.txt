@@ -1,0 +1,558 @@
+Q:
+
+Could not load panel in rviz -- PluginlibFactory: The plugin for class
+
+Hello,
+I have heavy problems with developing own panel i rviz. I have prepared everything, it compiles without warning but while loading, the rviz writes
+
+PluginlibFactory: The plugin for class
+'assistant_panel/Widget_interface'
+failed to load.  Error: Failed to load
+library
+/home/xxx/ws/ws_linux/devel/lib/libassistant_panel.so.
+Make sure that you are calling the
+PLUGINLIB_EXPORT_CLASS macro in the
+library code, and that names are
+consistent between this macro and your
+XML. Error string: Could not load
+library (Poco exception =
+/home/xxx/ws/ws_linux/devel/lib/libassistant_panel.so:
+undefined symbol:
+_ZTVN15assistant_panel16Widget_interfaceE)
+
+Eveyrthing looks ok, but I am trying to solve it for last two days but I am failing.
+link for the soft: https://drive.google.com/file/d/0B5_3aKfZ-sqNVHpQQ3o3YkV0S0k/view?usp=sharing
+Files:
+CMakeLists.txt
+##############################################################################
+# CMake
+##############################################################################
+
+cmake_minimum_required(VERSION 2.8.0)
+project(assistant_panel)
+
+##############################################################################
+# Catkin
+##############################################################################
+
+# qt_build provides the qt cmake glue, roscpp the comms for a default talker
+find_package(catkin REQUIRED COMPONENTS qt_build roscpp rviz)
+include_directories(${catkin_INCLUDE_DIRS})
+# Use this to define what the package will export (e.g. libs, headers).
+# Since the default here is to produce only a binary, we don't worry about
+# exporting anything. 
+catkin_package()
+
+##############################################################################
+# Qt Environment
+##############################################################################
+
+# this comes from qt_build's qt-ros.cmake which is automatically 
+# included via the dependency call in package.xml
+rosbuild_prepare_qt4(QtCore QtGui) # Add the appropriate components to the component list here
+
+##############################################################################
+# Sections
+##############################################################################
+
+file(GLOB QT_FORMS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ui/*.ui)
+file(GLOB QT_RESOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} resources/*.qrc)
+file(GLOB_RECURSE QT_MOC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS include/assistant_panel/*.hpp)
+
+QT4_ADD_RESOURCES(QT_RESOURCES_CPP ${QT_RESOURCES})
+QT4_WRAP_UI(QT_FORMS_HPP ${QT_FORMS})
+QT4_WRAP_CPP(QT_MOC_HPP ${QT_MOC})
+
+##############################################################################
+# Sources
+##############################################################################
+
+file(GLOB_RECURSE QT_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS src/*.cpp)
+
+##############################################################################
+# Binaries
+##############################################################################
+
+#add_executable(assistant_panel ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_FORMS_HPP} ${QT_MOC_HPP}  ${QT_MOC})
+
+add_library(${PROJECT_NAME} ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_MOC})
+
+target_link_libraries(assistant_panel ${QT_LIBRARIES} ${catkin_LIBRARIES})
+#install(TARGETS assistant_panel RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+install(TARGETS
+  ${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(FILES 
+  plugin_description.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+install(DIRECTORY media/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/media)
+
+install(DIRECTORY icons/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/icons)
+
+install(PROGRAMS scripts/send_test_msgs.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+Package.xml
+<package>
+  <name>assistant_panel</name>
+  <version>0.1.0</version>
+  <description>
+
+     assistant_panel
+
+  </description>
+  <maintainer email="ReMeDi@gmail.com">ReMeDi</maintainer>
+  <author>ReMeDi</author>
+  <license>BSD</license>
+  <!-- <url type="bugtracker">https://github.com/stonier/qt_ros/issues</url> -->
+  <!-- <url type="repository">https://github.com/stonier/qt_ros</url> -->
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>qt_build</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>libqt4-dev</build_depend>
+  <build_depend>rviz</build_depend>
+
+  <run_depend>rviz</run_depend>
+  <run_depend>qt_build</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>libqt4-dev</run_depend>
+  
+  
+  <export>
+      <rosdoc config="${prefix}/rosdoc.yaml"/>
+      <rviz plugin="${prefix}/plugin_description.xml"/>
+  </export>
+ 
+</package>
+
+plugin_description.xml
+<library path="libassistant_panel">
+  <class name="assistant_panel/Widget_interface"
+         type="assistant_panel::Widget_interface"
+         base_class_type="rviz::Panel">
+    <description>
+      sddfsrfrfvg.
+    </description>
+  </class>
+</library>
+
+main_window.hpp
+   /**
+ * @file /include/assistant_panel/main_window.hpp
+ *
+ * @brief Qt based gui for assistant_panel.
+ *
+ * @date November 2010
+ **/
+#ifndef assistant_panel_MAIN_WINDOW_H
+#define assistant_panel_MAIN_WINDOW_H
+
+/*****************************************************************************
+** Includes
+*****************************************************************************/
+
+//#include <QtGui/QWidget_interface>
+#include "ui_main_window.h"
+#include "qnode.hpp"
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <rviz/panel.h>
+
+/*****************************************************************************
+** Namespace
+*****************************************************************************/
+
+namespace assistant_panel {
+
+/*****************************************************************************
+** Interface [Widget_interface]
+*****************************************************************************/
+/**
+ * @brief Qt central, all operations relating to the view part here.
+ */
+class Widget_interface : public rviz::Panel {
+Q_OBJECT
+
+public:
+   // Widget_interface();
+    Widget_interface(QWidget *parent = 0);
+    ~Widget_interface();
+
+public Q_SLOTS:
+    /******************************************
+    ** Auto-connections (connectSlotsByName())
+    *******************************************/
+
+    /******************************************
+    ** Manual connections
+    *******************************************/
+
+private:
+    Ui::Widget_interface ui;
+    //QNode qnode;
+};
+
+}  // namespace assistant_panel
+
+#endif // assistant_panel_MAIN_WINDOW_H
+
+main_window.cpp
+/**
+ * @file /src/main_window.cpp
+ *
+ * @brief Implementation for the qt gui.
+ *
+ * @date February 2011
+ **/
+/*****************************************************************************
+** Includes
+*****************************************************************************/
+
+#include <QtGui>
+#include <QMessageBox>
+#include <iostream>
+#include "../include/assistant_panel/main_window.hpp"
+
+/*****************************************************************************
+** Namespaces
+*****************************************************************************/
+
+namespace assistant_panel {
+
+//using namespace Qt;
+
+/*****************************************************************************
+** Implementation [Widget_interface]
+*****************************************************************************/
+
+Widget_interface::Widget_interface(QWidget *parent)
+    : rviz::Panel(parent)
+
+{
+    ui.setupUi(this); // Calling this incidentally connects all ui's triggers to on_...() callbacks in this class.
+
+    setWindowIcon(QIcon(":/images/icon.png"));
+
+}
+}  // namespace assistant_panel
+
+#include <pluginlib/class_list_macros.h>
+
+PLUGINLIB_EXPORT_CLASS(assistant_panel::Widget_interface, rviz::Panel)
+
+CMakeLists.txt
+##############################################################################
+# CMake
+###################################################################
+
+cmake_minimum_required(VERSION 2.8.0)
+project(assistant_panel)
+
+##############################################################################
+# Catkin
+##############################################################################
+
+# qt_build provides the qt cmake glue, roscpp the comms for a default talker
+find_package(catkin REQUIRED COMPONENTS qt_build roscpp rviz)
+include_directories(${catkin_INCLUDE_DIRS})
+# Use this to define what the package will export (e.g. libs, headers).
+# Since the default here is to produce only a binary, we don't worry about
+# exporting anything. 
+catkin_package()
+
+##############################################################################
+# Qt Environment
+##############################################################################
+
+# this comes from qt_build's qt-ros.cmake which is automatically 
+# included via the dependency call in package.xml
+rosbuild_prepare_qt4(QtCore QtGui) # Add the appropriate components to the component list here
+
+##############################################################################
+# Sections
+##############################################################################
+
+file(GLOB QT_FORMS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ui/*.ui)
+file(GLOB QT_RESOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} resources/*.qrc)
+file(GLOB_RECURSE QT_MOC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS include/assistant_panel/*.hpp)
+
+QT4_ADD_RESOURCES(QT_RESOURCES_CPP ${QT_RESOURCES})
+QT4_WRAP_UI(QT_FORMS_HPP ${QT_FORMS})
+QT4_WRAP_CPP(QT_MOC_HPP ${QT_MOC})
+
+##############################################################################
+# Sources
+##############################################################################
+
+file(GLOB_RECURSE QT_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} FOLLOW_SYMLINKS src/*.cpp)
+
+##############################################################################
+# Binaries
+##############################################################################
+
+#add_executable(assistant_panel ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_FORMS_HPP} ${QT_MOC_HPP}  ${QT_MOC})
+
+add_library(${PROJECT_NAME} ${QT_SOURCES} ${QT_RESOURCES_CPP} ${QT_MOC})
+
+target_link_libraries(assistant_panel ${QT_LIBRARIES} ${catkin_LIBRARIES})
+#install(TARGETS assistant_panel RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+install(TARGETS
+  ${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(FILES 
+  plugin_description.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+install(DIRECTORY media/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/media)
+
+install(DIRECTORY icons/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/icons)
+
+install(PROGRAMS scripts/send_test_msgs.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+Package.xml
+<package>
+  <name>assistant_panel</name>
+  <version>0.1.0</version>
+  <description>
+
+     assistant_panel
+
+  </description>
+  <maintainer email="ReMeDi@gmail.com">ReMeDi</maintainer>
+  <author>ReMeDi</author>
+  <license>BSD</license>
+  <!-- <url type="bugtracker">https://github.com/stonier/qt_ros/issues</url> -->
+  <!-- <url type="repository">https://github.com/stonier/qt_ros</url> -->
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>qt_build</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>libqt4-dev</build_depend>
+  <build_depend>rviz</build_depend>
+
+  <run_depend>rviz</run_depend>
+  <run_depend>qt_build</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>libqt4-dev</run_depend>
+  
+  
+  <export>
+      <rosdoc config="${prefix}/rosdoc.yaml"/>
+      <rviz plugin="${prefix}/plugin_description.xml"/>
+  </export>
+ 
+</package>
+
+plugin_description.xml
+<library path="libassistant_panel">
+  <class name="assistant_panel/Widget_interface"
+         type="assistant_panel::Widget_interface"
+         base_class_type="rviz::Panel">
+    <description>
+      sddfsrfrfvg.
+    </description>
+  </class>
+</library>
+
+main_window.hpp
+   /**
+ * @file /include/assistant_panel/main_window.hpp
+ *
+ * @brief Qt based gui for assistant_panel.
+ *
+ * @date November 2010
+ **/
+#ifndef assistant_panel_MAIN_WINDOW_H
+#define assistant_panel_MAIN_WINDOW_H
+
+/*****************************************************************************
+** Includes
+*****************************************************************************/
+
+//#include <QtGui/QWidget_interface>
+#include "ui_main_window.h"
+#include "qnode.hpp"
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <rviz/panel.h>
+
+/*****************************************************************************
+** Namespace
+*****************************************************************************/
+
+namespace assistant_panel {
+
+/*****************************************************************************
+** Interface [Widget_interface]
+*****************************************************************************/
+/**
+ * @brief Qt central, all operations relating to the view part here.
+ */
+class Widget_interface : public rviz::Panel {
+Q_OBJECT
+
+public:
+   // Widget_interface();
+    Widget_interface(QWidget *parent = 0);
+    ~Widget_interface();
+
+public Q_SLOTS:
+    /******************************************
+    ** Auto-connections (connectSlotsByName())
+    *******************************************/
+
+    /******************************************
+    ** Manual connections
+    *******************************************/
+
+private:
+    Ui::Widget_interface ui;
+    //QNode qnode;
+};
+
+}  // namespace assistant_panel
+
+#endif // assistant_panel_MAIN_WINDOW_H
+
+main_window.cpp
+/**
+ * @file /src/main_window.cpp
+ *
+ * @brief Implementation for the qt gui.
+ *
+ * @date February 2011
+ **/
+/*****************************************************************************
+** Includes
+*****************************************************************************/
+
+#include <QtGui>
+#include <QMessageBox>
+#include <iostream>
+#include "../include/assistant_panel/main_window.hpp"
+
+/*****************************************************************************
+** Namespaces
+*****************************************************************************/
+
+namespace assistant_panel {
+
+//using namespace Qt;
+
+/*****************************************************************************
+** Implementation [Widget_interface]
+*****************************************************************************/
+
+Widget_interface::Widget_interface(QWidget *parent)
+    : rviz::Panel(parent)
+
+{
+    ui.setupUi(this); // Calling this incidentally connects all ui's triggers to on_...() callbacks in this class.
+
+    setWindowIcon(QIcon(":/images/icon.png"));
+
+}
+}  // namespace assistant_panel
+
+#include <pluginlib/class_list_macros.h>
+
+PLUGINLIB_EXPORT_CLASS(assistant_panel::Widget_interface, rviz::Panel)
+
+Originally posted by mcholewi on ROS Answers with karma: 41 on 2015-08-09
+Post score: 4
+
+Original comments
+Comment by William on 2015-08-10:
+This usually happens when you're loading a version of the plugin from a different, overlayed workspace. Make sure you've source'd any setup.bash from your latest workspace before running rviz.
+Comment by mcholewi on 2015-08-12:
+Yes, I am loading. As I have written below the rviz want the symbol, which is actually Undefined. Well, it is very strange, because I have panel which works perfectly. The only difference is not using the ui_ generated header and slightly different CMakeLists. I`ve checked that it is no CMakLists
+
+A:
+
+I encountered similar question when using pluginlib for loading my customized rviz panel, but I was using CMAKE_AUTOMOC for my qt objects. (Working on Ubuntu 14.04, ROS indigo)
+My file system structure is like this:
+pkg_folder
+\-  config
+\-  include/rviz_panel.h
+\-  src/rviz_panel.cpp
+\-  CMakeLists.txt
+\-  package.xml
+\-  package_description.xml
+
+The core parts for add_library is:
+catkin_package()
+include_directories(include)
+set(CMAKE_AUTOMOC ON)
+set(HEADER_FILES
+   include/FrameFabRvizPanel.h
+)
+set(SRC_FILES
+    src/FrameFabRvizPanel.cpp
+    #src/FrameFab.cpp
+    #src/FrameFabRenderWidget.cpp
+    #src/WireFrame.cpp
+    )
+**add_library(${PROJECT_NAME} ${SRC_FILES})**
+target_link_libraries(
+    ${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES}
+)
+
+Using this cmake file and package xml and description xml following official rviz plugin tutorial, I went through catkin_make process smoothly and harvest my lib_pkg.so successfully.
+Then launching process for Rviz went on smoothly, and I can even see my panel in the add_new_panel list.
+But when I click on it to open it, ROS pumped out an ERROR:
+PluginlibFactory: The plugin for class 'framefab_mpp/FrameFabRvizPanel' failed to load.  Error: Failed to load library /home/yijiangh/catkin_ws/devel/lib//libframefab_mpp.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = /home/yijiangh/catkin_ws/devel/lib//libframefab_mpp.so: undefined symbol: _ZTVN8framefab17FrameFabRvizPanelE)
+
+(Exactly the same symptom @mcholewi has encountered in his thread)
+When using rospack plugins --attrib=plugin rviz, I can successfully see the plugin_description.xml address for my pkg.
+After getting stuck for 3 days, I happened to see this thread in stackoverflow. And it just saved huge amount of my time!
+So change my CMakeLists.txt file like this:
+change this line:
+**add_library(${PROJECT_NAME} ${SRC_FILES})**
+
+into
+**add_library(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})**
+
+And everything just works like a charm.
+I think the reason can be found at CMake AUTOMOC official doc:
+
+If an #include statement like #include "moc_foo.cpp" is found, the Q_OBJECT class declaration is expected in the header, and moc is run on the header file. A moc_foo.cpp file will be generated from the source’s header into the CMAKE_CURRENT_BINARY_DIR directory. This allows the compiler to find the included moc_foo.cpp file regardless of the location the original source. However, if multiple source files in different directories do this then their generated moc files would collide. In this case a diagnostic will be issued.
+
+So in my previous mistake, the QObject declaration cannot be found thus pluginlib found my customized panel (FrameFabRvizPanel in my case) is undefined.
+Thus the solution would be:
+
+You can put cpp and header files for your rviz related plugin together in one folder
+or use the technique stated above (link both source and header to your created library)
+
+Originally posted by yijiangh with karma: 131 on 2017-04-17
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by clyde on 2017-11-19:
+This solved my problem as well! My directory structure is slightly different. I replaced this line:
+add_library(orca_topside src/orca_panel.cpp)
+
+with this line:
+add_library(orca_topside src/orca_panel.cpp include/orca_topside/orca_panel.h)
+
+And it worked!
+Comment by martin1412 on 2018-05-11:
+Thank you, solved it for me as well
+

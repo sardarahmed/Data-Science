@@ -1,0 +1,129 @@
+Q:
+
+move_base navigating robot to close to costmap?
+
+I'm experiencing an issue where anytime move_base sets a trajectory for the robot to follow, it inevitably falls too close to an obstacle and ends up scraping against it, or gets stuck in an escape loop where it keeps backing out in order to avoid the obstacle but repeats the same trajectory instead of re-planning. How can I discourage this behaviour?
+move_base settings:
+    TrajectoryPlannerROS:    
+      acc_lim_x: 2.0
+      acc_lim_theta:  1.0
+    
+      max_vel_x: 0.18
+      min_vel_x: 0.05
+    
+      max_vel_theta: 1.57
+      min_vel_theta: -1.57
+      min_in_place_vel_theta: 0.314
+    
+      holonomic_robot: false
+      escape_vel: -0.20
+
+      yaw_goal_tolerance: 0.3
+      xy_goal_tolerance: 0.35
+      latch_xy_goal_tolerance: false
+
+      sim_time: 4.0
+      sim_granularity: 0.02
+      angular_sim_granularity: 0.03
+      vx_samples: 30
+      vtheta_samples: 30
+      controller_frequency: 20.0
+    
+      meter_scoring: true
+      occdist_scale:  0.1
+      pdist_scale: 0.4
+      gdist_scale: 0.6    
+      heading_lookahead: 1.0
+      heading_scoring: false
+      heading_scoring_timestep: 1.8
+      dwa: true
+      simple_attractor: false
+      publish_cost_grid_pc: true
+    
+      oscillation_reset_dist: 0.4
+      escape_reset_dist: 0.0
+      escape_reset_theta: 0.4
+
+    map_type: costmap
+    origin_z: 0.0
+    z_resolution: 1
+    z_voxels: 2
+    
+    obstacle_range: 5.5 #2.5
+    raytrace_range: 3.0
+    
+    publish_voxel_map: false
+    transform_tolerance: 0.5
+    meter_scoring: false
+    
+    footprint: [[-0.21, -0.165], [-0.21, 0.165], [0.21, 0.165], [0.21, -0.165]]
+    footprint_padding: 0.045
+    
+    plugins:
+    - {name: obstacles_layer, type: "costmap_2d::ObstacleLayer"}
+    - {name: inflater_layer, type: "costmap_2d::InflationLayer"}
+    
+    obstacles_layer:
+      observation_sources: scan
+      scan: {sensor_frame: front_laser, data_type: LaserScan, topic: /scan, marking: true, clearing: true, min_obstacle_height: -2.0, max_obstacle_height: 2.0, obstacle_range: 2.5, raytrace_range: 3.0}
+    
+    inflater_layer:
+     inflation_radius: 0.06
+    shutdown_costmaps: false
+    
+    controller_frequency: 10.0
+    controller_patience: 5.0
+    
+    planner_frequency: 20.0
+    planner_patience: 5.0
+    
+    oscillation_timeout: 0.0
+    oscillation_distance: 0.5
+    
+    recovery_behavior_enabled: true
+    clearing_rotation_allowed: true
+    global_costmap:
+       global_frame: map
+       robot_base_frame: base_link
+       update_frequency: 10.0
+       publish_frequency: 5.0
+       width: 40.0
+       height: 40.0
+       resolution: 0.02
+       origin_x:  0.0
+       origin_y:  0.0
+       static_map: true
+       rolling_window: false
+    
+       plugins:
+       - {name: static_layer, type: "costmap_2d::StaticLayer"}
+       - {name: obstacles_layer, type: "costmap_2d::ObstacleLayer"}
+       - {name: inflater_layer, type: "costmap_2d::InflationLayer"}
+    local_costmap:
+       global_frame: map
+       robot_base_frame: base_link
+       update_frequency: 10.0
+       publish_frequency: 5.0
+       width: 10.0
+       height: 10.0
+       resolution: 0.02
+       static_map: false
+       rolling_window: true
+
+Originally posted by asabet on ROS Answers with karma: 45 on 2018-08-17
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-08-18:
+I'm by no means a navigation expert, but you have made sure your footprint setting is correct? footprint_padding is set to 4.5cm, that is not very much either.
+
+A:
+
+Your inflation_radius under the inflater_layer is too low. Ideally you should set this parameter to half the size of your robot (0.21 in your case). This is the radius in meters to which the map inflates obstacle cost values.  This should make the global planner plan the path further away from the obstacles. 
+In addition, if you want to disable the recovery behavior, you should set the clearing_rotation_allowed parameter in move_base to false.
+<param name="/clearing_rotation_allowed" value="false" />
+
+Originally posted by pavel92 with karma: 1655 on 2018-08-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

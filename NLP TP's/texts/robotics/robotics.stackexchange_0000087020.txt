@@ -1,0 +1,91 @@
+Q:
+
+Costmap shows free space as obstacles
+
+Hi everyone!
+I am trying to use navigation stack on quadcopter equipped with kinect sensor at Gazebo simulation. I am using grid_map topic of rtabmap_ros package as map for navigation of UAV which hovers at 1.5 m over ground. But global_costmap and local_costmap both show free space on proj_map as obstacles (proj_map, global_costmap). How can I fix it?
+Costmap common params:
+footprint: [[-0.2,-0.2],[-0.2,0.2], [0.2, 0.2], [0.2,-0.2]]
+inflation_radius: 0.65
+cost_scaling_factor: 10.0
+
+obstacle_layer:
+  obstacle_range: 5.5
+  raytrace_range: 6.0
+  max_obstacle_height: 0.7
+  track_unknown_space: true
+    
+  observation_sources: point_cloud_sensor
+  point_cloud_sensor: {
+    sensor_frame: quad/camera__link,
+    data_type: PointCloud2,
+    topic: /quad/camera_/depth/points,
+    marking: true,
+    clearing: true
+  }
+
+Global costmap params:
+global_costmap:
+  global_frame: /map
+  robot_base_frame: /base_link
+  update_frequency: 1.0
+  publish_frequency: 1.0
+  static_map: false
+  plugins:
+     - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+
+Local costmap params:
+local_costmap:
+  global_frame: /map
+  robot_base_frame: /base_link
+  update_frequency: 5.0
+  publish_frequency: 2.0
+  static_map: false
+  rolling_window: true
+  width: 5.0
+  height: 5.0
+  resolution: 0.02
+  tranform_tolerance: 0.5
+  planner_frequency: 1.0
+  planner_patiente: 5.0
+  plugins:
+     - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+
+Originally posted by Fedor on ROS Answers with karma: 3 on 2018-05-18
+Post score: 0
+
+Original comments
+Comment by matlabbe on 2018-05-18:
+Can you show a screenshot of the Gazebo environment? Can you share the rtabmap.db too?
+Comment by Fedor on 2018-05-20:
+Sure. Screenshot of the Gazebo environment, rtabmap.db
+
+A:
+
+From the database you shared, the depth image seems strange because the trees are mostly big polygons with texture. But with this input data, the occupancy grid is generated correctly though.
+Using rtabmap-databaseViewer, raw point cloud with RGB+depth image (on left all local occupancy grids assembled) :
+
+3D Segmentation based on Grid/ parameters (note that as Grid/RangeMax is 4 meters, the cloud is cut up to 4 meters):
+
+Then the projected 2D grid for this image:
+
+EDIT
+In your obstacle_layer, you take the whole point cloud of /quad/camera_/depth/points as obstacle, including the ground. It is why the ground is seen as an obstacle in the costmap. You may use a filtered cloud from  /quad/camera_/depth/points without the ground instead. If the drone is flying always at the same height, it would not be so difficult to filter the ground (like with a pcl_ros passthrough). In contrast to this example with a ground robot, if the drone is moving also in Z and/or the ground is not flat, you may want to keep the ground as obstacle and use the 3D map/OctoMap output of rtabmap for 3D navigation (with moveit?).
+For the Grid/RangeMax parameter, if you have an older rtabmap version, the parameter is called Grid/DepthMax (Grid/DepthMax is automatically converted to Grid/RangeMax if the version supports it). To have more points to project at longer distance, you can also set Grid/DepthDecimation to 1 (default 4) at the cost of more computation time.
+cheers,
+Mathieu
+
+Originally posted by matlabbe with karma: 6409 on 2018-05-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Fedor on 2018-05-21:
+Thank you for answer.
+So, my issue is related to costmaps: global and local costmaps show free space at grid_map as obstacles. Costmaps blink (pic1, pic2, pic3), though grid_map remains the same. What may be the problem?
+Comment by Fedor on 2018-05-21:
+I deleted parameter Vis/MaxDepth and added Grid/RangeMax with a value of 9, but cloud is still being cut up to 4 meters. Changing Grid/RangeMax to 2 doesn't change cut up distance.
+Comment by Fedor on 2018-05-22:
+Neither Grid/MaxDepth nor Grid/RangeMax haven't changed cut up distance - maybe problem somewhere else.
+I have added rtabmap_ros/obstacles_detection nodelet and have changed point cloud source in costmaps to /cloud_obstacles topic. It has fixed my problem, thanks for your help!
+

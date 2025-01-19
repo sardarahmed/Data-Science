@@ -1,0 +1,80 @@
+Q:
+
+why custom generated pointcloud2 is displayed as line on rviz?
+
+I am new in ROS, We are developing LiDAR camera and I am trying to interface out LiDAR camera with ROS. I am using ROS 1 noetic on windows 10, I wrote a python script to convert the depth image generated from out camera to PointCloud2 format and then publish the generated PointCloud2 format.
+When I try to display the PiontCloud2 on Rviz , the pointcloud is displayed as line on screen as here
+
+or nothing is dispalyed at all
+here is a single PointCloud2 sample
+header: 
+  seq: 8
+  stamp: 
+    secs: 1661780280
+    nsecs: 110538482
+  frame_id: "LiDAR1"
+height: 80
+width: 260
+fields: 
+  - 
+    name: "x"
+    offset: 0
+    datatype: 7
+    count: 20800
+  - 
+    name: "y"
+    offset: 4
+    datatype: 7
+    count: 20800
+  - 
+    name: "z"
+    offset: 8
+    datatype: 7
+    count: 20800
+is_bigendian: False
+point_step: 12
+row_step: 3120
+data: [130, 115, 134, 191, 118, 171, 231, 190, 23, 217, 78, 64, 103 ....]
+is_dense: True
+---
+
+I generate the Point Cloud by converting my depth image using camera parameters, applying the following command and then convert it to string
+#cx shift of camera center from sensor center in x direction measured in pixels
+   #cy shift of camera center from sensor center in y direction measured in pixels
+   #fx=fy focal length in  meters
+   #rows no of rows per frame
+   #cols no of columns per frame
+
+    c, r = np.meshgrid(np.arange(-cols/2,cols/2), np.arange(-rows/2,rows/2), sparse=True)
+    z = np.float32(depth/1000)
+    x = np.float32(z * (c - cx) * pixel_width / fx )
+    y = np.float32(z * (r - cy) * pixel_higth / fy )
+    ptcloud = np.dstack((x, y, z)).tostring()
+
+my question is where's my mistake, is it in the PointCloud2 Format, or data or in Rviz configuration?
+
+A:
+
+Comparing my code to the link sent by @Tully above, I could found the mistake.
+Here's the corrected code
+c, r = np.meshgrid(np.arange(-cols/2,cols/2), np.arange(-rows/2,rows/2), sparse=True)
+z = np.float32(depth) #depth/1000 ==> float point cloud represent points in meters
+x = np.float32(z * (c - cx) * pixel_width / fx )
+y = np.float32(z * (r - cy) * pixel_higth / fy )
+z = z.reshape(1,-1)
+x = x.reshape(1,-1)
+y = y.reshape(1,-1)
+brightness = brightness.reshape(1,-1)
+ptcloud = np.dstack([x, y, z, np.float32(brightness)])
+return ptcloud.reshape(-1,4).tolist()
+
+and changed msg.fields count to 1 instead of 20800
+    msg.fields = [
+        PointField('x', 0, PointField.FLOAT32, 1),
+        PointField('y', 4, PointField.FLOAT32, 1), 
+        PointField('z', 8, PointField.FLOAT32, 1), 
+        PointField('intensity', 12, PointField.FLOAT32, 1) ]
+
+and creaded the pointcloud2 using
+pc2 = point_cloud2.create_cloud(msg.header, msg.fields, data)
+

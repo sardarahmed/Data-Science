@@ -1,0 +1,53 @@
+Q:
+
+How to launch nodes with realtime priority
+
+Is there any built-in mechanism to control the nice value for a ROS node?
+I have a node that exposes a simple service for generating speech via espeak. Usually, the generated speech sounds fine, but sometimes when the CPU is under load, the speech will sound slow and stuttering.
+I can improve this by manually setting my speech node to run in near-realtime via nice, but that feels hacky. Is there a formal way to do this in ROS?
+
+Originally posted by Cerin on ROS Answers with karma: 940 on 2016-10-20
+Post score: 2
+
+A:
+
+(I wouldn't call it realtime priority, but ..)
+I haven't done it myself, but you can probably use roslaunch's  launch-prefix together with the Linux nice utility to start a node at a higher nice value.
+Something like launch-prefix="nice -n N" (where N is the nice value).
+See How to bind a node to a specific cpu core? for a related Q&A.
+See roslaunch/XML/node - Attributes for more info on launch-prefix.
+
+Edit: as mentioned in the comments, using nice to increase priority of a process (ie: use negative values) requires sudo. But roslaunch doesn't play nice with sudo as a launch-prefix due to the password prompt.
+Configuring passwordless sudo just for nice and a specific user could be an option here.
+An alternative could be to configure the ulimits for nice for a specific user, as explained in How can I allow a user to prioritize a process to negative niceness? on SE.
+To avoid a link-only answer, here is a quote:
+
+The pam_limits.so module can help you there.
+It allows you to set certain limits on specific individual users and groups or wildcards or ranges of users and groups.
+The limits you can set are typically ulimit settings but also on the number of concurrent login sessions, processes, CPU time, default priority and maximum priority (renice). Check the limits.conf man page for more.
+For example you can configure your mindcraft group to have all their processes started with an increased default priority and you can allow them to use the nice and renice commands to increase the priority of their important jobs manually as well instead of only reducing priority.
+# /etc/security/limits.conf
+# increase default and max prio for members of the mindcraft group
+@mindcraft   hard priority -10
+@mindcraft   hard nice     -18
+
+Relevant comment from that answer:
+
+I've worked it out! It was using hard that caused the problems. I changed it to - instead and all works fine now. This answer helped me get to the bottom of it. I think the problem was that I had a soft limit that was getting in the way, perhaps overriding the hard limit somehow. Anyway, - instead of hard fixed it
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-10-20
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by Felix Widmaier on 2017-02-24:
+This works well for me. However, you have to be root to set negative nice values. So if you want to give your node a higher priority this way, you have to run roslaunch as root.
+Comment by gvdhoorn on 2017-02-24:
+Couldn't you add sudo -E to the launch-prefix? Still a security risk, but avoids running all of roslaunch as root.
+Comment by Felix Widmaier on 2017-02-24:
+Hm, maybe with some more configuration. Only doing sudo -E nice -n N resulted in the following error:
+sudo: no tty present and no askpass program specified
+
+Comment by gvdhoorn on 2017-02-24:
+Yes. As soon as I posted the comment I wondered myself how that would work with the password. "passwordless sudo" for a single binary could be an option, but that still has an impact on security.
+

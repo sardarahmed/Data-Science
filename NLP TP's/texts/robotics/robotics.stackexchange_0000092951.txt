@@ -1,0 +1,63 @@
+Q:
+
+ndt_gpu crashes with Eigen Error
+
+Environment:
+
+Ubuntu 18.04.3
+Kernel 4.15.0-58-generic
+CUDA 10.0
+CuDNN 7.6.2
+Eigen 3.3.7
+
+When I build Autoware 1.12.0 from source with the AUTOWARE_COMPILE_WITH_CUDA=1 environmental variable set, I get the following crash of ndt_gpu when running with any method:
+ndt_matching: /usr/local/include/eigen3/Eigen/src/Core/DenseStorage.h:109: Eigen::internal::plain_array<T, Size, MatrixOrArrayOptions, 16>::plain_array() [with T = float; int Size = 16; int MatrixOrArrayOptions = 0]: Assertion `(internal::UIntPtr(eigen_unaligned_array_assert_workaround_gcc47(array)) & (15)) == 0 && "this assertion is explained here: " "http://eigen.tuxfamily.org/dox-devel/group__TopicUnalignedArrayAssert.html" " **** READ THIS WEB PAGE !!! ****"' failed.
+
+Originally posted by Josh Whitley on ROS Answers with karma: 1766 on 2019-08-14
+Post score: 0
+
+Original comments
+Comment by Kenji Miyake on 2019-08-14:
+I got the same error, and it seemed to occur only in Debug build.
+I decided to use Release build tentatively, but I feel it should be fixed.
+Did you build Autoware in the Debug mode?
+Comment by Josh Whitley on 2019-08-15:
+Yes, I did. Thanks for checking into this. I'll see if I can figure out what's going on.
+
+A:
+
+Though this is no a fundamental solution,  I found adding add_definitions(-DEIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT) to  autoware/core_perception/ndt_cpu/CMakeLists.txt can ignore this error.
+(Note: not ndt_gpu but ndt_cpu)
+I'll send an MR for this as a temporary measure.
+
+Originally posted by Kenji Miyake with karma: 307 on 2019-10-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Kenji Miyake on 2019-10-29:
+I'm adding notes for the future reference.
+I tried many solutions written in http://eigen.tuxfamily.org/dox-devel/group__TopicUnalignedArrayAssert.html, but I couldn't solve this problem completely.
+I found this minimal code can reproduce the error. (Instantiating only either one didn't cause it, but I'm not sure the reason.)
+// core_perception/lidar_localizer/ndt_matching.cpp
+#include <ndt_cpu/NormalDistributionsTransform.h>
+#include <ndt_gpu/NormalDistributionsTransform.h>
+
+int main(int argc, char** argv)
+{
+  // Instantiate these classes(or inherited classes) at the same time
+  cpu::Registration<pcl::PointXYZ, pcl::PointXYZ> tmp_cpu;
+  gpu::GRegistration tmp_gpu;
+
+  return 0;
+}
+
+Also, when I tested this code without ROS, the error didn't occur.
+Therefore, I guess Autoware's ROS usage is causing some conflicts.
+Probably similar to this problem.
+https://github.com/dqrobotics/cpp/issues/22
+Comment by Josh Whitley on 2019-10-30:
+@kenji-miyake Thank you so much for looking into this and providing the MR with the fix!
+Comment by Badal on 2023-04-14:
+Thank you so much , it fix my problem related to ORB_SLAM3 as well .
+

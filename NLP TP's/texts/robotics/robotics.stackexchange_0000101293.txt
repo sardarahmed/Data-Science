@@ -1,0 +1,101 @@
+Q:
+
+Ros2 Turtlebot3 pose topic subscriber isn't triggered. [Python]
+
+Hello,
+I'm trying to catch turtlebot position so I can plot its trajectory.
+More precisely, I'm trying to build and run a ros2 subscriber on "/Turtle_2/pose", where "/Turtle_2" is my turtlebot namespace. Using this subscriber, I want to store the turtlebot position in a memory to plot all of them. But as a first step, I wan to print("Hello") when the subscriber is triggered by a new message published on this "/Turtle_2/pose" topic, which is not.
+For confidentiality reason, I cannot give you more code than my subscriber. I'm sry about that.
+NB:
+
+ros2 topic list contain the topic I'm looking for.
+
+ros2 topic echo /Turtle_2/pose plot indeed real time information about my turtle position.
+
+Running the subscriber don't plot anything (no trigger message nor error message)
+
+OS ubuntu 20.04.2 LTS ; Gnome 3.36.8
+
+Ros2 Foxy installed
+
+Subscriber code :
+import rclpy
+from rclpy.node import Node
+from nav_msgs.msg import Odometry
+from std_msgs.msg import String
+from geometry_msgs.msg import PoseStamped
+class MinimalSubscriber(Node):
+ def __init__(self):
+     super().__init__('minimal_subscriber')
+     self.subscription = self.create_subscription(
+         PoseStamped,
+         '/Turtle_2/pose',
+         self.listener_callback,
+         10)
+
+ def listener_callback(self, msg):
+     self.get_logger().info('HELLO')
+
+def main(args=None):
+rclpy.init(args=args)
+ minimal_subscriber = MinimalSubscriber()
+
+ rclpy.spin(minimal_subscriber)
+
+ # Destroy the node explicitly
+ # (optional - otherwise it will be done automatically
+ # when the garbage collector destroys the node object)
+ minimal_subscriber.destroy_node()
+ rclpy.shutdown()
+
+if name == 'main':
+main()
+
+This subscriber work on other topics like "Turtle_2/odom"
+
+result of ros2 topic info -v /Turtle_2/pose:
+Type: geometry_msgs/msg/PoseStamped
+Publisher count: 1
+Node name: natnet_client
+Node namespace: /Turtle_2
+Topic type: geometry_msgs/msg/PoseStamped
+Endpoint type: PUBLISHER
+GID: 01.0f.69.56.05.b0.02.00.01.00.00.00.00.00.12.03.00.00.00.00.00.00.00.00
+QoS profile:
+Reliability: RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT
+Durability: RMW_QOS_POLICY_DURABILITY_VOLATILE
+Lifespan: 2147483651294967295 nanoseconds
+Deadline: 2147483651294967295 nanoseconds
+Liveliness: RMW_QOS_POLICY_LIVELINESS_AUTOMATIC
+Liveliness lease duration: 2147483651294967295 nanoseconds
+Subscription count: 0
+
+Any idea will be appreciated, thanks in advance.
+
+Originally posted by Hedwin on ROS Answers with karma: 21 on 2022-03-01
+Post score: 1
+
+A:
+
+A guy from my laboratory found the solution:
+There was king of a communication problem, so the subscriber qos profile had to be redefined :
+qos_sensor = QoSProfile(
+    reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+    history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+    depth=1
+)
+
+self.get_logger().info('Use QoS Sensor')
+
+self.subscription = self.create_subscription(
+    PoseStamped,
+    'Turtle_2/pose',
+    self.listener_callback,
+    qos_profile=qos_sensor)
+
+Thanks to everyone who tried to help
+
+Originally posted by Hedwin with karma: 21 on 2022-03-15
+This answer was ACCEPTED on the original site
+Post score: 1
+

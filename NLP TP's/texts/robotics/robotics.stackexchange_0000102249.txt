@@ -1,0 +1,91 @@
+Q:
+
+ros2 run .. --ros-args is not working
+
+Hi all,
+Whenever I run: ros2 run package_name executable_name --ros-args -p param_name:=param_value
+and in another terminal: ros2 param get /node_name param_name I get: Parameter not set.
+If in the code I try to: this->declare_parameter("param_name"); and then do the run as above, the execution stops immediately.
+What I need to do is to pass a parameter from the CLI and read it in the code. What am I doing wrong?
+EDIT to answer @ljaniec comment,
+I want to run something like:
+ros2 run pkg_name exe_name --ros-args "string:=aa"
+
+So I put in the code:
+std::string string;
+this->declare_parameter<std::string>("string", std::string("no"));      
+this->get_parameter_or("string", string, std::string("no"));
+std::cout << string<< "\n";
+
+Now reading this, a string should be passed as:
+--ros-args "string:=aa", I also tried other combinations:
+--ros-args string:="aa" or --ros-args string:=aa, but none works. The execution starts and stops without saying anything.
+(I don't have problems with int).
+
+Originally posted by alberto on ROS Answers with karma: 100 on 2022-08-08
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2022-08-09:
+Can you provide a minimal "should-be-working" example? I think it will be the easiest way for us to help you
+Comment by ljaniec on 2022-08-09:
+I can see that you are using std::string, try to change it to string (as here). Maybe change the name of the parameter from "string" to `"my_string"`` as well, because it is a special name in ROS (datatype).
+This tutorial shows example CLI with setting the string parameters (changed for clarity):
+ros2 run demo_nodes_cpp parameter_blackboard --ros-args -p "a_string:=Hello world"
+It seems you missed the -p in your --ros-args "string:=aa" - it should be rather --ros-args -p "my_string:=aa"
+Comment by alberto on 2022-08-09:
+Yes I forgot the -p here, but I was using it in the CLI. Also, the param name was only an example, so in the code I'm not using "string".
+
+A:
+
+I managed to make it work with an int parameter. This is what I did:
+int n;
+this->declare_parameter<int>("param", 0);
+this->get_parameter_or("param", n, 0);
+
+And then use: ros2 run pkg_name exe_name --ros-args param:=1.
+So it was important to specify the parameter type.
+Nevertheless, I had a problem with string parameters, so I surrounded the 2 functions with a try-catch:
+try {
+    this->declare_parameter<std::string>("calib", "no");
+    this->get_parameter_or("calib", calib, std::string("no"));
+}
+catch (std::exception e) {
+    std::cout << e.what() << "\n";
+}
+
+And I found out a strange behaviour: if I use
+ros2 run pkg_name exe_name --ros-args -p "calib:=yes" 
+
+I get an exception that says: parameter 'calib' has invalid type: expected [string] got [bool].
+While using something else
+ros2 run pkg_name exe_name --ros-args -p "calib:=ok"
+
+The param is read correctly.
+So it seems that true, false, yes and no are recognised as bool. In fact, using:
+try {
+    this->declare_parameter<bool>("calib", false);
+    this->get_parameter_or("calib", calib, false);
+}
+catch (std::exception e) {
+    std::cout << e.what() << "\n";
+}
+
+I can run correctly: ros2 run pkg_name exe_name --ros-args -p "calib:=yes", while having the inverse exception with "calib:=ok" .
+
+Originally posted by alberto with karma: 100 on 2022-08-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ljaniec on 2022-08-09:
+In ROS2 you have string  as a datatype, not C++ std::string
+Comment by alberto on 2022-08-09:
+Mmh this should be the solution, but I receive some compiler error using this->declare_parameter<string>(.., ..);:
+error C2065: 'string': undeclared identifier.
+Moreover, the behaviour is strange, in fact to declare an int param I should use int64, but I only use int.
+Comment by ljaniec on 2022-08-09:
+Ok, I misled you, this example uses std::string so it shouldn't be that. Your last remark about yes and ok being booleans are surprising for sure! I didn't find any mention of this here nor here. Maybe it is worth filling out the issue in the rclcpp repository?
+Comment by alberto on 2022-08-09:
+Yes, I think I'll do it!
+

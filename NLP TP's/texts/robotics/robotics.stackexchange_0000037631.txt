@@ -1,0 +1,65 @@
+Q:
+
+Doing maths to a subscribed message to public a new one
+
+Hello,
+I'm working with xsense, and I saw that it's reference coordinate is north west up (quite wierd) and that ROS works with east north up, so I have to change the message that publishes my xsense node to the new reference sistem. The thing is that I know how to subscribe a message, and how to publish, but I don't know how to acess the message that I'm subscribin outside the callback function.
+What I would like is something like:
+
+#include <ros/ros.h>
+#include <sensro_msgs/Imu.h>
+
+void message_received(sensor_msgs::Imu::ConstPtr& msg){
+   ROS_INFO("Received quaternion: (%f, %f, %f, %f)", msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
+}
+int main(int argc, char** argv){
+   ros::init(argc, argv, "nwu_to_enu");
+   ros::NodeHandle n;
+   ros::NodeHandle pn("~");
+   std::string frame_id;
+
+   pn.param("frame_id", frame_id, "gyro_link");
+   ros::Publisher pub = n.advertise("imu/data", 10);
+   ros::Subscriber sub = n.subscribe("xsens/imu/data", 1000, message_received);
+
+   sensor_msgs::Imu msg_to_publish;
+
+   //from now on the code might not be correct as I don't really know how to do it, that's my question. msg is the one that I have from the callback function and that I need to be able to access outside the callback function.
+   msg_to_publish.header.stamp = ros::Time::now();
+   msg_to_publish.header.frame_id = frame_id.c_str();
+   
+   msg_to_publish.orientation.x = - msg->quaternion_x(); //I just change the sign as an example, I'll have to see which transform do I need.
+   msg_to_publish.orientation.y = - msg->quaternion_y();
+   msg_to_publish.orientation.z = - msg->quaternion_z();
+   msg_to_publish.orientation.w = - msg->quaternion_w();
+
+   msg_to_publish.angular_velocity.x = msg->gyroscope_x();
+   msg_to_publish.angular_velocity.y = msg->gyroscope_y();
+   msg_to_publish.angular_velocity.z = msg->gyroscope_z();
+
+   msg_to_publish.linear_acceleration.x = msg->accelerometer_x();
+   msg_to_publish.linear_acceleration.y = msg->accelerometer_y();
+   msg_to_publish.linear_acceleration.z = msg->accelerometer_z();
+
+   pub.publish(msg_to_publish);
+}
+
+Thank you for the help!
+
+Originally posted by apalomer on ROS Answers with karma: 318 on 2012-02-06
+Post score: 0
+
+A:
+
+You're shadowing the variables pub and sub in your constructor.  You're then assigning to these local copies, which leads to them being destructed when the constructor for your class is done.
+
+Originally posted by Bill Smart with karma: 1263 on 2012-02-07
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Bill Smart on 2012-02-08:
+That's right.
+Comment by apalomer on 2012-02-07:
+ah ok, i can see now the difference, what I'm doing wrong is ros::Publisher pub = .... instead of pub = ...., isn't it?
+

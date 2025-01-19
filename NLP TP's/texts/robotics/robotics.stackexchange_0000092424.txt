@@ -1,0 +1,44 @@
+Q:
+
+Message size with defined constants
+
+Hi all. Was just wondering if message enum constants get included in the message size. For example, if I have a message that has a uint8 constant defined to be 1 and then the actual uint8 payload, would the message take up 8 bits or 16 bits?
+
+Originally posted by jwin on ROS Answers with karma: 7 on 2019-07-08
+Post score: 0
+
+A:
+
+There are two sides to this:
+
+serialisation of actual message contents to the stream (in ros::serialization::Serializer<>::*(..)), and
+message structure definition exchanged by nodes when a connection is setup (ie: msg, srv or action connections)
+
+For the first: no, constants do not get serialised, only message fields. See here for an example of the DiagnosticsStatus.msg code (from /opt/ros/melodic/include/diagnostic_msgs/DiagnosticStatus.h, slightly simplified):
+namespace serialization
+{
+  template<..> struct Serializer<..>
+  {
+    template<..> inline static void allInOne(Stream& stream, T m)
+    {
+      stream.next(m.level);
+      stream.next(m.name);
+      stream.next(m.message);
+      stream.next(m.hardware_id);
+      stream.next(m.values);
+    }
+  };
+}
+
+Legal values for level in this case would be one of the values defined by the constants in the message definition (OK, WARN, ERROR or STALE), but only level gets serialised.
+As for the second: upon subscribing, nodes will negotiate the parameters/configuration of the actual TCP or UDP connection that will be used to exchange message data (ie: the bytes serialised into the stream in the code shown above, which in the end is a buffer). In that negotation, the complete message definition is exchanged as well and that message definition does contain the constants (see here for TCPROS). So in this case, they are included.
+Negotation takes place only once per connection, so the message definition is exchanged only once as well.
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-07-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by jwin on 2019-07-09:
+Ah I see that's perfect then since the network bandwidth will only consist of the actual payload (except for the initial negotiation setup). Thank you and great answer as always.
+

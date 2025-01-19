@@ -1,0 +1,91 @@
+Q:
+
+how to manually translate a point from one frame to another
+
+Hello
+I would like to know how to manually translate a point in the base_footprint frame to the odom frame.
+For example, I have a point that is at x = 1 and y = 1 and yawZ = 45º and I want to know where this point is in the Odom frame. How can I manually calculate this point? Is there a translation matrix that I can use? Any example?
+header: 
+  seq: 7486
+  stamp: 
+    secs: 74
+    nsecs: 871000000
+  frame_id: "odom"
+child_frame_id: "base_footprint"
+pose: 
+  pose: 
+    position: 
+      x: 0.469335747998
+      y: 0.647538786158
+      z: -0.000006047411929 
+    orientation: 
+      x: -0.000021128906712 
+      y: -0.000009339980052 
+      z: -0.461892491102
+      w: -0.886935919968
+
+ target_pose:
+    header:
+      seq: 0
+      stamp:
+        secs: 0
+        nsecs: 0
+      frame_id: 'base_footprint'
+    pose:
+      position:
+        x: 1.0
+        y: 1.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.383000
+        w: 0.924000" 
+
+Originally posted by mateusguilherme on ROS Answers with karma: 125 on 2020-06-21
+Post score: 0
+
+A:
+
+You can just multiply the transform. Example, lets call:
+oTb ( transform between odom and base_footprint, odom is the parent.)
+bTf ( transform between base_footprint and frame, base_footprint is the parent.)
+oTf ( transform between odom and frame, odom is the parent.)
+frame here is the target_pose
+oTf = oTb * bTf
+
+So, you get this transform and simple multiply then and you have your result, the tf package and Transform class natively support this operation.
+
+Originally posted by Teo Cardoso with karma: 378 on 2020-06-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Solrac3589 on 2020-06-22:
+just to extend to this question.
+a dynamic way to find transforms should be to use transform listener (from tf2)
+add the following dependencies
+#include <tf2_ros/buffer_interface.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_eigen/tf2_eigen.h>
+
+(you should also add in CMakeLists.txt and pckage.xml)
+then you create a transform listener and buffer (in header should be awesome):
+tf2_ros::Buffer tf2_buffer__;
+std::shared_ptr<tf2_ros::TransformListener> tf_listener_ptr__;
+
+inside the class definition declare the transform listener using you buffer:
+tf_listener_ptr__.reset(new tf2_ros::TransformListener(tf2_buffer__));
+
+then, alwasy you want to have a transform, just do:
+geometry_msgs::TransformStamped transform = tf2_buffer__.lookupTransform("odom","base_footprint", ros::Time(0), ros::Duration(0.5));
+
+Comment by Solrac3589 on 2020-06-22:
+another way to do it (more static, in case the transform never change) is using eigen library https://eigen.tuxfamily.org/dox/group__TutorialGeometry.html This way you can find easily a transform matrix given the values you put in the question
+Comment by mateusguilherme on 2020-06-22:
+thank you for the tips!
+I also found another method:
+tf2_ros::BufferInterface -> transform (const T &in, T &out, const std::string &target_frame, ros::Duration timeout=ros::Duration(0.0))
+
+I'm in doubt about the meaning of ros::Duration(0.0), means "generate an out pose based on the last available transform"
+

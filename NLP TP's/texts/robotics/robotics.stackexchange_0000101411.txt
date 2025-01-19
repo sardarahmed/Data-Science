@@ -1,0 +1,164 @@
+Q:
+
+Run a launch script in subscriber callback
+
+I want to spawn a robot B when robot A pass certain location. Currently, my implementation is having a subscriber subscribe to odom of robot A. When robot A odom msg.pose.pose.position>1, run the launch script ( to launch robot B) in callback. I unsubscribe to the node afterwards since I only need to spawn the robot B once. but I was getting the bad call back error.
+(a lot of red lines: [ERROR] [1648267836.094904, 23.063000]: bad callback: <function callback at 0x7f8b743a9310>
+Traceback (most recent call last):
+File "/opt/ros/noetic/lib/python3/dist-packages/rospy/topics.py", line 750, in _invoke_callback
+cb(msg)
+File "/home/xxx/catkin_ws/src/beginner_tutorials/scripts/py_launch.py", line 28, in callback
+py_launch()
+)
+is it possible to run a launch script in the subscriber callback? or is there a better way to achieve the above?
+#! /usr/bin/env python3
+
+import roslaunch
+import rospy
+from nav_msgs.msg import Odometry
+
+count=0
+
+    def callback(msg):
+        global count
+        print(msg.pose.pose.position.z)
+    if msg.pose.pose.position.z>1:
+        count=count+1
+    else:
+        pass
+    print(count)
+
+if count==1:
+
+    count=count+1
+
+    odom_sub.unregister()
+
+    py_launch()
+
+def py_launch():
+    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    roslaunch.configure_logging(uuid)
+    launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/xxx/catkin_ws/src/beginner_tutorials/launch/test_replace.launch"])
+launch.start()
+rospy.loginfo("started")
+
+rospy.sleep(3)
+
+launch.shutdown()
+
+def odom_listen():
+    global odom_sub
+    odom_sub = rospy.Subscriber('/odom', Odometry, callback)
+    
+
+if __name__ == '__main__':
+    rospy.init_node('en_Mapping', anonymous=True)
+
+    odom_listen()
+
+        
+rospy.spin()
+
+    
+
+    
+
+Originally posted by hwan30 on ROS Answers with karma: 13 on 2022-03-25
+Post score: 0
+
+Original comments
+Comment by abhishek47 on 2022-03-26:
+Why wait to launch robot B until robot A satisfies msg.pose.pose.position > 1? Why not launch robot B the same time as robot A, and then make robot B do its thing after that condition for robot A evaluates to true?
+Comment by hwan30 on 2022-03-26:
+for my specific simulation, I need to only have robot A appears at the beginning, then, when it reaches certain location. second robot B appears from the sky.
+
+A:
+
+Maybe you could try to use a Gazebo service in ROS? They are in gazebo_msgs.srv, use rospy.wait_for_service("gazebo/spawn_sdf_model"), then s = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel) etc. like there:
+#!/usr/bin/env python
+import sys, rospy, tf
+from gazebo_msgs.srv import *
+from geometry_msgs.msg import *
+from copy import deepcopy
+
+if __name__ == '__main__':
+  rospy.init_node("spawn_chessboard")
+  rospy.wait_for_service("gazebo/delete_model")
+  rospy.wait_for_service("gazebo/spawn_sdf_model")
+  delete_model = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
+  delete_model("chessboard")
+  s = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel)
+  orient = Quaternion(*tf.transformations.quaternion_from_euler(0, 0, 0))
+  board_pose = Pose(Point(0.25,1.39,0.90), orient)
+  unit = 0.05
+  with open("chessboard.sdf", "r") as f:
+    board_xml = f.read()
+  with open("chess_piece.sdf", "r") as f:
+    piece_xml = f.read()
+
+  print s("chessboard", board_xml, "", board_pose, "world")
+
+  for row in [0,1,6,7]:
+    for col in xrange(0,8):
+      piece_name = "piece_%d_%d" % (row, col)
+      delete_model(piece_name)
+      pose = deepcopy(board_pose)
+      pose.position.x = board_pose.position.x - 3.5 * unit + col * unit
+      pose.position.y = board_pose.position.y - 3.5 * unit + row * unit
+      pose.position.z += 0.02
+      s(piece_name, piece_xml, "", pose, "world")
+
+This example is based on the the book "Programming Robots with ROS. A Practical Introduction to the Robot Operating System", Morgan Quigley, Brian Gerkey, William D. Smart from there.
+Like @Mike Scheutzow wrote, I wouldn't call this service in the callback. I think you could try to use Contain Plugin in Gazebo, like this one: http://gazebosim.org/tutorials?tut=contain_plugin&cat=plugins (but it would be a bit of work, I think).
+
+Originally posted by ljaniec with karma: 3064 on 2022-03-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by hwan30 on 2022-03-27:
+great example, I was able to use rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel) instead of trying to start a launch file the python code. It does what I want to do now. Unfortunately, I still have to do it in the callback. I am not good at writing plugin(c++).When the odom is unsubscribed, and spawning the robot would be the last task. After robot B appears, I don't really need the node anymore.I hope the below implementation is ok.
+The thing i try to achieve is similar to the chess piece example , I have defined a chessboard +chess piece model. Chess piece are links of the chessboard(vertically connected via prismatic joints) ,when chess piece A  is lifted to certain height, the connected link piece is deleted and spawn a new free piece,so that new piece would have all degree of freedom to be moved off the board to the side.
+Comment by hwan30 on 2022-03-27:
+count=0
+def callback(msg):
+    global count
+    print(msg.pose.pose.position.z)
+    if msg.pose.pose.position.z>1:
+        count=count+1
+    else:
+    pass
+print(count)
+
+if count==1:
+
+    count=count+1
+
+    odom_sub.unregister()
+
+    rospy.wait_for_service("gazebo/delete_model")
+    rospy.wait_for_service("gazebo/spawn_sdf_model")
+
+    initial_pose = Pose()
+    initial_pose.position.x = 0.629
+    initial_pose.position.y = -0.369
+    initial_pose.position.z = 1
+    initial_pose.orientation.x=0
+    initial_pose.orientation.y=0
+    initial_pose.orientation.z=1.57
+
+    f = open(
+        '/home/xxx/robotA_replacement/model.sdf', 'r')
+    sdff = f.read()
+
+    spawn_model = rospy.ServiceProxy("gazebo/spawn_sdf_model", SpawnModel)
+    spawn_model('robot_name', sdff, "", initial_pose, "world")
+
+    delete_model = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
+    delete_model(model_name="robotA")
+
+def odom_listen():
+    global odom_sub
+    odom_sub = rospy.Subscriber('/odom', Odometry, callback)
+

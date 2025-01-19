@@ -1,0 +1,169 @@
+Q:
+
+Is it possible to subscribe to poses computed by cartographer?
+
+In cartographer, simultaneous localisation is happening with mapping so I assume that a cartographer node always has some estimate of robot pose. I'd like to be able to subscribe to this so I know the value of robot pose in the map generated at all times.
+Could anyone tell me how to do this please?
+In the documentation, it says this:
+
+provide_odom_frame If enabled, the local, non-loop-closed, continuous pose will be published as the odom_frame in the map_frame.
+
+But when I set this I get the following warning and no map:
+[ WARN] [1614098472.740487459]: Timed out waiting for transform from base_link to map to become available before running costmap, tf error: canTransform: target_frame map does not exist.. canTransform returned after 0.10061 timeout was 0.1.
+
+Originally posted by Py on ROS Answers with karma: 501 on 2021-02-23
+Post score: 0
+
+A:
+
+provide_odom_frame is the parameter that, if set to true, causes cartographer to not publish any poses, instead the normal odom transform of your odometry will be published.
+I would set that to false.
+Furthermore slam should build the transform between map and odom so i would set the following parameters:
+map_frame = "map",
+tracking_frame = "base_footprint", (if you have an imu this should be imu_link)
+published_frame = "odom",
+odom_frame = "odom",
+provide_odom_frame = false, (since we want cartographer to correct any error left in the odometry)
+publish_frame_projected_to_2d = true, (only if you are in 2d space)
+
+use_odometry = true,
+
+This will cause cartographer to publish the map->odom transform. The odom->base_footprint transform will be provided directly from your odometry or robot_localization. If you don't have any odometry source it is pretty hopeless that cartographer will generate a good odometry, but then i guess you would set the following:
+map_frame = "map",
+tracking_frame = "base_footprint",
+published_frame = "base_footprint",
+odom_frame = "odom", (doesn't matter now)
+provide_odom_frame = false,
+publish_frame_projected_to_2d = true,
+
+use_odometry = false,
+
+Now if you want to get the pose of the robot i would probably use a tf2 transform that transforms the odom message in the odom_frame to the map frame.
+EDIT:
+Your Error is caused by cartographer not providing the odom frame anymore hence your map is disconnected from your base-tf_tree
+
+Originally posted by Tristan9497 with karma: 220 on 2021-02-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Py on 2021-03-11:
+Thanks for the help. I've changed the .lua file as suggested and created this code to get the transform (where frame is map and required_position is odom):
+def get_map_pose(frame, required_position):
+    tf_buffer = tf2_ros.Buffer()
+    tf2_ros.TransformListener(tf_buffer)
+    while not rospy.is_shutdown():
+        try:
+            transform = tf_buffer.lookup_transform(frame, required_position, rospy.Time(0), rospy.Duration(5.0))
+            self.pose.position = transform.transform.translation
+            self.pose.orientation = transform.transform.rotation
+
+Is this the way you are suggesting to get the robot position within the map frame?
+Comment by Tristan9497 on 2021-03-11:
+This goes in the right direction but isn't really what i meant. I meant you should transform your odometry message in to the map frame not looking up the transform between the two frames.
+If you want to use a transform listener, please look up the transformation between map and your base_link frame (If you get the negative position you might need to exchange the two frames in the look up transform).
+If that doesn't give the wanted results i'll kindly ask you to supply a picture of your tf-tree so i know what is going on and how your system is structured. All of my answers are guesses since i don't really know anything about your system other than that you are using cartographer to build a map
+Comment by Tristan9497 on 2021-03-11:
+Btw i don't understand why my answer was flagged as offensive. I am trying to help someone and provide objective information. It is neither Spam, advertising nor malicious text.
+Hope that was by mistake...
+Comment by Py on 2021-03-15:
+Thanks for the help! No idea why anyone would flag as offensive..... it's been very helpful to me at least :)
+Comment by Tristan9497 on 2021-03-15:
+No worries it disappeared fairly quickly after my comment. Probably someone clicked on it by mistake. Have you managed to get your pose yet?
+Comment by Py on 2021-03-15:
+I have through the code I shared but it keeps giving me a TF_REPEATED_DATA warning so I'm suspicious of it and keen to understand your method.  How would you go about transforming the odometry message to the map frame? Could you share a code snippet?
+Comment by Tristan9497 on 2021-03-15:
+I write everything in c++ so i don't know about python, but this post seems promising.
+But i'd still like to know more about your robot. Do you have an odometry source like encoders?
+Comment by Py on 2021-03-16:
+Yes I do have an odometry source. So from the post you linked, are you suggesting that my function ought to be:
+def get_map_pose(self, frame, required_position):
+    tf_buffer = tf2_ros.Buffer()
+    tf2_ros.TransformListener(tf_buffer)
+    while not rospy.is_shutdown():
+        try:
+            transform = tf_buffer.lookup_transform(frame, required_position, rospy.Time(0), rospy.Duration(5))
+            pose_transformed = tf2_geometry_msgs.do_transform_pose(self.pose, transform)
+            return pose_transformed
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as error:
+            print(error)
+        continue
+
+From this, I get the error AttributeError: 'Pose' object has no attribute 'pose'. Any ideas why?
+Comment by Tristan9497 on 2021-03-16:
+Good thing you included the try except block, look up transforms are often failing so you will not get errors.
+First i recommend to remove the while loop out of the sub function otherwise you'll be stuck there forever if the transformation is not available.
+Can you show me where you build the pose attribute you put into do_transform_pose as self.pose?
+like the error says you are trying to access an attribute pose that is not available. Check if that is even defined or out of scope.
+Furthermore what is required_position? This should be the odometry frame.
+Other than that i think this is going into the right direction.
+Comment by Py on 2021-03-16:
+Ok thanks for the info. Glad it's going in the right direction! Good plan - I'll take out the while loop. The required_position is set as the odom frame when the function is used.
+self.pose is initialised with self.pose = Pose() under the def __init__(self): function of the class. This means self.pose doesn't actually contain the robot pose wrt the map frame as it is just a placeholder waiting to be filled, which worked with my initial imperfect method. I'm now thinking that this doesn't make sense as tf2_geometry_msgs.do_transform_pose(self.pose, transform) would need something to transform...... maybe I'd need to initialise self.pose as being at pose T: 0,0,0, R: 0,0,0,0 if it's currently just blank to fill it with the robots position wrt the map frame?
+Comment by Tristan9497 on 2021-03-16:
+self.pose should contain the pose of your robot in the odometry frame, that is published by your odometry source. If you call do_transform_pose of a zero pose you'll just get the offset between your map and odom frame.
+I am unsure how to solve this in python since i never did anything with it, but i would create a subscriber to your odometry msg that calls your function with the pose msg in the odom frame.
+This function than transforms the pose into the map frame.
+You might be able to define the subscriber as a member of your object. This could then call the member function everytime you get new odometry which then can set the member attribute pose to the map relative one. But that is just a question of stile.
+I think i have to take a look at python in ROS in general i like python more than c++. Makes me wonder why i code everything in c++ xD
+Comment by Tristan9497 on 2021-03-16:
+Btw you are totally right with your statement that the function needs something to transform. IMO this should be the pose of the odometry of your robot.
+To explain this look at the tf frames in rviz during mapping. cartographer actually does not make a guess in regards to your robot position, but in regards to the odom frame.
+I just noticed that i might want to clarify that.
+Comment by Py on 2021-03-17:
+Here's my best attempt. I'm not sure it's providing the robot pose in the map frame. What do you think?
+def __init__(self):
+    self.odom_sub = rospy.Subscriber("/odom", Odometry, self.odom_callback, queue_size=1)
+    self.odom_pose = Pose()
+    self.map_pose = Pose()
+    rospy.Rate(1)
+
+def odom_callback(self, odom_msg):
+    self.odom_pose = odom_msg.pose
+    self.get_map_pose("map", "odom")
+
+def get_map_pose(self, frame, required_position):
+    tf_buffer = tf2_ros.Buffer()
+    tf2_ros.TransformListener(tf_buffer)
+    try:
+        transform = tf_buffer.lookup_transform(frame, required_position, rospy.Time(0), rospy.Duration(5))
+        self.map_pose = tf2_geometry_msgs.do_transform_pose(self.odom_pose, transform)
+        return
+    except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as error:
+        print(error)
+
+Comment by Tristan9497 on 2021-03-17:
+I think that looks good. Can you publish that pose and check in rviz if it is at the same spot as your robot, when you are in the map frame?
+Comment by Py on 2021-03-17:
+That's the bit I'm currently struggling with. It looks good at first but then the markers disappear. I get this warning constantly so I'm unsure if it's related.
+Warning: TF_REPEATED_DATA ignoring data with redundant timestamp for frame odom at time 853.653000 according to authority /cartographer_node
+         at line 278 in /tmp/binarydeb/ros-noetic-tf2-0.7.5/src/buffer_core.cpp
+
+Any ideas why?
+Comment by Tristan9497 on 2021-03-17:
+I'll take a look when i am in my lab
+Comment by Tristan9497 on 2021-03-17:
+Ok i don't think it is a related issue. See this issue i believe this is a general tf2_geometry_msgs issue that can be ignored. I might be wrong though.
+can you try to print the stamp of the incomming odometry message?
+Should be something like:
+print(self.odom_pose.header.stamp) #not sure about the syntax though
+
+Like this you should be able to see, if your odometry publishes data with reasonable stamps and if it stops to publish data, when your marker disappears.
+Comment by Py on 2021-03-18:
+Ok that's a relief. Here's an example print out of a odom_pose header. Note that I had to change from using Pose() to PoseStamped() to assign a time stamp. I've pasted in the whole header just in case anything else is wrong:
+header: 
+  seq: 120219
+  stamp: 
+    secs: 2440
+    nsecs: 780000000
+  frame_id: "odom"
+child_frame_id: "base_link"
+
+Comment by Tristan9497 on 2021-03-18:
+imo the header looks good. What happens to the messages when the marker disappears? Does the stamp progress? Are you still receiving information from your odometry source?
+Comment by Py on 2021-03-18:
+Ok so I've made some good progress. The issue with the markers disappearing was more to do with me repeatedly publishing a MarkerArray configured incorrectly. I had more luck publishing individual markers using the marker.action = Marker.ADD option. This does show the correct pose being plotted as the robot moves so I think this issue has been solved with your great help!!! My next issues are to do with reducing publishing lag in the system and correctly transforming markers plotted, see here and here.
+Comment by Tristan9497 on 2021-03-19:
+Hey man that's great to hear!
+Happy, that we got this one solved :)
+

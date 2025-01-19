@@ -1,0 +1,25 @@
+Q:
+
+Multiple position estimates fusion
+
+I have a system in which I have two separate subsystems for estimating robot positions.
+First subsystem is composed of 3 cameras which are used for detecting markers the robot is carrying and which outputs 3 estimates of the robot's position and orientation.
+The second subsystem is a system which is located on the robot and is measuring speed on the two points of the robot. By numerically integrating those two I can get an estimate on the robot's position and orientation (because I am tracking two points at once).
+The first system is less accurate but the second system drifts. First system gives output about once a second while the second one gives output much more frequently (100-200 times per second).
+I assume there must be a better approach than to just reset the position with the first system's estimate (as it is not 100% accurate), but to also use the accumulated position from the second sensor system and fuse that with the new data from the first system. Also, there is a question how to fuse 3 estimates of the first system? There must be a better way than pure average as it might happen that the two estimates are exactly the same and the third one is completely different (meaning that it is probably more wrong)?
+Do you have any fusion algorithms to recommend to use in such a system? I know about Kalman filter, but I am having trouble figuring out how to use it as the two systems output data at different frequencies.
+I hope the question is clear enough, what is the best approach to fuse the estimates into a more correct and accurate estimate?
+Thanks
+
+A:
+
+What you are describing is essentially a textbook case for using a Kalman filter. First you need a prediction step. Let's assume you are predicting the pose of the robot $(x,y,\theta)$, given the previous pose estimate and your high-frequency velocity measurements $(v,\omega)$, where $v$ is the linear velocity and $\omega$ is the angular velocity.
+
+$P$ is the 3x3 covariance matrix that represents the uncertainty of the robot pose. $Q$ is the covariance of your inputs (i.e., how noisy are those velocity measurements?) $F$ is the Jacobian of the motion model with respect to the state and $G$ is the Jacobian with respect to the inputs, i.e.,
+
+Now you have your less frequent correction updates, which actually measure the full state, making this quite simple, i.e.,
+
+where $z_k$ is your measurement (from the camera) and $R$ is the covariance matrix associated with that measurement (probably a diagonal matrix). This measurement is compared with the predicted measurement (which in your case is just the latest pose estimate). In this simple case, the Kalman gain is the proportion of the current pose covariance compared to the sum of the pose covariance and the measurement covariance.
+To answer your question about the different rates, you can just run your motion update repeatedly until your prediction update arrives. For example, it might happen that the motion update occurs 100 times before your perform a correction.
+You also asked about how to handle three cameras. The easiest way is to just process them sequentially; just apply three corrections in a row. Another way is to stack them and perform a single update. You would need to adjust the correction update step to do it this way.
+

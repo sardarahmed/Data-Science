@@ -1,0 +1,41 @@
+Q:
+
+Odd "pulsed" acceleration when using amcl and move_base
+
+Hello,
+I am trying out amcl and move_base on a new home built robot that is similar to the TurtleBot but uses the Serializer microcontroller and Pololu motors and encoders.  I also have a Hokuyo laser scanner.
+I'm running the odometry loop at 20Hz and the robot can do dead reckoning fairly nicely.  Next I created a small map of a couple of rooms using gmapping and that also looks good.
+The trouble occurs when I then run amcl and move_base and set a navigation goal in RViz. The robot always gets to the goal fine and follows the planned path fairly well.  However, as it is moving it does a kind of pulsed acceleration and deceleration, even when it is moving across a complete clear space. The frequency of the pulsing is about 2 seconds. Is this something that could be tweaked somewhere in the base local planner parameters?  I am basically using the TurtleBot parameters for the planner and the cost maps so I won't post them here.
+Thanks!
+patrick
+UPDATE: Jan 1, 2012: It seems I spoke too soon.  I am still getting oscillations in cmd_vel as sent to the robot by move_base.  I have posted a bag file here demonstrating the phenomenon.  I am running move_base with a blank map and fake localization.  Then I set a nav_goal about a meter ahead and slightly to the right of the robot in an otherwise clear area.  If you rxplot cmd_vel you can see the oscillations in the x component which are very noticeable when watching the robot.  For move_base, I am using essentially the identical parameters as in the turtlebot_navigation package.
+Can anyone see the cause of this oscillation--perhaps some kind of asynchronization between /odom and /cmd_vel?
+Update 2: Here is an rxplot of /cmd_vel/linear/x and /odom/twist/twist/linear/x with the robot up on blocks so the wheels are spinning with no resistance:
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2011-12-30
+Post score: 2
+
+Original comments
+Comment by Pi Robot on 2012-01-04:
+@Eric Perko - I was not able to create the rxplot on the running robot either--then I discovered that I was not publishing a timestamp on the odom message header.  Once I added the timestamp, I was able to get the plot.  Unfortunately, adding the timestamp did not fix the oscillation problem.
+Comment by Eric Perko on 2012-01-03:
+@Pi Robot: Just curious - are you able to create the rxplot while playing back from the bag file you posted or only against the running robot?
+Comment by Eric Perko on 2012-01-01:
+@Pi Robot: Can you plot rxplot /cmd_vel/linear/x,/odom/twist/twist/linear/x against the live system while you are seeing the oscillations? I can't seem to get it to plot on the same graph on your bag file, and this graph is the one that I think would be most illuminating.
+Comment by Pi Robot on 2011-12-31:
+Thanks @ahendrix and @Eric Perko.  I looked at cmd_vel/linear/x in rxplot and the robot was definitely being sent an oscillating velocity command.  Since I wrote the odometry node for the Serializer I figured that was the weakest link. ;-)  So I went back to the code and sure enough, I had used Python time() instead of rospy.Time() when computing and publishing odometry messages.  Once I fixed that bug, the oscillations disappeared.  So I'm guessing I had a small time synchronization error between odom messages and move_base.
+Comment by Eric Perko on 2011-12-30:
+Have you looked at an rxplot of cmd_vel/linear/x and /odom/twist/twist/linear/x while this pulsing is going on? Do the commands pulse because of weirdness in the reported velocity or do the reported velocities pulse to follow pulsing commands?
+
+A:
+
+From comment above: Thanks @ahendrix and @Eric Perko. I looked at cmd_vel/linear/x in rxplot and the robot was definitely being sent an oscillating velocity command. Since I wrote the odometry node for the Serializer I figured that was the weakest link. ;-) So I went back to the code and sure enough, I had used Python time() instead of rospy.Time() when computing and publishing odometry messages. Once I fixed that bug, the oscillations disappeared. So I'm guessing I had a small time synchronization error between odom messages and move_base
+
+Originally posted by tfoote with karma: 58457 on 2011-12-31
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Pi Robot on 2012-01-01:
+@ahendrix and @Eric Perko -- please see Update to my original question.
+

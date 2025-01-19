@@ -1,0 +1,117 @@
+Q:
+
+Wrong Pointcloud Orientation in Rviz
+
+Hey, I am trying to correctly orient the pointcloud data coming from a Kinect 3D camera sensor Gazebo model into the Rviz, but it's not working.
+In Gazebo, a Pose is of the form:
+<pose> x y z roll pitch yaw </pose>
+
+But, input to the static_transform_publisher node is of the form:
+static_transform_publisher x y z yaw pitch roll frame_id child_frame_id period_in_ms
+
+I tried both the forms, but the pointcloud orientation is still incorrect. I have attached the output of both the versions below.
+Kinect's Gazebo model
+<model name="kinect">
+      <static>true</static>
+      <pose>1.274070 -0.011558 1.961223 0.021866 0.611102 -3.121294</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.1</mass>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.073000 0.276000 0.072000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://kinect/meshes/kinect.dae</uri>
+            </mesh>
+          </geometry>
+        </visual>
+        <sensor name='camera' type='depth'>
+          <update_rate>20</update_rate>
+          <camera name='__default__'>
+            <horizontal_fov>1.0472</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.05</near>
+              <far>3</far>
+            </clip>
+          </camera>
+          <plugin name="kinect_camera_controller" filename="libgazebo_ros_openni_kinect.so">
+            <baseline>0.1</baseline>
+            <alwaysOn>true</alwaysOn>
+            <updateRate>15.0</updateRate>
+            <cameraName>camera</cameraName>
+            <imageTopicName>/camera/rgb/image_raw</imageTopicName>
+            <cameraInfoTopicName>/camera/rgb/camera_info</cameraInfoTopicName>
+            <depthImageTopicName>/camera/depth_registered/image_raw</depthImageTopicName>
+            <depthImageCameraInfoTopicName>/camera/depth_registered/camera_info</depthImageCameraInfoTopicName>
+            <pointCloudTopicName>/camera/depth_registered/points</pointCloudTopicName>
+            <frameName>camera_rgb_optical_frame</frameName>
+            <distortion_k1>0.00000001</distortion_k1>
+            <distortion_k2>0.00000001</distortion_k2>
+            <distortion_k3>0.00000001</distortion_k3>
+            <distortion_t1>0.00000001</distortion_t1>
+            <distortion_t2>0.00000001</distortion_t2>
+            <pointCloudCutoff>0.35</pointCloudCutoff>
+            <pointCloudCutoffMax>4.5</pointCloudCutoffMax>
+            <CxPrime>0</CxPrime>
+            <Cx>0</Cx>
+            <Cy>0</Cy>
+            <focalLength>0</focalLength>
+            <hackBaseline>0</hackBaseline>
+          </plugin>
+        </sensor>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+      </link>
+    </model>
+
+World to camera_rgb_optical_frame transform using TF
+<node   name="kinect_static_transform_publisher"    
+        pkg="tf" 
+        type="static_transform_publisher" 
+        args="1.274070 -0.011558 1.961223 0.021866 0.611102 -3.121294 world camera_rgb_optical_frame 100"/>
+
+<node   name="kinect_static_transform_publisher"    
+            pkg="tf" 
+            type="static_transform_publisher" 
+            args="1.274070 -0.011558 1.961223 -3.121294 0.611102 0.021866 world camera_rgb_optical_frame 100"/>
+
+I would really appreciate some help/guidance on this issue.
+
+Originally posted by Anubhav Singh on ROS Answers with karma: 67 on 2023-05-18
+Post score: 0
+
+A:
+
+This behaviour is perfectly normal according to the axis convention specified in REP 103.
+The correction for camera optical transforms is -90°, 0°, -90° in the roll, pitch and yaw rotations specified in the Suffix Frames section.
+
+First, publish a transform from /world to your Kinect ( say /camera_link):
+ <!-- publish tf from world to the kinect_camera (camera_link) -->
+ <node name="kinect_static_transform_publisher" pkg="tf" type="static_transform_publisher"
+   args="1.274070 -0.011558 1.961223 -3.121294 0.611102 0.021866 world camera_link 100" />
+
+Finally, publish the correct optical transform from /camera_link to camera_rgb_optical_frame:
+ <!-- publish tf from camera_link to camera_rgb_optical_frame -->
+ <node name="kinect_optical_transform" pkg="tf" type="static_transform_publisher"
+   args="0 0 0 -1.5707 0 -1.5707 camera_link camera_rgb_optical_frame 100" />
+
+Originally posted by Gaurav Gupta with karma: 276 on 2023-05-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Anubhav Singh on 2023-05-18:
+Thanks for the help.
+

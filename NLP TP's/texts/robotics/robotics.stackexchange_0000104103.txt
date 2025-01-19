@@ -1,0 +1,106 @@
+Q:
+
+How to pass parameters to included launch description?
+
+I have two launch files: a main launch file, and a sub launch file. The main launch file invokes the sub launch file with
+    run_odometry = LaunchConfiguration('run_odometry', default=True)
+    sub_launch = GroupAction(
+            actions=[
+                PushRosNamespace(
+                    namespace='some_namespace'
+                ),
+                IncludeLaunchDescription(
+                    launch_description_source=PythonLaunchDescriptionSource(
+                        launch_file_path=sub_launch_file)
+                    ),
+                    launch_arguments=[
+                        ('run_odometry', run_odometry)
+                    ]
+                )
+            ]
+        )
+
+The sub launch then defines some node parameters:
+    default_parameters_file = shared_folder / 'config' / 'default_configs.yaml'
+    override_parameters_file = some_folder / 'configs.yaml'
+    parameters = [default_parameters_file, override_parameters_file]
+    run_odometry = LaunchConfiguration('run_odometry', default=True)
+
+and passes those parameters to several nodes, like for instance:
+    odometry_node = Node(
+        condition=IfCondition(run_odometry),
+        package='odometry',
+        executable='odometry_node',
+        output='screen',
+        parameters=parameters
+    )
+
+But now I'd like to move parameters from the sub launch file to the main launch file and call the sub launch file with something like:
+    default_parameters_file = shared_folder / 'config' / 'default_configs.yaml'
+    override_parameters_file = some_folder / 'configs.yaml'
+    parameters = LaunchConfiguration('parameters', default=[default_parameters_file, override_parameters_file])
+    run_odometry = LaunchConfiguration('run_odometry', default=True)
+    sub_launch = GroupAction(
+            actions=[
+                PushRosNamespace(
+                    namespace="some_namespace"
+                ),
+                IncludeLaunchDescription(
+                    launch_description_source=PythonLaunchDescriptionSource(
+                        launch_file_path=sub_launch_file)
+                    ),
+                    launch_arguments=[
+                        ('parameters', parameters),
+                        ('run_odometry', run_odometry)
+                    ]
+                )
+            ]
+        )
+
+Then in the sub launch file have something like:
+    parameters = LaunchConfiguration('parameters')
+    run_odometry = LaunchConfiguration('run_odometry', default=True)
+
+and again
+    odometry_node = Node(
+        condition=IfCondition(run_odometry),
+        package='visual_odometry',
+        executable='visual_odometry_node',
+        output='screen',
+        parameters=parameters
+    )
+
+But that doesn't work:
+'Node' expected 'parameters' to be one of [<class 'list'>], but got '<launch.substitutions.launch_configuration.LaunchConfiguration object at 0x7f48e2dd6290>' of type '<class 'launch.substitutions.launch_configuration.LaunchConfiguration'>'
+The error makes sense, but I don't know how to make this work. There's hardly any documentation on this. Any ideas? Thanks in advance!
+
+A:
+
+Well I ended up with passing on the launch files as individual launch configs:
+    default_parameters_file = shared_folder / 'config' / 'default_configs.yaml'
+    override_parameters_file = some_folder / 'configs.yaml'
+
+    default_parameters_file_config = LaunchConfiguration('default_parameters_file', default=default_parameters_file)
+    override_parameters_file_config = LaunchConfiguration('override_parameters_file', default=override_parameters_file)
+    run_odometry_config = LaunchConfiguration('run_odometry', default=True)
+
+    sub_launch = GroupAction(
+            actions=[
+                PushRosNamespace(
+                    namespace="some_namespace"
+                ),
+                IncludeLaunchDescription(
+                    launch_description_source=PythonLaunchDescriptionSource(
+                        launch_file_path=sub_launch_file)
+                    ),
+                    launch_arguments=[
+                        ("default_parameters_file", default_parameters_file_config),
+                        ("override_parameters_file", override_parameters_file_config),
+                        ("run_odometry", run_odometry_config)
+                    ]
+                )
+            ]
+        )
+
+I would have liked a more flexible solution allowing any amount of parameter files, but that became too messy and this serves my purposes too.
+

@@ -1,0 +1,42 @@
+Q:
+
+How to use quaternions in ROS2
+
+I have to use some sort of transformations to generate velocity of a model using global coordinates. This code is for making the model go to specific locations (goals). the problem i am facing is that the error_x and other values are calculated using global frame but the linear and angular velocity is always given in body frame of the model. i figured that maybe quaternions can help me achieve this task. i need help regarding this.
+            error_x = x_goal - ebot_controller.loc_x
+            error_y = y_goal - ebot_controller.loc_y
+            error_theta = theta_goal- ebot_controller.loc_theta
+            print("X(Error): ", error_x, " Y(Error):", error_y)
+            # Calculation of control outputs using a P controller
+            ebot_controller.vel.linear.x = ebot_controller.kp_x * error_x
+            ebot_controller.vel.linear.y = ebot_controller.kp_y * error_y
+            ebot_controller.vel.angular.z = ebot_controller.kp_theta * error_theta
+
+            ebot_controller.cmd_vel_pub_.publish(ebot_controller.vel)
+            # code below is for not letting the model crawl to the goal very slowly
+            if error_x < 0.1 and y_goal < 0.1:
+             ebot_controller.index += 1
+             if ebot_controller.flag == 1:
+                ebot_controller.index = 0
+                ebot_controller.send_request(ebot_controller.index)  
+        
+
+A:
+
+In robotics, a quaternion (i.e. 4 coordinates) is typically used as a representation of a 3D orientation. There are other possible representations for the same 3D orientation, e.g. a minimal set of 3 coordinates (Euler angles, Roll Pitch Yaw, etc.), a 3x3 rotation matrix (i.e. 9 coordinates), etc.
+For your case, your robot only has a 1D orientation, and you already have a representation for that orientation: it is given by the angle ebot_controller.loc_theta. You could express this orientation in terms of a quaternion, but there is no real need for that.
+The relation between the global and local coordinate system is given by:
+$$
+\begin{bmatrix}v_{x\_global}\\ v_{y\_global}\end{bmatrix} = \begin{bmatrix}cos(\theta)&-sin(\theta)\\
+sin(\theta)&cos(\theta)\end{bmatrix}\cdot\begin{bmatrix}v_{x\_ local}\\ v_{y\_local}\end{bmatrix}
+$$
+and inverse:
+$$
+\begin{bmatrix}v_{x\_local}\\ v_{y\_local}\end{bmatrix} = \begin{bmatrix}cos(\theta)&sin(\theta)\\
+-sin(\theta)&cos(\theta)\end{bmatrix}\cdot\begin{bmatrix}v_{x\_global}\\ v_{y\_global}\end{bmatrix}
+$$
+The rotational component is unchanged, i.e.:
+$$
+\omega_{global} = \omega_{local}
+$$
+

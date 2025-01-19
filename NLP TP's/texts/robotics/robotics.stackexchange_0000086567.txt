@@ -1,0 +1,55 @@
+Q:
+
+How can I modify the code for the turtlesim package?
+
+Let us say that i ran a turtlesim_node rosrun turtlesim turtlesim_node and then ran another node with a different name rosrun turtlesim turtlesim_node __name:=my_turtle. Now i ran the teleop node : rosrun turtlesim turtle_teleop_key .
+Now when i move the teleop key, i am publishing messages to bothe the turtlesim nodes. I do not want this but i guess by default it is so that the teleop node will publish the messages to all the turtlesim_nodes present.
+
+How can i have multiple turtlesim_node running but publish only to 1.
+Using rosservice, how can i clear the content of both the turtlesim nodes at the same time ? using rosservice call /clear clears the default node.
+Is it possible to modify its code or there is some understanding problem from my side ?
+
+Originally posted by aks on ROS Answers with karma: 667 on 2018-04-16
+Post score: 0
+
+A:
+
+Now when i move the teleop key, i am publishing messages to bothe the turtlesim nodes. I do not want this but i guess by default it is so that the teleop node will publish the messages to all the turtlesim_nodes present.
+
+No, that is not how this works. The teleop node publishes to the turtle1/command_velocity topic (here), to which all instances of turtlesim_node subscribe. That is why they all receive the same message.
+
+1 . How can i have multiple turtlesim_node running but publish only to 1.
+
+Technically, you can't, as publications are not "to" a certain node, but to a topic. Any node can subscribe to that topic, and publications are anonymous. You have no way to specify a recipient.
+What you could do however, is use remapping to effectively 'rewire' a node to publish or subscribe to a different topic. You could use this to make one turtlesim_node subscribe to turtle1/command_velocity (the default) and the other to turtle2/command_velocity. Now if turtle_teleop publishes to turtle1/command_velocity, only the first turtlesim_node will receive the messages.
+This effectively achieves what you are asking, but do please note the difference: you're still not sending messages "to" a specific turtlesim_node, you're just making sure that only one of them "tunes in" on the data stream sent out by turtle_teleop.
+
+2 . Using rosservice, how can i clear the content of both the turtlesim nodes at the same time ? using rosservice call /clear clears the default node.
+
+You can't.
+In contrast to messages, service invocations are directed to one particular recipient, namely the service provider (or server). In this case most likely the last turtlesim_node that came up 'claims' the name clear and responds to calls to the service.
+Remapping can help you here as well, but only to make sure the clear services are reachable for both (or all) instances.
+
+3 . Is it possible to modify its code or there is some understanding problem from my side ?
+
+From the above, it would seem there is no 'need' to modify the code, as remapping seems to solve issue 1, and issue 2 is not possible, even if you'd modify the source.
+If you'd still like to take a look, see ros/ros_tutorials/turtlesim. Clone it into a Catkin workspace, build it and be sure to source the devel/setup.bash.
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-04-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-04-16:
+#q203129 might be interesting as some background on how coupled nodes are when they use the different communication patterns supported by ROS.
+Comment by aks on 2018-04-16:
+@gvdhoorn Thanks for such a quick and effective response. I tried this and this works. Just one thing : How can i remap the topics of the node my_turtle. By default it always changes that of the turtlesim_node.
+rosrun turtlesim my_turtle /turtle1/cmd_vel:=/turtle2/cmd_vel
+
+Comment by aks on 2018-04-16:
+this says couldnt find an executable named my_turtle. When I use the default i.e. rosrun turtlesim turtlesim_node /turtle1/cmd_vel:=/turtle2/cmd_vel it works for the turtlesim_node
+Comment by gvdhoorn on 2018-04-16:
+I would recommend you start using launch files. rosrun can be used -- also with remapping -- but launch files will make this much easier.
+Comment by gvdhoorn on 2018-04-16:
+Also: try to avoid speccing absolute topic names (ie: remove the leading /).
+

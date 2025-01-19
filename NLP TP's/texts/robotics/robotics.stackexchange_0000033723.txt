@@ -1,0 +1,53 @@
+Q:
+
+Why can't you use floats for accessing parameters in roscpp?
+
+I've encountered a possible annoying design choice that the parameter server doesn't accept setting floats.
+Although this page erroneously lists floats as acceptable: http://www.ros.org/wiki/roscpp/Overview/Parameter%20Server, you have to use doubles.  I see that the yaml specification doesn't have or need a distinction and so only uses doubles.  As a result this doesn't work:
+float foo;
+pnh_->param("foo", foo, 0.1f);
+
+Is there a reason to not set floats and simply lose unneeded precision from the double version?  It would be nice since the error message is not easy to understand for beginners:
+In file included from /opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/ros.h:45,
+from ...
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h: In member function ‘void ros::NodeHandle::param(const std::string&, T&, const T&) const [with T = float]’:
+...:61:   instantiated from here
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1441:          error: no matching function for call to ‘ros::NodeHandle::getParam(const std::basic_string<char, std::char_traits<char>, std::allocator<char> >&, float&) const’
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1285: note: candidates are: bool ros::NodeHandle::getParam(const std::string&, std::string&) const
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1294: note:                 bool ros::NodeHandle::getParam(const std::string&, double&) const
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1303: note:                 bool ros::NodeHandle::getParam(const std::string&, int&) const
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1312: note:                 bool ros::NodeHandle::getParam(const std::string&, bool&) const
+/opt/ros/diamondback/stacks/ros_comm/clients/cpp/roscpp/include/ros/node_handle.h:1321: note:                 bool ros::NodeHandle::getParam(const std::string&, XmlRpc::XmlRpcValue&) const
+
+I think the answers might be too focused on the fact that you can lose precision.  I'm not proposing we store the parameters as floats in the server, but simply that we allow access to them as floats.  The alternative is that we force people to understand the error and then write code like this:
+double bar;
+nh.param("foo", bar, 0.1);
+float foo = (float)bar;
+
+If you pass in a float, we should be able to assume that you are okay not using double precision.
+
+Originally posted by Chad Rockey on ROS Answers with karma: 4541 on 2011-08-17
+Post score: 6
+
+Original comments
+Comment by Thomas D on 2011-08-17:
+I remember encountering this when first starting to use the parameter server as well.
+Comment by joq on 2012-04-14:
+I prefer the float foo = (float) bar; version because that makes it all explicit.
+
+A:
+
+Python does not have C-float as a native type (see here), but only C-double. This means that when you do something like:
+a = 1.2
+
+a is mapped to the C equivalent of double. Therefore loss-of-precision issues might arise when both C and python nodes access the same parameter.
+I think that using as few native types as possible is a good choice, as it limits problems related to inter-languages compatibility.
+
+Originally posted by Lorenzo Riano with karma: 1342 on 2011-08-18
+This answer was ACCEPTED on the original site
+Post score: 8
+
+Original comments
+Comment by Chad Rockey on 2011-08-22:
+I don't intend to send it out to ROS again.  For lots of things, precision just doesn't matter and you can use a float if you want.  In my case, I need to talk down to some lower level hardware that only supports floats.  I'd rather just be able to access my value as a float instead of casting.
+

@@ -1,0 +1,51 @@
+Q:
+
+Relative orientation of two robots
+
+Given two robot arms with TCP (Tool Center Point) coordinates in the world frame is:
+$X_1 = [1, 1, 1, \pi/2, \pi/2, -\pi/2]$
+and
+$X_2 = [2, 1, 1, 0, -\pi/2, 0]$
+The base of the robots is at:
+$Base_{Rob1} = [0, 0, 0, 0, 0, 0]$
+$Base_{Rob2} = [1, 0, 0, 0, 0, 0]$
+(The coordinates are expressed as successive transformations, X-translation, Y-translation, Z-translation, X-rotation, Y-rotation, Z-rotation. None of the joint axes are capable or continuous rotations.)
+How many degrees does the TCP of robot 2 have to rotate to have the same orientation as the TCP of robot one?
+Is the calculation 
+$\sqrt{(\pi/2 - 0)^2 + (\pi/2 - (-\pi/2))^2 + (-\pi/2 - 0)^2}$
+wrong? If yes, please specify why.
+UPDATED:
+is the relative orientation of the two robots [π/2,π/2,−π/2]−[0,−π/2,0]=[π/2,π,−π/2]? but the euclidean distance cannot be applied to calculate angular distance?
+In other words:
+
+While programming the robot, and tool frame is selected for motion, to match the orientation of the other one, i would have to issue a move_rel($0, 0, 0, \pi/2, \pi, -\pi/2$) command, but the executed motion would have magnitude of $\pi$?
+While programming the robot, and world frame is selected for motion, to match the orientation of the other one, i would have to issue a move_rel($0, 0, 0, \pi, 0, 0$) command, and the executed motion would have magnitude of $\pi$?
+
+A:
+
+Applying the rotation sequence (x-y-z) that you specify, your first robot tool will have the following rotation matrix:
+$R_1 = \begin{bmatrix} 0 & 0 & -1 \\ 0 & -1 & 0 \\ -1 & 0 & 0 \end{bmatrix}$
+While your second robot tool will have the following rotation matrix:
+$R_2 = \begin{bmatrix} 0 & 0 & -1 \\ 0 & 1 & 0 \\ 1 & 0 & 0 \end{bmatrix}$
+Here is a figure to clarify, where the subscript 0 refers to the world coordinate frame, 1 refers to robot 1, and 2 refers to robot 2. Coordinate frames are shown with the x-axis in red, y-axis in green, and z-axis in blue -- grey lines show the world-frame.
+
+There are actually infinite solutions that would rotate you from frame 1 to frame 2, but the simplest would be to rotate about the world frame x-axis by 180 degrees.
+We can get that mathematically by looking at the rotation necessary to transform frame 2 to frame 1:
+$R_1 = R_{2\rightarrow 1} R_2$
+$R_{2 \rightarrow 1} = R_1 R^T_2$
+$R_{2 \rightarrow 1} = \begin{bmatrix} 1 & 0 & 0 \\ 0 & -1 & 0 \\ 0 & 0 & -1 \end{bmatrix}$
+Which can be treated as a rotation about the x-axis by angle $\phi$:
+$R_{2 \rightarrow 1} = \begin{bmatrix} 1 & 0 & 0 \\ 0 & \cos \phi & -\sin \phi \\ 0 & \sin \phi & \cos \phi \end{bmatrix}$
+Where $\cos \phi = -1$ and $\sin \phi = 0$. This leads to the solution:
+$\phi = n \pi$
+Where $n$ is any odd integer. The smallest rotation is when $n = 1$ or $n = -1$, which corresponds to 180 degree rotation about the x-axis in either direction to bring you from frame 2 to frame 1.
+On the other hand, if you consider the angle error to simply be the same as a Euclidean distance, then you get the following (evaluating the formula you give in your question):
+$\varepsilon = \pi \sqrt{\frac{3}{2}}$
+So why is that different? It's because translation takes place in $\mathcal{R}^3$ space while rotation takes place in $\mathcal{S}^3$ space. Euclidean distance is applicable in $\mathcal{R}^3$ space, but not $\mathcal{S}^3$ space. Rotations are non-linear and order matters, meaning most of the concepts applicable to translation are not applicable to rotation.
+In some cases you can use the Euclidean distance in angular coordinates to approximate the angular error between two points, but only when the angle errors are small -- essentially linearizing the trigonometric relations $\cos \theta \approx 1$ and $\sin \theta \approx \theta$.
+You cannot take two sets of Euler angles, subtract them, and use that difference as the set of Euler angles defining the rotation transformation between the two frames defined by the original angles. For example, given your defined sets of angles resulting in the difference $\begin{bmatrix} \frac{\pi}{2} & \pi & -\frac{\pi}{2} \end{bmatrix}$, those new Euler angles would yield the following rotation matrix:
+$R = \begin{bmatrix} 0 & 0 & -1 \\ 1 & 0 & 0\\ 0 & -1 & 0 \end{bmatrix}$
+But we already know that the rotation matrix is:
+$R = \begin{bmatrix} 1 & 0 & 0 \\ 0 & -1 & 0 \\ 0 & 0 & -1 \end{bmatrix}$
+Once again, you simply cannot apply linear mathematics to rotations. The rotation angles give you rotation matrices, and those matrices multiply. The new rotation matrix will itself have a set of corresponding angles, and those angles are not simply the difference between the original sets. The closest you can get to what you are talking about is by using quaternions, where subsequent rotations can be "added" and "subtracted" but again using non-linear mathematics.
+

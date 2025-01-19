@@ -1,0 +1,67 @@
+Q:
+
+ros::Service same class instance in frequent callback
+
+Hello People,
+I'm currently having issues writing a ros service for setting moveit goals. It looks like this:
+bool myfunc_callback(mypkg::mysrv::Request &req, 
+                     mypkg::mysrv::Response &res)
+{
+moveit::planning_interface::MoveGroupInterface move_group(PLANNING_GROUP);
+//other moveit setup stuff
+
+//my data handling
+
+//my actual usage
+move_group.setPoseTarget(target_pose);
+
+return true;
+}
+
+int main(int argc, char **argv)
+{
+//ros init stuff (init and nodehandle)
+
+ros::ServiceServer service = mynode.advertiseService("mysrv", myfunc_callback);
+
+while (ros::ok())
+{ ros::spinOnce();
+r.sleep();
+}
+return 0;
+}
+
+From another node I'm calling this service several times. The service itself works just as intended. At its current state every single service call goes through the whole moveit setup stuff every time, which takes quite some time.
+Now I want to implement another function, which also has access to the instance "move_goup". Due to the service callback being defined in some mysterious library i cannot easily add additional values to the callback.
+Is there a possibility to define move_group in the main and pass it to the service callback function and to all other functions i need it in?
+This would also increase performance significantly.
+Thank you in advance
+Felix
+
+Originally posted by Felix_N on ROS Answers with karma: 115 on 2017-06-14
+Post score: 0
+
+A:
+
+I solved the problem using pointers.
+At the top of the code (after the includes) I now have a pointer to a movegroupinterface object like this:
+moveit::planning_interface::MoveGroupInterface *move_point;
+
+In the service callback function I can use the pointer like this:
+bool callback(.....) {
+     move_point->setPoseTarget(target_pose1);
+}
+
+because i defined it in the main like this:
+ int main(){
+      static const std::string PLANNING_GROUP = "mygroup";
+      moveit::planning_interface::MoveGroupInterface move_group(PLANNING_GROUP);
+      move_point = &move_group;
+}
+
+There may be some more effective way, but that works just fine.
+
+Originally posted by Felix_N with karma: 115 on 2017-06-18
+This answer was ACCEPTED on the original site
+Post score: 0
+

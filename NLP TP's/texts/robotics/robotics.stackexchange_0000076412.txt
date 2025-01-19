@@ -1,0 +1,90 @@
+Q:
+
+sending multiple goals to navigation stack
+
+Hi everyone,
+I want to send multiple goals to the navigation stack, that the robot should pass successively. I want to use a node similar to the node from this tutorial http://wiki.ros.org/navigation/Tutorials/SendingSimpleGoals. How can I use this node to send multiple goals?
+Thank you in advance.
+Update:
+That is the code I am trying to use, but I am not sure what should be in the execute_cb-part:
+#!/usr/bin/env python
+
+import roslib
+import rospy
+import smach
+import smach_ros
+import actionlib
+
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+
+# Create a action server
+class WPServer:
+    def __init__(self,name):
+        self._sas = SimpleActionServer(name,
+                Waypoints,
+                execute_cb=self.execute_cb)
+
+    def execute_cb(self, msg):
+        if msg.goal == 0:
+            self._sas.set_succeeded()
+        elif msg.goal == 1:
+            self._sas.set_aborted()
+        elif msg.goal == 2:
+            self._sas.set_preempted()
+
+def main():
+    rospy.init_node('waypoint_machine')
+
+    # Create a SMACH state machine
+    sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+
+    # Open the container
+    with sm:
+        # Add states to the container
+
+    wp1 = MoveBaseGoal()
+    wp1.target_pose.header.frame_id = '/map'
+    wp1.target_pose.pose.position.x = 13
+    wp1.target_pose.pose.position.y = 0
+    wp1.target_pose.pose.orientation.w = 1.0
+    StateMachine.add('Waypoint1',
+                      SimpleActionState('WPServer',
+                                        Waypoints,
+                                        goal=wp1),
+                      transitions={'succeeded':'Waypoint2'})
+
+    wp2 = MoveBaseGoal()
+    wp2.target_pose.header.frame_id = '/map'
+    wp2.target_pose.pose.position.x = 18
+    wp2.target_pose.pose.position.y = 0
+    wp2.target_pose.pose.orientation.z = 0.70710678118
+    wp2.target_pose.pose.orientation.w = 0.70710678118
+    StateMachine.add('Waypoint2',
+                      SimpleActionState('WPServer',
+                                        Waypoints,
+                                        goal=wp2),
+                      transitions={'succeeded':'Waypoint3'})
+
+    # Execute SMACH plan
+    outcome = sm.execute()
+
+    rospy.signal_shutdown('All done.')
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by gleb on ROS Answers with karma: 21 on 2016-09-21
+Post score: 0
+
+Original comments
+Comment by spmaniato on 2016-09-22:
+Your code should implement an action client, not a server. Then your client will send goals to the move_base action server.
+
+A:
+
+In brief, you can write a custom node that instantiates a simple action server which sends a sequence of MoveBaseActionGoals to move_base
+
+Originally posted by spmaniato with karma: 1788 on 2016-09-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

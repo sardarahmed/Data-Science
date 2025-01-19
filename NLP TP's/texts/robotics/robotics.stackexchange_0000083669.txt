@@ -1,0 +1,105 @@
+Q:
+
+Problem with robot_localization transforms
+
+Hey!
+I am experimenting with robot_localization and amcl. I use a simulated turtlebot 3 which is in the /robot1/ namespace and has  robot1_tf as tf-prefix.
+I use  a robot_localization ekf for the robot1_tf/odom frame and a separate one for the map. The problem here is that this map ekf always uses robot1_tf/map as map frame. But I need map as map-frame. I tried various combinations but that didn't change it.
+My launch file looks like that:
+<group ns=robot1">
+    <param name="tf_prefix" value="robot1_tf" />
+
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se_odom" clear_params="true">
+          <rosparam command="load" file="$(find tb3_lidar_navigation)/params/odom_ekf.yaml" />
+    </node>
+  
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se_map" clear_params="true">
+      <remap from="odometry/filtered" to="odometry/filtered_map"/>
+      <rosparam command="load" file="$(find tb3_lidar_navigation)/params/map_ekf.yaml" />
+    </node>
+
+    <!--- Run AMCL -->
+    <include file="$(find tb3_lidar_navigation)/launch/amcl.launch.xml">
+          <arg name="robot_ns"       value="$(arg robot_ns)"/>
+          <arg name="robot_tf"       value="$(arg robot_tf)"/>
+          <arg name="initial_pose_x" value="$(arg initial_pose_x)"/>
+          <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
+          <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
+          <arg name="tf_broadcast"   value="false"/>
+    </include>
+  </group>
+
+The config file for the map_ekf looks like that:
+frequency: 30
+sensor_timeout: 0.1
+two_d_mode: true
+transform_time_offset: 0.0
+transform_timeout: 0.0
+print_diagnostics: true
+debug: false    
+
+map_frame: map
+odom_frame: odom
+base_link_frame: base_footprint
+world_frame: map
+
+odom0: odom
+odom0_config: [false, false, false,
+               false, false, false,
+               true,  true,  true,
+               false, false, true,
+               false, false, false]
+odom0_queue_size: 10
+odom0_nodelay: true
+odom0_differential: false
+odom0_relative: false
+
+pose0: amcl_pose
+pose0_config: [true,  true,  false,
+               false, false, false,
+               false, false, false,
+               false, false, false,
+               false, false, false]
+pose0_queue_size: 10
+pose0_nodelay: true
+pose0_differential: false
+pose0_relative: false
+
+imu0: imu
+imu0_config: [false, false, false,
+              true,  true,  false,
+              false, false, false,
+              true,  true,  true,
+              true,  true,  true]
+imu0_nodelay: true
+imu0_differential: false
+imu0_relative: false
+imu0_queue_size: 10
+imu0_remove_gravitational_acceleration: true
+
+use_control: false
+
+Does anybody know how I can change the map frame?
+Thanks!
+
+Originally posted by jauer on ROS Answers with karma: 1 on 2017-11-01
+Post score: 0
+
+Original comments
+Comment by ufr3c_tjc on 2017-11-01:
+Try with a forward slash in front, to tell the node that it is an absolute name: /map.
+Comment by jauer on 2017-11-02:
+Thank you! I already tried that and it resulted in the same tf-tree as without slash. So this is no solution.
+Comment by ufr3c_tjc on 2017-11-02:
+Maybe remove the tf_prefix parameter and put the frames as robot1_tf/odom and map into the YAML?
+Comment by jauer on 2017-11-03:
+Same again. Is it possible that the filter somehow also uses the frames which are used in the subscribed sensor topics?
+
+A:
+
+You have tf_prefix set. Simply removing it from your launch file might not help, unless you start a new ROS master afterwards, or manually delete the tf_prefix parameter. I would stop your ROS master, remove tf_prefix, then run everything without AMCL, and check the frames. The only things that affect the EKF's use of frames are the parameters you give it and tf_prefix, so if it's publishing transforms in the wrong namespace, it's one of those two things.
+
+Originally posted by Tom Moore with karma: 13689 on 2018-01-24
+This answer was ACCEPTED on the original site
+Post score: 0
+

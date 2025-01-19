@@ -1,0 +1,49 @@
+Q:
+
+How to program a three wheel Omni?
+
+I have created a three wheeled omni robot like the diagram below. Now I am unsure of how to program it. I want to use a single joystick so one x and one y value. The values for x and y are between -1 and 1, also the motors can be set anywhere from -1 to 1. How do I use this data to make the robot move based on the joystick without changing orientations? After doing some initial research this seems like a complex problem, but I am hoping there is a formula that I can.
+
+A:
+
+The math involved for controlling a holonomic robot is really not too bad.  It is basically just high-school trigonometry and knowing how to set up the problem.
+First, lets start with the joystick.  I think the easiest way to deal with joysticks is to convert it's cartesian $(x,y)$ readings into polar $(r,\phi)$ coordinates.  This will allow us to control the holomonic robot much more naturally.
+
+The polar coordinates are simply:
+$$
+\phi_{joy} = atan2(Y_{joy}, X_{joy})
+$$
+$$
+r_{joy} = \sqrt{Y_{joy}^2 + X_{joy}^2}
+$$
+Now we can think of this as a vector, where the angle indicates the direction to move, and the length of the vector is the desired speed.
+
+If we want full speed to be when the joystick is pushed straight forward, we have a little bit of a problem.  If the joystick is pushed diagonally, $r$ will be greater than when it is forward.  Basically $\sqrt{Y_{max}^2 + X_{max}^2} > Y_{max}$. This is because the joystick space is square, whereas we want a circular space.  
+
+There are a number of ways to compensate for this.  Some simple ways are to make diagonal full speed, but this isn't great because straight forward is not full speed anymore.  You could also simply cap the speed, but now your joystick has a large dead zone.  My preferred method is to adaptively scale $r$ depending on where it is in joystick space.  You need to extend the line of where the joystick is currently $(r,\phi)$, to the boundary of the space.  Let's call this $b$.  
+
+Computation of this length is simply a matter of a few conditionals (to determine which side of the square you intersect) and some more trigonometry.  This is left as an exercise for the reader.  Now the translational speed is:
+$$
+speed_t = maxspeed * r_{joy} / b
+$$
+Where $maxspeed$ is what ever you want the max translational velocity of your robot to be.  Note that your joystick units cancel out here.
+Now to figure out the individual wheel speeds.  This procedure will work for any type of robot with omni-wheels.  (But not mecanum wheels.  Those are different).  3 wheels, 4 wheels, and even odd combinations with different radii from the robot center and wheel diameters.  As long as all the wheel axes converge at a single point.  But lets focus on 3 wheels as in your question.
+
+First, number the wheels.
+
+Then create a coordinate system.  (i.e. designate the front of your robot).  Now lets call the angle to each wheel axis.  $\alpha_1$, $\alpha_2$, and $\alpha_3$.  
+
+And lets set our convention to be positive motor speeds will make the robot spin clockwise. 
+
+Now we overlay our joystick vector on our robot.  We create a right triangle between the motor axis and the joystick vector.  For wheel 1, it will look like this:
+
+Now wheel 1's speed ($M_1$) is simply the length of the line.  To get this quantity, we subtract the angles, then use $sin$.
+$$
+\theta_1 = \alpha_1 - \phi
+$$
+$$
+M_1 = speed_t * sin(\theta_1)
+$$
+Note that this is actually the ground speed that the wheel should have.  So you will probably want to convert it into rotational velocity (rpm for example).  Use the equation for circle circumference, and keep your units straight.
+And that's it.  Believe it or not, but the same equation works for all wheels.  This entire procedure is only for translating the robot.  If you want the robot to rotate too then you can simply add some rotation to all 3 motors.
+

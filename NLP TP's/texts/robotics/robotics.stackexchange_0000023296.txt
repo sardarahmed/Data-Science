@@ -1,0 +1,76 @@
+Q:
+
+control over changing data
+
+I am trying out different control algorithms, in my practice on the state space models and control. Now I have the following system with the following states and state transitions with time.
+Position variation with time:
+$$
+\begin{equation}
+\begin{bmatrix}
+x_t\\ y_t \\ \theta_t
+\end{bmatrix} = 
+\begin{bmatrix} 
+x_{t-1} + v_{t-1}cos(\theta_{t-1}) \delta t \\ 
+y_{t-1} + v_{t-1}sin(\theta_{t-1}) \delta t \\
+\theta_{t-1} + \omega_{t-1} \delta t
+\end{bmatrix}
+\end{equation}
+$$
+x and y are coordinates in the world, $\theta$ is the bearing of my robot. v is its velocity and dt is the change in time.
+In order to have to robot go somewhere, I linearized the above system into the form, $X_t = A_{t-1}X_{t-1} + B_{t-1}u_{t-1}$, using the linear and angular velocities as inputs to control the position of the robot to have it go to desired location. Using the LQR algorithm. Current state is position and desired state is in form of position as well at the moment. My questions are,
+
+What changes do I have to (or need to make), to have the robot not move to a stationary position but track a moving point? Assuming i retrieve the state information from sensors periodically. Am a bit confused here because, when calculating the discrete ricatti equation, I have something like this:
+
+For i = N, …, 1
+P[i-1] = Q + ATP[i]A – (ATP[i]B)(R + BTP[i]B)-1(BTP[i]A)
+
+I am doing it in python by the way, for what its worth.
+
+How do my matrices change, if I choose to move in one direction, say get rid of the y coordinate. So my robot moves in a straight line?
+
+What effects does changing the current and desired state from position (coordinates), to something constant, say distance? Is this even advisable? if not, why not? Still i will forward distance to controller as state over time, and controller will give me velocity.  How do my matrices change according to the distance set up?
+
+Which of the two approaches is more accurate? Assuming all robots are on the ground.
+
+Below are my A and B matrices
+$$
+\begin{equation}
+A = 
+\begin{bmatrix}
+1 & 0 & 0 \\
+0 & 1 & 0 \\
+0 & 0 & 1
+\end{bmatrix},  
+B = 
+\begin{bmatrix} 
+cos(\theta_{t-1}) \delta t & 0 \\
+sin(\theta_{t-1}) \delta t & 0 \\
+0 & \delta t
+\end{bmatrix}
+\end{equation}
+$$
+Thanks a lot in advance.
+
+A:
+
+Trying to address your questions one at a time:
+
+What changes do I have to (or need to make), to [...] track a moving point?
+
+In the state-space representation I think this is typically done with reference tracking in the form of "Integral Control" or "Integral Action." You essentially wrap an integral controller around your state feedback controller and pass the integral error. If I recall correctly you extend your state vector to include integral error, and then the state feedback controller drives all states to zero, including the integral error, et voila.
+
+How do my matrices change, if I choose to move in one direction, say get rid of the y coordinate. So my robot moves in a straight line?
+
+You don't get to selectively butcher your state vectors. They're either the states, or they're not. Use your B matrix to map your inputs to state derivatives, use your C (and D) matrices) to map your states back to outputs, but you can't "get rid of" one of the states.
+
+What effects does changing the current and desired state from position (coordinates), to something constant, say distance? Is this even advisable? if not, why not? Still i will forward distance to controller as state over time, and controller will give me velocity. How do my matrices change according to the distance set up?
+
+Well you can't really do that, right? If it's a constant input then are you actually controlling anything? The mechanism you might be tempted to use would be the almost-always-zero D matrix, which maps INPUTS directly to y/output, but that's not the "kind" of output you would use for control. The y outputs are those that are the measurable outputs, so for example if you had vehicle speed as a state but you only had wheel encoders, the wheel encoder reading should depend on the vehicle speed - the C matrix would contain the math that converts from vehicle speed to wheel encoder speed so you can do some comparisons between y and your sensor feedback. Y is not the control output.
+What you're looking for instead is a kind of feed-forward control, but again I don't think what you're asking about is what you actually want.
+
+Which of the two approaches is more accurate? Assuming all robots are on the ground.
+
+I don't understand this question.
+In general, I think you've got kind of the wrong approach here in trying to do speed and heading together in one controller. If it were me, I'd split them out into a heading controller and a speed controller, then I'd set the poles on the heading controller to be (arbitrarily) 5 to 10x faster than the poles on the speed controller, so you get to heading faster than you get to position, which is kind of required if you're ever going to get to the correct position. Then you can have your inputs as r/$\theta$. Your control outputs for the heading controller would be some $\ddot{\theta}$ that in turn maps symmetrically to the left and right wheels, such that v_L = (-v_R).
+The output of the speed controller would pipe to each wheel, and then you sum the outputs of both controllers to get the complete system.
+

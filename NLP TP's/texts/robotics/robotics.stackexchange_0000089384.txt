@@ -1,0 +1,74 @@
+Q:
+
+Print subset of message
+
+I would like to programmatically print a subset of this message, specifically only the flags set to true. I have found only this question regarding the display of messages, and the answer suggests to use ros::message_traits::Definition<franka_msgs::Errors>::value() which, in this case is a method which returns a long string made like this:
+return "bool joint_position_limits_violation\n\
+bool cartesian_position_limits_violation\n\
+...
+";
+
+Is storing this string and parsing it the only way I can get the names of the errors to use in a for loop that checks which flags are true? Is there no way to get the name of the single error from the message itself?
+
+Originally posted by aPonza on ROS Answers with karma: 589 on 2018-10-23
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-10-23:
+You could take a look at ros_type_introspection.
+Afaik there is no OotB support for this, but that library tries to fill that gap.
+Comment by Delb on 2018-10-23:
+If you know the message (thus all the fields) maybe you could compare each field in the callback and only print if true like that :
+if (msg->joint_position_limits_violation)
+{
+    ROS_INFO("joint_position_limits_violation");
+}
+//Same for each fields of the message
+
+Comment by gvdhoorn on 2018-10-23:
+What @Delb suggests is certainly an approach for this specific message.
+I took the question by @aPonza to be a bit more general in which case hard-coding wouldn't be feasible.
+Comment by Davide Faconti on 2019-01-24:
+If you are still intereste to know the answer, I can write an example for you (I am the author of ros_type_introspection).
+Comment by aPonza on 2019-01-24:
+I am, I was looking at this question again exactly yesterday to do another similar thing to a message and couldn't remember the name of your package, but in the end delayed the task in favour of another.
+
+A:
+
+This is one of the problems that ros_type_intorspection can solve for you.
+I created an example here just for you ;)
+https://github.com/facontidavide/type_introspection_tests/blob/master/example/franka.cpp
+As you can see, you can deserialize any ROS message into a list of Key/Value pairs, one for each field of the message.
+In your particular case, to keep the example simple, we just used the fact that we know that all the fields are bool.
+here you can see an incomplete snippet of the solution:
+void DeserializeAndPrint(RosIntrospection::Parser* parser,
+                         const std::string& topic_name,
+                         std::vector<uint8_t> & buffer) {
+
+    using namespace RosIntrospection;
+    FlatMessage flat_container;
+    parser->deserializeIntoFlatContainer( topic_name,
+                                          absl::Span<uint8_t>(buffer),
+                                          &flat_container, 100 );
+
+    RenamedValues renamed_numerical_values;
+    parser->applyNameTransform( topic_name,
+                               flat_container,
+                               &renamed_numerical_values );
+
+    for(auto& it: flat_container.value)
+    {
+        bool value = it.second.convert<int8_t>();
+
+        if( value )
+        {
+            std::cout << it.first.toStdString() << " : "
+                      << it.second.convert<double>() <<  std::endl;
+        }
+    }    
+}
+
+Originally posted by Davide Faconti with karma: 308 on 2019-01-25
+This answer was ACCEPTED on the original site
+Post score: 2
+

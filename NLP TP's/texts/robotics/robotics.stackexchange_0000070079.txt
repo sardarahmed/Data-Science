@@ -1,0 +1,123 @@
+Q:
+
+How to get a smooth motion of a JACO-Arm following trajectory points
+
+The jaco arm follows a trajectory points but stops briefly in those points, is there a package or suggestion to eliminate this stops and make the arm move smoothly over the trajectories?
+
+Edit:
+#include<iostream>
+#include<stdlib.h>
+#include<fstream>
+#include<string.h>
+#include<sstream>
+#include<time.h>
+using namespace std;
+void letswait(int);
+int main(int argc, char **argv)
+{
+    char filename[100];
+    float temp;
+    int row=0;
+    stringstream rosrun;
+    //find out number of rows
+    strcpy(filename,argv[1]);
+    ifstream myfile (filename);
+    if(myfile.is_open())
+    {
+        while(!myfile.eof())
+        {
+            myfile>>temp;
+            row++;      
+        }
+    }   
+    row--;
+    row=row/6;
+    //refresh the file read
+    myfile.clear();
+    myfile.seekg(0,myfile.beg);
+    
+    //create dynamic table
+    float **table; 
+    table = new float* [row];
+    for(int i=0;i<row;i++)
+    table[i] = new float [6];
+    
+    //read the file into table
+    for (int j=0;j<4;j++)
+    {
+        if(myfile.is_open())
+        {
+            while(!myfile.eof())
+            {
+                //cout<<myfile;
+                for(int i=0;i<row;i++)
+                {
+                    for(int j=0;j<6;j++)
+                    {
+                        myfile>>table[i][j];
+                    }
+                }
+            
+            }
+            myfile.close();
+        }
+        for(int i=0;i<row;i++)
+        {
+        
+            //create string stream for rosrun
+            rosrun<<"rosrun jaco_demo joint_angle_workout.py jaco "<<table[i][0]<<" "<<table[i][1]<<" "<<table[i][2]<<" "<<table[i][3]<<" "<<table[i][4]<<" "<<table[i][5];
+            //call rosrun jaco_demo with one set of angles
+            system(rosrun.str().c_str());
+            //clear stream
+            rosrun.str("");
+
+            if (j == 0 && i == 0)
+                {   
+                    rosrun<<"rosrun jaco_demo grip_workout.py jaco 60 60 60";
+                    system(rosrun.str().c_str());
+                    rosrun.str("");             
+                }
+    }
+    return 0; 
+}
+void letswait(int secs){
+    clock_t end;
+    end=clock()+secs*CLOCKS_PER_SEC;
+    while(clock()<end);
+}
+
+Originally posted by kural on ROS Answers with karma: 1 on 2015-10-26
+Post score: 0
+
+Original comments
+Comment by Airuno2L on 2015-10-26:
+Can you add information about how you are currently commanding the trajectories?
+Comment by kural on 2015-10-28:
+i have attached the code bellow. I am taking a set of points (joint angles) from a text file and giving as an input. But the arm pauses at each point and then moves to the next. I want it not to stop and move smoothly. Please suggest
+Comment by gvdhoorn on 2015-10-29:
+@kural: please do not post answers that are not actually answers. If you need to provide more information, edit your original question. Use the edit link/button below your question for that.
+Comment by kural on 2015-10-30:
+sorry @gvdhoorn . New here. :-)
+
+A:
+
+What you're seeing happen is the intended behavior given the inputs you're providing. You're telling the arm to go to one point, then another, and that is what it is doing. If you want to tell it to go through a smooth trajectory without stopping you need a way to tell it that you don't want zero velocity at those points. That is what the trajectory_msgs is for.
+I don't think the jaco package has support for receiving trajectory_msgs so you'll need someway of implementing it external to the robot or jaco package. I believe the moveit! package might be able to help with this.
+Also, you might want to peek inside the Kinova Jaco API and see if it is possible to command trajectories through it and it just wasn't implemented in the ROS package.
+
+Originally posted by Airuno2L with karma: 3460 on 2015-10-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by kural on 2015-10-30:
+Thanks. I have found the wpi wrapper package from github which supports my needs, but sadly i dont know how to use it now. Can you please help me about how to provide my input in to this package. https://github.com/RIVeR-Lab/wpi_jaco/blob/develop/wpi_jaco_wrapper/src/jaco_arm_trajectory_node.cpp
+Comment by Airuno2L on 2015-10-30:
+It looks like they have pretty good documentation here: link. Have you looked through that yet?
+Comment by kural on 2015-10-30:
+yes, but in vain. I am new to ros. can you please tell me the command line in ros i should type to give in 3 points trajectory for the smooth motion function in this package. Please.
+Comment by kural on 2015-10-30:
+e.g., rosrun jaco_demo cartesian_workout.py jaco -0.314 -0.339 0.600 -0.591 -0.519 0.324 0.525 . This is a example line given in the ros-jaco package, which takes the arm to the specified position. Can you tell me similarly the line to execute the smooth arm motion for the wpi wrapper package?.Pleas
+Comment by Airuno2L on 2015-10-30:
+Those command line tools are really just examples to demo. You'll need to write your own code to interface with their nodes. If you haven't done them yet I suggest doing the beginner tutorials here then here.
+

@@ -1,0 +1,121 @@
+Q:
+
+can't call member without object?
+
+i'm using ros kinetic.
+In file included from /home/robot/youbot_catkin_ws/src/youbot-controller/src/localisation-component.cpp:1:0:
+/home/robot/youbot_catkin_ws/src/youbot-controller/src/localisation-component.hpp: In member function ‘virtual void Localisation::updateHook()’:
+/home/robot/youbot_catkin_ws/src/youbot-controller/src/localisation-component.hpp:37:80: error: cannot call member function ‘void KDL::Rotation::GetQuaternion(double&, double&, double&, double&) const’ without object
+             KDL::Rotation rot = KDL::Rotation::GetQuaternion(qu.x, qu.y, qu.z, qu.w);
+                                                                                    ^
+    youbot-controller/CMakeFiles/localisation-component.dir/build.make:62: recipe for target 'youbot-controller/CMakeFiles
+
+/localisation-component.dir/src/localisation-component.cpp.o' failed
+    make[2]: *** [youbot-controller/CMakeFiles/localisation-component.dir/src/localisation-component.cpp.o] Error 1
+    CMakeFiles/Makefile2:407: recipe for target 'youbot-controller/CMakeFiles/localisation-component.dir/all' failed
+    make[1]: *** [youbot-controller/CMakeFiles/localisation-component.dir/all] Error 2
+    Makefile:138: recipe for target 'all' failed
+    make: *** [all] Error 2
+    Invoking "make -j4 -l4" failed
+
+here is d source file:
+#ifndef OROCOS_LOCALISATION_COMPONENT_HPP
+#define OROCOS_LOCALISATION_COMPONENT_HPP
+
+    #include <rtt/RTT.hpp>
+    #include <iostream>
+    #include <geometry_msgs/Pose2D.h>
+    #include <geometry_msgs/TransformStamped.h>
+    #include <kdl/frames.hpp>
+    
+    class Localisation
+        : public RTT::TaskContext
+    {
+        geometry_msgs::TransformStamped tfs;
+        RTT::OutputPort<geometry_msgs::Pose2D> outpose;
+     public:
+        Localisation(std::string const& name)
+            : TaskContext(name, PreOperational)
+        {
+        addPort("pose", outpose).doc("Contains latest Youbot Pose.");
+    }
+
+    bool configureHook() {
+        /** Check in here that we can call rtt_tf */
+        return false;
+    }
+
+    void updateHook() {
+        try {
+            /* tfs = ...call rtt_tf and query the transform /odom to /base_footprint ... ; */
+        } catch (...) {
+            return;
+        }
+        geometry_msgs::Pose2D pose;
+        pose.x = tfs.transform.translation.x;
+        pose.y = tfs.transform.translation.y;
+        geometry_msgs::Quaternion qu = tfs.transform.rotation;
+        KDL::Rotation rot = KDL::Rotation::GetQuaternion(qu.x, qu.y, qu.z, qu.w);
+        //KDL::Vector v;
+        //pose.theta = rot.GetRotAngle(v);
+        //outpose.write(pose); 
+    }
+};
+
+#endif
+
+Originally posted by dinesh on ROS Answers with karma: 932 on 2018-03-12
+Post score: 0
+
+A:
+
+This is a C++ issue and not a ROS one: KDL::Rotation::GetQuaternion(..) is not a static method, but a regular one. From the documentation:
+
+Get the quaternion of this matrix
+
+You'll need to first create an instance of KDL::Rotation ('this matrix') and then invoke its GetQuaternion(..).
+Note also: x, y, z and w are output arguments.
+
+Edit:
+
+KDL::Rotation rot;
+
+rot.GetQuaternion(qu.x, qu.y, qu.z, qu.w);
+
+stil i'm getting same error.
+
+error is:
+
+undefined reference to `KDL::Rotation::GetQuaternion(double&, double&, double&, double&) const'
+
+So which is it? The same error, or this last one?
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-03-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by dinesh on 2018-03-13:
+KDL::Rotation rot;
+rot.GetQuaternion(qu.x, qu.y, qu.z, qu.w);
+stil i'm getting same error.
+Comment by dinesh on 2018-03-13:
+error is: undefined reference to `KDL::Rotation::GetQuaternion(double&, double&, double&, double&) const'
+Comment by dinesh on 2018-03-13:
+the full error is:
+CMakeFiles/localisation-component.dir/src/localisation-component.cpp.o: In function Localisation::updateHook()': localisation-component.cpp:(.text._ZN12Localisation10updateHookEv[_ZN12Localisation10updateHookEv]+0xee): undefined reference to KDL::Rotation::Quaternion(double, dou
+Comment by gvdhoorn on 2018-03-13:
+Please add this sort of updates to your original question. Use the edit button/link for that.
+Comment by gvdhoorn on 2018-03-14:
+The linker error would seem to be similar to what you ask about in #q285133.
+If you've solved the "cannot call member function" error, then is this question answered?
+Comment by dinesh on 2018-03-14:
+well this error is done by using object of class kdl::rotation but when i do it, the previous error i.e undefined reference to kdl::rotation::quaternion .. is comming. so now i'm reinstalling ros desktop full this time. previously i was using ros kinetic not full version, and gazebo 9.
+Comment by gvdhoorn on 2018-03-14:
+If your question about "cannot call member function" was answered, then please tick the checkmark to the left of this answer.
+Comment by gvdhoorn on 2018-03-14:\
+
+so now i'm reinstalling ros desktop full this time. previously i was using ros kinetic not full version, and gazebo 9.
+
+I would be surprised if that will solve anything, but you never know.
+

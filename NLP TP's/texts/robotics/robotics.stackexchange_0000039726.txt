@@ -1,0 +1,97 @@
+Q:
+
+how to deal multiple erratic robots in gazebo?
+
+Hi, I am stuck in a problem. I want to use two/three erratic robots in gazebo. I have got help from link here. I am successful in spawning two erratic robots. I am using this two_robots.launch
+<launch>
+    <param name="use_sim_time" value="true" />
+ <node name="gazebo" pkg="gazebo" type="gazebo" args="$(find gazebo_worlds)/worlds/empty.world" respawn="false" output="screen"/>
+
+<group ns="robot1">
+
+    <param name="tf_prefix" value="robot1"/>
+    
+    <!-- send the erratic robot XML to param server -->
+
+<param name="robot_description" command="$(find xacro)/xacro.py '$(find erratic_world)/urdf/erratic_laser.urdf.xacro'" />
+    
+    <!-- push robot_description to factory and spawn robot in gazebo -->
+   
+   <node name="spawn_robot1" pkg="gazebo" type="spawn_model"
+          args="-param robot_description
+                -urdf
+                -z 0.01
+                -model robot1"
+          respawn="false" output="screen" /> 
+
+          
+    <!-- start robot state publisher -->
+    <node pkg="robot_state_publisher" type="state_publisher" name="robot_state_publisher1" output="screen" >
+        <param name="publish_frequency" type="double" value="50.0" />
+    <remap from="odom" to="beta/odom" /> 
+
+    </node>
+
+<!-- Filter for base laser shadowing/veiling -->
+<node pkg="laser_filters" type="scan_to_cloud_filter_chain" respawn="true" name="base_shadow_filter" >
+    <remap from="scan" to="base_scan/scan" />
+    <remap from="cloud_filtered" to="base_scan/shadow_filtered_old" />
+    <param name="target_frame" value="base_footprint" />
+    <param name="high_fidelity" value="false" />
+    <rosparam command="load" file="$(find erratic_description)/params/shadow_filter.yaml" />
+</node>
+
+</group>
+
+<group ns="robot2">
+    <param name="tf_prefix" value="robot2"/>
+    
+    <!-- send the erratic robot XML to param server -->
+    <param name="robot_description" command="$(find xacro)/xacro.py '$(find erratic_world)/urdf/erratic_laser.urdf.xacro'" />
+    
+    <!-- push robot_description to factory and spawn robot in gazebo -->
+    <node name="spawn_robot2" pkg="gazebo" type="spawn_model"
+          args="-param robot_description
+                -urdf
+                -x 1.00
+                -z 0.01
+                -model robot2"
+          respawn="false" output="screen" />
+          
+    <!-- start robot state publisher -->
+    <node pkg="robot_state_publisher" type="state_publisher" name="robot_state_publisher2" output="screen" >
+        <param name="publish_frequency" type="double" value="50.0" />
+    </node>
+
+<!-- Filter for base laser shadowing/veiling -->
+<node pkg="laser_filters" type="scan_to_cloud_filter_chain" respawn="true" name="base_shadow_filter" >
+    <remap from="scan" to="base_scan/scan" />
+    <remap from="cloud_filtered" to="base_scan/shadow_filtered_old" />
+    <param name="target_frame" value="base_footprint" />
+    <param name="high_fidelity" value="false" />
+    <rosparam command="load" file="$(find erratic_description)/params/shadow_filter.yaml" />
+</node>
+
+</group>
+</launch>
+
+Its working very fine. But I have a problem here I can not publish separate topic /odom and subscribe separate topic /cmd_vel for each robot. Here I can do one thing that I can change code "erratic_gazebo_plugins/src/diffdrive_plugin.cpp" for each robot, but its not a good approach.
+Is it possible that I can overcome that problem in my launch file? Thanks
+
+Originally posted by abdullah on ROS Answers with karma: 81 on 2012-04-19
+Post score: 1
+
+A:
+
+This should be fixed in erratic_robot trunk version (specifically revision 1554, the latest trunk has Fuerte fixes that will break all earlier ROS version compatibility). There's an example launch file that shows how to launch multiple erratic robots in gazebo.
+
+Originally posted by arebgun with karma: 2121 on 2012-04-21
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by abdullah on 2012-04-23:
+Thanks a lot.
+Comment by abdullah on 2012-07-11:
+To have separate topic /odom for each robot we have to manually change the diffdrive_plugin.cpp code e.g. for alpha robot, we have to write alpha/odom in this code. Its not a good approach but its working.
+

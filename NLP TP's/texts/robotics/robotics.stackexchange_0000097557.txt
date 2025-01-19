@@ -1,0 +1,39 @@
+Q:
+
+Rosbag migration: merging messages
+
+I have two message types being published on two different topics (pretty much synchronously), and I'm merging them into a single message--basically, adding one as a subtype of the other. I'd like to migrate old bags to this new arrangement, but I'm pretty sure the tools in rosbag are not capable of this. Is there a lower-level approach to migrating bags that might work? How can I access both the old and new message definitions in a Python script?
+
+Originally posted by JohnStechschulte on ROS Answers with karma: 43 on 2020-11-10
+Post score: 0
+
+A:
+
+The python bag API is actually really easy to use. In your case something like this should work (not tested). I suppose the main question is how you want to synchronize the messages. Here I assume that the new topic should be publishes every time a new topic2 message has arrived and there was a topic1 message (anytime) before. This may not be exactly what you want, but I hope this will help you enough to get going.
+import rosbag
+from std_msgs.msg import Int32, String
+
+inbag = rosbag.Bag('in.bag')
+outbag = rosbag.Bag('out.bag', 'w')
+
+try:
+    parent = None;
+    for topic, msg, t in inbag.read_messages(topics=['topic1', 'topic2']):
+        if topic == 'topic1':
+            parent = msg
+        else:
+            if parent != None:
+                parent.sub = msg;          
+                outbag.write('newtopic', parent)
+finally:
+    bag.close()
+
+Originally posted by chfritz with karma: 553 on 2020-11-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by JohnStechschulte on 2020-11-10:
+Thanks--I've mostly just used ROS in C++, and so I basically didn't expect an out-of-date bagfile to open at all.
+The only issue with your suggested solution is that you can't just assign to parent.sub, since the old message doesn't have the new sub attribute. So instead I imported the new message and created a new one, copying over all the other fields from the old message, and then inserting the sub-type.
+

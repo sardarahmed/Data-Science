@@ -1,0 +1,107 @@
+Q:
+
+Publish CAN frame on topic
+
+Hi,
+I am trying to publish CAN data to a ROS topic.  I followed the talker tutorial and am using the suggestion on this question: http://answers.ros.org/question/213645/running-can-radar-on-ros-through-raspberry-pi-2/?comment=218160#post-id-218160
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include <sstream>
+#include "socketcan_interface/socketcan.h"
+#include "socketcan_interface/threading.h"
+#include "socketcan_interface/string.h"
+
+void handleFrames(const can::Frame &f){
+    // handle all frames
+    LOG(can::tostring(f, true)); // lowercase: true
+}
+void handleFrame123(const can::Frame &f){
+    // handle specific frame
+    LOG("123? " << can::tostring(f, true)); // lowercase: true
+}
+
+int main(int argc, char **argv)
+{
+    can::ThreadedSocketCANInterface driver;
+    if(!driver.init("can0", false)) return 1; // read own messages: false
+
+    can::CommInterface::FrameListener::Ptr all_frames = driver.createMsgListener(handleFrames);
+    can::CommInterface::FrameListener::Ptr one_frame = driver.createMsgListener(can::MsgHeader(0xFF32), handleFrame123); // handle only frames with CAN-ID 0x123
+
+    ros::init(argc, argv, "data_raw");
+    ros::NodeHandle n;
+    ros::Publisher canbus_pub = n.advertise<std_msgs::String>("canbus", 1000);
+
+    while (ros::ok())
+    {
+      std_msgs::String msg;
+      std::stringstream ss;
+
+      ss << all_frames;
+      msg.data = ss.str();
+      canbus_pub.publish(msg);
+
+      //ROS_INFO("%s", msg.data.c_str());
+
+      //ROS_INFO("%s", std::cout<<"all_frames is of type: "<<typeid(all_frames).name()<<std::endl);
+
+      ros::spinOnce();
+    }
+
+  driver.shutdown();
+  return 0;
+}
+
+This line LOG(can::tostring(f, true) will print the CAN frame to the console like:
+00063200#8000010100000000
+00061200#0000010100000000
+00063200#8000010100000000
+00EF0900#0000000000000000
+00061200#0000010100000000
+00063200#8000010100000000
+00061200#0000010100000000
+00063200#8000010100000000
+
+This line canbus_pub.publish(msg) prints to a rostopic canbus but no frame data:
+---
+data: 0x1e9db80
+---
+data: 0x1e9db80
+
+How do I get the individual CAN frames to print to the topic?
+Thanks,
+Matt
+
+Originally posted by Droter on ROS Answers with karma: 90 on 2015-09-24
+Post score: 0
+
+Original comments
+Comment by Mathias Lüdtke on 2015-09-25:
+This code cannot compile! Please move std_msgs::String msg; into handleFrames.
+The CAN-IDs in the LOG outputs look strange, too. I have to check can::tostring next week.
+Comment by Droter on 2015-09-25:
+I found this package.  Maybe it is a better place to start.
+https://github.com/juancamilog/canbus_interface
+Haven't got it working yet.
+Comment by khairulizwan on 2015-11-13:
+Any good news about this? Please advice me how to us it...
+
+A:
+
+This interface works well.  I haven't tried sending but it will publish CAN data to a topic.
+https://github.com/juancamilog/canbus_interface
+
+Originally posted by Droter with karma: 90 on 2015-10-04
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by khairulizwan on 2015-11-13:
+Any good news about this? Please advice me how to us it...
+Comment by Droter on 2016-04-26:
+This package has been updated to include a new CanFrame2 msg that includes a bool for extended. https://github.com/jeremy-a/canbus_interface
+Comment by yaovincent on 2016-06-28:
+I am a newbie. I installed the package,but I am sure it been installed correctly.
+I used rosrun to find the command, but i can not find any command about the packet.
+Any command to prove the packet is installed correctly?
+

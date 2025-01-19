@@ -1,0 +1,70 @@
+Q:
+
+pcl_ros build error in Fuerte on Fedora 17 x64
+
+Followed the instructions for Fuerte installation on Fedora, but stuck on pcl_ros compilation with errors similar to:
+/opt/ros/fuerte/include/message_filters/sync_policies/approximate_time.h:620:119: error: ‘value’ is not a member of ‘ros::message_traits::TimeStamp’
+Looks like incompatibility between ROS core libraries and pcl_ros. Where I am wrong?
+Versions:
+
+Fedora 17 x86_64 RFRemix
+pcl.x86_64 1.5.1-2.fc17 (installed by yum)
+perception_pcl 1.2.3 (pulled by rosinstall)
+
+Full log is here (see lines 12, 13, 23 for errors)
+
+EDIT: Tried several versions from wg-deps with no result.
+The package is configured as:
+cmake -G "Unix Makefiles" -DUSE_ROS=ON -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+
+Still it gives same 3 errors during pcl_ros compilation.
+Although I found a temporary solution - convert Ubuntu DEB package with alien to RPM - I am still interested in building native package. Probably need some black magic.
+
+EDIT #2: It all the same.
+There is a strange thing in PCL sources, in common/CMakeLists.txt to handle ROS build there is a code which excludes PointIndicies.h header from build:
+if(NOT USE_ROS)
+    set(incs ${incs}
+      include/pcl/ModelCoefficients.h
+      include/pcl/PolygonMesh.h
+      include/pcl/Vertices.h
+      include/pcl/PointIndices.h
+      include/pcl/TextureMesh.h
+      )
+
+    set(sensor_msg_incs 
+      include/sensor_msgs/PointField.h
+      include/sensor_msgs/PointCloud2.h
+      include/sensor_msgs/Image.h
+      )
+
+    set(std_msg_incs include/std_msgs/Header.h)
+endif(NOT USE_ROS)
+
+However this header is then used in common/include/pcl_base.h and there is nothing in it to handle such situation.
+At the same time PCL builds without any problems, but pcl_ros is complaining for a missed header PointIndicies.h
+
+Originally posted by Boris on ROS Answers with karma: 3060 on 2012-09-05
+Post score: 1
+
+A:
+
+It looks like you used the stand-alone PCL 1.5.1 install package.
+The pcl_ros package requires a special PCL build, containing some different header definitions and messages not included in the stand-alone version.
+EDIT: it should depend on stand-alone PCL, but it does not. See PCL issue 669 for details.
+I believe the ros-fuerte-pcl Debian package is built from this repository.
+EDIT #2: glad alien was useful.
+I agree that building yourself would be better. Probably, it looks similar to a normal stand-alone PCL build, but with the USE_ROS parameter set. This is my guess (not tested):
+$ mkdir build
+$ cd build
+$ cmake .. -DUSE_ROS=1
+$ make 
+$ sudo make install
+
+Originally posted by joq with karma: 25443 on 2012-09-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Boris on 2012-09-05:
+But isn't it that pcl in Fuerte should be standalone as mentioned in Ch.4 (Migration) http://www.ros.org/wiki/fuerte ? Also the link from http://www.ros.org/wiki/pcl to svn is broken, though I found some version of perception_pcl for fuerte, still there is no pcl inside and it gives same errors
+

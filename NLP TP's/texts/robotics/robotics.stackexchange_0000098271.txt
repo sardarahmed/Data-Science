@@ -1,0 +1,57 @@
+Q:
+
+In MoveIt where is the namespace of the follow_joint_trajectory defined?
+
+I am having maybe a silly problem.
+I define a MoveIt package for my UR3e robot for Gazebo simulation and it works fine. I define the controllers in simulation as leftarm_controller/follow_joint_trajectory. However, now I am trying to set up the same MoveIt package for the real robot and the controller is loaded as scaled_pos_joint_traj_controller/follow_joint_trajectory so I get the error:
+[ WARN]: Waiting for leftarm_controller/follow_joint_trajectory to come up
+[ERROR]: Action client not connected: leftarm_controller/follow_joint_trajectory
+
+I checked all the moveit files of my package and couldn't figure out where is the move_group getting the follow_joint_trajectory namespace from.
+I am using a workaround with the remap tag in the move_group as:
+
+<remap if="$(arg real_robot)" from="leftarm_controller/follow_joint_trajectory" to="scaled_pos_joint_traj_controller/follow_joint_trajectory"/>
+
+But I would really want to know where is the name of the controller defined.
+Edit: This is my repository with the configuration that I am currently using with the workaround.
+
+Originally posted by cambel07 on ROS Answers with karma: 92 on 2021-02-11
+Post score: 1
+
+A:
+
+It is best practice to make your Gazebo package publish its controllers under the same name as your real robot. Your simulation is much easier to change than the real robot driver.
+Your leftarm_controller is probably defined in the controllers.yaml of your gazebo package. Change leftarm_controller to say scaled_pos_joint_trajectory and make sure the type of controller matches. You can find the type of controller in your robot's driver package (in your case it is position_controllers/JointTrajectoryController).
+If you have multiple robot arms, you will want to start your robot driver in a namespace, so it advertises on different topics than the other arm. In that case its controller action will be at e.g. left_arm/scaled_pos_joint_traj_controller/follow_joint_trajectory. You can reproduce this in your gazebo package's controllers.yaml by nesting the tags:
+left_arm:
+  scaled_pos_joint_trajectory_controller:
+    type: position_controllers/JointTrajectoryController
+...
+
+An easy way to solve this problem would have been to search for leftarm_controller in your workspace until you find the yaml file it is defined in. Ctrl+Shift+F searches through your workspace in Visual Studio Code, for example.
+
+Originally posted by fvd with karma: 2180 on 2021-02-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by cambel07 on 2021-02-11:
+That's exactly the problem, I did search for the definition of my leftarm_controller. But I couldn't find it other than in the ros_controllers.yaml file. However, even if I modify the moveit package/ros_controllers.yaml to have match the expected left_arm/scaled_pos_joint_traj_controller/follow_joint_trajectoryit did not work. I also try removing any loading of the controllers configuration file in the move_group and other configuration files, but it somehow keeps expecting the leftarm_controller from somewhere.
+I will try to create the package from zero where I use the expected controller namespace from gazebo too.
+For now, I just finished uploading a working Github repository with my current approach
+Comment by fvd on 2021-02-11:
+You are launching a controller with the name leftarm_controller here, and your MoveIt node is told to look for that name here. If you change the name in the latter file to /left_arm/scaled_pos_joint_traj_controller and launch the robot driver in the left_arm namespace, it should work.
+Comment by cambel07 on 2021-02-11:
+Yes, but the first one is for the simulation only so it doesn't affect the setup for the real robot. The second one is also never loaded with starting moveit for the real robots here
+The only controller config file that I can see that is being loaded is this from this launch file. But as I mentioned above, even when I update that config file to use the real robot controllers namespace it just doesn't seem to work. It somehow seems to be still expecting to get the leftarm_controller
+Comment by fvd on 2021-02-12:
+MoveIt expects the controller listed in ros_controllers.yaml, so that should be correct. Try uploading the version that you expect to work to that repository and linking the commit.
+Comment by cambel07 on 2021-02-12:
+Thanks for the patience, I'm sure this is what I tried yesterday. But I will test it again next week.
+Comment by fvd on 2021-02-12:
+Looks right to me. Could be a simple mixup from something else (forgot to save, forgot to restart, wrong workspace etc.)
+Comment by cambel07 on 2021-02-14:
+Well it seems that I made some mistake before or there was indeed some lingering memory of the namespace somewhere. After restarting and testing the version without the workaround it worked just fine. Thanks!
+Comment by fvd on 2021-02-14:
+Great. Restarting roscore is a good idea in these situations, to reset the parameter server.
+

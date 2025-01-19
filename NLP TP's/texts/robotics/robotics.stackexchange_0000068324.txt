@@ -1,0 +1,91 @@
+Q:
+
+subscribe to image at regular time intervals
+
+ROS indigo OpenCV
+Hi, I am writing an image subscriber and i want to use this to get some 10 images and then stop and repeat this again when I call it again. For this I have written subscriber as follows,
+class SubscriberImage
+{
+private:
+    ros::NodeHandle nh;
+    image_transport::Subscriber sub;
+    // ...//
+public:
+    int perform(std::string topic)
+    {
+      cv::namedWindow("view");
+      cv::startWindowThread();
+      image_transport::ImageTransport it(nh);
+      sub = it.subscribe(topic, 1, &SubscriberImage::imageCallback,this, image_transport::TransportHints("theora"));
+      while(num < 10)
+          ros::spinOnce();
+      cv::destroyWindow("view");
+      return 0;
+    }
+
+    void imageCallback(const sensor_msgs::ImageConstPtr& msg)
+    {
+        **/* Here I am saving 10 images to disk */** 
+        try
+        {
+            if (num < 10 && !cv_bridge::toCvShare(msg, "bgr8")->image.empty())
+            {
+                cv::imshow("view", cv_bridge::toCvShare(msg, "bgr8")->image);
+                cv::imwrite(name,cv_bridge::toCvShare(msg, "bgr8")->image);
+            }
+            else if(cv_bridge::toCvShare(msg, "bgr8")->image.empty())
+            {
+                ROS_INFO_STREAM("Debug: camera image is empty");
+            }
+            else if(num >= 10)
+            {
+                sub.shutdown();
+            } 
+        }
+    }
+};
+
+I am creating an object for this class in another node and whenever I call perform(), a new subscriber object is created and in call back i save 10 images to disk. After that I am calling sub.shutdown().
+Everything works as expected but one problem is I am  creating a new subscriber object every time and calling shutdown()
+after saving 10 images. Thus creating a new  subscriber object every time takes sometime. I don't this wait time.
+Can this be done in a better way? Please guide me in this.
+Thanks
+
+Originally posted by Arul Selvam on ROS Answers with karma: 3 on 2015-06-28
+Post score: 0
+
+A:
+
+When I see your problem it looks a bit similar to the problem here:
+http://answers.ros.org/question/212347/how-to-publish-images-quickly/
+For you, I just would add a image counter for 10, so you do not do the subscribing thing all the time and keep it open.
+Trade off would be, that of course you will still lose the bandwidth, if that is critical to your application, this might be not the way, otherwise I guess it is. (The images will be constantly transmitted, but you ignore them.)
+void callback(...)
+{
+  if(image_processing_enable) 
+  {
+   //.... Save your image, processing ... what ever ...
+   image_no++;
+   if(image_no==10)
+   {
+     image_processing_enable=false; // for getting only ten images. 
+     image_no=0;
+   }
+  }
+}
+
+If it is the bandwith, you might create a node on your own which can republish 10 images for you on
+one system and transmits them to the target system when you do a   call to a rosservice it.
+ImageNode -Topic-> Republish-Images  -Topic-> Receiver Node
+                       ^----------rosservice-----|
+
+I would suggest an type std_srvs/Empty with name /get_images.
+
+Originally posted by cyborg-x1 with karma: 1376 on 2015-06-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Arul Selvam on 2015-06-29:
+Hi Christian , in my case bandwidth is not an issue and i am using your first solution. Thanks :)
+

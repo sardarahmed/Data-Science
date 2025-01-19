@@ -1,0 +1,63 @@
+Q:
+
+Generating "legal" keyframes for moving actor
+
+Hello Gazebo wizards!
+I need some help with a gazebo plugin that generates random walk paths for a moving actor. How can I check if the generated path collides with objects in the world? It does not have to be real-time but pre-generated.
+I followed the animated actor guide to set up a box that can move around in a Gazebo world.
+My problem is that there are objects in the world defined in the .world file that the actor collides and goes into.
+I have this function to take the current position and return a random point in its circle area.
+ignition::math::Vector3d generate_nextWaypoint(ignition::math::Vector3d curr_pos){
+        int radius = 15;
+        double u = ignition::math::Rand::DblUniform();
+        double v = ignition::math::Rand::DblUniform();
+        double w = radius * sqrt(u);
+        double t = 2 * M_PI * v;
+        double x0 = w * cos(t);
+        double y0 = w * sin(t);
+        double x_new = curr_pos.X() + x0;
+        double y_new = curr_pos.Y() + y0;
+        ignition::math::Vector3d new_position = ignition::math::Vector3d(x_new, y_new, curr_pos.Z());
+        return new_position;
+    }
+
+how can I do a legal check so that the positions dont overlap with an object in the world?
+
+Originally posted by Magnus on Gazebo Answers with karma: 1 on 2020-11-26
+Post score: 0
+
+A:
+
+First save a pointer to the world at plugin load time.
+void ActorPlugin::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
+{
+  ...
+  this->world = this->actor->GetWorld();
+  ...
+}
+
+then I save my own model to an array of ignored models
+this->ignoreModels.push_back(this->model->GetName());
+
+Finally, when I have a generated waypoint, I can use this function to check it against models in the world
+bool collisionFree(ignition::math::Vector3d &_pos, double radius)
+    {
+        for (unsigned int i = 0; i < this->world->ModelCount(); ++i)
+        {
+            physics::ModelPtr worldObj = this->world->ModelByIndex(i);
+            if (std::find(this->ignoreModels.begin(), this->ignoreModels.end(),
+                          worldObj->GetName()) == this->ignoreModels.end())
+            {
+                ignition::math::Vector3d offset = worldObj->WorldPose().Pos() -
+                                                  this->model->WorldPose().Pos();
+                double modelDist = offset.Length();
+                return modelDist > radius;
+            }
+        }
+        return true;
+    }
+
+Originally posted by Magnus with karma: 1 on 2020-12-19
+This answer was ACCEPTED on the original site
+Post score: 0
+

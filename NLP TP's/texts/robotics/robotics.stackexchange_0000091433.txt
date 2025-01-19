@@ -1,0 +1,39 @@
+Q:
+
+Is spin() event driven?
+
+I am wondering how efficient ros::spin() is. Is it event driven so that when messages come in callbacks get called immediately? Or is it simply polling behind the scenes, and if so, how fast?
+
+Originally posted by Peter Gissel on ROS Answers with karma: 3 on 2019-04-20
+Post score: 0
+
+A:
+
+From the Callbacks and Subscribers wiki,
+#include <ros/callback_queue.h>
+ros::NodeHandle n;
+while (ros::ok())
+{
+  ros::getGlobalCallbackQueue()->callAvailable(ros::WallDuration(0.1));
+}
+
+Is the equivalent implementation of ros::spin().
+Edit: From @gvdhoorn's comments below, callAvaliable waits on a condition variable for the given duration, making spin majority event driven.
+
+Originally posted by BryceWilley with karma: 711 on 2019-04-21
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Peter Gissel on 2019-04-21:
+Thanks for the answer, I saw that code also. It doesn't actually answer my question, however. What is callAvailable() doing? Is it polling or event driven?
+Comment by BryceWilley on 2019-04-22:
+It think it does answer your question though: it's continuous looping (i.e. polling) the global callback queue, only calling subscribers if something is available. If spin() was event driven it would sleep forever and wait for other threads to spawn or a OS level signal to be handled in another callback.
+Comment by gvdhoorn on 2019-04-22:
+callAvailable(..) (and callOne(..)) use a timed-wait on a condition variable (here). The time-out is used to put an upper-bound on the tightness of the loop.
+@Peter Gissel: I'd say it's not really polling, but it's also not completely event based (spin(..) that is, waiting on a condition variable is event-based).
+Comment by BryceWilley on 2019-04-22:
+@gvdhoorn is right here, you could easily make the above loop event-based by increasing the timeout then, ignore my previous comment.
+Comment by gvdhoorn on 2019-04-22:
+Well it is event-based. It's just that the time-out is there to avoid hanging forever in callAvailable(..), which would be annoying/undesirable if ros::ok() becomes false while you're waiting (as anything using ROS client infrastructure would then fail).
+

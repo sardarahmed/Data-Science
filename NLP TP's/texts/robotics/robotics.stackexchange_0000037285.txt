@@ -1,0 +1,93 @@
+Q:
+
+Not being able to lookup transform leading to node's death in building point cloud
+
+I've been trying to build a point cloud using pose information. The code snippet for that is as below:
+static tf::TransformBroadcaster tfb;
+tf::Transform xform;
+xform.setOrigin(tf::Vector3(pose3D_LD2.pose.position.x, pose3D_LD2.pose.position.y, pose3D_LD2.pose.position.z));
+xform.setRotation(tf::Quaternion(previous_poseLD_.pose.orientation.x, previous_poseLD_.pose.orientation.y, previous_poseLD_.pose.orientation.z, previous_poseLD_.pose.orientation.w));
+tfb.sendTransform(tf::StampedTransform(xform, ros::Time(pose3D_LD2.header.stamp), "/base_link", "/laser"));
+tfListener_.waitForTransform("/base_link", "/laser", ros::Time(0), ros::Duration(2.0));
+projector_.transformLaserScanToPointCloud("/base_link", previous_scan_, cloud, tfListener_);
+
+However, I receive this error message:
+terminate called after throwing an instance of 'tf::ExtrapolationException'
+what():  Unable to lookup transform, cache is empty, when looking up transform from frame [/laser] to frame [/base_link]
+[pointcloud_builder_node-5] process has died [pid 13012, exit code -6]. 
+
+what could be the error that leads to the death of the node as stated in the error message? Or am I missing something?
+Thanks in advance.
+EDIT:
+I've also tried to comment last 2 lines of the above code snippet which are disabling waitForTransform and transformLaserScanToPointCloud calls, and watching the output up to calling sendTransform. It gives a warning like below:
+[ WARN] [1327489676.295791909]: TF_OLD_DATA ignoring data from the past for frame /laser at time 24.279 according to authority /pointcloud_builder_node
+Possible reasons are listed at 
+[ WARN] [1327489676.628911299]: TF_OLD_DATA ignoring data from the past for frame /laser at time 24.328 according to authority /pointcloud_builder_node
+Possible reasons are listed at 
+[ WARN] [1327489676.962231439]: TF_OLD_DATA ignoring data from the past for frame /laser at time 24.348 according to authority /pointcloud_builder_node
+Possible reasons are listed at 
+
+Any remedy for this kind of error?
+UPDATE:
+static tf::TransformBroadcaster tfb;
+tf::Transform xform;
+xform.setOrigin(tf::Vector3(pose3D_LD2.pose.position.x, pose3D_LD2.pose.position.y, pose3D_LD2.pose.position.z));
+xform.setRotation(tf::Quaternion(previous_poseLD_.pose.orientation.x, previous_poseLD_.pose.orientation.y, previous_poseLD_.pose.orientation.z, previous_poseLD_.pose.orientation.w));
+tfb.sendTransform(tf::StampedTransform(xform, ros::Time(pose3D_LD2.header.stamp), "base_link", "laser"));
+tfListener_.waitForTransform("base_link", "laser", previous_scan_.header.stamp, ros::Duration(2.0));
+projector_.transformLaserScanToPointCloud("base_link", previous_scan_, cloud, tfListener_);
+                      
+
+Originally posted by alfa_80 on ROS Answers with karma: 1053 on 2012-01-24
+Post score: 1
+
+A:
+
+Where is your point cloud coming from? If it is a rosbag, try setting the parameter use_sim_time to true and playing it back with rosbag play --clock <bag>. If it's an actual sensor, is it maybe connected to a different computer and the clocks are not synchronized?
+Another, more dirty solution would be to set previous_scan_.header.stamp to ros::Time::now(). Also, make sure that pose3D_LD2.header.stamp and previous_scan_.header.stamp are equal. If not, you need at least two transforms, one before the stamp of your scan and one after it. TF needs to do interpolation if it doesn't have an exact time stamp for which it needs two transforms.
+Btw. your waitForTransform call shouldn't use ros::Time(0) but previous_scan_.header.stamp.
+
+Originally posted by Lorenz with karma: 22731 on 2012-01-24
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by alfa_80 on 2012-01-27:
+@Lorenz: When you have time, could you please have a look at this one (http://answers.ros.org/question/3756/scan-lines-are-not-gathered-in-generating-a-point)
+Comment by alfa_80 on 2012-01-25:
+@Lorenz: If you have time, could you please guide me on this time-related issue (http://answers.ros.org/question/3731/exception-problem-that-is-related-to-time-issue). So far, i found you are among the best in dealing with time-related issue.
+Comment by alfa_80 on 2012-01-25:
+@Lorenz: You've given me a great guide about time-related issue in which I was stuck for  a long time..@DimitriProsser: You've contributed to using the try-and-catch block that is also essential for this problem. However, I can only tick one for the right answer, even both of yours are the clues.
+Comment by Lorenz on 2012-01-25:
+What did you do so that I can update my answer to be more helpful for others?
+Comment by alfa_80 on 2012-01-25:
+It now works! Thanks a lot..
+Comment by Lorenz on 2012-01-25:
+Ok. then maybe the frame_ids don't match. Try waitForTransform("/base_link", previous_scan_.header.frame_id, previous_scan_.header.stamp, ros::Duration(2.0));
+Comment by alfa_80 on 2012-01-25:
+Following what you have suggested "if (!waitForTransform(...)) ..", it enters the "else" block, and certainly not returning the "Unable to transform"..
+Comment by Lorenz on 2012-01-25:
+It is clear that transformLaserScanToPointCloud throws the exception since it is the only method that does the tf lookup. But what is the return value of waitForTransform? Are you sure that it is really true, not false?
+Comment by alfa_80 on 2012-01-25:
+Thanks a lot Lorenz, yeah, I've just updated it as above.
+Comment by Lorenz on 2012-01-25:
+Can you update the code in the question to match your code again? How does the waitForTransform line look now and how does the transformLaserScanToPointCloud look now?
+Comment by alfa_80 on 2012-01-25:
+I've run the checker or exception handling that you suggested. It's then sure now that up to waitForTransform is okay, meaning the transform is OK. Only the last line of transformLaserScanToPointCloud is the tricky part now..
+Comment by Lorenz on 2012-01-25:
+Just do something like: if (!waitForTransform(...)) { ROS_ERROR("Unable to transform"); } else { projector_.transformLaserScanToPointCloud(...); } to prevent the exception. Increasing the timeout will probably not help. Make sure that the time stamps of previous_scan_ and pose3D_LD2 are equal.
+Comment by alfa_80 on 2012-01-25:
+Do you mean, I should increase it, instead of using 2 seconds?
+Comment by Lorenz on 2012-01-25:
+Note that you don't actually check if waitForTransform actually succeeded. In your call with timeout 2 seconds, it will return false if no transform could be found. In that case, transformlaserScanToPointCloud will fail.
+Comment by alfa_80 on 2012-01-25:
+This time, up to waitForTransform, it returns no error, but when it comes to transformLaserScanToPointCloud call, then, it's dead.
+Comment by alfa_80 on 2012-01-25:
+I'm again trying to revert but still not getting it..
+Comment by alfa_80 on 2012-01-25:
+After editing some lines of code, I've again obtained this kind of error.
+Comment by alfa_80 on 2012-01-25:
+@Lorenz: The follow-up question is here if you can guide me on this: http://answers.ros.org/question/3715/cloud-values-are-not-loaded
+Comment by alfa_80 on 2012-01-24:
+Thanks a lot Lorenz, that works for this problem. However, the point cloud is not working yet. Your last line saved me.
+

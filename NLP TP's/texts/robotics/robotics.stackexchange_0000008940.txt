@@ -1,0 +1,63 @@
+Q:
+
+Robotic manipulator Jacobian by product of exponentials
+
+I've taken a class and started a thesis on robotics and my reference for calculating the Jacobian by product of exponentials seems incorrect, see:
+http://www.cds.caltech.edu/~murray/books/MLS/pdf/mls94-complete.pdf
+Specifically the resulting Jacobian matrix for the SCARA manipulator on page 118 would have us believe that the end effector translational velocity depends on joints 2 and 3 rather than 1 and 2.
+Could someone please explain me why?
+
+A:
+
+The Jacobian in that equation is from the joint velocity to the "spatial velocity" of the end effector.
+The spatial velocity of an object is a somewhat unintuitive concept: it is the velocity of a frame rigidly attached to the end effector but currently coincident with the origin frame. It may help to think of the rigid body as extending to cover the whole space, and you're measuring the velocity by standing at the origin and looking at what is happening to the end effector where you are, instead of at the end of the arm.
+In the example given, the origin is at the same location as the first joint. This means that rotating the joint will sweep the end effector in a circle, but that the frame at the origin will only pivot around the vertical axis; this is encoded by the first column of the Jacobian being [0 0 0 0 0 1]'.
+Rotating joints two and three will pull the origin-overlapping frame away from the origin, and hence have translational components.
+To see how this works in action, note that the Jacobian that you asked about from MLS can be simplified to
+$J_{st,SCARA}^{s} =  \begin{bmatrix}
+0 & \phantom{-}y_{2} & \phantom{-}y_{3} & 0\\
+0 & -x_{2} & - x_{3} & 0 \\
+0 &0&0&1 \\
+0& 0& 0&0\\
+0& 0& 0&0\\
+1&1&1 &0
+\end{bmatrix},
+$
+in which the first three columns encode the velocity at the origin of an object rotating around the corresponding axis and the fourth column gives the velocity at the origin of an object sliding up the fourth axis.
+You can convert the spatial-velocity Jacobian into a world-frame Jacobian by incorporating the Jacobian from base-frame motion to motion at the end effector's current position and orientation. For the SCARA arm, this works out fairly cleanly, with the only difference between the two frame velocities being the "cross product" term that accounts for the extra motion of the end effector sweeping around the base,
+$
+J^{w}_{st, SCARA} = \begin{bmatrix} 
+%
+\begin{pmatrix} 1 &&\\ &1&\\ && 1 \end{pmatrix}
+%
+& 
+%
+\begin{pmatrix} 0 & & -y_{4}\\ & 0 & \phantom{-}x_{4} \\ & & \phantom{-}0 
+\end{pmatrix} \\ \begin{pmatrix} 0&& \\ &0&\\ &&0 \end{pmatrix} & \begin{pmatrix} 1 &  &  \\  & 1 &  \\ && 1 \end{pmatrix} \end{bmatrix} J^{s}_{st,\text{SCARA}}.
+$
+This product evaluates to
+$
+J_{st,SCARA}^{w} =  \begin{bmatrix}
+-y_{4} & -(y_{4}-y_{2}) & -(y_{4}-y_{3}) & 0\\
+\phantom{-}x_{4} & \phantom{-}x_{4}-x_{2} & \phantom{-}x_{4}- x_{3} & 0 \\
+0 &0&0&1 \\
+0& 0& 0&0\\
+0& 0& 0&0\\
+1&1&1 &0
+\end{bmatrix},
+$
+which matches what we would expect to see: Each of the rotary joints contributes to the end effector velocity by the cross product between its rotational velocity and the vector from the joint to the end effector (note that $x_{4}-x_{3}$ and $y_{4}-y_{3}$ are both zero).
+===
+In the general case, where the rotations are not only around the $z$ axis, you would want to use the full form of the matrix mapping between the spatial to world Jacobians,
+$
+J_{w} = \begin{bmatrix} 
+%
+\begin{pmatrix} 1 &&\\ &1&\\ && 1 \end{pmatrix}
+%
+& 
+%
+\begin{pmatrix} \phantom{-}0 & \phantom{-}z & -y\\ -z& \phantom{-}0  & \phantom{-}x \\ \phantom{-}y& -x & \phantom{-}0 
+\end{pmatrix} \\ \begin{pmatrix} 0&& \\ &0&\\ &&0 \end{pmatrix} & \begin{pmatrix} 1 &  &  \\  & 1 &  \\ && 1 \end{pmatrix} \end{bmatrix} J^{s},
+$
+which encodes the cross product terms for all three rotation axes when the end effector is at $(x,y,z)$ relative to the base frame.
+

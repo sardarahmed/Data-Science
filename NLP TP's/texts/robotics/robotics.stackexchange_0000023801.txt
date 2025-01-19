@@ -1,0 +1,67 @@
+Q:
+
+Simulator that allows your to test your real firmware inside a simulated world?
+
+I am interested in learning more about how robotics are tested in simulators. Reading the Wikipedia article on robotics simulators I can't tell how the onboard firmware (the "brains" of the robot) are actually tested inside the simulator.
+Every simulator I've found from my online searches seems to want you to program the robot inside the simulator, and then export that code as firmware to the actual robot. Or even worse, maintain duplicate codebases (one codebase for use inside the simulator, and another one for the actual firmware flashed to the robot and used in "production").
+Are there any simulators that allow you to upload your firmware (and a 3D model of your robot) into a simulated world, and see how your actual, production firmware behaves in that simulated world?
+To be clear, I'm talking about the following general setup:
+
+The firmware is running on some type of production-like MCU/SOC
+Instead of hardware inputs (cameras, microphones, lidar, etc.) being wired to the MCU/SOC, the machine that the simulator is running on (a.k.a. the "simulator machine") is wired up to those same ports/pins
+Instead of hardware output (motors, servos, speakers, etc.) being wired up to the MCU/SOC, the simulator machine is wired up to those same ports/pins
+So essentially the firmware is running in environment where its hardwired to speak to the simulator machine
+The simulator renders the 3D world for the robot-under-test and sends each input frame over the wire to the MCU/SOC/firmware
+The firmware processes the input as it normally would, in production (the real world)
+The firmware generates outputs to its output pins/ports, which get picked up and interpreted by the simulator
+
+So for example, when the test starts, the firmware is waiting for video frames from a camera. The simulator renders those frames and sends them over the wire to the MCU/SOC where the firmware is running. The firmware decides it wants to explore the world, so it sends commands that would normally turn its motors on to move forward. But because the associated pins/ports are connected to the simulator machine, the simulator receives those commands, and (inside the 3D world) moves the robot forward accordingly, and re-renders its view, sending new video frames back to the firmware's input pins/ports.
+Update in response to Chuck's answers below
+I'm not understanding why I would need to plop my firmware onto a hardware emulator for such a hypothetical system. Say I am running on firmware (in production) on some MCU/SOC, say the BuggyBoard 9000. And lets say my robot is super simple: it hooks up to an RGB camera as its only input, processes video frames from it, and outputs different sounds (based on what it "sees" in the video captures) to a speaker (its only output) that is connected via a few wires soldered onto some I/O pins on the board. So in production, I have a USB camera connected to the Buggboard 9000 at one of its USB serial ports. The firmware is using USB device drivers to read the camera's video frames and do visual processing with them. When it detects something and decides it needs to make a sound, it uses its own algorithms and the speaker's device driver to send sound to the connected speaker. But this is in production. In my simulator/test harness however, I simply have the BuggBoard 9000 connected to a power source and its running my firmware. Instead of a USB camera I have a USB cable connected to the BuggBoard 9000, where the other end is connected to the simulator machine. Instead of the soldered-on speaker, I have those same I/O pins soldered to wires going to a dongle that also connects to another port on the simulator machine. The simulator renders some video frames and sends them to the USB port connected to the BuggyBoard 9000. The firmware uses device drivers to read the video frames into memory and do its visual processing. It sends sounds through the device drivers, down into the I/O wires, the dongle and back into the simulator, where perhaps something in the simulated environment will respond to certain sounds being broadcasted.
+
+A:
+
+:EDIT: - In response to the question edit,
+
+In my simulator/test harness however, I simply have the BuggBoard 9000 connected to a power source and its running my firmware. Instead of a USB camera I have a USB cable connected to the BuggBoard 9000, where the other end is connected to the simulator machine.
+
+Yeah, but here you need to code the camera-side of the USB protocol. You can probably get the camera USB driver from the manufacturer, but you're 99.99% guaranteed to not be able to get a copy of the camera-side USB code, which means you get to reverse engineer the communication protocol that the camera is using. You might "luck out" in that it's some kind of standard protocol, like RTSP, but could also wind up being something that's specific to that particular camera model. This also means you need to at least verify and probably re-write the whole camera-side USB spoofing code any time you change camera models.
+Likewise for the speaker, you write an analog-to-digital converter to capture the waveform and then need to implement some streaming protocol (your choice!) to encode it, transmit it to the simulator, then you need to decode it in the simulator.
+The time you spend designing the spoofing hardware, software, simulator interface, etc. is time that you will never get back, and doesn't directly help your project beyond being able to test your device without making changes.
+If instead you modularized your code, then you could do something like run ROS connections between the different aspects of your code. If you had a USB camera connected to a dedicated microcontroller that encoded the images to a ROS video stream, now your core logic isn't doing anything with USB drivers. It subscribes to the ROS image topic and now your system becomes cleanly testable. You can easily spoof the ROS message and test your business logic without an actual camera. You can create a debug subscriber and test your camera-to-ROS encoding.
+You can do the same for playing the sound - you can create the speaker driver as a ROS subscriber, and your business logic can send a ROS message with an enum or similar that would indicate to the speaker driver which sound to make. Again, that's really easy to spoof and again breaks the hardware dependence. You can run your business logic on the BuggyBoard 9k, you can do it as a desktop application, in a docker container running on AWS, etc. Doesn't really matter because it's modular.
+== Original Post ==
+simulation! This is exactly my domain.
+Firmware implies hardware. The firmware that runs on a TV remote isn't the same as the firmware that runs on a network router, and you couldn't run firmware from one device on the other.
+There are, generally speaking, two levels of simulation:
+
+Software-in-the-loop (SIL), where you execute your program on some platform that's NOT the actual device you're going to use in production, and
+Hardware-in-the-loop (HIL), where you ARE using the production hardware.
+
+A simulator has some virtual environment, and then you would add virtual sensors to that environment. You create a kind of avatar that is the simulated device, and as your program runs it signals the avatar to take some action.
+I've done every level of testing here, from a basic simulator that is capable of testing some subsystem on a product, to full-scale hardware-in-the-loop testing that has multiple racks of PLCs and network switches setup as they'll be configured at a customer site.
+The real difficulty with HIL testing is replicating the sensor OEM packet structure. For example, at a previous employer we did full-scale HIL testing with a bank of SICK brand lidars. Those devices have an internal state machine and a particular boot sequence, complete with a handshake protocol that steps through that internal state machine. In order to run our software with no changes, we had to fully implement the internal state machine, all the status messages, etc., in addition to "just" the raw lidar packets.
+Depending on how "low" you want to get with the HIL testing, you'll also need to recreate all the motor encoders, limit/whisker switches, circuit breaker and contactor status, bus voltage readings, etc.
+Part of what you can do for yourself is to structure your hardware in such a way that you segregate your core program logic from the I/O handling. If you had one board that handles I/O and forwards that I/O data as an Ethernet message, then you get the opportunity to just send I/O packets from your simulator that are structured in the same way as the physical I/O handler and life gets dramatically easier. If your core logic and I/O handling are on the same board then you'll wind up needing a kind of "translator" board. This translator would receive I/O status data from the simulator and would generate digital and analog signals that you can wire to your production hardware to simulate all those encoders and other feedbacks.
+Kind of similarly from the other side, if your core logic is also directly interacting with I/O pins or other hardware-specific aspects of your platform then you're going to have a really hard time performing SIL testing, because that code won't work as-is if you run it as a desktop application. You can't just change your compiler options and get it to run, and this is probably where you've read about some people/companies that need to keep a "production" and "test" version of their code, where the difference is whether or not the code is tethered to the hardware platform. Again, careful structuring on your part can mitigate this and really let your exercise your core logic on an arbitrary platform.
+Regarding your question,
+
+Are there any simulators that allow you to upload your firmware
+
+The thing you're probably looking for is "hardware emulation," but the results there are pretty limited. I can find stuff for the Raspberry Pi or Texas Instruments' MSP-430 (no affiliation to either company), but beyond those you're probably going to be pretty limited on what you can find for hardware emulation. Even then, I don't know that you're going to be able to easily interface the emulator to a virtual environment.
+Back to your question again:
+
+So for example, when the test starts, the firmware is waiting for video frames from a camera. The simulator renders those frames and sends them over the wire to the MCU/SOC where the firmware is running.
+
+Yup, your simulator captures the scene, encodes those captures appropriately, and then sends that data over the appropriate connection - TCP/IP, RealTime Streaming Protocol (RTSP), etc. Again, the difficulty isn't so much with encoding the data and sending it but (for example, with RTSP) the state machine and handshake associated with making the connection, handling messages beyond frame transmission like DESCRIBE, SETUP, PLAY, TEARDOWN, etc.
+
+The firmware decides it wants to explore the world, so it sends commands that would normally turn its motors on to move forward.
+
+Yeah, and again you need a way to receive those commands, maybe also virtual encoders to report wheel speeds or motor speeds, etc. All those also need to be packaged correctly.
+
+But because the associated pins/ports are connected to the simulator machine, the simulator receives those commands
+
+This is the hand-waving part where the real effort happens. If your production platform's software is using hardware I/O to generate outputs, then you'll need a way for the simulator to read that hardware I/O. As I mentioned above, this is typically some OTHER piece of hardware that will make up part of your test stand. The other hardware will read the System Under Test (SUT) outputs, convert to some network message the simulator can read (ROS message, TCP/IP socket connection, etc.). The simulator runs, generates its own outputs (like wheel encoders), sends those outputs to the translator, which then generates the square wave, analog signal, gray code, etc. - whatever the appropriate representation is that your SUT is expecting.
+These are generally all specific to whatever system you're trying to test and I think everyone wants to make their own Simulator. Gazebo is supposed to be a simulator that has a lot of stock sensors, but (1) probably won't have all the sensors you're using, and (2) almost certainly won't "just work" with your production hardware out of the box.
+You'll need to tailor the simulator to your needs and if you're that work then I'd highly recommend you evaluate a suite of simulation environments to determine what's going to work best for your application. Pre-built sensors aren't going to cut it if what you really need is photorealism, etc.
+

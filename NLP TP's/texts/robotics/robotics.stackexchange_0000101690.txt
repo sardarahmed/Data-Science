@@ -1,0 +1,60 @@
+Q:
+
+buildfarm fails for noetic with KeyError: libcurlpp-dev
+
+We are trying to release the packages in pf_lidar_ros_driver for melodic and noetic. We have been able to release for melodic successfully in the past and even the latest job was successful. However the job for noetic failed with the error:
+Looking for the '.dsc' file of package 'ros-noetic-pf-driver' with version '1.2.0-1'
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/apt/cache.py", line 297, in __getitem__
+    rawpkg = self._cache[key]
+KeyError: 'libcurlpp-dev'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/tmp/ros_buildfarm/scripts/release/create_binarydeb_task_generator.py", line 216, in <module>
+    main()
+  File "/tmp/ros_buildfarm/scripts/release/create_binarydeb_task_generator.py", line 92, in main
+    apt_cache, debian_pkg_names)
+  File "/tmp/ros_buildfarm/ros_buildfarm/common.py", line 175, in get_binary_package_versions
+    pkg = apt_cache[debian_pkg_name]
+  File "/usr/lib/python3/dist-packages/apt/cache.py", line 299, in __getitem__
+    raise KeyError('The cache has no package named %r' % key)
+KeyError: "The cache has no package named 'libcurlpp-dev'"
+Build step 'Execute shell' marked build as failure
+
+Since libcurlpp-dev is not a ROS package and is present in rosdistro, I am wondering what went wrong in case of noetic.
+Edit 1: Among all the builds, looks like it fails only for debian buster.
+
+Originally posted by ipa-hsd on ROS Answers with karma: 150 on 2022-05-10
+Post score: 0
+
+A:
+
+Afaict, there is no libcurlpp-dev in the current rosdep db.
+The only keys which contain the libcurl substring are libcurl and libcurl-dev.
+libcurlpp-dev does not exist. Only curlpp-dev (here).
+Seeing the traceback though, it would appear this is not a problem with the rosdep side of things, but while actually installing packages (in this case the .deb): curlpp-dev maps to libcurlpp-dev for debian. According to this, that package only exists in bullseye, bookworm and sid (if you include Debian Unstable).
+If it doesn't exist in other releases, the curlpp-dev key might have to be specialised further for the debian OS entry.
+
+Originally posted by gvdhoorn with karma: 86574 on 2022-05-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by ipa-hsd on 2022-05-10:
+Yes we did use the keyword curlpp-dev. But for debian and ubuntu it gets resolved to libcurlpp-dev
+Comment by gvdhoorn on 2022-05-10:
+Yes, but you wrote:
+
+Since libcurlpp-dev is not a ROS package and is present in rosdistro, [..]
+
+which implied you believed it is a problem with rosdep somewhow.
+Comment by ipa-hsd on 2022-05-10:
+That was my initial thought. But with my "edit 1", I realized it seems to be a problem with debian buster specifically.
+Comment by ipa-hsd on 2022-05-10:
+Yes agreed with your recent edit
+Comment by gvdhoorn on 2022-05-10:
+That would still not make the build succeed of course.
+Perhaps blacklisting the package for Buster would be an option.
+

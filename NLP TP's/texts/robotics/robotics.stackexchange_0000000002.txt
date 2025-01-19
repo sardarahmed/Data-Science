@@ -1,0 +1,49 @@
+Q:
+
+How can I modify a low cost hobby servo to run 'freely'?
+
+I've got some hobby servos (Power HD 1501MGs) and I'd like to be able to control them (via an Arduino) so they will either go to the angle I set, or put them in a 'free running' mode, where the load will take them wherever it goes.
+Is this even possible, or am I just going to end up stripping the gears?
+My first thought is to simply kill the power to the servo, but the force required to move them in that state is more than I'd like.
+If it is possible, am I looking at a hardware change, or could I do it in software?
+
+A:
+
+What you're asking isn't going to be very easy with a standard RC servo.
+What you're asking for is a back-drivable servo. I.E. one which you can freely rotate by applying an external torque. It is certainly possible to create these, and they are used on many robots, but most RC servos require considerable torque to back drive them. I would call them semi-backdrivable.
+What prevents you back driving them? Two things:
+Friction: Firstly, friction in the gear chain and motor. RC servos are always geared down; the output spins slower than the motor. Of course this means that when you try to back drive it, you have to spin the motor very quickly. Any friction or cogging in the motor will be felt dozens of time over at the output.
+
+Current: something surprising about electric motors is that, if you short the terminals, they become harder to turn. The rotation of the motor generates an electric current which works against your rotation. The electronics inside the servo might well allow enough current to flow, even when off, that it noticeably prevents backdrivability. In the past I have noticed that some large stepper motors, even when ungeared, are almost impossible to back drive when plugged in to unpowered equipment. But when you unplug them, they can be spun freely.
+So, one way you can improve the back-drivability is to prevent current flowing. The obvious way to do this is to fully disconnect the motor from its electronics. But this is hard to do, even using FETs, because the diodes inside the FETs might well allow current to flow. However, you could use a relay, which really would disconnect the motor. You'd only have to use it on one of the motor's terminals.
+
+'Proper' servo controllers (like the ESCON from Maxon) actually contain a current controller which can actively prevent current flowing by applying the correct voltage at the motor terminals. Replacing the electronics in the servo with something capable of current control might really help.
+What you should do: Open up the servo, unsolder the motor, and re-assemble it. How easy is it to back-drive now? If it's easy, then it may be possible to do what you want. If it's still too hard for your application, then you're going to have to choose a different servo, or make your own. Make one with a single gear stage so that the gear friction is reduced as much as possible, and use drive electronics with a current control loop to guarantee zero current flow.
+
+A:
+
+Interesting question. 
+The first option I'd investigate would be cutting the power as you suggested (perhaps control a MOSFET in software to switch the power).
+Another more complicated approach might be to monitor the current consumption of the servo to detect when it is under a heavy load. When you want to go into "free running" mode, have your software attempt to continuously move the servo into a position that results in the least current consumption. This will not entirely result in a "free running" servo, since there will be some jittery movements from the servo as the software attempts to find the "right" position, but it might work depending on your application.
+You would not need to modify your servos to monitor current consumption. A board such as this one from SparkFun will sit in between the servo and its power source (you need one of these per servo) and will output an analog voltage (that you can read on a microcontroller ADC pin) that corresponds to the current:
+
+Image from SparkFun
+
+A:
+
+Usually, these types of hobby servos are not made for continuous rotation, and will often include a mechanical stop.  Beware, what I outline below is a surefire way to never get actual closed-loop operation, but will instead make the servo continuous-only.
+Most of the time, you can do a quick search online for "Continuous modification for x servo", but I will outline the general process here.
+
+Determine if the servo has a physical stop.  If it does, you will have to open the servo and remove it (I recommend the Dremel tool).
+You then want to find the "center" of the feedback mechanism.
+
+Connect the servo to your Arduino and send a "center" command (usually PWM 127).
+Find the feedback mechanism (typically a potentiometer), and trim it until the servo does not move at all.
+Either glue the potentiometer in place, or measure the resistance and replace the potentiometer with a set value resistor.
+
+Reassemble the servo.
+
+Now sending a "center" command to the servo should stop it from moving, while sending it a positive or negative command should cause it to rotate continuously in one direction or the other.  The rotation speed should be proportional to the "distance" from center of the command sent.
+If you want to restore servo operation to your newly-modified servo, you can add some sort of encoder to re-close the loop.
+Alternatively, you may want to look at the Dynamixel series servo, which allows for both continuous and servo'ed operation, and includes some Arduino support.
+

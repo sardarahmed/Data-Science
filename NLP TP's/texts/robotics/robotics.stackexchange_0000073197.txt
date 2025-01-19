@@ -1,0 +1,75 @@
+Q:
+
+Editing files from qt-creator
+
+Hello all,
+does someone know how can I allow qt-creator to edit and delete files from the ros packages?
+att
+Edit: Just to clarify, I am not asking about how to import a ros package as a qt-creator. This task, is well documented in http://wiki.ros.org/IDEs. My question is: In the qt-creator environment, I can not either create or delete a file directly. What I mean is: In the qt-creator project tree, the mentioned options (new and delete) are blocked.
+Actually, to work around this issue, I am creating or deleting the files directly from my file manager, and then going to the qt-creator editor the created files.
+From the aforementioned, I would like to know if there are some way to perform the creating and deleting tasks directly from q-creator editor.
+
+Originally posted by Randerson on ROS Answers with karma: 236 on 2016-04-04
+Post score: 0
+
+A:
+
+The QtCreator doesn't support cmake-projects very well as far as I know.
+You can add a new file with "file -> new ..." or by pressing ctrl+n, then specify the path and add it manually to your CMakeLists.txt. After that you can run cmake from the menu. That's the way I do it at the moment.
+The only evidence for this bad support I have found is this forum post. It seems that nothing has changed since then.
+If you want to change your IDE, maybe have a look at KDevelop as it seems to have a better cmake support (I haven't tested it yet)
+//Before Edit:
+source: http://wiki.ros.org/IDEs
+QtCreator
+As QtCreator supports opening CMake projects out of the box ,it does not require a setup procedure if started from a terminal. Note that this is absolutely crucial, because otherwise the environment will not be set correctly and functionality related to rosbuild or catkin will fail when running cmake.
+Note that instead of starting QtCreator from a terminal, you can use the following desktop file and use it in your launcher:
+$ cat qtcreator.desktop 
+[Desktop Entry]
+Exec=bash -i -c qtcreator %F
+Icon=qtcreator
+Type=Application
+Terminal=false
+Name=Qt Creator
+GenericName=Integrated Development Environment
+MimeType=text/x-c++src;text/x-c++hdr;text/x-xsrc;application/x-designer;application/vnd.nokia.qt.qmakeprofile;application/vnd.nokia.xml.qt.resource;
+Categories=Qt;Development;IDE;
+InitialPreference=9
+
+In Ubuntu 13.04 and later, the third line must read:
+Icon=QtProject-qtcreator
+
+This is the standard QtCreator desktop file, except for the Exec line that has been modified with "bash -i -c". More about desktop files and their locations for Ubuntu can be found here. Note also that the same trick can be used with eclipse.
+If you are experiencing issues with the qtcreator package shipped by Ubuntu when opening the CMakeLists, then try installing QtCreator from Nokia's installer.
+rosbuild
+To open a rosbuild ROS package code as a project, use "Open File or Project" and select the CMakeLists.txt of your ROS package. Take care to select the "[package_name]/build" directory as the build directory, which is the ROS default. On the next screen click 'Run Cmake' and then Finish. This may not show all the folders such as launch and include in the project tree. If you want to choose the files manually, goto File->New File or Project->Import Project->Import Existing Project and selected to choose all files/folders included in the project.
+catkin_make
+To open a catkin code as a project, use "Open File or Project" and select the top level CMakeLists.txt of the catkin workspace (e.g. "src/CMakeLists.txt"). Select the catkin build folder as the build directory and 'Run CMake' (in order to enable debugging add following line into arguments edit box: -DCMAKE_BUILD_TYPE=Debug).
+Recently this has started to fail, because the main CMakeLists is a symlink to a non writtable location. The workaround is to make a copy to toplevel.cmake instead of using a symlink. And if you want the project to be named something else than "Project" then add a line at the top with "project(MyProjectName)"
+To be able to modify all the files in the workspace add those lines in "src/CMakeLists.txt" :
+#Add all files in subdirectories of the project in
+# a dummy_target so qtcreator have access to all files
+FILE(GLOB children ${CMAKE_SOURCE_DIR}/*)
+FOREACH(child ${children})
+  IF(IS_DIRECTORY ${child})
+    file(GLOB_RECURSE dir_files "${child}/*")
+    LIST(APPEND extra_files ${dir_files})
+  ENDIF()
+ENDFOREACH()
+add_custom_target(dummy_${PROJECT_NAME} SOURCES ${extra_files})
+
+You may specify the correct catkin devel and install spaces at Projects->Build Settings by providing the following CMake arguments: -DCATKIN_DEVEL_PREFIX=../devel -DCMAKE_INSTALL_PREFIX=../install
+catkin tools
+With the new catkin_tools, there is no longer a top level make file for the whole workspace. Instead, open each package as an individual project in QtCreator. The trick is to set the build folder to ws/build/your_package instead of ws/build as before.
+
+Originally posted by JohnDoe2991 with karma: 305 on 2016-04-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Randerson on 2016-04-05:
+This as not my question!!!
+Comment by JohnDoe2991 on 2016-04-05:
+could you then clarify your question?
+Comment by Randerson on 2016-04-05:
+I edited the question. :)
+

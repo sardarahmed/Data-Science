@@ -1,0 +1,57 @@
+Q:
+
+Spawning urdf with a launch file & PID controls
+
+Hi,
+I am trying to launch my world file with my custom robot spawned at launch, I follow the urdf tutorial at Gazebo main page, but the model won't spawn.
+<launch>
+  <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+<arg name="world_name" value="$(find kuka_kr3_gazebo)/worlds/kuka_kr3.world"/>
+<!-- more default parameters can be changed here -->
+</include>
+ <!-- Spawn a robot into Gazebo -->
+
+ <param name="robot_description" textfile="$(find kuka_kr3_description)/urdf/model.urdf"/>
+ <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-file $(find kuka_kr3_description)/urdf/model.urdf -urdf -param robot_description -x 0.0 -y 0.0 -z 0.1 -model kuka_kr3" respawn="false" output="screen"/>
+</launch>
+
+The launch file runs 'correctly' but there is no robot model, I think this piece of log from console might be connected:
+process[rosout-1]: started with pid [7932]
+started core service [/rosout]
+process[gazebo-2]: started with pid [7940]
+process[gazebo_gui-3]: started with pid [7950]
+process[spawn_urdf-4]: started with pid [7958]
+SpawnModel script started
+No handlers could be found for logger "rosout"
+[ INFO] [1507552317.153725427]: Finished loading Gazebo ROS API Plugin.
+[ INFO] [1507552317.154071045]: waitForService: Service [/gazebo/set_physics_properties] has not been advertised, waiting...
+[spawn_urdf-4] process has finished cleanly
+
+I can spawn the robot model using rosrun command
+rosrun gazebo_ros spawn_model -file `rospack find kuka_kr3_description`/urdf/model.urdf -urdf -x 0 -y 0 -z 1 -model kuka_kr3
+
+but this isn't exactly what I want.
+I am also wondering if that may cause problems that I have with a controller - the values of PID from controller aren't the same as the ones in Gazebo, and I think that causes problems when I try to control it from Moveit.
+EDIT that part with the controller has not been connected with that, but the spawning problem still remains.
+
+Originally posted by Fiddle on Gazebo Answers with karma: 35 on 2017-10-09
+Post score: 0
+
+A:
+
+In your launchfile you pass to many arguments to the spawn_model node and you should convert the robot description with xacro.
+First you should load the robot_description with xacro:
+<param name="robot_description" command="$(find xacro)/xacro.py $(find kuka_kr3_description)/urdf/model.urdf"/> 
+Second you should give the correct args to spawn_model:
+<node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -x 0.0 -y 0.0 -z 0.1 -model kuka_kr3" respawn="false" output="screen"/>
+or if you like it fancy you can do something like this:
+<param name="robot_description" command="$(find xacro)/xacro.py $(find kuka_kr3_description)/urdf/model.urdf"/> 
+<param name="dummy_to_generate_gazebo_urdf_file" command="rosrun xacro xacro.py -o /tmp/robot.gazebo.urdf $(find kuka_kr3_description)/urdf/model.urdf" />
+<node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-file /tmp/robot.gazebo.urdf -urdf -x 0.0 -y 0.0 -z 0.1 -model kuka_kr3" respawn="false" output="screen"/>
+If all is not working there might be a problem with the $GAZEBO_MODEL_PATH. Could be that Gazebo can not find the mesh files.
+
+Originally posted by wentz with karma: 350 on 2017-10-12
+This answer was ACCEPTED on the original site
+Post score: 1
+

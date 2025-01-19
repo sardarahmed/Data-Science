@@ -1,0 +1,249 @@
+Q:
+
+Problem with multirobots navigation
+
+I'm trying to do a multirobots navigation in Gazebo simulator using two turtlebot.
+I put the two turtlebot in Gazebo and I see in correct mode the robots in the environment with a correct transformation frame and topic.
+This is the transformation frame https://db.tt/4CqQcmEe
+and this is what I see with rqt_graph https://db.tt/UHNbe1Zb
+These are the videos that document the problem:
+move_Robot1.mp4 https://db.tt/EkmPTF75
+move_Robot2.mp4 https://db.tt/YyXJpyiG
+The video is very slow because of simulation that slow down the pc.
+I run Rviz and I see the correct environment, RobotModel and the correct topic in Displays.
+In the first video (move_Robot1.mp4) I set a robot1/mose_base_simple/goal. In Rviz I see that Robot1 navigation is correct and it reach the goal position, but Robot2 has the same rotation than Robot1, even if it stays in place. Differently in Gazebo Robot2 stops, also in rotation. What I see in Rviz is not what I see in Gazebo.
+Another problem: as you can see in the second video, when I set a robot2/move_base_simple/goal in Rviz I see Robot2 stops, while in Gazebo Robot2 rotates continuosly, but it doesn't proceed back and forth.
+cmd_vel topics seems correct and I supposed that the problem is in navigation driver. But I hope in some help.
+This is my .launch file:
+<launch> 
+<arg name="base"      value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba --> 
+<arg name="battery"   value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 --> 
+<arg name="stacks"    value="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons --> 
+<arg name="3d_sensor" value="$(optenv TURTLEBOT_3D_SENSOR kinect)"/>  <!-- kinect, asus_xtion_pro --> 
+
+<param name="/use_sim_time" value="true" /> 
+
+<!-- start world --> 
+<node name="gazebo" pkg="gazebo_ros" type="gzserver"   args="$(find tesi_gazebo)/worlds/playground.world" respawn="false" output="screen" /> 
+
+<!-- start gui --> 
+<node name="gazebo_gui" pkg="gazebo_ros" type="gzclient" respawn="false" output="screen"/> 
+
+<!-- BEGIN ROBOT 1--> 
+<group ns="robot1"> 
+<param name="tf_prefix" value="robot1" /> 
+<arg name="robot_name" default="robot1" /> 
+
+<include file="$(find tesi_gazebo)/launch/includes/kobuki.launch.xml"> 
+<arg name="base" value="$(arg base)"/> 
+<arg name="stacks" value="$(arg stacks)"/> 
+<arg name="3d_sensor" value="$(arg 3d_sensor)"/> 
+<arg name="init_pose" value="-x 1 -y 0 -z 0" /> 
+<arg name="robot_name"  value="robot1" /> 
+</include> 
+
+<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"> 
+<param name="publish_frequency" type="double" value="30.0" /> 
+<param name="tf_prefix" type="string" value="robot1" /> 
+</node> 
+
+<!-- Fake laser --> 
+
+<node pkg="nodelet" type="nodelet" name="$(arg robot_name)_laserscan_nodelet_manager" args="manager"/> 
+<node pkg="nodelet" type="nodelet" name="depthimage_to_laserscan" 
+    args="load depthimage_to_laserscan/DepthImageToLaserScanNodelet $(arg robot_name)_laserscan_nodelet_manager"> 
+<param name="scan_height" value="10"/> 
+<param name="output_frame_id" value="/$(arg robot_name)/camera_depth_frame"/> 
+<param name="range_min" value="0.45"/> 
+<remap from="image" to="/$(arg robot_name)/camera/depth/image_raw"/> 
+<remap from="scan" to="/$(arg robot_name)/scan"/> 
+</node> 
+
+</group> 
+
+<!-- BEGIN ROBOT 2--> 
+<group ns="robot2"> 
+<param name="tf_prefix" value="robot2" /> 
+<arg name="robot_name" default="robot2" /> 
+
+<include file="$(find tesi_gazebo)/launch/includes/kobuki.launch.xml"> 
+<arg name="base" value="$(arg base)"/> 
+<arg name="stacks" value="$(arg stacks)"/> 
+<arg name="3d_sensor" value="$(arg 3d_sensor)"/> 
+<arg name="init_pose" value="-x -1 -y 0 -z 0" /> 
+<arg name="robot_name"  value="robot2" /> 
+</include> 
+
+<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"> 
+<param name="publish_frequency" type="double" value="30.0" /> 
+<param name="tf_prefix" type="string" value="robot2" /> 
+</node> 
+
+<!-- Fake laser --> 
+
+<node pkg="nodelet" type="nodelet" name="$(arg robot_name)_laserscan_nodelet_manager" args="manager"/> 
+<node pkg="nodelet" type="nodelet" name="depthimage_to_laserscan" 
+    args="load depthimage_to_laserscan/DepthImageToLaserScanNodelet $(arg robot_name)_laserscan_nodelet_manager"> 
+ <param name="scan_height" value="10"/> 
+ <param name="output_frame_id" value="/$(arg robot_name)/camera_depth_frame"/> 
+ <param name="range_min" value="0.45"/> 
+ <remap from="image" to="/$(arg robot_name)/camera/depth/image_raw"/> 
+ <remap from="scan" to="/$(arg robot_name)/scan"/> 
+ </node> 
+
+ </group> 
+
+ </launch>
+
+This is kobuki.launch.xml:
+<launch>
+  <arg name="base"/>
+  <arg name="stacks"/>
+  <arg name="3d_sensor"/>
+  <arg name="robot_name"/>
+  <arg name="init_pose"/>
+  
+  <arg name="urdf_file" default="$(find xacro)/xacro.py '$(find tesi_description)/robots/$(arg base)_$(arg stacks)_$(arg 3d_sensor).urdf.xacro'" />
+  <param name="robot_description" command="$(arg urdf_file)" />
+  
+  <!-- Gazebo model spawner -->
+  <node name="spawn_turtlebot_model" pkg="gazebo_ros" type="spawn_model"
+        args="$(arg init_pose) -unpause -urdf -param robot_description -model $(arg robot_name)"/>
+  
+  <!-- Velocity muxer -->
+  <node pkg="nodelet" type="nodelet" name="$(arg robot_name)_nodelet_manager" args="manager"/>
+  <node pkg="nodelet" type="nodelet" name="cmd_vel_mux"
+        args="load yocs_cmd_vel_mux/CmdVelMuxNodelet $(arg robot_name)_nodelet_manager">
+    <param name="yaml_cfg_file" value="$(find tesi_bringup)/param/mux.yaml" />
+    <remap from="cmd_vel_mux/output" to="/$(arg robot_name)/commands/velocity"/>
+  </node>
+
+  <!-- Bumper/cliff to pointcloud (not working, as it needs sensors/core messages) -->
+  <include file="$(find tesi_bringup)/launch/includes/kobuki/bumper2pc.launch.xml">
+    <arg name="robot_name"  value="$(arg robot_name)" />
+  </include>
+
+</launch>
+
+This is navigation.launch:
+<launch>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <!-- Map server -->
+  <arg name="map_file" default="$(find tesi_gazebo)/maps/playground.yaml"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)">
+  <param name="frame_id" value="/map" />
+  </node>
+
+  <group ns="robot1">
+    <param name="tf_prefix" value="robot1" />
+    <arg name="robot_name"  value="robot1" />
+
+  <node name="robot1_fake_localizaton" type="fake_localization" pkg="fake_localization" respawn="false" output="screen">
+    <rosparam>
+      global_frame_id: /map
+      odom_frame_id: /robot1/odom
+      base_frame_id: /robot1/base_footprint
+      delta_x: -2.45
+      delta_y: -1.4
+    </rosparam>
+<remap from="base_pose_ground_truth" to="/robot1/odom" /> 
+ </node>
+
+  <!-- Move base -->
+  <include file="$(find tesi_navigation)/launch/includes/move_base.launch.xml">
+    <arg name="robot_name" value="$(arg robot_name)" />
+    <arg name="odom_topic" value="/robot1/odom"/>
+  </include>
+
+  </group>
+
+  <group ns="robot2">
+    <param name="tf_prefix" value="robot2" />
+    <arg name="robot_name"  value="robot2" />
+
+  <node name="robot2_fake_localizaton" type="fake_localization" pkg="fake_localization" respawn="false" output="screen">
+    <rosparam>
+      global_frame_id: /map
+      odom_frame_id: /robot2/odom
+      base_frame_id: /robot2/base_footprint
+      delta_x: -0.45
+      delta_y: -1.4
+    </rosparam>
+<remap from="base_pose_ground_truth" to="/robot2/odom" /> 
+ </node>
+
+  <!-- Move base -->
+
+  <include file="$(find tesi_navigation)/launch/includes/move_base.launch.xml">
+    <arg name="robot_name" value="$(arg robot_name)" />
+    <arg name="odom_topic" value="/robot2/odom"/>
+  </include>
+
+  </group>
+
+</launch>
+
+this is move_base.launch.xlm:
+<!-- 
+    ROS navigation stack with velocity smoother and safety (reactive) controller
+-->
+<launch>
+  <arg name="robot_name" default="mobile_base" />
+
+  <include file="$(find tesi_navigation)/launch/includes/velocity_smoother.launch.xml">
+    <arg name="robot_name" value="$(arg robot_name)" />
+  </include>
+
+  <include file="$(find tesi_navigation)/launch/includes/safety_controller.launch.xml">
+    <arg name="robot_name" value="$(arg robot_name)" />
+  </include>
+
+  <arg name="odom_topic" default="/$(arg robot_name)/odom" />
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <param name="recovery_behavior" value="false" />
+    <rosparam file="$(find tesi_navigation)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find tesi_navigation)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find tesi_navigation)/param/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find tesi_navigation)/param/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find tesi_navigation)/param/base_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find tesi_navigation)/param/move_base_params.yaml" command="load" />
+    <remap from="cmd_vel" to="/$(arg robot_name)/$(arg robot_name)_navigation_velocity_smoother/raw_cmd_vel"/>    
+    <remap from="odom" to="$(arg odom_topic)"/>
+    <remap from="map" to="/map" />
+  </node>
+</launch>
+
+I modified also the kobuki_gazebo_plugins to allow the simulation with a correct tf_frames. This is gazebo_ros_kobuki.cpp
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/65d0eac48b75e87425c243e84f654e7f
+
+Originally posted by Stefano Primatesta on ROS Answers with karma: 382 on 2014-03-15
+Post score: 0
+
+A:
+
+Video1:
+It seems like robot1 and robot2 are sharing some topic or TF. I am not sure what are shared from the given information though..
+Video2:
+The rotation is recovery behavior of navigation when it fails. You may need to investigate the error message from terminal. Search for extrapolation error.  Start with following answers
+http://answers.ros.org/question/106261/extrapolation-error-and-amcl/
+http://answers.ros.org/question/106996/hydro-move_basetf2-extrapolation-error-into-the-future-errror/
+http://answers.ros.org/question/40541/extrapolation-error-of-local-cost-map-in-navigation/
+
+Originally posted by jihoonl with karma: 634 on 2014-03-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Stefano Primatesta on 2014-03-24:
+For the first problem I checked the topic and TF, but I can find any problem.
+In the previous question I added information to topic and TF.
+Comment by jihoonl on 2014-03-24:
+Sorry. I cannot predict more than this with given information. I would recommend to narrow down the problem whether it is from gazebo or ros first. Start with introspection on robot2's velocity command while robot1 navigation
+Comment by Stefano Primatesta on 2014-03-26:
+When I start robot1 navigation, velocity command are correct, because 'robot2 velocity commands topic' (rostopic echo /robot2/commands/velocity) don't evoque a reaction. But robot2/odom changes (rostopic echo /robot2/odom). This is the problem! I checked my launch file, but I haven't found the problem. I have always differentiated robot1 topic from robot2 topic.
+

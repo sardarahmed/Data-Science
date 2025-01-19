@@ -1,0 +1,181 @@
+Q:
+
+Error implementing ros timer
+
+My goal was to make a Time Stamp on each message published from the commlink node and subscribe them to my pd_controller. I need the Time Stamps to apply numerical methods. In this case is a simple differentiation. But as I go further into the book there are lots of cool methods.
+The problem is that my code compiles, but it does not run. I probably did something wrong, and I could not find a tutorial doing something similar with ROS in order to understand what I made.
+So, how do I write my own controller? What are the best practices? How do I identify and fix my code?
+This my pd_controller node
+   #include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <std_msgs/Float32.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Int32.h>
+#include "surp/Int32Stamped.h"
+#include <math.h>
+
+surp::Int32Stamped encoder;
+
+ros::Subscriber encoder_sub;
+ros::Publisher vel_pub;
+geometry_msgs::Twist vel;       
+
+// subscriber from comm encoder
+void encoderCallback(const surp::Int32Stamped::ConstPtr& tk){
+
+//Modify this equation to be the Controller Function
+     double timelapse = double(encoder.header.stamp) - double(encoder.header.stamp);
+   double kd = (double(encoder.data) - double(encoder.data))/timelapse;
+   vel.linear.x = float(((encoder.data*234)*5886) + kd);
+   encoder.data = tk->data;
+   encoder.header.stamp = tk->header; 
+   vel_pub.publish(vel);
+}
+
+//make publisher for cmd_vel
+
+//create a rotary encoder to send cmd_vel
+
+int main(int argc, char** argv){
+   ros::init(argc, argv, "pd_controller");
+   ros::NodeHandle nh;
+   vel_pub = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+   encoder_sub = nh.subscribe<std_msgs::Int32> ("comm_encoder", 10, &encoderCallback); 
+        
+
+   ros::spin();
+
+   return 0;
+}
+
+I get this error:
+/home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp: In function ‘void encoderCallback(const ConstPtr&)’:
+/home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp:21:61: error: no match for ‘operator/’ (operand types are ‘double’ and ‘ros::Duration’)
+    double kd = (double(encoder.data) - double(encoder.data))/timelapse;
+                                                             ^
+/home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp:24:25: error: no match for ‘operator=’ (operand types are ‘std_msgs::Header_<std::allocator<void> >::_stamp_type {aka ros::Time}’ and ‘const _header_type {aka const std_msgs::Header_<std::allocator<void> >}’)
+    encoder.header.stamp = tk->header; 
+                         ^
+In file included from /opt/ros/kinetic/include/ros/ros.h:38:0,
+                 from /home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp:1:
+/opt/ros/kinetic/include/ros/time.h:176:22: note: candidate: ros::Time& ros::Time::operator=(const ros::Time&)
+   class ROSTIME_DECL Time : public TimeBase<Time, Duration>
+                      ^
+/opt/ros/kinetic/include/ros/time.h:176:22: note:   no known conversion for argument 1 from ‘const _header_type {aka const std_msgs::Header_<std::allocator<void> >}’ to ‘const ros::Time&’
+pd_controller/CMakeFiles/pd_controller.dir/build.make:62: recipe for target 'pd_controller/CMakeFiles/pd_controller.dir/src/pd_controller.cpp.o' failed
+make[2]: *** [pd_controller/CMakeFiles/pd_controller.dir/src/pd_controller.cpp.o] Error 1
+CMakeFiles/Makefile2:784: recipe for target 'pd_controller/CMakeFiles/pd_controller.dir/all' failed
+make[1]: *** [pd_controller/CMakeFiles/pd_controller.dir/all] Error 2
+Makefile:138: recipe for target 'all' failed
+make: *** [all] Error 2
+Invoking "make -j4 -l4" failed
+
+Contact GitHub API Training Shop Blog About
+© 2017 GitHub, Inc. T
+This is my whole work space with all nodes I am applying:
+https://github.com/renanmb/gopigo_ws/tree/master/src
+
+Originally posted by renanmb on ROS Answers with karma: 33 on 2017-08-08
+Post score: 0
+
+Original comments
+Comment by jayess on 2017-08-08:
+What book are you referring to?
+Comment by billy on 2017-08-09:
+You say 'it does not run'? What doesn't run, and how do you know it doesn't run?
+Have you verified that the topics that trigger your callbacks are being published to? Like the topic "encoder"?
+Comment by renanmb on 2017-08-09:
+Yes, I verified. I have a node called test where I do a version much simpler to test all nodes and my robot.
+It worked.
+My pd_controller node does not run (rosrun give error and close) when I tried to use the TimeStamps. I believe I implemented the msg right. So it might be the ros::Timer.
+Comment by renanmb on 2017-08-09:
+Right Know I am practicing using Modern Control from Ogata.
+I have other books that I will study, Introduction to Robotics-Craig, Theory of Applied Robotics - Jazar, Automatic control system - Benajmin C. Kuo, Robots Vision and Control - Peter Corke, Robot Modeling and Control - Mark W. Spong.
+Comment by jayess on 2017-08-09:
+You said that it gives errors, can you please post them and anything else that the terminal prints out?
+Comment by jayess on 2017-08-10:
+To set timestamps in the header of a message you should be using a ROS data type like ros::Time::now() or nh.now() instead of surp::Int32Stamped
+Comment by renanmb on 2017-08-10:
+I got this error on commlink node:
+[ERROR] [1502413341.933058388]: Client [/test_encoder] wants topic /comm_encoder to have datatype/md5sum [std_msgs/Int32/da5909fbe378aeaf85e547e830cc1bb7], but our version has [surp/Int32Stamped/e7344a45486eefa24d2f337265df37ce]. Dropping connection
+
+Comment by renanmb on 2017-08-10:
+On the code that publishes the Time Stamp I have ros::Time::now()
+surp::Int32Stamped is my custom msg. I believe I need it to be able to subscribe the topic right?
+Comment by jayess on 2017-08-10:
+I've updated my answer addressing the error in your comment.
+
+A:
+
+Line 6 is missing a closing quotation mark:
+#include "surp/Int32Stamped.h
+
+should be
+#include "surp/Int32Stamped.h"
+
+Edit:
+You're asking a lot of questions in one question. Perhaps asking new, separate questions will get more responses.  A couple of Google searches turned up these links for issues regarding "best practices":
+
+https://github.com/ethz-asl/ros_best_practices/wiki
+ROS Best Practices
+When should I split my code into multiple packages, and what's a good way to split it?
+Roslaunch tips for large projects
+Best practices for organizing a project [closed]
+
+The question "how do I write my own controllers?" is very general and difficult to answer. Try to narrow it down a bit and ask a new question.
+
+Edit 2:
+Are you sure that you've updated your code and re-compiled it? Your repo still shows the same code missing the closing " on line 6, as I pointed out. The message
+`/home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp: line 9: //std_msgs: No such file or directory` 
+
+means that it's looking for a directory //std_msgs which would make sense if it thinks that it's part of the include statement on line 6.
+Either you haven't updated and re-compiled your code or you're not copying and pasting the entire contents of the output of the terminal.
+
+Edit 3:
+You're mixing up data types. Your publisher has the surp::Int32Stamped data type, your calback function encoderCallback is expecting a data type of surp::Int32Stamped in its argument while your subscriber is saying that the data type will be surp::Int32.
+The error in your comment gives this away. The error in your question is unrelated. You should update your question with the full terminal output. That's the best way to get help from everyone.
+
+Originally posted by jayess with karma: 6155 on 2017-08-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by renanmb on 2017-08-09:
+I still want to know, how do I write my own controllers? What are the best practices?
+I saw a package some people made called controlit, I want to learn how to organize myself to do something like that on the long term.
+Comment by renanmb on 2017-08-10:
+That was not the mistake, I already had tha right. Sorry for checking later. The Error keep the same.
+Comment by jayess on 2017-08-10:
+What do you mean you already had that right? If you fixed your code and it still doesn't work you should update your question.
+Comment by renanmb on 2017-08-10:
+The Error message is the same, the code I posted was with a mistake when copied it here. So the question is the same as when I started.
+One node work the other don't. The error message makes no sense.
+Comment by renanmb on 2017-08-10:
+Now I updated my github.
+The error is this, the datatype thing was because I forgot on node running.
+I posted everything I have .
+The error in line 9 should never be happening because that line is commented.
+I run catkin_make and catkin_make install everytime I change my code.
+Comment by renanmb on 2017-08-10:
+commlink node work just fine publishing the message I need and it does not give me this Error:
+/home/rmb/gopigo_ws/src/pd_controller/src/pd_controller.cpp: line 9: surp::Int32Stamped: command not found
+
+Comment by jayess on 2017-08-10:
+So what is the error? The one in your comment or the one in the question? You're now saying the one in your comment is not an error? Because I still see the same issue mixing of data types that I pointed out in my answer.
+Comment by renanmb on 2017-08-10:
+Now I see.
+When I go to my lab I will try that and see.
+Comment by renanmb on 2017-08-11:
+It did not work. The problem was on the makefile.
+I solved the makefile problem then now I have ros::Time problems
+I will update my github.
+Comment by jayess on 2017-08-11:
+Do you mean your CMakeLists.txt? Because you shouldn't have to touch your Makefile. Also, this fix seems odd (to me) given there error that you posted. Was what you posted the terminal output?
+Comment by renanmb on 2017-08-11:
+I forgot to add add my new msg into the makefile . That was the issue. I fixed. Now I have the ros::Time
+I just want to do a simple differentiation, I have no idea how to use the ros::Time.
+Comment by jayess on 2017-08-11:
+If you fixed your problem you should write an answer and accept it. If you want help with using ros::Time you should create a new question.
+Comment by renanmb on 2017-08-11:
+Just thanks for spending your time. We could not achieve any result with this post. I hope I could delete it.
+

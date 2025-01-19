@@ -1,0 +1,143 @@
+Q:
+
+Using C++ message filters in ROS2
+
+I am trying to subscribe to two topics. If their header stamps are equal they should be combined into a single message and published.
+I believe that an exact_time message_filter is the way to go here.
+In my case the messages will be high resolution images so would like the node to be written in C++ to reduce the CPU cost.
+For testing I have wrote up a Python node to to publish two messages (just sensor_msgs::msg::Temperature for this testing case) with the same header stamp. This node works with no issue.
+import rclpy
+from rclpy.node import Node
+
+from sensor_msgs.msg import Temperature
+
+class DoublePublisher(Node):
+
+    def __init__(self):
+        super().__init__('double_publisher')
+
+        # create publishers
+        self.publisher_temp_1_ = self.create_publisher(Temperature, 'temp_1', 10)
+        self.publisher_temp_2_ = self.create_publisher(Temperature, 'temp_2', 10)
+
+        # create timer
+        timer_period = 1 
+        self.timer_ = self.create_timer(timer_period, self.timer_callback)
+
+        # initialize counter
+        self.i = 0
+
+    def timer_callback(self):
+        self.get_logger().info("Publishing messages")
+
+        # get current time for headers
+        msg_stamp = self._clock.now().to_msg()
+
+        # create and publish Temperature messages
+        msg_1 = Temperature()
+        msg_1.header.stamp = msg_stamp
+        msg_1.temperature = float(self.i)
+        self.publisher_temp_1_.publish(msg_1)
+
+        msg_2 = Temperature()
+        msg_2.header.stamp = msg_stamp
+        msg_2.temperature = float(self.i + 2)
+        self.publisher_temp_2_.publish(msg_2)
+
+        self.i += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_publisher = DoublePublisher()
+
+    rclpy.spin(minimal_publisher)
+
+    minimal_publisher.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+I then tried to make a C++ node that would use message filters to subscribe to the two topics and call a callback if two messages have the same timestamp. I can't really find any solid examples on how to do this in ROS2. I tried to figure it out from the comments in the code from this repo. Below is my code and the compile errors that I get.
+The code:
+#include <memory>
+#include <string>
+#include <cstring>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "sensor_msgs/msg/temperature.hpp"
+#include "message_filters/subscriber.h"
+#include "message_filters/time_synchronizer.h"
+
+using std::placeholders::_1;
+using std::placeholders::_2;
+
+class ExactTimeSubscriber : public rclcpp::Node
+{
+public:
+  ExactTimeSubscriber()
+      : Node("exact_time_subscriber")
+  {
+    subscription_temp_1_.subscribe(this, "temp_1");
+    subscription_temp_2_.subscribe(this, "temp_2");
+
+    message_filters::TimeSynchronizer<sensor_msgs::msg::Temperature, sensor_msgs::msg::Temperature> sync_(subscription_temp_1_, subscription_temp_2_, 3);
+    sync_.registerCallback(std::bind(&ExactTimeSubscriber::topic_callback, this, _1, _2));
+  }
+
+private:
+  void topic_callback(const sensor_msgs::msg::Temperature::SharedPtr tmp_1, const sensor_msgs::msg::Temperature::SharedPtr tmp_2) const
+  {
+    const char *temp_1 = std::to_string(tmp_1->temperature).c_str();
+    const char *temp_2 = std::to_string(tmp_2->temperature).c_str();
+    RCLCPP_INFO(this->get_logger(), "I heard: '%s' and '%s'", temp_1, temp_2);
+  }
+  message_filters::Subscriber<sensor_msgs::msg::Temperature> subscription_temp_1_;
+  message_filters::Subscriber<sensor_msgs::msg::Temperature> subscription_temp_2_;
+};
+
+int main(int argc, char *argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<ExactTimeSubscriber>());
+  rclcpp::shutdown();
+
+  return 0;
+}
+
+Does anyone know how to use the message_filters::TimeSynchronizer (or similar) to synchronize messages in ROS2?
+My system details are as follows:
+
+X86 64 CPU architecture
+Ubuntu 18.04.5
+Eloquent
+
+My compile error follows:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/51c9b332b630e16531e063dce57eec20
+
+Originally posted by srubs_r on ROS Answers with karma: 13 on 2020-09-15
+Post score: 0
+
+A:
+
+Your callback has the wrong signature. The message filter callback must take in a reference to a const std::shared_ptr<const...>&, whereas you have just a const std::shared_ptr<> Change your callback declaration line to this:
+void topic_callback(
+  const sensor_msgs::msg::Temperature::ConstSharedPtr& tmp_1,
+  const sensor_msgs::msg::Temperature::ConstSharedPtr& tmp_2) const
+
+Then it will compile.
+
+Originally posted by Geoff with karma: 4203 on 2020-09-15
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by sttobia on 2020-11-27:
+Thanks for the answer, this helped me to get started with the package and compile a similar minimal example like the one above. However, this example still does not work as expected for me in ROS2 on ubuntu. Somehow, the callback function is never reached even though I can check that the messages that reach the subscribers themselves have the exact same timestamp. This might be a problem with the message_filters package itself I fear. I posted a question about this which is awaiting moderation here:
+https://answers.ros.org/question/366440/ros-2-message_filters-timesynchronizer-minimal-example-does-not-reach-callback-function/
+I would be happy if you could verify that I am not a bot and make the question open for the public and maybe also help me with it by quickly reproducing the issue.
+

@@ -1,0 +1,143 @@
+Q:
+
+include srv files in python catkin project
+
+I am currently having some issues with importing my service files into my project.
+i can't import into my service_def.py file.. Why is that not possible?
+I made it as a rosnode, my src folder of the catkin_workspace looks like this
+.
+├── CMakeLists.txt -> /opt/ros/indigo/share/catkin/cmake/toplevel.cmake
+└── service
+    ├── CMakeLists.txt
+    ├── include
+    │   └── service
+    │       ├── __init__.py
+    │       ├── service_def.py
+    │       └── service_def.pyc
+    ├── package.xml
+    ├── setup.py
+    ├── src
+    │   └── service_node.py
+    └── srv
+        ├── get.srv
+        ├── set.srv
+        └── __init__.py
+
+service_def.py is defined as such
+from ..srv import *
+
+And my service_node.py which i rosrun imports service_def.py
+import service.service_def
+
+So why cant I import my service messages in service_def.py?
+error message:
+k@k:~/python_service/src$ rosrun service service_node.py 
+Traceback (most recent call last):
+  File "/home/k/python_service/src/service/src/service_node.py", line 5, in <module>
+    import service.service_def
+  File "/home/k/python_service/src/service/include/service/service_def.py", line 1, in <module>
+    from ..srv import *
+ValueError: Attempted relative import beyond toplevel package
+
+Originally posted by 215 on ROS Answers with karma: 156 on 2016-11-22
+Post score: 0
+
+A:
+
+As the error says, you are trying to do a relative import (i.e. using ..). Instead, since you are already setting service as a package in your setup.py file you can used that package name directly by changing:
+from ..srv import *   in service_def.py to  from service.service_def import *.
+Here's an MWE for the:
+Structure:
+service/
+├── CMakeLists.txt
+├── package.xml
+├── src
+│   └── service_node
+└── srv
+    ├── get.srv
+    ├── __init__.py
+    └── set.srv
+
+CMakeLists.txt
+cmake_minimum_required(VERSION 2.8.3)
+project(service)
+
+find_package(catkin REQUIRED
+   rospy
+   std_msgs
+   message_generation
+)
+
+add_service_files(
+  FILES
+   get.srv
+   set.srv
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+catkin_package(
+)
+
+package.xml
+<?xml version="1.0"?>
+<package>
+  <name>service</name>
+  <version>0.0.0</version>
+  <description>The service package</description>
+
+  <maintainer email="jsanch@todo.todo">jsanch</maintainer>
+
+  <license>TODO</license>
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>rospy</build_depend>
+  <build_depend>message_generation</build_depend>
+
+  <run_depend>rospy</run_depend>
+  <run_depend>message_runtime</run_depend>
+</package>
+
+service_node
+#!/usr/bin/env python
+#-*- encoding: utf-8 -*-
+
+import rospy
+import service.srv
+
+def main():
+    print("Creating set")
+    x = service.srv.set
+    print("Creating get")
+    y = service.srv.get
+
+if __name__ == '__main__':
+    rospy.init_node('service_node', anonymous=True)
+    main()
+
+Originally posted by jsanch2s with karma: 136 on 2016-11-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by 215 on 2016-11-23:
+but that doesn't solve the problem.. It doesn't import the srv files?
+Comment by jsanch2s on 2016-11-23:
+@215 Thanks for pointing that out. I've updated my answer.
+Comment by 215 on 2016-11-23:
+where are you defining /running the services?
+Comment by jsanch2s on 2016-11-23:
+@215 The services are defined in the srv folder, and are being used in the service_node; x is defined as a set service and y as a get service.
+Comment by 215 on 2016-11-23:
+but..? i want to define the how it should set and get things.
+don't you need a rospy.spin()?
+Comment by jsanch2s on 2016-11-23:
+@215 The code I provided was meant to be a minimal working example. For a tutorial on how to use a server you could check this site. Also is more convenient to define your services in a separate package.
+Comment by 215 on 2016-11-23:
+well..  A simple line like this  get_service = rospy.Service('_get_service', get, getConfiguration) gives me a error message that it cant find get..
+Comment by jsanch2s on 2016-11-23:
+Try replacing get with service.srv.get.
+

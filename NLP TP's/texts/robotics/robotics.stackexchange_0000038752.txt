@@ -1,0 +1,118 @@
+Q:
+
+Putting log messages from non-ROS code into ROS logging system
+
+I'm writing two new classes:
+
+A class that controls a motor control board (mcb)
+A ROS node that contains an object of the mcb class. This node provides services to the rest of ROS that use the mcb.
+
+The mcb class will be used later on in non-ROS applications and needs to be stand alone.  That's not hard to do, but since I'm using ROS now I'd like to use the nice ROS_[INFO|ERROR] logging functionality.
+My idea was to have a logfunction function pointer in the mcb class that the caller could supply. That would give the caller the opportunity to print statements to standard output by supplying printf, to log to ROS with the ROS log stuff, or to log some other way by a custom function.
+The only problem is that ROS_[INFO|ERROR|etc.] are all macros, and can't be pointed to as far as I know.  I also can't wrap the logging macros in functions, because it's not possible to pass ellipses, right?
+Does anybody know of a way to provide the logging functionality through a pointer or a stream or something? Or is there any way to put outside log messages into the ROS logging system?
+Many thanks!
+
+Originally posted by thebyohazard on ROS Answers with karma: 3562 on 2012-03-16
+Post score: 12
+
+A:
+
+A quick summary, and then on to code samples:
+
+Build your driver node to be completely ROS-agnostic.  In your class, define a series of (private) function pointers to logging functions for you different levels, Debug, Info, Error, etc.
+In your class, define a few "setters" to update these function pointers.
+In your class, create some generic loggers (or use the logging system of your choice), and make these default in the constructor
+In your node, create some wrappers to the ROS functions.
+When constructing the driver object, make sure to also update the logging function pointers to your new ROS function pointers.
+
+C++
+I think a decent example of this is @wjwwood's libsegwayrmp library.
+To begin with, he typedef's a few functions:
+typedef boost::function<void(const std::string&)> DebugMsgCallback;
+typedef boost::function<void(const std::string&)> InfoMsgCallback;
+typedef boost::function<void(const std::string&)> ErrorMsgCallback;
+
+And then creates private class variables in his hardware driver;
+...
+private:
+   DebugMsgCallback debug;
+   InfoMsgCallback info;
+   ErrorMsgCallback error;
+
+And he creates three public mutators to update these function pointers:
+void setErrorMsgCallback(ErrorMsgCallback);
+void setInfoMsgCallback(InfoMsgCallback);
+void setDebugMsgCallback(DebugMsgCallback);
+
+The logging functions can be called in your class by simply doing:
+this->error("This is an error message")
+this->debug("This is a debug message")
+this->info("This is an info message")
+
+So now, to use this WITHOUT ROS, you can create three simple callback functions that just log to the console, or modify these for your own logging suite:
+inline void defaultDebugMsgCallback(const std::string &msg) {
+    std::cerr << "SegwayRMP Debug: " << msg << std::endl;
+}
+
+inline void defaultInfoMsgCallback(const std::string &msg) {
+    std::cerr << "SegwayRMP Info: " << msg << std::endl;
+}
+
+inline void defaultErrorMsgCallback(const std::string &msg) {
+    std::cerr << "SegwayRMP Error: " << msg << std::endl;
+}
+
+Or, to use it WITH ROS, you can create some functions that wrap the macros:
+void handleDebugMessages(const std::string &msg) {ROS_DEBUG("%s",msg.c_str());}
+void handleInfoMessages(const std::string &msg) {ROS_INFO("%s",msg.c_str());}
+void handleErrorMessages(const std::string &msg) {ROS_ERROR("%s",msg.c_str());}
+
+When you construct the device driver, you can then update these function pointers to your newly-wrapped functions:
+this->segway_rmp->setDebugMsgCallback(handleDebugMessages);
+this->segway_rmp->setInfoMsgCallback(handleInfoMessages);
+this->segway_rmp->setErrorMsgCallback(handleErrorMessages);
+
+Python
+You do a similar thing with Python.  I create my hardware interfaces to use the default Python logging built-in.  The signature for these functions is:
+f(msg, *args)
+
+Which happens to be the same as the ROS logging system.
+Using a similar strategy, I create a few function references as class variables:
+class DriverObject(object):
+    def __init__(self, param1, param2, param3, debug=None, info=None, error=None):
+        self.debug = logging.debug                                                   
+        self.info = logging.info                                                     
+        self.error = logging.error                                                                                                                                         
+        if debug:                                                                    
+            self.debug = debug                                                       
+        if error:                                                                    
+            self.error = error                                                       
+        if info:                                                                     
+            self.info = info
+
+And to use these functions throughout my class, I simply do:
+self.debug("This is a debug message")
+self.error("This is an error message"
+self.info("This is an info message")
+
+And when I want to use the class within a ROS node:
+import rospy
+from driver import DriverObject
+
+do = DriverObject(1,1,1,debug=rospy.logdebug, info=rospy.loginfo, error=rospy.logerr)
+
+And now all the logging goes through the ROS logging system.
+
+Originally posted by mjcarroll with karma: 6414 on 2012-03-16
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by thebyohazard on 2012-03-19:
+This is pretty much what I originally wanted to do, but I was only thinking in a c mindset, trying to wrap variadic functions like printf. Thanks for putting me in a c++ mindset. This worked great. For those who come after: boost::lexical_cast for the win.
+Comment by mjcarroll on 2012-03-19:
+Yeah, I hope that wasn't too confusing.  I tried to dig through the code for the meaty bits for you, and it STILL came out as a wall of code.
+Comment by felix k on 2013-12-11:
+Wouldn't it be possible to use the python module logging in the agnostic code and let the wrapper somehow connect the own logger to the ROS logging? I'm trying that but not that successful. Update: probably got that, await my answer..
+

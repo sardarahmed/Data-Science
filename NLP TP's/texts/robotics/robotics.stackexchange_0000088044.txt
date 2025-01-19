@@ -1,0 +1,65 @@
+Q:
+
+How can I generate pkg-config files for my package?
+
+I have a Catkin package that generates several binaries and libraries, but unlike some other packages, pkg-config can't find them.
+ROS seems to have set the path to both my Kinetic installation, as well as my workspace.
+echo $PKG_CONFIG_PATH 
+somelocation/workspace/devel/lib/pkgconfig:somelocation/ros_catkin_ws/install_isolated/lib/pkgconfig
+
+When I ask  pkg-config --list-all about it, it does know about all of the ROS libraries, and also about things I installed in my own workspace, like joy and uuid. But it does not find the libraries I wrote myself.
+I went over to the CMakeLists.txt of joy to see if I could find anything obvious that has to be done to generate the correct files, but can't see anything. There is no .pc file in the repo either. I also tried to google around, but all results are about using external packages inside ROS, not about using ROS package outside it.
+Currently I'm just doing this, but that apparently does not get you any pkg-config files.
+Full source: https://github.com/RoboTeamTwente/roboteam_tactics/blob/libskill/CMakeLists.txt
+  add_library(Skill
+        $<TARGET_OBJECTS:treegen>
+        $<TARGET_OBJECTS:tactics>
+        $<TARGET_OBJECTS:utils>
+        $<TARGET_OBJECTS:skills>
+        $<TARGET_OBJECTS:conditions>
+        )
+  add_dependencies(Skill 
+        ${${PROJECT_NAME}_EXPORTED_TARGETS}
+        ${catkin_EXPORTED_TARGETS}
+        )
+
+When I run this, there is no output
+$ pkg-config --list-all | grep -i skill
+
+So what is the correct way to tell pkg-config about my library, just like joy and uuid?
+
+Originally posted by pepijndevos on ROS Answers with karma: 57 on 2018-07-23
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-07-23:
+This should be done automatically for your package, but it will depend on you properly setting up (and ordering) your CMakeLists.txt. Please add that to your question so we can take a look.
+Comment by pepijndevos on 2018-07-23:
+I've added a link to the source code: https://github.com/RoboTeamTwente/roboteam_tactics/blob/libskill/CMakeLists.txt I'm trying to link the Skill library that I added.
+Comment by gvdhoorn on 2018-07-23:
+That's quite a long CMakeLists.txt. I don't have time to check it all now, so I'll point you to wiki/catkin/CMakeLists.txt. The ordering and contents of statements on that page should give you some things to check.
+Comment by gvdhoorn on 2018-07-23:
+Suggestion: try to create an MWE and see if that works with pkg-config (it should). Then do a diff (could be a mental one) between your MWE and your roboteam_tactics package.
+Comment by gvdhoorn on 2018-07-23:
+Btw: this is no longer used by anything. It's something that the rosbuild system relied upon. Unless you have some custom tools that use it, it can probably be removed.
+Comment by pepijndevos on 2018-07-23:
+Ah! Catkin makes a pkg-config entry for the whole roboteam_tactics, rather than any individual libraries I define. If I add Skill to catkin_package(), I can do pkg-config --libs roboteam_tactics -Lsomewhere/lib -lroboteam_tactics_analysis -lSkill. Is there a way to have skill on its own?
+Comment by gvdhoorn on 2018-07-23:
+The pkg config file is generated for the entire CMake project, in this case for your ROS package. I don't believe it's possible to generate a config file for each separate target, no.
+Comment by pepijndevos on 2018-07-23:
+Ok. Thanks!
+Comment by gvdhoorn on 2018-07-23:
+I just noted this commit. Note that in order for any targets to show up in your pkg config file (and be usable by other ROS pkgs) you must export them in the LIBRARIES section of your ..
+Comment by gvdhoorn on 2018-07-23:
+.. catkin_package(..) call. That is not optional, and all of the examples that you mention (ie: joy and uuid) do this as well.
+
+A:
+
+(I'm going to post this as an answer, but it's really more a summary of the discussion in the comments)
+What you're asking for is not possible afaik: Catkin will only generate a single pkg config file for a ROS package. It's not possible to have it generate multiple files (for separate targets fi).
+It's actually the catkin_package(..) call that (eventually) generates the config file and the config file generated will contain information on all libraries added to the LIBRARIES argument of the catkin_package(..) call (and conversely: if you don't list a library there, it will not be mentioned in the pkg config file).
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-07-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

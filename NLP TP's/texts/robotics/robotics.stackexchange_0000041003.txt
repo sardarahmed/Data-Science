@@ -1,0 +1,92 @@
+Q:
+
+Get Gazebo Mesh size
+
+Hi All,
+I was wondering if there is a way to get the mesh size of a Gazebo model within ros through a service call.
+If not, what would be the best way to write such a service
+Basically if you have such a model
+ <!-- office walls -->
+  <model:physical name="wall_1_model">
+    <xyz>0 -5 1</xyz>
+    <rpy>0.0 0.0 0.0</rpy>
+    <static>true</static>
+    <body:box name="wall_1_body">
+      <geom:box name="wall_1_geom">
+        <mesh>default</mesh>
+        <size>10 .2 2</size>
+        <visual>
+          <size>10 .2 2</size>
+          <material>Gazebo/Green</material>
+          <mesh>unit_box</mesh>
+        </visual>
+      </geom:box>
+    </body:box>
+  </model:physical>
+
+I want to get the size <10 .2 2> from the mesh section.
+Thanks
+Chris
+
+Originally posted by Christian on ROS Answers with karma: 56 on 2012-05-31
+Post score: 0
+
+A:
+
+Ok, so I found a solution. To get access to the gazebo shapes you have to create a Gazebo Plugin. There is a tutorial on Gazebo how to do that.
+After that you can access Model->Body->Geom->Shape->BoxShape.
+    gazebo::physics::ModelPtr model = this->world_->GetModel(req.model_name);
+    if (!model)
+    {
+      ROS_ERROR("GetModelProperties: model [%s] does not exist",req.model_name.c_str());
+      res.success = false;
+      res.status_message = "GetModelProperties: model does not exist";
+      return false;
+    }
+    else
+    {
+
+  // get model parent name
+  gazebo::physics::ModelPtr parent_model = boost::dynamic_pointer_cast<gazebo::physics::Model>(model->GetParent());
+
+  // get list of child bodies, geoms
+  for (unsigned int i = 0 ; i < model->GetChildCount(); i ++)
+  {
+    gazebo::physics::LinkPtr body = boost::dynamic_pointer_cast<gazebo::physics::Link>(model->GetChild(i));
+    if (body)
+    {
+      // get list of geoms
+      for (unsigned int j = 0; j < body->GetChildCount() ; j++)
+      {
+        gazebo::physics::CollisionPtr geom = boost::dynamic_pointer_cast<gazebo::physics::Collision>(body->GetChild(j));
+
+        if (geom)
+        { 
+          res.geom_name = geom->GetName();
+          gazebo::physics::ShapePtr shape(geom->GetShape ());
+          
+          if (shape->HasType (gazebo::physics::Base::BOX_SHAPE))
+          {
+            gazebo::physics::BoxShape *box = static_cast<gazebo::physics::BoxShape*>(shape.get ());
+            math::Vector3 tmp_size = box->GetSize ();
+            geometry_msgs::Vector3 size;
+            size.x = tmp_size.x;
+            size.y = tmp_size.y;
+            size.z = tmp_size.z;
+            
+            res.size = size;
+          }
+        }
+      }
+    }
+  }
+  res.success = true;
+  res.status_message = "GetModelProperties: got properties";
+  return true;
+}
+return true;
+
+Originally posted by Christian with karma: 56 on 2012-06-01
+This answer was ACCEPTED on the original site
+Post score: 4
+

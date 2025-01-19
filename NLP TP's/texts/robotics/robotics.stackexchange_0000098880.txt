@@ -1,0 +1,40 @@
+Q:
+
+How to filterout a type from a rosbag record?
+
+I have on my hands a 18GiB rosbag that contains multiple topics of PointCloud2 type. From my experience those are the main contributors to the rosbags' size. After the bag is recorded I can use the following to throw away the PointCloud2 messages:
+rosbag filter big.bag small.bag "'PointCloud2' not in str(type(m))" but what flag to rosbag record should I use to not record them?
+I know rosbag record -x but according to documentation that only works with regexes and my PointCloud2 topics have different names.
+By default I use rosbag record -a since the PointCloud2 topics are only a fraction of what I want to record.
+
+Originally posted by Aleksander Bobiński on ROS Answers with karma: 26 on 2021-04-22
+Post score: 0
+
+A:
+
+Somewhat guided by gvdhoorn's answer I wrote the following shell wrapper around rosbag record.
+unwanted_type=PointCloud2
+unwanted_topics_as_regex_alternative=$(rostopic list --verbose | grep $unwanted_type | cut -d '[' -f 1 | cut -d '*' -f2- | sed -E 's/^ (.*) $/\1/g' | tr '\n' '|')
+rosbag record -a -x "($unwanted_topics_as_regex_alternative)"
+
+Originally posted by Aleksander Bobiński with karma: 26 on 2021-04-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2021-04-24:
+Nice idea to use rostopic in a shell script wrapper. Would rostopic list with rostopic type be less --verbose?
+Comment by Aleksander Bobiński on 2021-04-24:
+I think one would have to use a for loop since rostopic type does not accept multiple topic names as arguments. Maybe if rostopic type would accept topic names from stdin this could be done in one line without the cut tricks by piping from rostopic list to rostopic type to grep.
+Comment by gvdhoorn on 2021-04-24:\
+
+Maybe if rostopic type would accept topic names from stdin this could be done in one line without the cut tricks by piping from rostopic list to rostopic type to grep.
+
+afaik, it does support that.
+Comment by Aleksander Bobiński on 2021-04-24:
+Are you sure? For me echo "/velodyne_points" | rostopic type results in:
+rostopic type: error: the following arguments are required: topic_or_field
+
+Comment by gvdhoorn on 2021-04-24:
+You can do it with xargs: rostopic list | xargs -i rostopic type {}. But you don't really gain anything doing this I believe.
+

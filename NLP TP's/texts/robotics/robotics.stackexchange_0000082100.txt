@@ -1,0 +1,96 @@
+Q:
+
+Undefined symbol in custom costmap layer during runtime caused by tf2 Buffer transform
+
+I am writing a custom costmap layer to read data from a radar sensor and turn it into a costmap, and I'm facing some issues running it. I get the following error when it runs:
+symbol lookup error: /home/mkhoory/sdc/catkin_ws/devel/lib//libRadarDataLayer.so: undefined symbol: _ZN3tf212getTimestampIN13geometry_msgs15PolygonStamped_ISaIvEEEEERKN3ros4TimeERKT_
+
+What the related code is trying to do is create a PolygonStamped from the radar data and convert it to world coordinates via tf2.
+tfBuffer.transform(polyRadar, polyWorld, globalFrame);
+
+I'm not sure what I'm doing wrong here. The code compiles fine, and it's only when the plugin reaches the above line that it tells me that it's an undefined reference. I tried including tf2_geometry_msgs.h but that didn't do anything. What am I missing?
+EDIT: Here's my CMakeLists.txt:
+
+cmake_minimum_required(VERSION 2.8.3)
+project(my_project_processing)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  std_msgs
+  geometry_msgs
+  message_generation
+  tf
+  tf2
+  tf2_geometry_msgs
+  costmap_2d
+  dynamic_reconfigure
+  my_project_sensors
+)
+
+find_package(Boost REQUIRED COMPONENTS system thread)
+
+add_message_files(
+    FILES
+    CommandMessage.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES
+  CATKIN_DEPENDS roscpp rospy std_msgs tf message_runtime geometry_msgs message_generation
+  DEPENDS Boost
+)
+
+# let's use C++11
+SET(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+
+include_directories(
+  include
+  ${tf2_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+)
+
+# Costmap2D Layer plugin
+add_library(RadarDataLayer lib/RadarDataLayer.cpp)
+target_link_libraries(RadarDataLayer ${Boost_LIBRARIES} ${catkin_LIBRARIES})
+
+Originally posted by 9a3eedi on ROS Answers with karma: 63 on 2017-08-01
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-08-01:
+This is a (deferred) linker error, not a compilation issue.
+Please post your CMakeLists.txt -- make sure to remove all the boilerplate comments from it first (lines starting with #).
+Comment by 9a3eedi on 2017-08-01:
+I think I may have found the problem. tf2_geometry_msgs only supports native transformations certain types of messages from geometry_msgs, and PolygonStamped isn't one of them, according to this link http://wiki.ros.org/tf2_geometry_msgs . I'm not sure yet so I'm going to try another type first.
+Comment by gvdhoorn on 2017-08-01:
+I would expect to see a compiler error ("no candidates" or "no matching function call for ..") in that case, not a linker error. A 'missing symbol error' basically means that the compiler embedded the use of an external symbol in your library, but you didn't link against all needed dependencies.
+Comment by 9a3eedi on 2017-08-01:
+Hi, I added my CMakeLists.
+
+A:
+
+It turns out that tf2_geometry_msgs does not support transforming PolygonStamped!
+I changed my code so that instead of transforming PolygonStamped, it would transform each individual Point in it (i.e. I was transforming PointStamped instead now). This seems to work fine and did not get any issues.
+
+Originally posted by 9a3eedi with karma: 63 on 2017-08-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-08-09:
+Ok. Thanks for reporting back.
+Would it make sense to add the support and submit a pull request against tf2_geometry_msgs to get it merged upstream?
+Comment by 9a3eedi on 2017-08-10:
+I think it would make sense for convenience sake. I can imagine a lot of reasons why you'd want to do it.
+Comment by gvdhoorn on 2017-08-10:
+Seeing as you've already done it, would it be possible for you submit a PR? :)
+

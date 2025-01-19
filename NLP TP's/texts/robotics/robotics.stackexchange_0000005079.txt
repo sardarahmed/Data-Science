@@ -1,0 +1,93 @@
+Q:
+
+Communicating with syringe pump using PySerial
+
+Let's first start of by explaining that I do not have a decent background in electronics and interfacing with them, so maybe this is a stupid question. I am currently trying to connect an old Harvard 33 syringe pump (website, PDF manual) to a computer, with the goal of controlling things like pump rates and direction. For this purpose, I connected the instrument to my computer using a D-sub/USB conversion dongle. I then connected to the dongle with PySerial without issues. However, whenever I try to send commands or request the instrument's output, for example write("RUN\r"), the instrument does not do anything at all. Requesting data (read(100)) returns only a couple of \x00. I suspect I am communicating with the dongle itself rather than the pump. When the pump is turned off or unplugged, I get exactly the same results!
+Could anyone explain to me why my method does not work?
+My Python code for reference:
+import serial # PySerial module
+
+# open the connection
+ser = serial.Serial("/dev/ttyUSB0", baudrate=9600, bytesize=8, stopbits=2, timeout=1)
+print ser # returns [Serial<id=0x1cc7610, open=True>(port='/dev/ttyUSB0', baudrate=9600, bytesize=8, parity='N', stopbits=2, timeout=1, xonxoff=False, rtscts=False, dsrdtr=False)]
+
+# see if the connection is truly open
+print ser.isOpen() # prints True
+
+# run the pump motor
+ser.write("RUN\r")
+
+Additional observations: when the instrument is plugged in but the above code is not running, the pump does all sorts of things at random (move one way, stop, move the other way, etc.). This behaviour is much less pronounced but still present when the code runs (and 'locks' the channel or something?). This seems to suggest that the reference voltages (logical high and low) are not properly set at 2-5V and 0-0.5V respectively
+
+A:
+
+Thank you for directly linking to the manual -- that makes answering questions like this much quicker.
+
+I connected the instrument to my computer using a D-sub/USB conversion
+  dongle.
+
+I'm assuming that you've already figured out that the thing that looks like a standard 9-pin D-sub connector on the Harvard Model 33 is completely incompatible with standard RS-232, and you have (or can make) something that looks like the proper cable between a PC and the pump.
+The first thing I would do is "beep out" the cable:
+The cable should have a DB9 female on one end, and a RJ11 plug on the other end,
+and connections as shown on in Appendix D and Appendix F (p. 24-25) of the manual.
+As far as I can tell, for your application, you don't wan't anything plugged in to the "I/O" D-sub connector on the back of the pump.
+Instead, you want the RJ-11 plug end of your cable plugged into the "Port #1" RJ-11 socket on the back of the pump; and the DB9 female end of your cable plugged into the male DB-9 connector on the USB-to-RS232 dongle.
+Throwback1986 has many good tips.
+
+Requesting data (read(100)) returns only a couple of \x00.
+  ...
+  Could anyone explain to me why my method does not work?
+
+These pumps are designed to be connected in a chain,
+and they are designed to ignore commands sent to other pumps in a chain.
+Also, they ignore commands sent while the pump is in setting mode (see p. 16).
+I might run a script like this to see which (if any) address the pump is responding to:
+# communicate with a Harvard 33 syringe pump
+# http://robotics.stackexchange.com/questions/5079/communicating-with-syringe-pump-using-pyserial
+# pump website: http://www.harvardapparatus.com/webapp/wcs/stores/servlet/product_11051_10001_44004_-1_HAI_ProductDetail___
+# pump manual: http://www.instechlabs.com/Support/manuals/HA33Manual.pdf
+# WARNING: untested code
+
+import serial # PySerial module: http://pyserial.sf.net/
+
+# open the connection
+ser = serial.Serial(port="/dev/ttyUSB0", baudrate=9600, stopbits=STOPBITS_TWO, timeout=0.5)
+print ser
+
+# see if the connection is truly open
+print ser.isOpen()
+
+# See if the pump is at address 0:
+# try to get the software version of that pump
+# using the VER command from p. 19 of the manual
+command_string = "VER\r"
+ser.write( command_string )
+response = ser.read(100)
+print "version: %r." % response
+
+# guess every possible address 0 to 99
+for guessed_address in range (0, 100):
+    # request prompt
+    prompt_request = "%d\r" % guessed_address
+    ser.write( prompt_request )
+    response = ser.read(100)
+    print "prompt: %r." % response
+
+    # try to get the software version of that pump
+    # using the VER command from p. 19 of the manual
+    command_string = "%dVER\r" % guessed_address
+    ser.write( command_string )
+    response = ser.read(100)
+    print "version: %r." % response
+
+print "All done."
+
+Does this script show any "interesting" responses?
+If I had this pump in front of me, I would follow the "Configuring the Pump Chain" process on p. 14 to figure out the current pump address and baud rate.
+Does the pump display "b:9600" on the pump's front LED display when I do that?
+Does the pump display "Adr:00" on the pump's front LED display when I do that?
+If not, I would go through the "Configuring the Pump Chain" on p. 14 to get that set.
+I might try getting pyserial to communicate through that USB dongle to and from some other device, perhaps a simple loop-back wire,
+just to make sure that pyserial works with that USB dongle.
+Good luck!
+

@@ -1,0 +1,80 @@
+Q:
+
+roslibpy: why does TFClient seem to ignore the rate parameter?
+
+Hello,
+We're using roslibpy to capture tf messages from a robot via rosbridge, and rebroadcasting them on my local machine for viewing in rviz. So far, it works well, but I'd like to reduce bandwidth by lowering the message rate a little (we get them at about 10Hz). Setting the rate parameter in TFClient seems to have no effect. Here's the little TFSub class we're using:
+class TFSub(object):
+    """Manages a set of rosbridge callbacks associated with tfs
+    on a remote robot."""
+    def __init__(self, rosbridge_client):
+        self.tf_client = TFClient(rosbridge_client, fixed_frame='map',
+                                  angular_threshold=0.5,
+                                  translation_threshold=0.5,
+                                  rate=1.0)
+        self.tf_client.subscribe('odom', self.tf_map_odom_cb)
+        self.tf_client.subscribe('base_link', self.tf_map_base_link_cb)
+        self.tb = tf.TransformBroadcaster()
+
+    def tf_map_odom_cb(self, msg):
+        rospy.logdebug("got a map->odom transform.")
+        self.tb.sendTransform((msg['translation']['x'],
+                               msg['translation']['y'],
+                               msg['translation']['z']),
+                              (msg['rotation']['x'],
+                               msg['rotation']['y'],
+                               msg['rotation']['z'],
+                               msg['rotation']['w']),
+                              rospy.Time.now(),
+                              'odom',
+                              'map')
+
+    def tf_map_base_link_cb(self, msg):
+        rospy.logdebug("got a map->base_link transform.")
+        self.tb.sendTransform((msg['translation']['x'],
+                               msg['translation']['y'],
+                               msg['translation']['z']),
+                              (msg['rotation']['x'],
+                               msg['rotation']['y'],
+                               msg['rotation']['z'],
+                               msg['rotation']['w']),
+                              rospy.Time.now(),
+                              'base_link',
+                              'map')
+
+Here's our invocation of tf2_web_republisher, running on the remote robot:
+<launch>
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" />
+  <node name="tf2_web_republisher_node" pkg="tf2_web_republisher" type="tf2_web_republisher" />
+</launch>
+
+As you can see, we're setting the rate parameter to 1.0, and setting a large angular_threshold and translation_threshold, but stll getting messages at just over 10.0Hz.
+We're running Python 2.7 at both ends of the bridge, Ubuntu 14, ROS Indigo.
+
+Originally posted by Rick Armstrong on ROS Answers with karma: 567 on 2019-01-25
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-01-27:
+gramaziokohler/roslibpy#14 seems related / similar.
+Comment by Rick Armstrong on 2019-01-28:
+Thanks, I posted a link back here for the authors.
+Comment by Rick Armstrong on 2019-01-28:
+@gvdhoorn: looks like a different issue from gramaziokohler/roslibpy#14. That one is about subscriptions, not TFClient. Thanks anyway.
+Comment by Mathias Lüdtke on 2019-01-28:
+Which topic do you get at a rate of 10 Hz?
+tf2_web_republisher seems to throttle properly,,
+Comment by Rick Armstrong on 2019-01-28:
+We're listening to two transforms: map->odom and map->base_link (code sample in the initial post). Setting the rate param to TFClient to a non-default value seems to make no difference.
+Comment by Mathias Lüdtke on 2019-01-28:
+please check rostopic hz /tf2_web_republisher/tf_repub_<X> (replace <X> accordingly).
+
+A:
+
+Ugh, dumb mistake: I had a stray static_transform_publisher running. TFClient works exactly as documented.
+Thanks to those who chimed in, and apologies for the distraction.
+
+Originally posted by Rick Armstrong with karma: 567 on 2019-01-28
+This answer was ACCEPTED on the original site
+Post score: 2
+

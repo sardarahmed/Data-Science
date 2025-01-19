@@ -1,0 +1,125 @@
+Q:
+
+Communicating between a beaglebone black and an arduino using ttyO4
+
+I'm trying to get an arduino to talk with a beaglebone black. 
+I have followed this tutorial for getting ttyO4 open on the BBB and used the following command on to set the serial line correctly: 
+wiring is set up according to this tutorial. 
+    stty -F /dev/ttyO4 cs8 9600 ignbrk -brkint -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts
+next data is sent using the following method: 
+echo s123 > /dev/ttyO4
+
+the arduino uses the followingvoid loop(){
+ code to check for serial communication:
+#include <SPI.h>
+
+void setup(){ //////////////SETUP///////////////////////
+  Serial.begin(9600);
+}
+void loop(){
+      if(Serial.available()>=4){
+         digitalWrite(12, HIGH);
+         delay(1000);               // wait for a second
+         digitalWrite(12, LOW);   // turn the LED on (HIGH is the voltage level)
+         delay(1000);               // wait for a second
+         digitalWrite(12, HIGH);
+         byte b1,b2,b3,b4; 
+         b1=Serial.read();
+         }
+    }
+}
+
+However it seems no message is received. It does not give any error either. 
+As an alternative I have also tried a variant of the code suggested in the wiring tutorial resulting in the following code:
+import sys
+from bbio import *
+
+Serial2.begin(9600)
+for arg in sys.argv:
+    print arg
+    Serial2.write(arg)
+    delay(5)
+
+called with pyton test s123 this printed s123 but the arduino remained silent. 
+Edit I have now also tried to exactly follow the wiring tutorial so that gave me the following sketch: 
+char inData[20]; // Allocate some space for the string
+char inChar=-1; // Where to store the character read
+byte index = 0; // Index into array; where to store the character
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(13, OUTPUT);   // digital sensor is on digital pin 2
+  digitalWrite(13, HIGH);
+  delay(2000);
+  digitalWrite(13, LOW);
+  delay(500);
+}
+
+void loop()
+{
+  Serial.write("A");
+  digitalWrite(13, HIGH);
+  delay(100);
+  digitalWrite(13, LOW);
+  delay(100);
+  if (Comp("A")==0) {
+      digitalWrite(13, HIGH);
+      delay(1000);
+      digitalWrite(13, LOW);
+      delay(500);
+  }
+}
+
+char Comp(char* This) {
+    while (Serial.available() > 0) // Don't read unless
+                                   // there you know there is data
+    {
+        if(index < 19) // One less than the size of the array
+        {
+            inChar = Serial.read(); // Read a character
+            inData[index] = inChar; // Store it
+            index++; // Increment where to write next
+            inData[index] = '\0'; // Null terminate the string
+        }
+    }
+
+    if (strcmp(inData,This)  == 0) {
+        for (int i=0;i<19;i++) {
+            inData[i]=0;
+        }
+        index=0;
+        return(0);
+    }
+    else {
+        return(1);
+    }
+}
+
+and on the BBB we turn on the echo script with
+/PyBBIO/examples$ sudo python serial_echo.py
+
+The effect remains that there is no error but also no data delivery. 
+
+A:
+
+In this answer, I will outline some techniques for diagnosing RS232-style serial communication problems.
+For a two-way serial communication link between two devices to work, at the most basic level we need a connection from  TxD on device 1 to RxD on device 2 and a connection from  TxD on device 2 to RxD on device 1.
+Voltage or current level conversions may be needed; for example, if device 1 uses -12 V for mark and +12 V for space while device 2 uses +3.3 V for mark and 0 V for space, voltage inversion/scaling/shifting is an obvious requirement.
+For the OP's case, 3.3 V at the Beaglebone needs to be translated to or from 5.0 V at the Arduino.  Note that Arduinos with an 8 MHz crystal can operate at 3.3 V and may have a 3.3 V regulator rather than a 5 V regulator.   Use of 3.3 V on the Arduino would allow dropping out the voltage converter board shown in the OP, ie would remove one possible problem source.
+If you have a 3.3 V power supply, you can attach that to Arduino Vcc, but don't attach more than one power source at once.  Ie, if you attach 3.3 V to Vcc, don't plug in a USB cord, and don't hook +RAW or the power jack to anything.
+The RS232 standard provides several control lines [eg request to send (RTS), clear to send (CTS), data terminal ready (DTR), and data set ready (DSR)] which could be discussed in a comprehensive treatise on diagnosing RS232 problems but won't be discussed at any length here.  A Beaglebone Serial ports / UART webpage on beaglebone.cameon.net shows pin numbers for control lines, eg:
+           RX      TX     CTS     RTS     Device
+UART4    P9_11   P9_13   P8_35   P8_33   /dev/ttyO4 
+
+It may be necessary to jumper CTS high or low.
+To recap:  We need to connect TxD, RxD on device 1 to RxD, TxD on device 2.  To make that connection, we need to identify the TxD and RxD pins on each device.  Beaglebone and Arduino devices may have several sets of TxD, RxD pairs.  One of the best, quickest, and most-certain ways to check if you are using the correct pair (eg, TX0,RX0 instead of TX1,RX1 on an Arduino Mega, or UART4 instead of UART3 or UART5 on a Beaglebone) and have properly enabled it is to run a program that continuously sends a pattern of data to TxD, and verify with an oscilloscope, logic analyzer, logic probe, or LED that the expected data pattern appears at the expected pin.
+If you are using a scope, the program should send a simple and steady stream of data at a reasonably high datarate, like 9600 bps.  Eg, run a program like while 1: send 'U' and check that your TxD pin is toggling at the right rate and other pins aren't.
+If you are using an LED, make it not too bright (eg, 2KΩ-20KΩ dropping resistor) so you can look closely at the light; make it red or amber so it will light up ok on 3.3 V; use a low datarate (300 bps) so you can see flickering bits; and use a repetition pattern obvious to the eye; eg:
+while 1:
+   send '@'*60    # Ie, send a string of 60 @ signs
+   wait 1 sec
+
+On the Beaglebone, if you don't find any output on Tx4, revise your test program to output on Tx0 (which I think is automatically enabled and available in userspace) and use that to verify that your test program and probe are working.  If it works ok on Tx0 but not on Tx4, look for additional web information about enabling  Beaglebone serial ports and making them available to the user.
+After you have verified that output works on some TxD pins with no voltage shifter attached, attach the shifter and repeat the test.  If successful, also test the outputs of the voltage shifter.  Then attach RxD of the other device to shifter output and verify that the desired data pattern is arriving at that RxD pin.
+If you are using a scope, you'll have seen whether voltages are correct (ie 0 and +3.3 or +5.0) at each stage of each connection.  If you are using an LED probe, you may be able to tell if voltage at one point is more than at another; but you might also try running data patterns with more zeroes (eg long strings of \0), or more ones (long strings of 0x7F or 0xFF characters) and using a voltmeter to estimate voltages.
+

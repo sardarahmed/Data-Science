@@ -1,0 +1,26 @@
+Q:
+
+Understanding Arduino bootloader
+
+That is what I came to understand while reading here and there about flashing a new bootloader/understanding what a bootloader is etc etc
+The bootloader is supposed to be the first thing that runs when I power up my Arduino Duemilanove (or micro controllers in general). It does some setup then runs my app. It also listens to the usb cable so that if I upload some code it erases the old one and run the new one. There are 2 sections in the memory, one for the bootloader (S1) and one for the app (S2). Code on S1 can write to S2 but not to S1 (or strongly discouraged I don't remember).
+There are things that I don't understand though :
+
+If I upload some new code while my app is running, the upload works. What happened ? I thought that the bootloader gave hand to my app
+How can we flash a new bootloader ? If the bootloader is the thing that runs on section 1 (S1) and can only write to S2 and if the bootloader is the only thing that listens to new code uploads, ...
+
+Can you help me correct my thoughts and answer my questions ? Many thanks !
+
+A:
+
+(1) On several Arduino models, there's a 100 nF capacitor (at red dot in diagram) connected between DTR# on the FT232RL (or equivalent) chip and the RESET pin on the CPU.
+  (Obtain file arduino-duemilanove-schematic.pdf to see whole schematic.  Also see arduino.cc Duemilanove page.)
+DTR# normally sits high, and RESET normally is high due to an internal pullup resistor (eg 20K-50KΩ) so C13 usually has 0 volts across it.  In the Arduino process for programming via USB-serial, a programming cycle starts with DTR# being pulled down for 22ms 
+(1,2), which pulls RESET low long enough to reset the processor.  
+After the reset, the bootloader initializes; stores the received program into flash memory; then runs the stored program.
+Note, auto-reset can be disabled (on some Arduino models) by cutting a jumper (eg, RESET-EN).  See the “Automatic (Software) Reset” sections or similar of 1,2,3,4.
+(2) To flash a new bootloader, you attach a programmer to either the 6-pin ICSP header (marked by green dot in diagram) or to J3 (blue dot).  (Using J3 may require manually pressing S1 to reset the CPU before programming; see 2.)
+A bootloader is a program that accepts data to store into flash; or, if no program begins arriving in the first half second or so after a reset (see refs 1-4 above), it starts a previously loaded program.
+Programming via SPI (the Serial Peripheral Interface Bus, which uses the SCK, MISO, MOSI, SS pins of ICSP header for high speed full duplex serial data transfer) by contrast is a hardware operation that does not run a program from flash.  Like JTAG, it's one of the built-in hardware-level programming protocols in typical AVR chips.
+During SPI programming, RESET is held low and the AVR is like a puppet carrying out directives issued to it by the programmer device.  The AVR is not executing a user-accessible stored program during programming; it is carrying out low-level directives issued to it by the programmer device.  A programming directive precedes each bit of data on the SPI bus.  For an explanation of the serial programming algorithm, see (eg) section 30.8 in doc2549.pdf, ATmega manual #2549P–AVR–10/2012.  Section 30.8.2 on p. 350-351 explains the method.  Table 30-17 on p. 352 shows the directives used to control programming.  These include “Programming Enable”,  “Chip Erase”, “Load Extended Address byte”, “Write Program Memory Page”, etc. 
+

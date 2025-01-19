@@ -1,0 +1,148 @@
+Q:
+
+How Extract Obstacle Information?
+
+Hi everybody,
+I configured my non static map, but I have not figured out how to read information on obstacles. The type of topic (/move_base_node/local_costmap/obstacles) is nav_msgs::GridCells ?
+I could use occupancy grid ?
+thanks
+#Independent settings for the planner's costmap
+global_costmap:
+    publish_voxel_map: true
+    global_frame: odom
+    robot_base_frame: base_footprint
+    update_frequency: 2.5
+    publish_frequency: 1.0
+    static_map: false
+    rolling_window: true
+    width: 20.0
+    height: 20.0
+    resolution: 0.05
+    origin_x: 0.0
+    origin_y: 0.0
+
+#Independent settings for the local costmap
+local_costmap:
+    publish_voxel_map: true
+    global_frame: odom
+    robot_base_frame: base_footprint
+    update_frequency: 5.0
+    publish_frequency: 2.0
+    static_map: false
+    rolling_window: true
+    width: 10.0
+    height: 10.0
+    resolution: 0.05
+    origin_x: 0.0
+    origin_y: 0.0
+map_type: costmap
+transform_tolerance: 0.2
+obstacle_range: 2.5
+raytrace_range: 3.0
+inflation_radius: 0.25
+
+observation_sources: base_scan
+
+#base_scan_marking: {sensor_frame: base_scan_link,
+#                    data_type: PointCloud2,
+#                    topic: /base_scan/marking,
+#                    expected_update_rate: 0.2,
+#                    observation_persistence: 0.0,
+#                    marking: true,
+#                    clearing: false,
+#                    min_obstacle_height: 0.06,
+#                    max_obstacle_height: 2.0}
+
+base_scan: {sensor_frame: base_laser_front_link,
+            data_type: LaserScan,
+            topic: /base_scan,
+            expected_update_rate: 0.2,
+            observation_persistence: 0.0,
+            marking: true,
+            clearing: true,
+            min_obstacle_height: -0.10,
+            max_obstacle_height: 2.0}
+
+#change this
+footprint: [[0.26, 0.18],
+            [0.26, 0.014],
+            [0.31, 0.014],
+            [0.31, -0.014],
+            [0.26, -0.014],
+            [0.26, -0.18],
+            [-0.27, -0.18],
+            [-0.27, 0.18]]
+
+controller_frequency: 10.0
+controller_patience: 15.0
+clearing_radius: 0.25
+footprint_padding: 0.03
+
+Originally posted by mrshifo on ROS Answers with karma: 1 on 2014-04-07
+Post score: 0
+
+Original comments
+Comment by Mike Charikov on 2014-04-08:
+You have a problem with reading topic /move_base_node/local_costmap/obstacles? Is it epty or something else? Did not quite understand the question.
+Comment by mrshifo on 2014-04-09:
+This is my code for read where are the obstacles:
+#include "ros/ros.h"
+#include "nav_msgs/GridCells.h"
+void chatterCallback(const nav_msgs::GridCells::ConstPtr& msg)
+{
+ROS_INFO("width: [%f]", msg->cell_width);
+ROS_INFO("height: [%f]", msg->cell_height);
+ROS_INFO("size: [%f]", msg->cells.size());
+ROS_INFO("pos_x: [%f]", msg->cells[0].x);     // segmentation fault if there are not obstacle's
+ROS_INFO("pos_y: [%f]", msg->cells[0].y);
+ROS_INFO("pos_z: [%f]", msg->cells[0].z);
+}
+int main(int argc, char **argv)
+{
+ros::init(argc, argv, "listener");
+ros::NodeHandle n;
+ros::Subscriber sub = n.subscribe("/move_base_node/local_costmap/obstacles", 1000, chatterCallback);
+ros::spin();
+return 0;
+}
+The Problem is:
+if there are not obstacles:
+
+return segmentation fault
+width = 0.05 height =0.05 size =0.0000
+how can I know the size of the array cells[] ? I would like to know if there are obstacles and where
+
+Comment by Mike Charikov on 2014-04-09:
+msg->cells.size() ? You already have it in your code.
+Comment by mrshifo on 2014-04-09:
+Yes but msg->cells.size() don't return the dimension of the array !!
+So how can I know the last index of the array cells[] ?
+( https://www.dropbox.com/s/0e61wd46v4201jg/screen.png )
+Comment by Mike Charikov on 2014-04-09:
+msg->cells[] is one-dimensional array, as far as i see. So, if msg->cells.size() == 0, then there are no obstacles. If msg->cells.size()>0, then the last index of array == msg->cells.size()-1. In your code you always read first member in array (cells[0]).
+Comment by mrshifo on 2014-04-09:
+Thank you very much,
+but why  ROS_INFO("size: [%f]", msg->cells.size());  return size = 0.05000 when there are obstacles ?
+the msg->cells.size() should return the number of cells occupied by obstacles but it did not happen.
+Comment by mrshifo on 2014-04-10:
+Right !! Thank you very much, return the correct value.
+But I have noticed that sometimes the information remain obstacles in the map. I attach photos and configuration files. I do not understand why.
+https://www.dropbox.com/s/4bxzlid7e25mwuu/obstacle_remain.png
+https://www.dropbox.com/s/4bxzlid7e25mwuu/obstacle_remain.png
+https://www.dropbox.com/s/eu7xq4nzpbdrjeb/base_laser.png
+https://www.dropbox.com/s/ygvetcp7j2yspuu/config.txt
+thanks
+Comment by Mike Charikov on 2014-04-10:
+It's hard to say why: cannot corellate rviz and sim images on https://www.dropbox.com/s/4bxzlid7e25mwuu/obstacle_remain.png. Can you add laser visualisation in rviz?
+Comment by Mike Charikov on 2014-04-14:
+It's hard to say why: cannot corellate rviz and sim images on https://www.dropbox.com/s/4bxzlid7e25mwuu/obstacle_remain.png. Can you add laser visualisation in rviz?
+
+A:
+
+cells.size() has int type.
+Try use ROS_INFO("size: [%d]", msg->cells.size());  Not %f.
+
+Originally posted by Mike Charikov with karma: 123 on 2014-04-09
+This answer was ACCEPTED on the original site
+Post score: 1
+

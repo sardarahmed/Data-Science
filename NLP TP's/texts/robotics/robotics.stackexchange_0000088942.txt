@@ -1,0 +1,167 @@
+Q:
+
+How to continuously publish to a topic using classses?
+
+Hello I have the working code below. It basically gets an input from my joystick button to act as a on and off switch (a single press will turn it on and the second press will turn it off). However, the output I get from this code are the following:
+1st press:
+data: True
+data: False
+
+2nd press:
+data: False
+data: False
+
+I want to continuously see the output of the topic and not only when I press the button. Here is my code:
+#include <ros/ros.h>
+#include <std_msgs/Float32.h>
+#include <sensor_msgs/Joy.h>
+#include <std_msgs/Bool.h>
+
+class Override
+{
+public:
+    Override();
+    
+private:
+    
+    void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+    ros::NodeHandle nh_;
+    ros::Publisher override_pub;
+    ros::Subscriber joy_sub_;
+    bool currentReading;
+    bool lastReading;
+    bool flag;
+};
+
+Override::Override()
+{
+
+  override_pub = nh_.advertise<std_msgs::Bool>("override_status", 1);
+  joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &Override::joyCallback, this);
+  
+}
+
+void Override::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{
+  
+  std_msgs::Bool override_status;
+  
+  if (joy->buttons[4] == 0.0){
+    currentReading = false;
+
+  }else currentReading = true;
+
+  if (currentReading && !lastReading) {
+    flag=!flag;
+    if (flag) {
+      override_status.data = true;
+    }
+    else {
+      override_status.data = false;
+    }
+  }
+  lastReading = currentReading;
+  override_pub.publish(override_status);
+}
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "override_node");
+  Override override;
+  ROS_INFO("Running");
+  ros::spin();
+}
+
+I tried putting while(ros::ok()) but I don't know where to insert it.
+
+Originally posted by J. J. on ROS Answers with karma: 60 on 2018-09-10
+Post score: 0
+
+Original comments
+Comment by Delb on 2018-09-10:
+You mean that you have the output only when the button is pressed ? Normally a joystick is continously publishing its data, can you tell us what is the publishing rate of the topic joy ? ( rostopic hz /joy)
+Comment by Delb on 2018-09-10:
+But what you can do is :
+
+Create a thread in the constructor of the class
+boost::thread t = boost::thread(boost::bind(&spinthread));
+
+Use the thread to spin
+void spinthread()
+{
+ros::spin()
+}
+
+Create a global variable in the callback and publish it in the main
+
+Comment by Delb on 2018-09-10:
+(publishing inside a while(ros::ok()) loop)
+Comment by J. J. on 2018-09-10:
+I can see joy publishing perfectly with rostopic echo joy. But I want to continuously output the state of the button where it is pressed once (ON state = True) or pressed a second time (Off state = False).
+
+A:
+
+You can do it like that :
+//You libraries here
+#include <boost/bind.hpp>
+#include <tile_planner/reach_goals.h>
+
+//Create a thread only for ros spin
+void spinthread()
+{
+    ros::spin();
+}
+
+//Deifne a global variable
+std_msgs::Bool override_status;
+
+//Construcor
+Override::Override()
+{
+//Define sub and publishers and start the thread
+  boost::thread t = boost::thread(boost::bind(&spinthread));
+}
+
+//Callback
+void Override::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{ 
+//Your callback routine here where you set override_status 
+}
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "override_node");
+  Override override;
+  //Set rate at 10Hz 
+  ros::Rate r(10);
+  while(ros::ok())
+  {
+    override_pub.publish(override_status);
+    r.sleep();
+  }
+}
+
+You will be continously publishing the value of override_status which will be changed each time the callback is called. You can also add a timer and change the publishing rate as you want using ros.sleep()
+Creating a thread allows you to collect the data continously in the background so that if you have time consuming functions you don't miss messages that couldn't have been received since the program was still in the function.
+
+Originally posted by Delb with karma: 3907 on 2018-09-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-09-10:
++1 for showing an example.
+Can you clarify for future readers why you call ros::spinOnce() in a separate thread? Would AsyncSpinner not work here (but even that seems not needed)?
+Comment by gvdhoorn on 2018-09-10:
+Also: please add a ros::Rate::sleep() in there. This example utilises 100% CPU even when it's doing "nothing".
+Comment by Delb on 2018-09-10:
+I added a little precision but I'm not familiar with AsyncSpinner so I can't say how it works. (but I would be glad to know if you can explain it to me)
+Comment by gvdhoorn on 2018-09-10:
+Take a look at roscpp/Overview/Callbacks and Spinning. AsyncSpinner does just about what you do here manually.
+Comment by Delb on 2018-09-10:
+So is it better to use it rather than create the thread manually ?
+Comment by gvdhoorn on 2018-09-10:
+My suggestion would be to always use standard functionality -- if it is available. It is less work for you, recognisable for others and follows conventions.
+Comment by gvdhoorn on 2018-09-10:
+Note btw: if you go for multithreaded spinning that any callback you register for a topic must be threadsafe.
+

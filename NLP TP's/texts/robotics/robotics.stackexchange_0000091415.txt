@@ -1,0 +1,46 @@
+Q:
+
+[ROS2] msg stamp time difference
+
+Hi,
+I'm trying to assess if the msg is too old by comparing current time and the msg time stamp.
+rclcpp::Time time_now = rclcpp::Clock().now();
+double dt = (time_now - trajectory_buf_->header.stamp).nanoseconds();
+
+However, the application crashes with "terminate called after throwing an instance of 'std::runtime_error'
+what():  can't subtract times with different time sources"
+Alternatively, I tried it this way:
+std_msgs::msg::Header::_stamp_type time_now = rclcpp::Clock().now();
+double dt = (time_now - trajectory_buf_->header.stamp).nanoseconds();
+
+This one doesn't compile with "no match for ‘operator-’"
+What is the right way to do it?
+
+Originally posted by vadbut on ROS Answers with karma: 78 on 2019-04-18
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-04-19:\
+
+can't subtract times with different time sources
+
+I believe the issue here is not that the types of time_now and trajectory_buf_->header.stamp are different, it's that the value they contain came from a different time source (see Clock and Time/Clock/ROS Time Source for some background).
+Comment by vadbut on 2019-04-19:
+the trajectory_buf message is being stamped in another node using rclcpp::Clock().now() call, that I'm also trying to use here. I don't see how the source is different. I looked through the article you mentioned, but didn't find the explanation.
+
+A:
+
+You need to get the clock from your node instance (my_node.get_clock()) , otherwise it does not have a valid time source and that's why your datatypes don't match.
+
+Originally posted by tfoote with karma: 58457 on 2019-04-19
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by vadbut on 2019-04-19:
+can you please explain what is the difference between "rclcpp::Clock().now()" and my_node.get_clock() ? I used the "rclcpp::Clock().now()" across all my nodes to stamp messages and it worked fine before I came across this problem. Switching to get_clock() indeed solved the problem, but I would like to figure out what is the difference between the methods.
+Comment by ateator on 2020-08-01:
+bump. I would also like this comment answered
+Comment by tfoote on 2020-08-01:
+The static method in roscpp takes advantage of global state that's setup by roscpp:::init. This useage of global state has been removed in ROS 2 allowing truly running separate nodes in the same process. But as such you need to explicitly connect things like clocks to the Node instance that you care about.
+

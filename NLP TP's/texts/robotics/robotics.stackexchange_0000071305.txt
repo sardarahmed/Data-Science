@@ -1,0 +1,74 @@
+Q:
+
+image_geometry projectPixelTo3dRay World Coordinates
+
+Good evening,
+i have a problem and i need help as fast as possible. For a tracking program i try to subscribe from two image_rect_color + their camera_infos. i have already calibrated the cameras with the ros package camera_calibration and i stored in the camera_info file. Now i am trying to get real world coordinates with the image_geometry package.
+Put if i pick a pixel point (98,200) and compute it via  projectPixelTo3dRayit only gives me strange values and z is always 1.
+Example: point (98,200) = [-0.269315, -0.0648566, 1]. Do i understand something wrong? What else can I do to get real world coordinates? The intrinsic and extrinsic values are stored in the camera_info.
+Please help its important for me!
+image_geometry::PinholeCameraModel model1;
+image_geometry::PinholeCameraModel model2;
+
+void callback(const ImageConstPtr& sub1, const CameraInfoConstPtr& cam_info1,const ImageConstPtr& sub2 , const CameraInfoConstPtr& cam_info2){
+
+    double stamp_1 =sub1->header.stamp.toSec();
+    double stamp_2 =sub2->header.stamp.toSec();
+    ROS_INFO("\nCALLBACK GETS CALLED\n TIME_STAMP_IMAGE1: %f\n TIME_STAMP_IMAGE2: %f\n", stamp_1, stamp_2);
+    model1.fromCameraInfo(cam_info1);
+    model2.fromCameraInfo(cam_info2);
+    cv::Point2d pixel_point(98, 200);
+    cv::Point3d xyz = model1.projectPixelTo3dRay(pixel_point);
+    cout << "point (3D) = " << xyz << endl << endl;
+
+}
+
+int main(int argc, char** argv) {
+
+    ros::init( argc, argv, "sync_test" );
+    ros::NodeHandle nh;
+    //namedWindow("window1", CV_WINDOW_NORMAL);
+    //namedWindow("window2", CV_WINDOW_NORMAL);
+    //cv::startWindowThread();
+
+    message_filters::Subscriber<Image> sub1(nh, "/usb_cam/image_rect_color", 5);
+    message_filters::Subscriber<CameraInfo> info_sub1(nh, "/usb_cam/camera_info", 5);
+    message_filters::Subscriber<Image> sub2(nh, "/usb_cam/image_rect_color", 5);
+    message_filters::Subscriber<CameraInfo> info_sub2(nh, "/usb_cam/camera_info", 5);
+
+    typedef sync_policies::ApproximateTime<Image,CameraInfo,Image,CameraInfo> MySyncPolicy;
+    // ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
+
+    Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), sub1,info_sub1, sub2,info_sub2);
+    //sync.setAgePenalty(1.0);
+    sync.registerCallback(boost::bind(&callback, _1, _2,_3,_4));
+
+    ros::spin();
+
+    return 0;
+
+}
+
+Originally posted by Gren8 on ROS Answers with karma: 11 on 2016-01-12
+Post score: 0
+
+A:
+
+The pixel corresponds to a ray that starts at your camera position and passes through the point (-0.269315, -0.0648566, 1) (in your camera frame). If you pass the center point of your image, the point should be (0,0,1). z = 1 is just a random point on this line.
+The docu is also very helpful: http://docs.ros.org/jade/api/image_geometry/html/c++/classimage__geometry_1_1PinholeCameraModel.html#ad52a4a71c6f6d375d69865e40a117ca3
+http://docs.ros.org/jade/api/image_geometry/html/c++/pinhole__camera__model_8cpp_source.html#l00267
+
+Originally posted by NEngelhard with karma: 3519 on 2016-01-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Gren8 on 2016-01-12:
+thanks for the answer! If i take a random point (400,56) the output is [0.102615, -0.244058, ] Could you give me an example of how i get my real world coordinates in mm now? I know its in the link you posted but i don't really understand it.
+Comment by NEngelhard on 2016-01-12:
+The point is in m, so just multiply with 1000?
+Comment by Gren8 on 2016-01-12:
+but if my output is a unit vector [0.102615, -0.244058, 1 ] and i multiply it by 1000 why do i get a negative mm value?
+Comment by NEngelhard on 2016-01-12:
+why do you expect positive values for all axis?
+

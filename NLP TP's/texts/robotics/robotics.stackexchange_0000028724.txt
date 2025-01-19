@@ -1,0 +1,73 @@
+Q:
+
+Running multiple Gazebo simulations on one ROS core
+
+Is it possible to run multiple Gazebo simulation with one ROS core and be able to interact with all the simulation (read and sent messages)?
+If so, what is needed in order for this to work?
+
+EDIT 1
+I have manage to run two simulation by putting
+export GAZEBO_MASTER_URI=http://localhost:11346;
+
+before launching the second simulation and launching each simulation in different group.
+<?xml version="1.0"?>
+<launch>
+    <!-- define arguments -->
+    ...
+    <!-- startup gazebo WORLD -->
+   ...
+   <group ns="$(arg group_name)">
+        <param name="robot_description"
+            command="$(find xacro)/xacro --inorder '$(find robot_gazebo)/launch/upload_robot.xacro'" />
+        <node name="urdf_spawner_$(arg group_name)" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+            args="-urdf -model robot_$(arg group_name) -param robot_description -x $(arg robot_x) -y $(arg robot_y) -z $(arg robot_z)"/>
+        <include file="$(find robot_control)/launch/$(arg group_name)_control.launch" if="$(eval control)" >
+        </include>
+    </group>
+</launch>
+
+I need to use the same model. To be sure I made duplicate model and named it according to the group name. I have made separate control launches for both models and set the gazebo_ros_control controllers into different namespaces.
+When I launch the first simulation, it loads as normally and all the controllers loads. As soon as I run the second simulation, however, the controllers case to exist in topic list and only 3 controller topics out of 8 expected appears on rostopic list for the second robot: the 2nd_robot/joint_states and 2nd_robot/left_wheel/command  and 2nd_robot/right_wheel/command (EDIT 3: This number of topics for the second robot is actually right, because I'm using the VelocityJointInterface). Only 1st_robot/joint_states remains for the first robot.
+So I have two simulations running with a robot loaded, but I can't control either of the robots (EDIT 3: I can control one of the robot, the second). How do I fix this?
+
+EDIT 2
+I have even run each Gazebo simulation on different ROS core using the multimaster-fkie package, so each Gazebo simulation has different GAZEBO_MASTER_URI and ROS_MASTER_URI, yet the behavior is still the same.
+
+Originally posted by kumpakri on Gazebo Answers with karma: 755 on 2019-01-29
+Post score: 1
+
+Original comments
+Comment by josephcoombe on 2019-02-04:
+Have you seen this ROS Answer and this repo?
+edit: Didn't see that you wanted to run on one ROS Core, so reposting this as comment.
+Comment by kumpakri on 2019-02-05:
+I didn't see it, and this is almost exactly how I ended up launching the two ROS cores. Just your link to repos is wrong, please fix it. It will be useful for others.
+Comment by josephcoombe on 2019-02-05:
+Whoops, good catch. Can't edit past 10 minutes, so here's the relevant repo: https://github.com/alidemir1/RosGazeboParallelSimulations
+
+A:
+
+The problem in this case is, that gazebo has a fixed name for the topic for it's processes. There is a topic called /gazebo and /gazebo_gui that starts for every gazebo simulation and it is not possible to rename it as it is placed in a protected file /opt/ros/kinetic/share/gazebo_ros/launch/empty_world.launch.
+My conclusion is, that it is not possible to run two robot simulations on one ROS core for this reason. The ROS core would not be able to differentiate between the simulations.
+What we can do, however, is to run the simulations in separate ROS-Masters and separate Gazebo-Masters using the multimaster-fkie package and making the /gazebo and /gazebo_gui topics private by setting the ~ignore_nodes parameter of master_sync node.
+rosrun master_sync_fkie master_sync _ignore_nodes:=['/gazebo','/gazebo_gui']
+
+Now each ROS core only sees its own gazebo.
+
+Originally posted by kumpakri with karma: 755 on 2019-02-04
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by RobbieTheK on 2020-08-24:
+Is there a way to get this to work with ROS 2 Foxy and Fedora/CentOS? I get these errors in Fedora:
+rosdep install -i --as-root pip:false --reinstall --from-paths multimaster
+ERROR: the following packages/stacks could not have their rosdep keys resolved
+to system dependencies:
+fkie_multimaster: Cannot locate rosdep definition for [catkin]
+fkie_node_manager_daemon: Cannot locate rosdep definition for [rostest]
+fkie_master_discovery: Cannot locate rosdep definition for
+
+Comment by kumpakri on 2020-08-25:
+From the list of branches it seems that this package was only developed for ROS 1 so far. The newest branch is noetic.
+

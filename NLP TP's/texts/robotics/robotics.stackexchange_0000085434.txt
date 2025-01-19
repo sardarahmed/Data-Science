@@ -1,0 +1,94 @@
+Q:
+
+private params in launch file
+
+Hi
+From what understand about launch file, <param> defined in <node> are private to that <node>. But the behaviour of my launch file doesn't look right to me. Here is the content of the launch file:
+<arg name="num" default="2"/>                                 
+<param name="~num_drones" value="$(arg num)"/>                
+
+ <node name="A" pkg="drone_core" type="drone.py">             
+     <param name="local_name_leaked" value="leaked"/>          
+ </node>                                
+
+ <node name="B" pkg="drone_simulator" type="sim.py">   
+     <param name="local_name" value="debug"/>                  
+ </node>                                                       
+
+Here are what rosparam list returned for A and B
+/A/local_name_leaked
+/A/num_drones       
+/B/local_name       
+/B/local_name_leaked
+/B/num_drones       
+
+So my question is, why would "local_name_leaked" show up under /B namespace?
+I'm using Jade.
+Thanks
+===========================
+Update 1
+I've narrowed down the cause. I'm reposting the full launch file for clairty
+<?xml version="1.0" encoding="utf-8"?>                          
+                                                                
+<launch>                                                        
+                                                                
+    <param name="~num_drones" value="2"/>                       
+    <!--param name="num_drones_local" value="2"/-->             
+                                                                
+    <node name="A" pkg="drone_core" type="drone.py">           
+        <param name="local_name_leaked" value="leaked" />       
+    </node>                                                     
+                                                                
+    <node name="B" pkg="drone_simulator" type="sim.py"> 
+      <param name="local_name" value="debug"/>                  
+    </node>                                                     
+                                                                
+</launch>                                                       
+
+With this <param name="~num_drones" value="2"/>, I get:
+PARAMETERS                      
+ * /A/local_name_leaked: leaked 
+ * /A/num_drones: 2             
+ * /B/local_name: debug         
+ * /B/local_name_leaked: leaked 
+ * /B/num_drones: 2                   
+ * /rosdistro: jade             
+ * /rosversion: 1.11.21         
+
+With this <param name="num_drones_local" value="2"/> I get:
+PARAMETERS                       
+ * /A/local_name_leaked: leaked  
+ * /B/local_name: debug          
+ * /num_drones_local: 2          
+ * /rosdistro: jade              
+ * /rosversion: 1.11.21      
+
+Notice one has "~num_drones", one has "num_drones".
+I was assuming <param name="~num_drones" value="2"/> would create private param in any sub sequence declaration of <node> block. But is that allowed? It seems to do that, but also cause any parameter declared inside <node> block to "leak" to sub sequence <node> blocks.
+
+Originally posted by CodingPeon on ROS Answers with karma: 21 on 2018-02-21
+Post score: 2
+
+Original comments
+Comment by ahendrix on 2018-02-21:
+Are you sure these parameters are being set by your launch file? Parameters persist on the roscore, so these might be left over from a previous launch file.
+Some nodes also set parameters, so it's possible that node B is setting this parameter.
+Comment by ahendrix on 2018-02-21:
+roslaunch will print all of the parameters that it will set at startup; you should be able to see it setting (or not setting) this parameter as part of its output.
+Comment by CodingPeon on 2018-02-22:
+Because of character limits in reply box, I've updated the original post with my findings
+
+A:
+
+The roslaunch docs for the <param> tag clearly state that this should be possible, so this looks like a bug in roslaunch.
+You've provided a great sample that reproduces this already; can you create a ticket on the ros_comm issue tracket?
+
+Originally posted by ahendrix with karma: 47576 on 2018-02-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by CodingPeon on 2018-02-24:
+I've opened an issue:
+https://github.com/ros/ros_comm/issues/1334
+

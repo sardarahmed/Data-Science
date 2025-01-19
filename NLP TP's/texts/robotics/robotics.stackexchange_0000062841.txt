@@ -1,0 +1,176 @@
+Q:
+
+Mavros topics not publishing?
+
+Hi,
+I've been trying to connect to a Pixhawk quadcopter using the mavros library (http://wiki.ros.org/mavros) and I had some issues. We are using a pixhawk and a 3DR Iris quadcopter, and we launch the mavros code with
+roslaunch mavros apm2_radio.launch
+
+The code launches with no errors are we see a long list of topics being displayed:
+/diagnostics
+/mavlink/from
+/mavlink/to
+/mavros/battery
+/mavros/fix
+/mavros/gps_vel
+/mavros/imu/atm_pressure
+/mavros/imu/data
+/mavros/imu/data_raw
+/mavros/imu/mag
+/mavros/imu/temperature
+/mavros/mission/waypoints
+/mavros/radio_status
+/mavros/rc/in
+/mavros/rc/out
+/mavros/rc/override
+/mavros/state
+/mavros/time_reference
+/rosout
+/rosout_agg
+
+The good news is that the /mavros/state, /diagnostics, and /mavros/radio_status seem to be publishing correctly
+$:rostopic echo /mavros/state
+    header: 
+      seq: 100
+      stamp: 
+        secs: 1411583514
+        nsecs: 793784329
+      frame_id: ''
+    armed: False
+    guided: False
+    mode: ALT_HOLD
+
+The bad news is that every other topic is empty. No GPS data, no battery data, no RC data, etc. Has anyone else run this code and knows how to get this data to publish?
+The closest thing online I found is this online book: http://erlerobotics.gitbooks.io/erlerobot/en/mavlink/ros/mavros.html
+The problem is, they experienced the same problem but gave no reason/fix for it.
+Thanks!
+EDIT: Adding information
+On a fresh install of Ubuntu 14.04 and a newly installed mavros
+sudo apt-get install mavros
+
+I tried to get sensor data from a 3DR Iris Pixhawk. As per @vooon 's suggestion, I used rqt_logger_level to view the mavros.ros.mavconn debug messages.
+# Changed the default fcu_url to ttyUSB0 instead of ttyACM0, because that's the port my 3DR modem was on.
+<arg name="fcu_url" default="/dev/ttyUSB0:57600" />
+
+Launched the file using px4.launch, enabled mavconn Debug messages, and watched the message ID's that showed up.
+
+First, during the section where you get the heartbeat, there were a mixture of 0, 166, and 109 messages.
+
+Then message ID 253 was published three times in a row, in conjunction with FCU lines for ArduCopter V3.1.2, PX4 and PX4v2:
+[DEBUG] [1411862177.961715937]: serial0:recv: Message-Id: 253 [51 bytes] Sys-Id: 1 Comp-Id: 1
+[ INFO] [1411862177.961821314]: FCU: ArduCopter V3.1.2 (e2ed3dd1)
+
+After that, during bootup, there is a fast stream of 22 IDs split up by 0, 166, and 109
+
+At the end of a long stream of 22's it gets 43, 44, 40, 39, and 47 in quick succession:
+[DEBUG] [1411862299.848786274]: serial0:send: Message-Id: 43 [2 bytes]
+[DEBUG] [1411862299.929775171]: serial0:recv: Message-Id: 44 [4 bytes] Sys-Id: 1 Comp-Id: 1
+[DEBUG] [1411862299.929917816]: serial0:send: Message-Id: 40 [4 bytes]
+[DEBUG] [1411862300.143771523]: serial0:recv: Message-Id: 39 [37 bytes] Sys-Id: 1 Comp-Id: 1
+[ INFO] [1411862300.143899206]: WP: item #0 GAA WAYPOINT CUR params: 0, 0, 0, 0 x: 42.2936 y: -71.2638 z: 0
+[DEBUG] [1411862300.143942143]: serial0:send: Message-Id: 47 [3 bytes]
+[ INFO] [1411862300.143995581]: WP: mission received
+[ WARN] [1411862300.673739713]: PR: request param #133 timeout, retries left 2, and 33 params still missing
+
+At this point, over and over the computer warns of a param request timeout and sends/recieves messages 20, 22:
+[ WARN] [1411862324.887729069]: PR: request param #161 timeout, retries left 2, and 13 params still missing
+[DEBUG] [1411862324.887842121]: serial0:send: Message-Id: 20 [20 bytes]
+[DEBUG] [1411862325.076784803]: serial0:recv: Message-Id: 22 [25 bytes] Sys-Id: 1 Comp-Id: 1
+
+After all the parameters are missed:
+[ INFO] [1411862558.949057993]: PR: parameters list received
+
+the debug wessages settle into a 0-0-0-0-0-166-109 pattern.
+
+Originally posted by Eric Schneider on ROS Answers with karma: 60 on 2014-09-24
+Post score: 1
+
+Original comments
+Comment by tonybaltovski on 2014-09-24:
+Are you using APM firmware on the PX4?  If not, try using the PX4 launch file.  There is a quirk for PX4.  Do you get a heartbeat?
+Comment by Eric Schneider on 2014-09-24:
+I'll post the code I get upon launch in the answer below, it maxes out the comment length
+Comment by vooon on 2014-09-24:
+Try enable .mavconn debug output using rqt_logger_level. Also use rqt to view diagnostics and topic updates.
+I tested with apm2_radio.launch with original APM 2.6, works. On pixhawk i only use PX4, but should no matter.
+Comment by Eric Schneider on 2014-09-26:
+@tony - I tried using the PX4 launch file and have the same problem, unfortunately. I do get the heartbeat message: CON: Got HEARTBEAT, connected.
+Comment by Eric Schneider on 2014-09-26:
+@vooon - I enabled the ros.mavros.mavconn Debug level and got a lot of messages like this: "serial0:recv: Message-Id: 22 [25 bytes] Sys-Id: 1 Comp-Id: 1" with a couple different message IDs. There weren't any obvious flags showing up in the debug stream.
+Comment by Eric Schneider on 2014-09-26:
+I could easily be doing something dumb where I have to arm the quadcopter or flip some switch before it starts publishing to the sensor data topics. Currently I just turn the copter on, hit the safety button, and check whether /mavors/imu/data, /mavros/battery, etc. are getting anything
+Comment by vooon on 2014-09-27:
+Check that following message ids are send: 30 (ATTITUDE), 27 (RAW_IMU), 24 (GPS_RAW_INT).
+20-23 is parameter protocol messages.
+Comment by vooon on 2014-09-27:
+Also what version you use?
+Comment by Eric Schneider on 2014-09-27:
+I'm using ROS Indigo in Ubuntu 14.04, I got the mavros library using sudo apt-get install ros-indigo-mavros. I'll take a look at the message IDs later today. Thanks for the help!
+Comment by Eric Schneider on 2014-09-27:
+Hi @vooon, I probed the message IDs and put the results in an edit to the original question, too many debug messages for the comment field.
+Comment by vooon on 2014-09-28:
+Log says, that at least parameter and mission protocols works.
+You can view params by calling rosrun mavros mavparam dump - (stdout, MissionPlanner format)
+Also param mapped to ros parameters in /mavros/param/<PARAM_ID>.
+Comment by vooon on 2014-09-28:
+Also, because you use Pixhawk with APM fimware use apm2 launch files.
+And seems that you use 3DR Radio module, so use apm2_radio.launch.
+Also <arg> values can be overwrited, e.g. roslaunch mavros apm2_radio.launch fcu_url:=<my-non-default-url> gcs_url:=tcp-l://
+Comment by Eric Schneider on 2014-09-28:
+Hi @vooon, we tried using the apm2_radio.launch file and also ran the command
+rosrun mavros mavparam dump -
+
+We got a long series of param values, from ACRO_BAL_PITCH to WP_YAW_BEHAVIOR, but they were all constant. Rerunning dump or running "mavparam get" got static results.
+Comment by Eric Schneider on 2014-09-28:
+A note about parameters: when we roslaunch any of the launch files, we get a series of warnings about param timeouts.
+[ WARN] [1411938394.128708084]: PR: request param #119 timeout, retries left 2, and 149 params still missing
+
+This continues for all 149 parameters.
+Comment by Eric Schneider on 2014-09-28:
+Are there any settings on the RC controller that need to be flipped? Like moving from Loiter to Auto?
+Alternatively, would not having GPS signal or any other physical circumstance cause it to not publish?
+Thanks!
+Comment by vooon on 2014-09-29:
+Parameters should not be changed frequently. But should be updated after changing values ​​through mavparam set or GCS. Current APM:Plane have near 300 params, and sometimes newer fw don't send some of that. If param missing mavros will rerequest it (with warning).
+Comment by vooon on 2014-09-29:
+You can enable param debugging messages for .param. But if there not error PR: messages thats ok.
+Comment by vooon on 2014-09-29:
+I think RC not affected at all.
+Comment by vooon on 2014-09-29:
+Next: check mission protocol. Use mavwp show -p (debugging .wp). It at least shows WP0 (home position in APM FW). But it updates at every FCU startup, when GPS fix is ok.
+Comment by vooon on 2014-09-29:
+Also you can connect GCS via internal bridge (gcs_url), i tested QGC & APM Planner 2.
+Comment by Eric Schneider on 2014-09-29:
+EDITED
+Hi @vooon, something strange happened. We installed ros-indigo-mavros on a new computer and everything seemed to work except for
+rosservice call /mavros/cmd/arming True #(or true or 1)
+
+We got imu data, battery data, everything. After quitting and relaunching we get nothing again.
+Comment by Eric Schneider on 2014-09-29:
+@vooon - is there a chance we could follow up with you over email? I would be willing to post the full answer here once we have it. I think the long comment string is somewhat hard to keep track of and keeps us from being able to post longer shell outputs... email would be wonderful if it's alright.
+Comment by vooon on 2014-09-29:
+Ok, It is possible through email, or through the bug tracker at github.
+It is very strange that at first worked, and then stopped.
+Comment by Eric Schneider on 2014-09-30:
+I'll do some more testing to try and confirm the issue (we'll uninstall/reinstall mavros on a couple computers) and get back to you... If you have any suggestions for tests to run we can try those. Thanks so much!
+Comment by sergioma on 2019-06-07:
+I am having a similar problem. I have created a new issue. Can somebody help me please? #1248
+
+A:
+
+Long story short, the mavros topics weren't publishing because there were firmware updates for the various radios in the system that we hadn't implemented.
+1) The radio modem that connected to the computer was correct
+2) The radio modem on the Pixhawk was out of date
+3) The firmware on the Pixhawk itself was out of date
+It's our first time working with the Pixhawk so we didn't think to check the firmware of various components, when we upgraded using the APM Mission Planner GUI then we started getting all topics being published correctly. Thanks to @vooon for his help.
+
+Originally posted by Eric Schneider with karma: 60 on 2014-10-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Eric Schneider on 2014-10-08:
+I can't mark this as the answer because my karma isn't high enough, but for us the question is closed
+Comment by Eric Schneider on 2014-10-11:
+Sometimes this error will come up again and running APM Mission Planner, connecting, and disconnecting will help solve the issue.
+

@@ -1,0 +1,43 @@
+Q:
+
+How to declare parameter that are only known at runtime
+
+I'm currently facing an issue with the ros2 parameters. I'm not sure how to approach this, from Iron on ros2_controller creates a node without the node options allow_undeclared_parameters and automatically_declare_parameters_from_overrides.  I would like to define a block of parameters for my controller, however, their namespace is only known at the runtime. This is making it hard for me to load the parameters using the spawner.
+A simple case would be something like below:
+joints: ["joint_1", "joint_2"]
+parameters:
+  joint_1:
+    type: rotary
+    frame: joint_1_link
+  joint_2:
+    type: rotary
+    frame: joint_2_link
+
+To parse such a block, we need to know the joints parameter already at the time of declaration, and this is currently not possible. So, at the time of declaration, as this is not known, I'm not able to declare the parameter block and hence unable to set any of the respective parameters.
+std::vector<JointParams> joint_params;
+auto joint_names = node->declare_parameter<std::vector<std::string>>("joints", std::vector<std::string>());
+for (auto joint : joint_names)
+{
+  RCLCPP_INFO(logger, "Adding Joint: %s", joint.c_str());
+  JointParams params;
+  params.name = name;
+  params.type = node->declare_parameter<std::string>("parameters." + name + ".type", std::string());
+  params.frame = node->declare_parameter<std::string>("parameters." + name + ".frame", std::string());
+  params.param_name = node->declare_parameter<std::string>(name + ".param_name", std::string());
+  joint_params.push_back(params);
+}
+
+Moreover, in the existing parameter callbacks(add_pre_set_parameters_callback ,  add_on_set_parameters_callback , and  add_post_set_parameters_callback), we cannot declare or set any parameters, so I would like to know if there is a way to declare some parameters at runtime. If not, I propose to have a new callback method that helps to declare the parameters at runtime or a way to specify to allow undeclared parameters to a specific namespace.
+Is there a better way to approach this problem?
+
+A:
+
+Thanks to @SteveMacenski. Upon your comment, I started checking around the Nav2 packages and then taking a close look at the documentation, I found a way to solve the issue.
+To have this properly working, I need to parse this parameters file to the NopeOptions arguments, which solved my issue.
+rclcpp::NodeOptions()
+    .allow_undeclared_parameters(true)
+    .automatically_declare_parameters_from_overrides(true).arguments(
+  {"--ros-args", "-p", "use_sim_time:=true", "--params-file", "/tmp/foo.yaml"})
+
+This way when the Node/LifeCycleNode is initialized, these params file is loaded as similar to when parsed command line
+

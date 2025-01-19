@@ -1,0 +1,59 @@
+Q:
+
+Dynamic Robot Model Implementation
+
+I'm wondering if anyone can offer advice on how to approximate a non-rigid robot model. I'm implementing a model of a 3 DOF arm for a university independent study that uses a rollable prestressed tube (like this: http://www.youtube.com/watch?v=tJ5w8xoi1IU) as one of the extensible elements (this is the robot: https://www.youtube.com/watch?v=xlHGNTRlD1U). Essentially it is just a rolled fiber composite that can be unrolled to provide a rigid tube like a tape measure. I can't model the roll because it deforms from its rigid form, but I can make the assumption that the boom section is rigid. I initially set the model up with a prismatic joint so the boom could slide in an out of the arm, but the arm then retracts into the body of the arm and eventually out the back and looks terrible. This method also introduces problems with collision checking in moveit due to self collisions when the boom extends into the arm, and with the environment when it extends out the back.
+The next approach I'm researching is to dynamically set the length of the straight tube in the boom section so that the model renders properly within rviz/gazebo, dynamically resizes the collision elements, and correctly publishes transforms and link/joint states. I think I have a good handle publishing the transforms and states with a custom robot state publisher (I'm working on an implementation based on the tutorial: http://wiki.ros.org/urdf/Tutorials/Using%20urdf%20with%20robot_state_publisher) but I'm getting bogged down in the implementation details trying to work out how to update the collision and visualization meshes
+There are 3 possibilities that seem feasible:
+
+Publish the link as a marker with the transforms in a robot state publisher and skip the link in the urdf file that rviz parses so that the marker just fills in for the boom.
+
+Modify a rviz node to update the representation of the mesh for the tube by subscribing to a robot state publisher along the lines of the answer to this thread: http://answers.ros.org/question/9425/gazebo-model-dynamically-modified-by-programming/  I'm still trying to understand how exactly rviz displays the model, but I assume it can be done programatically similar to gazebo.
+
+It seems like a pointer to a robot model is passed around in gazebo, if this is also true in rviz it might be possible to subscribe to the pointer to the model in my state publisher, build the new model and switch it out with the old one. I'm not sure how to deal with race conditions that would be caused here without modifying rviz.
+
+Does anyone have a better idea for how this could be done? Do any of the ideas I have so far seem like they are the right way to go?
+
+Originally posted by St3am on ROS Answers with karma: 170 on 2014-02-25
+Post score: 3
+
+A:
+
+Pretty interesting tech :)
+The first thing I´d try is approximating the boom using multiple equal sized links that fit into the base without poking out of it when retracted and connecting them all via prismatic joints. This allows the following:
+
+Trivial to convert between the
+multiple prismatic joint values and a
+single "boom extension" joint value
+
+No geometry extending out of the back
+of the robot
+
+Self collision is not checked in rviz
+and Gazebo, so should work out of the
+box and look like the real thing
+
+Collision checking between select
+links can be switched off in the SRDF
+file used by MoveIt as described
+here
+(search for the disable_collisions
+tag), so that should also work
+
+Looking at the issue I just stumbled across the "mimic" joint tag in URDF that I vaguely remembered to exist (see URDF joint XML wiki page). If this works as expected, it probably is the way to go and you can build your model using this mechanism. There is support for mimic joints in MoveIt! (see JointModel documentation) so planning should work, too. As the "mimic" tag is not widely used, you might run into a few issues when trying it out, but those hopefully would be solvable.
+The other option would be to implement some more specialized software. This would be relatively easy in rviz (Implementing your own plugin and using OGRE for rendering is not too difficult), but that would not be directly portable to Gazebo and MoveIt!, where collision detection would have to be performed.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2014-02-25
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by St3am on 2014-02-26:
+Thanks! I think your telescoping approach is definitely the best way to go, clean and robust. I'll report back in this thread on how the mimic approach works, if I have problems hopefully setting the joint limits will work as a fall-back.
+Comment by 130s on 2014-08-15:
+@St3am How did it go ;) ? Just curious since we're investigating a similar type of robot that has an extensible arm.
+Comment by St3am on 2014-08-15:
+Sorry about that, I forgot about this. The telescoping method worked well, although the mimic relationship did not. The bug is here: https://github.com/ros/robot_state_publisher/issues/1, but it looks like its been fixed.
+Comment by 130s on 2014-08-15:
+Cool. Thanks to this thread, my colleague was able to make a very simple model for a polar coordinate robot using slider joint and operate it by MoveIt! on RViz. https://www.youtube.com/watch?v=43HSaMrrLpQ&feature=youtu.be and https://www.youtube.com/watch?v=edgZP1T48pY&feature=youtu.be
+

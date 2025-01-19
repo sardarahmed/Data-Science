@@ -1,0 +1,52 @@
+Q:
+
+Converting cv::Mat rotation matrix to quaternion
+
+Is there a way to convert a cv::Mat rotation matrix to a quaternion?
+
+Originally posted by EDU4RDO-SH on ROS Answers with karma: 52 on 2020-07-28
+Post score: 1
+
+Original comments
+Comment by jarvisschultz on 2020-07-28:
+You tagged roscpp so I'd assume you are using CPP... is that right? It would likely help to say what datatype you have a rotation matrix as. For example, the answer you're looking for will depend on if you have an Eigen::Affine3d vs a tf2::Matrix3x3 vs something else.
+Comment by jarvisschultz on 2020-07-28:
+If you do have a tf2::Matrix3x3 you could use the getRotation method
+Comment by EDU4RDO-SH on 2020-07-28:
+In fact, I have a cv::Mat object and I want to convert it to a quaternion to populate a geometry_msgs/Pose message.
+Comment by EDU4RDO-SH on 2020-07-28:
+I'll try! Thanks.
+
+A:
+
+In that case, personally, I'd lean towards constructing a tf2::Matrix3x3 from the cv::Mat. Then you can construct a tf2::Transform from the Matrix3x3, and then use tf2::toMsg to convert to a geometry_msgs/Pose directly. You could also call getRotation as I mentioned earlier to get a Quaternion directly, and then fill out the components of the pose.orientation with the components of the quaternion.
+A quick Google also found this which might be helpful: https://gist.github.com/shubh-agrawal/76754b9bfb0f4143819dbd146d15d4c8
+EDIT
+Since this became the accepted answer, I figured I'd post a little example of what I described. Something like the following should work:
+#include <opencv2/calib3d.hpp>
+#include <opencv2/core.hpp>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
+// Build identity rotation matrix as a cv::Mat
+cv::Mat rot(3, 3, CV_64FC1);
+cv::Rodrigues(cv::Vec3d({0.0, 0.0, 0.0}), rot);
+// Convert to a tf2::Matrix3x3
+tf2::Matrix3x3 tf2_rot(rot.at<double>(0, 0), rot.at<double>(0, 1), rot.at<double>(0, 2),
+                       rot.at<double>(1, 0), rot.at<double>(1, 1), rot.at<double>(1, 2),
+                       rot.at<double>(2, 0), rot.at<double>(2, 1), rot.at<double>(2, 2));
+// Create a transform and convert to a Pose
+tf2::Transform tf2_transform(tf2_rot, tf2::Vector3());
+geometry_msgs::Pose pose_msg;
+tf2::toMsg(tf2_transform, pose_msg);
+
+Originally posted by jarvisschultz with karma: 9031 on 2020-07-28
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Elektron97 on 2021-07-26:
+Is there a way to convert tf::Mtrix3x3 in cv::Mat?
+

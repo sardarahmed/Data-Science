@@ -1,0 +1,154 @@
+Q:
+
+How to save subscribed image in any location
+
+Hello Everyone, I am using OpenCV 2.9 and ROS Hydro.
+i used this Publisher for publish image and used Subscriber for subscribing images. I am able to show that image but how to save it in computer??
+I Used imwrite like this after imshow()
+cv::imwrite("//home//keshav//image.jpg",cv_bridge::toCvShare(msg, "bgr8")->image);
+
+p
+
+Originally posted by KDROS on ROS Answers with karma: 67 on 2014-11-13
+Post score: 1
+
+Original comments
+Comment by Wolf on 2014-11-13:
+Add what happend? Error or something?
+Comment by KDROS on 2014-11-14:
+there is no error but also It is not saving any images.
+I seached in net somewhere i found that I should use latest opencv for that..but i dont want to install that one.
+Comment by Wolf on 2014-11-14:
+Does the folder "//home//keshav//" exist? Usually it should be "/home/keshav/image.jpg" but that should not matter... Does imwrite return true? It should return true on success...
+Comment by KDROS on 2014-11-17:
+hoe to check that one..
+Comment by Wolf on 2014-11-17:
+if ( cv::imwrite("//home//keshav//image.jpg",cv_bridge::toCvShare(msg, "bgr8")->image) ) { ROS_INFO( "Returned true" ); } else { ROS_INFO( "Returned false" ); }
+Comment by KDROS on 2014-11-17:
+try
+{
+cv::imshow("view", cv_bridge::toCvShare(msg,"bgr8")->image);
+cv_ptr = cv_bridge::toCvCopy(msg, enc::BGR8);
+if ( cv::imwrite("//home//keshav//image.jpg",cv_bridge::toCvShare(msg, "bgr8")->image) ) { ROS_INFO( "Returned true2" ); } else { ROS_INFO( "Returned false2" ); }
+}
+Comment by KDROS on 2014-11-17:
+It is neither returning true nor false.. :-(
+Comment by KDROS on 2014-11-17:
+I have to create ROS nodes, one node can capture images using webcam & 2nd node can publish and third node can subscribe. first am unable to capture also, I can publish and subscribe but imwrite is not working. Mr. Wolf plz share some solid links or code that I can easily execute for this purpose
+Comment by KDROS on 2014-11-17:
+I have done all these job in C using OpenCV and socket communication but now I have to create in ROS only. One more thing I did in C is Serial commands for FTDI Devices, I have to create node for this also, but i will do it later.first I have to capture and publish. Usb_cam, Uvc_cam i tried but ;'-(
+Comment by Wolf on 2014-11-17:
+If it does neither return true nor false, the line you've given is not executed; I guess an exception is thrown before that ; how does your catch statement look like ? is it executed?
+Comment by KDROS on 2014-11-18:
+catch (cv_bridge::Exception& e)
+{
+ROS_ERROR("Could not convert from '%s' to 'bgr8'.", msg->encoding.c_str());
+}
+Nothing is printing on screen.
+Comment by KDROS on 2014-11-18:
+If i wanted to publish different images (multiple images) after sleep, How it is possible
+
+A:
+
+If you just want to save an image, just have a look at the cv_bridge tutorial
+http://wiki.ros.org/cv_bridge/Tutorials/UsingCvBridgeToConvertBetweenROSImagesAndOpenCVImages
+And add a cv::imwrite after the image was converted to cv::Mat:
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <sstream>                                                 // Added this
+
+static const std::string OPENCV_WINDOW = "Image window";
+
+class ImageConverter
+{
+  ros::NodeHandle nh_;
+  image_transport::ImageTransport it_;
+  image_transport::Subscriber image_sub_;
+  image_transport::Publisher image_pub_;
+  
+public:
+  ImageConverter()
+    : it_(nh_)
+  {
+    // Subscrive to input video feed and publish output video feed
+    image_sub_ = it_.subscribe("/camera/image_raw", 1, 
+      &ImageConverter::imageCb, this);
+    image_pub_ = it_.advertise("/image_converter/output_video", 1);
+
+    cv::namedWindow(OPENCV_WINDOW);
+  }
+
+  ~ImageConverter()
+  {
+    cv::destroyWindow(OPENCV_WINDOW);
+  }
+
+  void imageCb(const sensor_msgs::ImageConstPtr& msg)
+  {
+    cv_bridge::CvImagePtr cv_ptr;
+    try
+    {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+
+    // Draw an example circle on the video stream
+    if (cv_ptr->image.rows > 60 && cv_ptr->image.cols > 60)
+      cv::circle(cv_ptr->image, cv::Point(50, 50), 10, CV_RGB(255,0,0));
+
+    // Update GUI Window
+    cv::imshow(OPENCV_WINDOW, cv_ptr->image);
+    cv::waitKey(3);
+
+    static int image_count = 0;                                // added this
+    std::stringstream sstream;                               // added this
+    sstream << "my_image" << image_count << ".png" ;                  // added this
+    ROS_ASSERT( cv::imwrite( sstream.str(),  cv_ptr->image ) );      // added this
+    image_count++;                                      // added this
+
+    // Output modified video stream
+    image_pub_.publish(cv_ptr->toImageMsg());
+  }
+};
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "image_converter");
+  ImageConverter ic;
+  ros::spin();
+  return 0;
+}
+
+This should save you the images with ascending counter locally in the folder where you start the node via rosrun .....
+
+Originally posted by Wolf with karma: 7555 on 2014-11-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by KDROS on 2014-11-18:
+Thanq Wolf Sir..I think It would work, I will try it. One more question if you help.
+I was Using usb_cam driver for capturing image from usb camera. It auto publish (as I understand) when we press right click for saving images? How should I write subscriber for that.
+Comment by KDROS on 2014-11-19:
+If I use above code by changing TOPIC name. will it work?
+Comment by Wolf on 2014-11-19:
+jep, that should work...
+Comment by KDROS on 2014-11-20:
+Sorry, Its not working. I saw the usb_cam files, It is publishing image and camera info, what changes are required in above code.
+Comment by Wolf on 2014-11-20:
+What is not working? you need to renap the topic of the usb_cam to /camera/image_raw . Is something published to /image_converter/output_video?
+Comment by KDROS on 2014-11-20:
+One silly doubt I have.. When usb_cam will publish the image? As soon as I will save(by right clicking) or after some time frequently
+Comment by KDROS on 2014-11-24:
+waiting for reply
+Comment by Wolf on 2014-11-24:
+I am not familiar with the usb_cam driver. Typically cam drivers publish at constant frequency. You can check messages are comming using comand "rostopic echo --noarr /your_image_topic" (--noarr skips array data so you can actually see something)
+

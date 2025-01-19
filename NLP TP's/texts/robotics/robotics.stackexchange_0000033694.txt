@@ -1,0 +1,154 @@
+Q:
+
+IK works in planning visualizer but often fails on real robot
+
+Hello arm navigation gurus,
+I am running the latest and greatest Electric arm_navigation Debian packages on an Ubuntu 10.04 machine.  Using the planning wizard is a breeze and I have defined one kinematic group for my robot's 6-dof right arm (see here for URDF).  Next I tried things out in the planning visualizer and the IK engine has no trouble finding solutions for random movements of the right hand (no gripper).
+Turning to the real robot, I am using the dynamixel_motor stack to drive the arm and I have successfully tested the basic topics and services that control the servos.  The joint states are published on the /joint_states topic at 20 Hz and moving the arm passively is reflected smoothly in RViz.
+I then wrote a simple move_arm test script in Python that mimics the C++ tutorial found here.  I have included the script below.  The target pose in the script was taken from the FK when the arm was passively moved in front of the robot and slight bent.  I then moved the arm around into various joint positions and ran my test script manually to see if an IK solution could be found.
+In some cases, a solution is found and the arm moves over a smooth trajectory to place the hand correctly.  However, there seems to be only a small bubble around the desired pose where IK solutions can be found.  This is in contrast to the planning visualizer where solutions were not a problem.  I'm guessing there is something missing from my test script related to initializing the environment scene but I'm not sure how to do that with Python.
+Any thoughts?
+--patrick
+Here now is my test script:
+#! /usr/bin/python
+import roslib
+roslib.load_manifest('pi_dynamixel_controller')
+
+import rospy
+import actionlib
+from actionlib_msgs.msg import *
+from pr2_controllers_msgs.msg import *
+from trajectory_msgs.msg import *
+from dynamixel_controllers.srv import TorqueEnable
+from arm_navigation_msgs.msg import *
+from control_msgs.msg import FollowJointTrajectoryAction
+
+def poseConstraintToPositionOrientationConstraints(pose_constraint):
+    position_constraint = PositionConstraint()
+    orientation_constraint = OrientationConstraint()
+    position_constraint.header = pose_constraint.header
+    position_constraint.link_name = pose_constraint.link_name
+    position_constraint.position = pose_constraint.pose.position
+    position_constraint.constraint_region_shape.type = 0
+    position_constraint.constraint_region_shape.dimensions.append(2*pose_constraint.absolute_position_tolerance.x)
+    position_constraint.constraint_region_shape.dimensions.append(2*pose_constraint.absolute_position_tolerance.y)
+    position_constraint.constraint_region_shape.dimensions.append(2*pose_constraint.absolute_position_tolerance.z)
+
+    position_constraint.constraint_region_orientation.x = 0.0
+    position_constraint.constraint_region_orientation.y = 0.0
+    position_constraint.constraint_region_orientation.z = 0.0
+    position_constraint.constraint_region_orientation.w = 1.0
+
+    position_constraint.weight = 1.0
+
+    orientation_constraint.header = pose_constraint.header
+    orientation_constraint.link_name = pose_constraint.link_name
+    orientation_constraint.orientation = pose_constraint.pose.orientation
+    orientation_constraint.type = pose_constraint.orientation_constraint_type
+
+    orientation_constraint.absolute_roll_tolerance = pose_constraint.absolute_roll_tolerance
+    orientation_constraint.absolute_pitch_tolerance = pose_constraint.absolute_pitch_tolerance
+    orientation_constraint.absolute_yaw_tolerance = pose_constraint.absolute_yaw_tolerance
+    orientation_constraint.weight = 1.0
+    
+    return (position_constraint, orientation_constraint)
+
+def addGoalConstraintToMoveArmGoal(pose_constraint, move_arm_goal):
+    position_constraint, orientation_constraint = poseConstraintToPositionOrientationConstraints(pose_constraint);
+    move_arm_goal.motion_plan_request.goal_constraints.position_constraints.append(position_constraint)
+    move_arm_goal.motion_plan_request.goal_constraints.orientation_constraints.append(orientation_constraint)
+
+rospy.init_node('place_hand', anonymous=True)
+side = rospy.get_param("~side", "right")
+
+move_arm = actionlib.SimpleActionClient("move_" + side + "_arm", MoveArmAction)
+
+dynamixel_namespace = '/dynamixel_controller'
+dynamixels = rospy.get_param(dynamixel_namespace + '/dynamixels', dict())
+
+servo_torque_enable = list()
+
+for name in sorted(dynamixels):
+    torque_enable_service = dynamixel_namespace + '/' + name + '_controller/torque_enable'
+    rospy.wait_for_service(torque_enable_service)  
+    servo_torque_enable.append(rospy.ServiceProxy(torque_enable_service, TorqueEnable))
+
+move_arm.wait_for_server()
+rospy.loginfo("Connected to move_"+side+"_arm server")
+
+goal = MoveArmGoal()
+
+goal.motion_plan_request.group_name = side + "_arm"
+goal.motion_plan_request.num_planning_attempts = 1
+goal.motion_plan_request.allowed_planning_time = rospy.Duration(10.0)
+
+goal.motion_plan_request.planner_id = ""
+goal.planner_service_name = "ompl_planning/plan_kinematic_path"
+
+desired_pose = SimplePoseConstraint()
+desired_pose.header.frame_id = "lower_torso_link"
+desired_pose.link_name = side + "_hand_link";
+desired_pose.pose.position.x = 0.248939291788;
+desired_pose.pose.position.y =  0.00880423979233;
+desired_pose.pose.position.z = -0.0346550990121;
+
+desired_pose.pose.orientation.x = 0.317800304267;
+desired_pose.pose.orientation.y = -0.541804275305;
+desired_pose.pose.orientation.z = 0.299045455395;
+desired_pose.pose.orientation.w = 0.71834734598;
+
+desired_pose.absolute_position_tolerance.x = 0.05;
+desired_pose.absolute_position_tolerance.y = 0.05;
+desired_pose.absolute_position_tolerance.z = 0.05;
+
+desired_pose.absolute_roll_tolerance = 0.2;
+desired_pose.absolute_pitch_tolerance = 0.2;
+desired_pose.absolute_yaw_tolerance = 0.2;
+
+addGoalConstraintToMoveArmGoal(desired_pose, goal)
+
+finished_within_time = False
+move_arm.send_goal(goal) 
+finished_within_time = move_arm.wait_for_result(rospy.Duration(200));
+if not finished_within_time:
+    move_arm.cancel_goal()
+    rospy.loginfo("Timed out achieving goal")
+else:
+    state = move_arm.get_state()
+    if state == GoalStatus.SUCCEEDED:
+      rospy.loginfo("Action succeeded!")
+    else:
+      rospy.loginfo("Action failed with error code: " + str(state))
+
+# Relax all servos to give them a rest.
+for torque_enable in servo_torque_enable:
+    torque_enable(False)
+    
+print "Finished"
+
+Originally posted by Pi Robot on ROS Answers with karma: 4046 on 2011-08-16
+Post score: 2
+
+A:
+
+Patrick - sorry, didn't see your comment until now.
+It's a little confusing to figure out how to set parameters for a the kdl_plugin - you have to set them in the node and then in the namespace for the group - this is so a node can have several different kinematics solvers.  Setting the following parameters for your arm makes IK take about 1.4 seconds when there's no solution on my desktop.  Not positive whether it'll work better for you in random poses, but it's worth a try:
+  <node pkg="arm_kinematics_constraint_aware" type="arm_kinematics_constraint_aware" name="pi_robot_right_arm_kinematics">
+        <param name="group" type="string" value="right_arm" />
+        <param name="right_arm/root_name" type="string" value="lower_torso_link" />
+        <param name="right_arm/tip_name" type="string" value="right_wrist_link" />
+        <param name="right_arm/max_solver_iterations" type="int" value="10000" />
+        <param name="right_arm/max_search_iterations" type="int" value="10" />
+        <param name="kinematics_solver" type="string" value="arm_kinematics_constraint_aware/KDLArmKinematicsPlugin" />
+    </node>
+
+Originally posted by egiljones with karma: 2031 on 2011-08-24
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Pi Robot on 2011-08-25:
+I got to this sooner than I expected.  The parameters definitely now make a difference to the time it takes the IK to fail but it doesn't seem to expand the solution space very much.  Perhaps this is just a limitation of the numerical solver.  I'm finding the OpenRAVE analytic solver to be very good so I'll likely pursue that avenue for awhile.
+Comment by Pi Robot on 2011-08-24:
+Thanks Gil--I hope to give it a try this weekend and will post back my results.
+

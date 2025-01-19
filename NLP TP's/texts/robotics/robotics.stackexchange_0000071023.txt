@@ -1,0 +1,218 @@
+Q:
+
+Fusing absolute position information and IMU-data using the ekf_localization_node
+
+Hello,
+I have a robot car with a laser-scanner and an imu and would like to fuse the position information of the two sensors.
+For laser based localization I am using the hector_mapping node which produces a /poseupdate topic. Additionally I am using an imu producing the /imu/data topic.
+Those two shall be fused to provide a more accurate position estimate at a higher rate.
+After incorporating the suggestions from Tom Moore my launch files look like this:
+Edit 1
+I am getting better behaviour now. What I did is based on the following thoughts: The odom->baselink transformation according to Rep105 should only be computed by odometry sources (by def. relativ/differential information). However before I was using differential set to false in the /imu0 data of the odom->baselink ekf, so the odometry got the absolute heading information from the imu. Could this have caused the orientation errors?
+As I understood Rep105 the map->odom transform is computed indirectly by using absolute sensory information. So I thought it needs the absolute information from all source. That is why I set, differential to false for the imu topic of the map->odom ekf.
+Here are my updated launchfiles (the mess with hector frames reverted):
+The odom-baselink ekf-instance:
+    <launch>
+  <!-- Start Navigation Stack -->
+
+  <node pkg="hector_mapping" type="hector_mapping" name="hector_mapping" output="screen">
+    <param name="map_frame" value="map"/>   
+    <param name="odom_frame" value="odom"/>  
+
+    <param name="map_size" value="2048"/>
+    <param name="pub_map_odom_transform" value="false"/>
+    <param name="pub_map_scanmatch_transform" value="false"/>
+  </node>
+
+  <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node" output="screen">
+  <param name="print_diagnostics" value="true"/>
+  <param name="frequency" value="100"/>
+  <param name="two_d_mode" value="true"/>
+
+  <param name="map_frame" value="map"/>  
+  <param name="odom_frame" value="odom"/>
+  <param name="world_frame" value="odom"/>   
+  <param name="base_link_frame" value="base_link"/>
+
+  <param name="pose0" value="/poseupdate"/>
+  <rosparam param="pose0_config">  
+    [true, true,  false,    <!-- You have two_d_mode on, so making Z true does nothing -->
+    false, false, true,  
+    false, false, false,
+    false, false, false,
+    false, false, false]
+  </rosparam>
+  <param name="pose0_differential" value="true"/>
+
+  <param name="imu0" value="/imu"/>
+  <param name="imu0_remove_gravitational_acceleration" value="true"/>    
+
+  <rosparam param="imu0_config">  
+    [false, false, false,
+     false,  false,  true,     <!-- 2D mode, so roll and pitch do nothing -->
+     false, false, false,
+     false,  false,  true,     <!-- As above -->
+     true,  true,  false]    <!-- Start with these turned off, verify that everything works, then turn X and Y back on (Z does nothing in 2D mode) -->
+  </rosparam>
+  <param name="imu0_relative" value="true"/>
+  <param name="imu0_differential" value="true"/> 
+
+  </node>
+
+The map-odom ekf:
+<launch>
+
+  <node pkg="robot_localization" type="ekf_localization_node" name="aux_ekf_localization_node" output="screen">
+   <param name="print_diagnostics" value="true"/>
+  <param name="frequency" value="100"/>
+  <param name="two_d_mode" value="true"/>
+
+  <param name="map_frame" value="map"/>  
+  <param name="odom_frame" value="odom"/>
+  <param name="world_frame" value="map"/>   
+  <param name="base_link_frame" value="base_link"/>
+
+  <param name="pose0" value="/poseupdate"/>
+  <rosparam param="pose0_config">  
+    [true, true,  false,
+    false, false, true,  
+    false, false, false,
+    false, false, false,
+    false, false, false]
+  </rosparam>
+  <param name="pose0_differential" value="false"/>
+
+  <param name="imu0" value="/imu"/>
+  <param name="imu0_remove_gravitational_acceleration" value="true"/>    
+
+  <rosparam param="imu0_config">  
+    [false, false, false,
+     false,  false,  true,    
+     false, false, false,
+     false,  false,  true,  
+     true,  true,  false]      
+  </rosparam>
+  <param name="imu0_relative" value="true"/>
+  <param name="imu0_differential" value="false"/>
+
+  <remap from="odometry/filtered" to="odometry_map/filtered"/>
+
+  </node> 
+ 
+</launch>
+
+Is there any way to check whether the ekfs are really fusing the information (and not throwing away the imu data)?
+For testing that I set the usage of all poseupdate values for both ekfs to false so as to only use the imu. Then of course everything was drifting wildly but I could see rotations and accelerations of the vehicle.
+Although the baselink frame is now stable and the odom frame is only driftnig very little (10-20cm) I sometimes get jerks in the baselink position of a couple of centimetres. I read the ekf does this because of improper covariances? Setting the differential option to true in the map->odom ekf did not change anything though.
+
+Originally posted by Febert on ROS Answers with karma: 33 on 2015-12-22
+Post score: 3
+
+A:
+
+Can you please add a sample message from each sensor input? Also, I would advise that you try running the filter with just the pose data as a test, and then add the IMU. The issue is very likely that you are using linear accelerations from your IMU, but don't have a velocity reference.
+I'm not convinced this setup really conforms to REP-105, though. Your map frame estimate should be the most globally accurate pose estimate, though it may be subject to discrete jumps, and your odom frame estimate should be continuous, but can drift (though we don't want the kind of drift you're seeing, of course). If I were you, I'd change my setup to this (note that I'd still want to see input messages from hector_mapping and the IMU to verify):
+
+Turn off pub_map_odom_transform in hector_mapping.
+In the launch file you posted, set pose0_differential to true.
+I would also turn off roll, pitch, and yaw from that instance, but let the angular velocities alone.
+Add a second launch file for a second instance of ekf_localization_node.
+In that instance, set world_frame to map.
+Otherwise, keep the same topics, but turn off pose0_differential.
+(Not sure about this step). In that instance, also turn off linear acceleration, or add a pose1 topic that is identical to pose0 (same input topic), but has differential set to true. That will give you a velocity reference to help constrain the drift.
+
+Again, though, I'd have to see sample input data to be sure.
+EDIT 1
+Also, do you really need to run at 500 Hz? What is your IMU frequency? You could also bring down the frequency and up the queue_size for that sensor.
+EDIT 2
+Your frame configs are incorrect, and I found a few other things I'd tweak if I were you. Try these instead:
+odom->base_link instance
+<node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node_odom" output="screen">
+  <param name="print_diagnostics" value="true"/>
+  <param name="frequency" value="100"/>
+  <param name="two_d_mode" value="true"/>
+
+  <param name="map_frame" value="map"/>  
+  <param name="odom_frame" value="odom"/>
+  <param name="world_frame" value="odom"/>   
+  <param name="base_link_frame" value="base_link"/>
+
+  <param name="pose0" value="/poseupdate"/>
+  <rosparam param="pose0_config">  
+    [true, true,  false,    <!-- You have two_d_mode on, so making Z true does nothing -->
+    false, false, true,  
+    false, false, false,
+    false, false, false,
+    false, false, false]
+  </rosparam>
+  <param name="pose0_differential" value="true"/>
+
+  <param name="imu0" value="/imu"/>
+  <param name="imu0_remove_gravitational_acceleration" value="true"/>    
+
+  <rosparam param="imu0_config">  
+    [false, false, false,
+     false,  false,  true,     <!-- 2D mode, so roll and pitch do nothing -->
+     false, false, false,
+     false,  false,  true,     <!-- As above -->
+     false,  false,  false]    <!-- Start with these turned off, verify that everything works, then turn X and Y back on (Z does nothing in 2D mode) -->
+  </rosparam>
+  <param name="imu0_relative" value="true"/>
+  <param name="imu0_differential" value="false"/> 
+
+  </node>      
+</launch>
+
+map->odom instance
+<node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node_map" output="screen">
+  <param name="print_diagnostics" value="true"/>
+  <param name="frequency" value="100"/>
+  <param name="two_d_mode" value="true"/>
+
+  <param name="map_frame" value="map"/>  
+  <param name="odom_frame" value="odom"/>
+  <param name="world_frame" value="map"/>   
+  <param name="base_link_frame" value="base_link"/>
+
+  <param name="pose0" value="/poseupdate"/>
+  <rosparam param="pose0_config">  
+    [true, true,  false,
+    false, false, true,  
+    false, false, false,
+    false, false, false,
+    false, false, false]
+  </rosparam>
+  <param name="pose0_differential" value="false"/>
+
+  <param name="imu0" value="/imu"/>
+  <param name="imu0_remove_gravitational_acceleration" value="true"/>    
+
+  <rosparam param="imu0_config">  
+    [false, false, false,
+     false,  false,  true,    
+     false, false, false,
+     false,  false,  true,  
+     false,  false,  false]   
+  </rosparam>
+  <param name="imu0_relative" value="true"/>
+  <param name="imu0_differential" value="true"/>
+
+  <remap from="odometry/filtered" to="odometry_map/filtered"/>
+
+  </node>      
+</launch>
+
+I'm not positive that the differential mode will work with the pose data in the odom->base_link instance, but give it a whirl.
+EDIT 3
+Three things:
+
+I think changing the frame_ids in hector_mapping is a bad idea, and is probably not at all the way it was intended to be  used (and may not be doing what you think). I would carefully review REP-103 and REP-105. Looking at the hector_mapping wiki, the first three parameters specify the same three frame_ids that we use in robot_localization. I would make sure they're set to the same values as are used in robot_localization. In any case, if something's not working as it should, monkeying with the frames is not the best way to fix it.
+Do you not have any source of wheel encoder odometry? You will in Gazebo, of course, but the question is whether you will with your real robot. That would be a much better input for the odom frame. That, or try to find another source of odometry that is continuous. Maybe something like visual odometry? The reason I wanted you to use differential mode for the odom frame instance of pose0 was that it converts the pose into a velocity, which helps with discontinuities.
+I would advise that you start simply. First, start with only the odom->base_link launch file. Get everything working utterly to your satisfaction, then move on. For the odom->base_link instance of the EKF, using a non-differential version of the pose will not work, because that pose is being reported in the map frame. If you change it in hector_mapping, then when you add the second map->odom EKF instance, the pose data will get transformed into the map frame before it's used, but using the very transform that the EKF is meant to provide. This gets very messy and should be avoided. For reasons that are too complicated to explain here, I'm not convinced that ekf_localization_node will let you use differential mode for the pose0 input, as it's reported in the map frame (ideally, it should still work, but I don't recall offhand if it will).
+
+In the end, the reason this is a bit of a strange setup is that you are using a global (map frame) localization source as an input to the odom frame EKF. Any pose data going into the odom->base_link EKF should not be in the map frame. Any other frame is fine, so long as a transform exists from that frame to odom. Similarly, any pose data going into the map->odom frame EKF should not be reported in the odom frame. Velocities reported in base_link can be used in either EKF instance safely.
+
+Originally posted by Tom Moore with karma: 13689 on 2016-01-05
+This answer was ACCEPTED on the original site
+Post score: 3
+

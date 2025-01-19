@@ -1,0 +1,100 @@
+Q:
+
+rtabmap: angled camera
+
+I have mobile robot with 1.5 meters mast. I have located Intel Realsense d435 camera near to the top of the mast and oriented to the floor.
+I am trying to get rtabmap working correctly. And I dont understand why floor become declinated.
+
+https://yadi.sk/i/gA5xxj3PJ8y-Uw
+Which rtabmap parameters should I configure to setup rtabmap working with camera oriented towards the floor?
+
+Originally posted by june2473 on ROS Answers with karma: 83 on 2019-10-24
+Post score: 0
+
+A:
+
+Hi, this is not a rtabmap issue, you should make sure that TF from the frame_id (default base_link) used in rtabmap to your camera frame represents the reality. The camera orientation in TF may be wrong.
+You can debug this without rtabmap, just show up TF and the camera point cloud in rviz, set the fixed frame in rviz global options to your robot base frame and the floor should be aligned with rviz grid. If not adjust TF between your base frame and camera frame.
+EDIT Based on the rosbag shared, I can see the recorded map cloud is wrong, but if I re-run rtabmap with the following command, the clouds are correctly aligned with the ground:
+roslaunch rtabmap_ros rtabmap.launch \
+   args:="-d --RGBD/NeighborLinkRefining true --Reg/Strategy 1 --Grid/FromDepth true --Grid/FlatObstacleDetected true" \
+   depth_topic:=/camera/aligned_depth_to_color/image_raw \
+   rgb_topic:=/camera/color/image_raw \
+   camera_info_topic:=/camera/color/camera_info \
+   frame_id:=base_footprint \
+   use_sim_time:=true \
+   rviz:=true \
+   namespace:=rtabmap2 \
+   odom_frame_id:=odom \
+   visual_odometry:=false \
+   subscribe_scan:=true \
+   scan_topic:=/scan \
+   rgbd_sync:=true \
+   approx_rgbd_sync:=false
+
+rosbag play --clock --pause 2019-11-22-12-22-00-out.bag
+
+I created 2019-11-22-12-22-00-out.bag without /map tf frame using this script. I changed rtabmap namespace in the command above to not collide with already recorded rtabmap topic in the bag.
+
+I noticed that there are just 5 /camera/aligned_depth_to_color/image_raw in the bag (over 80 sec). The jetson may have difficulty to record everything at full frame rate. When recording rosbags, I would record only the minimum topics to reproduce the problem.
+cheers,
+Mathieu
+
+Originally posted by matlabbe with karma: 6409 on 2019-11-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by june2473 on 2019-11-07:
+Hello, Mathieu! Thanks for your help!
+I tried to debug it as you described and I've got this numbers for static transform between base and camera to represent reality:
+<node pkg="tf" type="static_transform_publisher" name="base_link" args="0 0 1.27 0 0.73 0.06 base_link camera_link 100" />
+
+I look at camera depth cloud in rviz and check that floor point cloud is flat and wall point cloud is vertical.
+To do that I intentionally aimed camera to angle between wall and floor in my room.
+But rtabmap mapData is still totally wrong.
+https://yadi.sk/i/rfDyz80uM_ssjw
+What am i doing wrong?
+sincerely,
+Erdem
+Comment by matlabbe on 2019-11-07:
+MapCloud plugin should be visualized in map fixed frame in global options of RVIZ.
+Comment by june2473 on 2019-11-07:
+I set fixed frame to map in global options of rviz, nothing changed
+Comment by matlabbe on 2019-11-16:
+Why don't we see TF on the robot? Why TF display is yellow (has a warning) in rviz? Make sure you set frame_id of rtabmap node to base frame of the robot, not the camera.
+Comment by june2473 on 2019-11-18:
+I've got rid of that warning, I dont remember what exactly was that warning.
+rostopic echo /rtabmap/mapData |grep frame_id gives me:
+  frame_id: "map"
+      frame_id: ''
+          frame_id: ''
+
+rostopic echo /camera/depth/image_rect_raw |grep frame_id gives me:
+frame_id: "camera_depth_optical_frame"
+
+and here is my tf_tree: https://yadi.sk/i/bpohgIMsC0hNRA
+Is something wrong there? should I change frame_id of mapData? How am I supposed to do that? writing subscriber script/code which will change header.frame_id?
+Comment by june2473 on 2019-11-18:
+here is my rtabmap.launch file and frame_id there is base_link
+Comment by matlabbe on 2019-11-18:
+I would set base_footprint instead of base_link in your rtabmap.launch (frame_id parameter of rtabmap node should be the parent TF of your robot). As you are using D435, you should set approx_sync to false for rgbd_sync node. I don't recommend to set Reg/Strategy=1 when not subscribing to lidar (with only camera it should be 0). Set Vis/MinInliers higher too, otherwise loop closures with not so accurate transformations would be accepted. If you are not using a lidar, look at this example. With lidar, see this example.
+The frame_id in /rtabmap/mapData should be map. To help debug the camera orientation, can you share a database?
+Comment by june2473 on 2019-11-20:
+thank you! that is a bunch of useful information!
+I can share database for sure, but I need time to record.
+Comment by june2473 on 2019-11-22:
+https://yadi.sk/d/e0KDx8-C37DIjw
+I recorded very short time because i dont have enough space on my jetson.
+if something wrong with this bag file please feel free to let me know, I can plug ssd to my jetson and record another bag file.
+Comment by matlabbe on 2019-11-22:
+updated the answer
+Comment by june2473 on 2019-11-23:
+thanks for your answer!
+I'll try to run rtabmap with all that options, especially using aligned_depth_to_color topic for depth. I will do it in Monday and will write here about success.
+What do you think about d435 + google cartographer? does it works well?
+Comment by matlabbe on 2019-11-23:
+I've never tried cartographer + D435...
+Comment by june2473 on 2019-11-27:
+using /camera/aligned_depth_to_color/image_raw topic instead of /camera/depth/image_rect_raw helped!
+

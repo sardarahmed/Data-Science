@@ -1,0 +1,93 @@
+Q:
+
+Old data keeps being visualized in rviz
+
+I have a callback lineVisualization which publishes a MarkerArray containing lines. Inside rviz I visualize the lines. Now the problem I am facing is that some old lines which should not be detected anymore are showing up in rviz.
+
+Sometimes they disapear after a while but somethines they don't.
+If I then un-select the namespace from the MarkerArray and then disapear.
+
+From the two above facts I observe I conclude that rviz for some reason stores my visualization data and keeps showing it? However since I never worked with Markers I wonder if I am not doing something wrong in my code.
+The relevant code piece is displayed below.
+void lineVisualization(const std_msgs::Float32MultiArray::ConstPtr& msgLines)
+{
+    // Create marker and markerarray
+    visualization_msgs::MarkerArray lines;
+
+    cmd_pub.publish(lines); 
+
+    int offset = 0;
+
+    // For each line
+    for(int i = 0; i < (int)(msgLines->data.size() / 4); i++, offset = 4*i)
+    {
+        visualization_msgs::Marker line;
+
+        // Init
+        line.header.frame_id    = "/pico/base";
+        line.header.stamp       = ros::Time::now();
+        line.lifetime           = ros::Duration();
+        line.id                 = i;
+        line.ns                 = "HoughLines";
+        line.type               = visualization_msgs::Marker::LINE_STRIP;
+        line.action             = visualization_msgs::Marker::ADD;
+        line.pose.orientation.w = 1.0;
+        line.scale.x            = 0.05;
+        line.color.r            = 0.0f;
+        line.color.g            = 0.0f;
+        line.color.b            = 1.0f;
+        line.color.a            = 1.0f;
+
+        
+        // Create points
+        geometry_msgs::Point p1;
+        geometry_msgs::Point p2;
+
+        p1.x =  (float)(msgLines->data[offset    ] / 100);
+        p1.y = -(float)(msgLines->data[offset + 1] / 100);
+        p1.z =  0;
+
+        p2.x =  (float)(msgLines->data[offset + 2] / 100);
+        p2.y = -(float)(msgLines->data[offset + 3] / 100);
+        p2.z =  0;
+
+        // Create line segment
+        line.points.push_back(p1);
+        line.points.push_back(p2);  
+
+        // Add line to lines
+        lines.markers.push_back(line);
+
+        // Clear line point
+        line.points.clear();
+    }
+    
+    // Publish
+    cmd_pub.publish(lines); 
+
+    // Clear lines
+    lines.markers.clear();
+}
+
+Originally posted by WG- on ROS Answers with karma: 109 on 2013-09-25
+Post score: 1
+
+A:
+
+This likely has to do with the number of lines to draw varying over time. If you publish less lines than in a previous iteration and do not send a DELETE marker action for the unused markers of the previous iteration, they will stay in place. So you either have to explicitly tell them to disappear using the DELETE action, or give them a short lifetime.
+Also discussed here.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2013-09-25
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by WG- on 2013-09-25:
+Thank you for your reply. I first had a lifetime of zero. So shouldn't they disappear then straight afterwards in the next iteration? I did change it to ros::Duration because the lifetime is defined as that in the marker tutorial. I will try the DELETE action in a moment then.
+Comment by dornhege on 2013-09-26:
+No, because they are treated individually by id. So if you send out less lines, the ones with higher ids will just not be modified at all.
+Comment by WG- on 2013-09-26:
+@domhege so I always should send out the same number of markers I understand?
+Comment by dornhege on 2013-09-26:
+Yes, if you have less then before, send the extra ones with DELETE as Stefan said.
+

@@ -1,0 +1,112 @@
+Q:
+
+Control both Velocity and Position (Linear actuator)
+
+I am trying to control the velocity + position of a linear actuator.
+At this moment I am able to control the position or the velocity. But I'm trying to control both. What the control has to do: Let the linear actuator drive to a position i.e. 0 to 100 cm with a constant velocity of 1cm/s.
+I control the actuator using a PWM signal. And I measure the velocity and position using a position sensor on the shaft.
+What kind of control is preferred, PID in cascade?
+If so, what would the code look like?
+Any other kind of control would function better?
+EDIT:
+A more describing picture.
+
+I want a velocity controlled position controller.
+Hopefully this will make it clear
+EDIT
+My first try is with a trapezoid wave. Maybe there is an easy way without too much calculation power to change it to an s-curve. Then the acceleration/jerk will be a lot smoother.
+I let the microcontroller calculate 3 different formulas, afterwards it will calculate it using loop iteration. This way I can use one PID for the position. The parameters in the following code will fictional:
+AccelerationLoops: 5                     //[Loops]
+Velocity:          100                   //[mm/s]
+DeltaPosition:     7.5                   //[mm]
+Looptime:          5                     //[ms]
+Loopfactor:        1000 / Looptime       //[-]
+VelocityLoop:      Velocity  /Loopfactor //[mm/loop]
+VelocityFactor:    VelocityLoop * .5 / AccelerationLoops
+                                         //[mm/loop]  (.5 found by integration)
+Loops:             DeltaPosition / VelocityLoop / AccelerationLoops
+                                         //[Loops]
+
+Formula
+Formula1:      VelocityFactor * x^2
+LastF1:        Last value of Formula1 Formula1(5)
+
+Formula2:      VelocityLoop * x - LastF1
+
+Formula3:      VelocityFactor * (Loops - x)^2 + DeltaPosition)
+
+Using the parameters of above it will generate the following setpoint:
+0   0,00
+1   0,05
+2   0,20
+3   0,45
+4   0,80
+5   1,25
+6   1,75
+7   2,25
+8   2,75
+9   3,25
+10  3,75
+11  4,25
+12  4,75
+13  5,25
+14  5,75
+15  6,25
+16  6,70
+17  7,05
+18  7,30
+19  7,45
+20  7,50
+
+A big problem with the code above is that the amount of acceleration loops is a constant. It cannot be changed except when you already know the amount of loops it will take.
+I will be using two separate Arduinos, they will be connected using a CAN-bus connection. Anyway, they won't communicate through it unless the load becomes too high. This will make master/slave impossible. Also the system has to be modular: adding another actuator to the circuit won't be a problem. The actuator is speed controlled by using a PWM signal. The linear sensor will deliver a 0-10v signal which i will reduce to 0-5v by a simple voltage divider. The loop will be around 5 to 10 ms, will depend on the maximum looptime.
+Arduino has a 10-bit (0-1023) ADC but use of oversampling I will probably try to increase it to 12-bit. To not decrease the reading speed I will decrease the prescaler of the ADC.
+The PWM output is 8-bit (0-255), I am trying to find a way to further increase. Because I think 255 steps are too low for my application.
+Because the Arduino has limit internal memory, precalculating all the positions is impossible.
+Thank you all for the help so far!
+
+A:
+
+The first thing to realise is that this is not a control problem, this is a planning problem. If you conflate the two, you are making life much more complex than it needs to be.
+Solution - Motion planning
+The traditional way to achieve what you want is to have two loops. The outer planning/supervisory loop generates way-points for specific points in time, while the lower level PID loop generates the appropriate PWM signals to keep the motor as close as possible to those way-points.
+The more way-points you generate, the more closely you can track both velocity and position. Older systems often ran their floating point planning loop at a much lower rate than their integer PID loop, but these days even modest micro-controllers have more than enough compute power to do full trajectory planning of multiple axes at the PID control rate.
+Simple example
+While the example you drew is an s-curve trajectory profile, it is easier to explain the principles by looking at a simple trapezoidal profile.
+Let's say you want to move from 0 to 36mm in 9 seconds with cruise  velocity (feed rate) of 6mm/s and an acceleration of 2mm/s/s. You might plan a move in 9 steps as follows:
+\begin{array} {|r|r|}
+\hline
+time        & t & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9\\
+\hline
+acceleration& a & 0 & 2 & 2 & 2 & 0 & 0 & 0 & -2 & -2 & -2\\
+velocity    & v & 0 & 2 & 4 & 6 & 6 & 6 & 6 & 4 & 2 & 0\\
+position    & d & 0 & 1 & 4 & 9 & 15 & 21 & 27 & 32 & 35 & 36\\
+\hline
+\end{array}
+In this case, at time $t=0$ you would inject position $d=1$ into your PID (plus acceleration $a=2$ and velocity $v=1$ if your PID loop has acceleration and velocity feed forward). At $t=1$ you would inject $d=4$ into your PID and so on until at $t=8$ you command the PID to move to the final position $d=36$, then at $t=9$ the system should have stopped moving.
+Implementation
+The limitations of your system will limit your implementation.
+
+If you are CPU limited on your micro-controller but have plenty of memory to store path profiles, you may want to pre-calculate the way-points.
+If you have plenty of CPU, you may want to calculate way-points on the fly.
+If you are limited in both CPU and memory, you may need to either lower your way-point generation frequency or use integer interval arithmetic to calculate approximation more quickly.
+
+Complications
+If you find that your actuator jumps between way-points rather than moving smoothly, then you need to either reduce the time between way-points or optimise (tune) your PID loop for your motion (for example, reduce the proportional gain, increase derivative gain and/or increase the velocity/acceleration feed-forward gains). The moment you start using your PID loop to tune for expected motion however, you are making the motion worse for other kinds of move.
+I see from comments that you want two linear actuators to match each other. 
+In this case, while the PID loops for each actuator will need to be run independently, the way-point inputs into those PID loops can be shared.
+How closely each servo loop follow each other will be determined by how closely they follow the idealised trajectory as defined by the way-points.
+If your individual PID loops are tuned well enough, and you set sensible limits on following error, the overall error between the two actuators should be at most the sum of their following errors, and is likely to be much less on average.
+By the way, my experience on this comes from writing the control software for a 2x2m dual gantry cartesian robot. Even though we were accelerating the gantries up to 1m/s at 1g, we rarely had a following error of more than a few hundred microns, & the error between the two ends of the gantry was usually an order of magnitude lower. If we had used s-curve rather than trapezoidal move profiles, our errors would probably have been an order of magnitude lower still, but this was the 90's and micro-controllers had much lower floating point performance, so we went for simple & fast over complex & slow.
+
+A:
+
+I'd say this problem is very much similar to The aerial refueling problem: sketch of a feedback controller whose one possible solution is then explained in https://robotics.stackexchange.com/a/5263/6941.
+EDIT
+The minimum-jerk position profile (i.e. the s-curve) that lets the system go from the initial position $x_0$ to the desired position $x_d$ in $T$ seconds is:
+$$
+x\left(t\right)=x_0+\left(x_d-x_0\right) \cdot \left(10\left(\frac{t}{T}\right)^3 - 15\left(\frac{t}{T}\right)^4 + 6\left(\frac{t}{T}\right)^5\right),
+$$
+where $t \in \left[0,T\right]$ specifies the time granularity, thus the number of set-points.
+Finally, $x\left(t\right)$ will be the reference for the position PID.
+

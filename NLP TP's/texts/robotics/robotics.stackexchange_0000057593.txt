@@ -1,0 +1,60 @@
+Q:
+
+Turtlebot depth image not showing in image_view
+
+Hello,
+I want to try some opencv algorithms with depth images from the turtlebot1 (create base). I want to save them for later use because of the complexity of modifying and remaking a node.
+We have our Turtlebot started with Turtlebot_bringup minimal.launch and turtlebot_bringup 3dsensor.launch. RVIZ is currently showing /camera/depth_registered/image_raw (which dont look as detailed as I imagined looking at the IR image) but not any /camera/depth/ topic. I tried rostopic hz /camera/depth/image_raw but it is not publishing.
+rosrun image_view image_view image:=/camera/depth_registered/image_raw says:
+
+Unable to convert '16UC1' image to bgr8: '[16UC1] is not a color format. but [bgr8] is. The conversion does not make sense'
+
+Can I somehow easily save these images for later processing?
+
+Originally posted by aguadopd on ROS Answers with karma: 86 on 2014-03-01
+Post score: 2
+
+A:
+
+Because data format in image_raw is the depth data in mm, maybe you should try with the /camera/depth/image
+If you want to use the image_raw, I think the below codes is helpful for you
+void imageCb_d(const sensor_msgs::ImageConstPtr& msg)
+  {
+    
+    cv_bridge::CvImagePtr cv_ptr;
+
+    try
+    {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1);
+
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+
+    double minVal, maxVal;
+    minMaxLoc(cv_ptr->image, &minVal, &maxVal); //find minimum and maximum intensities
+    //Mat draw;
+    cv_ptr->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+
+    cv::imshow("Blur", blur_img);
+    cv::imshow("Depth", cv_ptr->image);
+
+ 
+    cv::waitKey(3);
+
+    image_pub_.publish(cv_ptr->toImageMsg());
+  }
+
+};
+
+Originally posted by domikilo with karma: 89 on 2014-03-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aguadopd on 2014-03-04:
+Thank you! will try that. I will try using the 32bit part, since I don't want to lose resolution using 8 bit format.
+

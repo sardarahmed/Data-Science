@@ -1,0 +1,50 @@
+Q:
+
+What does projection matrix provided by the calibration represent?
+
+I'm using such a tool from ROS/OpenCV in order to perform the camera calibration. The procedure ends up providing: camera matrix, distortion parameters, rectification matrix and projection matrix. As far as I know the projection matrix contains the intrinsic parameter matrix of the camera multiplied by the extrinsic parameters matrix of the matrix. The extrinsic parameter matrix itself provides the roto-translation of the camera frame with respect to the world frame. If these assumptions are correct...how is the projection matrix computed by Opencv? I,m not defining any world frame!
+camera matrix:
+414.287922 0.000000 382.549277
+0.000000 414.306025 230.875006
+0.000000 0.000000 1.000000
+
+distortion:
+-0.278237 0.063338 -0.001382 0.000732 0.000000
+
+rectification:
+1.000000 0.000000 0.000000
+0.000000 1.000000 0.000000
+0.000000 0.000000 1.000000
+
+projection:
+297.051453 0.000000 387.628900 0.000000
+0.000000 369.280731 227.051305 0.000000
+0.000000 0.000000 1.000000 0.000000
+
+Originally posted by mateo_7_7 on ROS Answers with karma: 90 on 2014-01-19
+Post score: 5
+
+A:
+
+The projection matrix P you get is computed by the OpenCV method getOptimalNewCameraMatrix() used in the camera calibration node.
+This method is used to control the output of the OpenCV undistortion method initUndistortRectifyMap(). Normally after the remap() some pixels would be outside of your image boundaries and some pixel regions in your image would be invalid (black), depending on the correction of your lens distortion.
+The method getOptimalNewCameraMatrix() takes the intrinsic matrix, the distortion coefficients and an alpha value specified by you with:
+
+alpha = 1 -> the image is resized so all original pixels fit into the image plane, thus you will most likely get invalid pixels in your undistorted image
+alpha = 0 -> the image is resized so there are no invalid pixels in the image plane, thus you will most likely lose valid pixels in your undistorted image
+
+This gives you a new camera matrix (called P by the calibration node) that can be passed to initUndistortRectifyMap() which computes the correct remaps depending on your used alpha value.
+You can see the differences in this image:
+
+(originally from http://i.imgur.com/bOZ4fKs.jpg)
+The left one is with alpha = 0, the right one with alpha = 1 (note that this is not stereo, both images are the same, only "viewed" with a different camera matrix).
+The camera calibration node does exactly that, with alpha = 0, and stores the new camera matrix as matrix P in the CameraInfo.
+
+Originally posted by Malefitz with karma: 136 on 2014-07-03
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by ia on 2021-04-25:
+@Malefitz @lucasW but how can alpha be set when running the camera_calibration ros node? Seems odd they didn't provide an explicit alpha parameter to set doesn't it?
+

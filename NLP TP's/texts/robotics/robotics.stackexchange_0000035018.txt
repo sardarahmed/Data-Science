@@ -1,0 +1,57 @@
+Q:
+
+Subscribe to a topic using an overloaded callback function
+
+I get a compilation error when trying to subscribe to a ROS topic using an overloaded callback function. Look like the compiler doesn't know what function to pick.
+Is there any way to solve it?
+At compiling time I don't know which of several topics will my node subscribe to. The types of the possible topics are different, so I need different functions to receive the data.
+Is there any way of knowing the data type of a topic other than calling 'rostopic type [topic]' inside the node?
+In the following snippet I want to subscribe to the "inputs" topic, but I don't know which topic will be mapped to it from the command line. I want to consider two possible topics with different data type "sr_robot_msgs::JointControllerState" and "pr2_controllers_msgs::JointControllerState", so how can I retrieve this data type information from the topic in runtime?
+    MovementPublisher::MovementPublisher(double min_value, double max_value,
+                                   double rate, unsigned int repetition, unsigned int nb_mvt_step, std::string controller_type)
+{
+...
+sub_ = nh_tilde.subscribe("inputs", nb_mvt_step, &MovementPublisher::calculateErrorCallback, this);
+}
+
+void MovementPublisher::calculateErrorCallback(const sr_robot_msgs::JointControllerState::ConstPtr& msg)
+{
+double error = msg->set_point - msg->process_value;
+ROS_DEBUG_STREAM("Error: " << error);
+}
+
+void MovementPublisher::pr2_calculateErrorCallback(const pr2_controllers_msgs::JointControllerState::ConstPtr& msg)
+{
+double error = msg->set_point - msg->process_value;
+ROS_DEBUG_STREAM("Error: " << error);
+}
+
+Originally posted by toniOliver on ROS Answers with karma: 159 on 2011-10-18
+Post score: 1
+
+Original comments
+Comment by Lorenzo Riano on 2011-10-18:
+Can you edit your answer to add a code snippet as an example? They problem with strongly typed languages is that you can't play with the types at run time. You could play with an if-then-else, but I need a sample code to work with.
+
+A:
+
+Unfortunately you can't do this in C++.
+First of all, if you subscribe to a topic with message type A and receive message type B, ROS will complain about the MD5 sum.
+Even if it was possible, your approach can't do any real-time checking, as the C++ templates (implemented in the subscriber) create functions/classes at compile time.
+So the main problem is that C++ requires the declaration of the callback function signature at compile time. AFAIK there is no general "Message" class from which all the messages inherit, so polymorphism is not an option.
+This example seems to arise from the fact that "sr_robot_msgs::JointControllerState" and "pr2_controllers_msgs::JointControllerState" are basically the same message, so why two different types?
+
+Originally posted by Lorenzo Riano with karma: 1342 on 2011-10-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Lorenzo Riano on 2011-10-20:
+Good, that's a sound solution. You might want to post the solution and mark this question as "solved", so future users will know the answer.
+Comment by toniOliver on 2011-10-20:
+Thank you.  Finally I added a parameter in the node invocation that tells which format will the topic have. In this case I find it preferable to asking ROS about the data type of the topic.
+Comment by Lorenzo Riano on 2011-10-19:
+Right, so Python obviously can! I have edited my answer to reflect this.
+Comment by Yianni on 2011-10-19:
+Can the following thread be of any help regarding runtime checking? http://answers.ros.org/question/804/how-to-obtain-the-msg-format-of-a-topic-on-runtime
+

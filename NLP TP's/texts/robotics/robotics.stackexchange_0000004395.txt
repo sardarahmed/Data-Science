@@ -1,0 +1,122 @@
+Q:
+
+Counts of Quadrature Encoder
+
+Simply, I had Rover 5 with 2 DC motors and 2 quadrature encoders, I just want to use encoders to measure the distance of travelling for each wheel.
+To start with, I just want to determine the total counts per revolution. I read the article about quadratic encoder from this broken link.
+In Rover 5, each encoder has four wires: red (5V or 3.3V), black(Ground), yellow (Signal 1) and white (Signal 2). I connected each wire in its right place on Arduino Uno board, using the circuit:
+
+rotary encoder ChannelA attached to pin 2 
+rotary encoder ChannelB attached to pin 3
+rotary encoder 5V attached to 5V
+rotary encoder ground attached to ground 
+
+For one encoder, I test the code below to determine the total counts or ticks per revolution, the first program by using loop and second by using an interrupt.
+Unfortunately while I run each program separately, rotating the wheel 360 degree by hand, the outputs of these two programs was just "gibberish" and I don't know where is the problem . Could anyone help?
+Arduino programs posted below.
+First program:
+// Constants
+const int  ChanAPin = 2;    // pin for encoder ChannelA
+const int  ChanBPin = 3;    // pin for encoder ChannelB
+
+// Variables
+int encoderCounter = -1;   // counter for the number of state changes
+int ChanAState = 0;         // current state of ChanA
+int ChanBState = 0;        // current state of ChanB
+int lastChanAState = 0;     // previous state of ChanA
+int lastChanBState = 0;    // previous state of ChanB
+
+void setup() {
+  // initialize the encoder pins as inputs:
+  pinMode(ChanAPin, INPUT);
+  pinMode(ChanBPin, INPUT);
+  // Set the pullup resistors
+  digitalWrite(ChanAPin, HIGH);
+  digitalWrite(ChanBPin, HIGH);
+
+  // initialize serial communication:
+  Serial.begin(19200);
+  Serial.println("Rotary Encoder Counter");
+}
+
+void loop() {
+  // read the encoder input pins:
+  ChanAState = digitalRead(ChanAPin);
+  ChanBState = digitalRead(ChanBPin); 
+  // compare the both channel states to previous states
+  if (ChanAState != lastChanAState || ChanBState != lastChanBState) {
+    // if the state has changed, increment the counter
+      encoderCounter++;
+      Serial.print("Channel A State = ");
+      Serial.println(ChanAState);
+      Serial.print("Channel B State = ");
+      Serial.println(ChanBState);      
+      Serial.print("State Changes = ");
+      Serial.println(encoderCounter, DEC);
+    // save the current state as the last state, 
+    //for next time through the loop
+    lastChanAState = ChanAState;
+    lastChanBState = ChanBState;    
+  }
+}
+
+The second program (with interrupt)
+static long s1_counter=0;
+static long s2_counter=0;
+
+void setup()
+{
+  Serial.begin(115200);
+
+  attachInterrupt(0, write_s1, CHANGE); /* attach interrupt to pin 2*/
+  attachInterrupt(1, write_s2, CHANGE); /* attach interrupt to pin 3*/
+  Serial.println("Begin test");
+}
+
+void loop()
+{
+}
+
+void write_s1()
+{
+  s1_counter++;
+  Serial.print("S1 change:");
+  Serial.println(s1_counter);
+}
+
+void write_s2()
+{
+  s2_counter++;
+  Serial.print("S2 change:");
+  Serial.println(s2_counter);
+}
+
+A:
+
+You're likely getting something analogous to "contact bounce".
+When you slowly rotate the wheel,
+there are regions where channel A is Lo for a while,
+then channel A is Hi for a while.
+While it would be nice if the Arduino only saw one low-to-high transition
+between those regions,
+often a encoder will oscillate a few or a dozen times
+during the brief period when the encoder is balanced on the edge of the transition.
+Have you noticed that the original code always increments the counter, never decrements it?
+If you had code that
+handled both forward rotation (clockwise; incrementing the counter) and reverse rotation (counterclockwise; decrementing the counter),
+it would automatically fix the "bounce" problem.
+One popular approach: while B is low, low-to-high transitions on A increment the count,
+while high-to-low transitions decrement the count.
+Then if A bounces a few extra times while B is low --
+instead of a crisp Lo-Hi (+1), it does Lo-Hi-Lo-Hi-Lo-Hi (+1, -1, +1, -1, +1) --
+we still get the correct final count.
+In either case the final result is one count more.
+(While B is high, low-to-high transitions on A decrement the count, etc.)
+A quick Google search
+https://www.google.com/search?q=arduino+quadrature+encoder+library
+shows many quadrature encode libraries for the Arduino.
+Many of them are reviewed at
+http://playground.arduino.cc/Main/RotaryEncoders
+.
+Could you maybe try one of those libraries and tell us how well it worked (or didn't work) ?
+

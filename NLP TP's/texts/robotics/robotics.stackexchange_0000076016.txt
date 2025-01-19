@@ -1,0 +1,84 @@
+Q:
+
+Remapping the gazebo node
+
+Hello,
+I am using the following launch file to spawn my robot in gazebo:
+<launch>
+  <arg name="paused" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="gui" default="true"/>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find labrob_gazebo)/worlds/second_world.world"/>
+    <arg name="paused" value="$(arg paused)" />
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="use_sim_time" value="true" />
+    <arg name="headless" value="false" />
+  </include>
+
+  <!-- urdf xml robot description loaded on the Parameter Server-->
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find labrob_description)/urdf/labrob.urdf'" />
+
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <node name="labrob_spawn" pkg="gazebo_ros" type="spawn_model" output="screen" 
+    args="-urdf -param robot_description -model labrob" />
+</launch>
+
+and I want to remap the gazebo node so it will stop using the tf topic.
+I have seen this question after DavidN's help, but I would prefer not to modify the launch files of the gazebo_ros package and do the remapping from the launch files I use.
+I have tried to create a remap.launch file that I ran after roslaunching the above file, in which I wrote:
+<launch>
+<node pkg="gazebo_ros" name="gazebo" type="gzserver">
+<remap from="tf" to="gazebo_tf"/>
+</node>
+</launch>
+
+This didn't work, probably because the remapping can be achieved at the start of the execution of the node and not during runtime.
+I have tried to use the <remap from="tf" to="gazebo_tf"/> tag almost everywhere in the first file I present here, but the gazebo node doesn't remap from the tf topic -it is not recognized.
+How could I modify the first launch file to successfully remap the gazebo node from my package ?
+Thank you for your answers and for your time in advance,
+Chris
+EDITED:
+The solution proposed by Winston didn't work, because the /gazebo node was already launched initially in the launch file. To be more specific, I got the following errors:
+roslaunch file contains multiple nodes named [/gazebo].
+Please check all <node> 'name' attributes to make sure they are unique.
+Also check that $(anon id) use different ids.
+The traceback for the exception was written to the log file
+
+Originally posted by patrchri on ROS Answers with karma: 354 on 2016-08-28
+Post score: 1
+
+A:
+
+You have to specify the remapping directly where the gazebo node is started (Internally, the XML-based remapping is converted to arguments provided to the executable). So the one option is to copy the empty_world.launch launch file from gazebo_ros and add the appropriate remapping, e.g. change this part to:
+<node name="gazebo" pkg="gazebo_ros" type="$(arg script_type)" respawn="false" output="screen"
+    args="$(arg command_arg1) $(arg command_arg2) $(arg command_arg3) -e $(arg physics) $(arg extra_gazebo_args) $(arg world_name)">
+    <remap from="tf" to="tf_remapped_away" />
+  </node>
+</node>
+
+As another (potential) option, the original empty_world.launch also provides a extra_gazebo_args argument, that can be used to provide additional arguments. I tried manually adding the remapping there (for my test the /clock topic) This however doesn't work, likely due to the duplicate := (would probably need to be escaped somehow):
+roslaunch gazebo_ros empty_world.launch extra_gazebo_args:=/clock:=/clock_remapped_away
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2016-08-31
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Oscar Lima on 2020-05-16:
+extra_gazebo_args is working for me (for remapping), I have added:
+<arg name="extra_gazebo_args" value="joint_states:=/turtlebot3_burger/joint_states" />
+
+using gazebo_ros empty_world.launch:
+<!-- Gazebo world -->
+<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_path)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="$(arg gazebo_gui)"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+    <arg name="extra_gazebo_args" value="joint_states:=/turtlebot3_burger/joint_states" />
+</include>
+

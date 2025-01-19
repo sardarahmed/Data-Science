@@ -1,0 +1,84 @@
+Q:
+
+[buildfarm] Missing package dependencies: %PKG_NAME%/package.xml
+
+Pull request test on ROS buildfarm for this and this pull requests, both are in the same repo, errored with the following or similar:
+http://build.ros.org/job/Lpr__ar_track_alvar__ubuntu_xenial_amd64/6/consoleFull
+10:55:45 Scanning dependencies of target _run_tests_ar_track_alvar_roslaunch-check__tmp_catkin_workspace_src_ar_track_alvar_ar_track_alvar_test_marker_param_config-full.test
+10:55:45 -- run_tests.py: execute commands
+10:55:45   /usr/bin/cmake -E make_directory /tmp/catkin_workspace/test_results/ar_track_alvar
+10:55:45   /opt/ros/lunar/share/roslaunch/cmake/../scripts/roslaunch-check -o /tmp/catkin_workspace/test_results/ar_track_alvar/roslaunch-check__tmp_catkin_workspace_src_ar_track_alvar_ar_track_alvar_test_marker_param_config-full.test.xml /tmp/catkin_workspace/src/ar_track_alvar/ar_track_alvar/test/marker_param_config-full.test 
+10:55:45 checking /tmp/catkin_workspace/src/ar_track_alvar/ar_track_alvar/test/marker_param_config-full.test
+10:55:45 the rosdep view is empty: call 'sudo rosdep init' and 'rosdep update'
+10:55:45 Missing package dependencies: ar_track_alvar/package.xml: rostest, rosbag
+10:55:45 ...writing test results to /tmp/catkin_workspace/test_results/ar_track_alvar/roslaunch-check__tmp_catkin_workspace_src_ar_track_alvar_ar_track_alvar_test_marker_param_config-full.test.xml
+10:55:45 FAILURE:
+
+Both rostest, rosbag are defined as test_depend in package.xml.
+FYI the same pull request passes on Travis CI.
+
+UPDATE1: To the answer to Dirk,
+
+The error message indicates that it is failing because the rosdep database has not been fetched.
+
+Where is rosdep called during 14.3. run tests section?
+And what would you suggest to let the tests pass? Since I only see an invocation of catkin_make_isolated before the error occurs, I can only suspect CMakeLists.txt where rostest is find_packaged, although this doesn't yet explain why rosbag is tried to be installed...so I am at a loss.
+I even tried the following to run tests locally to mimic 14.3. run tests section, which passed without an issue.
+rm -fr ~/.ros/rosdep/sources.cache/
+catkin_make_isolated --pkg ar_track_alvar --force-cmake --cmake-args -DCATKIN_ENABLE_TESTING=1 -DCATKIN_SKIP_TESTING=0 -DCATKIN_TEST_RESULTS_DIR=/tmp/catkin_workspace/test_results --catkin-make-args -j1 run_tests
+
+UPDATE2: I see, now I can replicate the error locally (I had to remove ALL rosdep dbs like below, not just one in my previous update):
+rm -fr ~/.ros/rosdep/sources.cache/
+sudo rm -fr /etc/ros/rosdep
+
+I am not sure what you are using that for in your package though.
+
+I need rostest for add_rostest macro I think, which is also documented in Catkin's manual so I think legitimate thing to do.
+Also my test needs rosbag to play a bag file, which I assumed legitimate as well since the Catkin's doc above shows a way to download a .bag file during test.
+
+The buildfarm does not setup the rosdep database for you since it doesn't need it. Therefore you can't rely on it being present.
+:
+rosbag is being installed since as you mentioned is listed as a test dependency in your referenced package.xml file.
+
+Hmmm...sorry but I'm still confused. Now I understand that the buildfarm does not have rosdep db, but then I don't know how rosbag get installed.
+Anyways, all I want is to run tests that require packages defined in test_depend.
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2017-05-25
+Post score: 0
+
+A:
+
+In the section "13. Build Dockerfile - build and test" of the build output it shows the two test depenencies (ros-lunar-rosbag and ros-lunar-rostest) are being installed.
+The error message indicates that it is failing because the rosdep database has not been fetched. Since the buildfarm doesn't need it within a job it doesn't call rosdep update within the context the package is being built. Therefore you can't rely on rosdep being able to query dependencies.
+I am not sure what you are using that for in your package though.
+UPDATE 1:
+The buildfarm does not setup the rosdep database for you since it doesn't need it. Therefore you can't rely on it being present.
+
+And what would you suggest to let the tests pass?
+
+Since I don't know what your tests are using the rosdep database for I can't give a recommendation.
+
+although this doesn't yet explain why rosbag is tried to be installed
+
+rosbag is being installed since as you mentioned is listed as a test dependency in your referenced package.xml file.
+
+I even tried the following to run tests locally to mimic 14.3. run tests section, which passed without an issue.
+
+Locally it likely works since you have a rosdep database - at some point you ran sudo rosdep init and rosdep update. You could delete the rosdep database and try it again and I would assume it fails the same way as on the buildfarm.
+UPDATE 2:
+
+Hmmm...sorry but I'm still confused. Now I understand that the buildfarm does not have rosdep db, but then I don't know how rosbag get installed.
+
+Anyways, all I want is to run tests that require packages defined in test_depend.
+
+The installation of test dependencies has nothing to do with the rosdep db being initialized / updated. Your job does have both test dependencies installed (rosbag as well as rostest). Both of them should be usable without requiring a rosdep database. So in order to find out why your package fails you will need to check what it needs the rosdep db for.
+It looks like you are running roslaunch-check but without the necessary arguments. Please see https://github.com/ros-infrastructure/ros_buildfarm/issues/341 with the same question. You will need to use the option described in https://github.com/ros/ros_comm/pull/910 to make your test work without the rosdep db.
+
+Originally posted by Dirk Thomas with karma: 16276 on 2017-05-25
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by 130s on 2017-05-30:
+Thank you for taking a deeper look. Passing USE_TEST_DEPENDENCIES arg seems to solve the particular issue. I also added this info to roslaunch wiki but not confident at all if the change I added is the best delineated.
+

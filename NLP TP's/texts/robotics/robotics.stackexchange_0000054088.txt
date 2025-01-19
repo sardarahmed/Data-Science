@@ -1,0 +1,60 @@
+Q:
+
+Message definition value in roscpp
+
+It's trivial to get the concatenated definition of a message in roscpp, provided that the message is compiled-in:
+#include <iostream>
+#include <nav_msgs/Odometry.h>
+
+int main(int argc, char* argv[])
+{
+  std::cout << ros::message_traits::Definition<nav_msgs::Odometry>::value();
+  return 0;
+} 
+
+However, I'd like to be able to get arbitrary message definition strings from the workspace, by message type string. Now, I know I can use ros::package::getPath, track dependencies, and build up the concatenation myself, but I'm wondering if the canonical one created in the python message generator gets cached somewhere accessible as well?
+The use case is for rosserial_server, which uses topic_tools::ShapeShifter to advertise topics and messages which are not known at compile-time (but are proxied from clients who did know about them... the clients declare the topic type and MD5, but don't store the entire message string). Currently this is being addressed with a shim rospy node, but I'm interested in eliminating that component and doing everything in the C++ binary.
+So first, is there some way to do this already? If not, is this functionality which should go somewhere general rather than just sticking it in the rosserial_server codebase?
+
+Originally posted by mikepurvis on ROS Answers with karma: 1153 on 2013-09-14
+Post score: 0
+
+A:
+
+You could give cpp_introspection a try. The package cannot introspect arbitrary mesage types, but only messages from packages for which an introspection library have been built before. It is therefore no solution for rosserial_server, but probably for others with similar problems.
+There is no documentation available so far. Here is a simple usage example:
+# add this to your CMakeLists.txt:
+find_package(cpp_introspection REQUIRED)
+introspection_add(nav_msgs RECURSIVE)
+
+You can then examine the package and messages in a C++ program like that:
+#include <iostream>
+#include <introspection/introspection.h>
+
+using namespace cpp_introspection;
+
+int main(int argc, char **argv) {
+    load("path/to/introspections/libs");
+    MessagePtr msg = messageByDataType("nav_msgs/Odometry");
+
+    if (!msg) {
+        std::cerr << "not found" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Definition of " << msg->getDataType() << ":" << std::endl;
+    std::cout << msg->getDefinition() << std::endl;
+    return 0;
+}
+
+Check the message.h header to get an impression of the full message API.
+As far as I know there is no built-in mechanism in ROS or roscpp that allows introspection of messages in C++ without having to include the headers or invoke external programs. The cleanest solution would be to automatically compile a light-weight library for each message package by extending gencpp and use pluginlib or a similar mechanism to load them dynamically on demand.
+
+Originally posted by Johannes Meyer with karma: 1266 on 2013-09-15
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mikepurvis on 2013-09-16:
+Very interesting—looks like a much more ambitious project, perhaps for the core roscpp team to take on at some point if there is sufficient demand.
+

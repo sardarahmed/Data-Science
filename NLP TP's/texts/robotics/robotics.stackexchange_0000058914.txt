@@ -1,0 +1,97 @@
+Q:
+
+TF listening fails when called from a specific class
+
+Hi all,
+I initially had one C++ class broadcasting and listening to tf:Transforms successfuly. The structure of my class was something like:
+class TF_Listening_OK {
+    private:
+        tf::TransformBroadcaster _transf_bdcst;
+        tf::TransformListener _transf_lsten;
+
+    public:
+    void spin() {
+        Rate r(25);
+
+        while(ros::ok()) {
+                tf::Transform transform = blablabla...;
+            _transf_bdcst.sendTransform(tf::StampedTransform(transform,
+                                             Time::now(),
+                                             "world",
+                                             "myframe"));
+            ros::spinOnce();
+        }
+    }
+    
+    void someCallback() {
+        try {
+            PoseStamped pstdin, pstdout;
+            pstdin.header.frame_id = "world";
+            pstdin.pose = some_pose_in_world;
+            _transf_lsten.transformPose("myframe", pstdin, pstdout);
+        }
+        catch() we don't care...
+    }
+
+The code hereabove works great! My issue comes in the next step.
+Then I've created a TF_Listening_Failure class which does not broadcast any frame but which listen to some tf broadcasted by TF_Listening_OK. It's code is in the same node and same thread and is executed when a callback is received. Something like:
+class TF_Listening_Failure {
+    private:
+        tf::TransformListener _transf_lsten;
+
+    public:
+    void someCallback() {
+        try {
+            PoseStamped pstdin, pstdout;
+            pstdin.header.frame_id = "myframe";
+            pstdin.pose = some_pose_in_myframe;
+            _transf_lsten.transformPose("world", pstdin, pstdout);
+        }
+        catch() we don't care...
+    }
+
+But it fails with code:
+terminate called after throwing an instance of 'tf::LookupException'
+  what():  Frame id /myframe does not exist! Frames (1): 
+Aborted (core dumped)
+
+I am 400% sure that "myframe" is actually broadcasted with respect to "world". I can draw the tf tree seeing myframe published as a child of world at 25Hz.
+Not only the world frame does exist (I've also replaced world by other frames in the transformPose but it always fails) but also it's not even able to list available frames (= this aborted error, I figured out with gdb that it occured during spinOnce()).
+The awful solution I've found for the moment is creating a PoseStamped TF_Listening_OK::performTFListening(PoseStamped pstdin). Calling this method from TF_Listening_Failure works well but this is SO UGLY.
+I'm not sure whether the portion of code I've posted is useful, but I'm so lost with this issue that I don't know what is relevant. Any idea of what could be wrong? Can we have only one declared tf listener of something like this? Thank you by advance for your help.
+
+Originally posted by courrier on ROS Answers with karma: 454 on 2014-04-22
+Post score: 0
+
+A:
+
+Your catch is obviously not working.
+When you initialize a TransformListener it needs time to build up it's cache of the transform tree. It's a race condition between your transform tree fully arriving and your callback being triggered.
+If the catch was working I would expect it to work after a few cycles once the buffer has been populated.
+I highly recommend you read through the tf tutorials: http://wiki.ros.org/tf/Tutorials
+
+Originally posted by tfoote with karma: 58457 on 2014-04-23
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by courrier on 2014-05-07:
+Thanks the only thing I thought useless was the faulty thing ^^ I was capturing a wrong exception, now it's ok.
+A question however: Is the tf cache starting from zero each time I declare a new TransformListener? Otherwise I don't understand why the buffer would be empty, I publish my frames at 25Hz
+Comment by tfoote on 2014-05-07:
+Yes, each listener builds its own cache.
+Comment by courrier on 2014-05-12:
+Do you think it makes sense to declare only one listener and pass it by reference to any class needing to access tf data so that we only build one cache?
+Comment by tfoote on 2014-05-12:
+That is a common and recommended pattern.
+Comment by courrier on 2014-05-12:
+great, thank you!
+Comment by courrier on 2014-05-28:
+If I use the constructor taking a node handle in parameter does it have the same effect of sharing? http://docs.ros.org/hydro/api/tf/html/c++/classtf_1_1TransformListener.html#a40d8462819c4e5280e8553080c4bd908
+Comment by tfoote on 2014-05-28:
+No it does not. The listener builds a cache internally. You need to pass a reference or pointer to the TransformListener object.
+Comment by pietrocolombo on 2020-04-02:
+I have the same problem but how should it be solved?
+for now I have solved it by putting a sleep
+https://github.com/iralabdisco/ira_laser_tools/blob/048370a68677bb96bbb02755ee32b767ffe5c7f9/src/laserscan_multi_merger.cpp#L142
+

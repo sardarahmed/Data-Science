@@ -1,0 +1,83 @@
+Q:
+
+Using Hector mapping for odometry with amcl for localization in a pre given map
+
+I wanted to exploit the fact that hector_mapping gives pretty accurate position estimate. I used the position estimate to find odometry and now hector_mapping successful publishes the odom message and gives the required tf. But when I run amcl and publish an already created map using map_server everything messes up because now both the hector_mapping and
+map_server are publishing maps. Even if I remap the hector mapping map to something else to divert it my tf is disturbed. Please help how to resolve this issue
+
+Originally posted by Fahad on ROS Answers with karma: 111 on 2013-11-26
+Post score: 3
+
+Original comments
+Comment by ne0h on 2015-11-16:
+Hi Fahad,
+did you manage to get this working?
+Greetings, Max
+Comment by quentin on 2015-11-17:
+Yes I am also trying to do it...
+Comment by ne0h on 2015-11-17:
+Do you try to use AMCL?
+Comment by ne0h on 2015-11-19:
+I got it running by providing the odometry data from hector_mapping as transform from scanmatcher->base_link. Here is my launch file: https://github.com/ne0h/hmmwv/blob/master/ros_workspace/src/hmmwv/launch/prebuildmap.launch
+Comment by pJ on 2015-11-20:
+Hi ne0h, I am working on a similar task to get amcl working with hector mapping odometry. I see in your repository that you had to make a minor timing delay change in hector mapping source file. Is it something specific to your task or essential to get this combination working?
+Comment by ne0h on 2015-11-20:
+Hi pJ, the timer delay has nothing to do with the amcl approach. We had to add the delay to get hector_slam working due to some timing errors in hector_slam. Perhabs the cpu was just to slow to meet the ROS timing rate...
+Comment by quentin on 2015-11-27:
+Hi neOh, I am trying to use your launch (hector_mappping, AMCL, map_server, move_base) combined with a simulated robot (hector_quadrotor_gazebo). But I am getting tf trees errors which i am struggling WITH.
+Could you upload a screenshot of both your tf tree and your graph (nodes and topics)?
+Comment by ne0h on 2015-11-27:
+Hi quentin, no problem. Transform tree (https://ne0h.de/cloud/index.php/s/nwcCiVrQOTk1JOT) and messages tree (https://ne0h.de/cloud/index.php/s/BHSgQMRB3AnqyTW).
+Comment by quentin on 2015-11-29:
+Thanks for that! In your tf-tree, shouldn't you have a frame listened by the acml (/map?) and one used by hector_mapping to provide you with the odometry information (/odom or /nav?)
+And could you explain me how I should do to have your odomtransformer.py working? I struggled all the day with it!
+Comment by ne0h on 2015-12-03:
+You are right, the transform scanmatcher_odom->map is missing. I can't check at the moment but normally it is there. dodomtransformer.py takes odometry input (in my case from hector_mapping) and outputs this data as transform. How do you get the odometry data?
+Comment by quentin on 2015-12-03:
+I try two solutions, both using AMCL for the localization (map to odom transfo):
+
+Laser_scan_matcher node provides me an odometry and a tf transform odom -> base_footprint
+Hertor_mapping providing odometry and the tf (odom -> base_footprint) is provided by either LSM with odom input or pose_EKF
+
+Comment by mksun on 2015-12-09:
+two maps:hector mapping provide a building map, amcl provide an existing map.my question : would the hector slam provide odom information without a building map,because it make the procedure slower
+Comment by quentin on 2015-12-09:
+according to Stefan is should provide odom information exactly as a simple Laser_scan_matcher would. And therefore without storing the building map... But I cannot find a way to have this working.
+Did you figured it out mksun?
+Comment by mksun on 2015-12-09:
+I have tested the laser_scan_matcher node ,it could publish odom information quickly,but it met "can not locate" problem frequently, and hector slam has such situation now, i cant sovle it. whether the building map and the existing map should have the same params?
+Comment by quentin on 2015-12-09:
+My understanding is that the building map is not useful by itself if the real localization is achieved by AMCL. So you'd rather remap it somewhere else and the params are not important. At least this what I understand!
+Do you try your experiment along with hector_quadrotor simulation with gazebo?
+Comment by mksun on 2015-12-09:
+i have done some experiment. when two maps have the same params,hector slam and amcl have a good performence. sorry, i don't have quadrotor of experience.
+Comment by ne0h on 2015-12-10:
+Yes, you need to remap hector_mapping's map and frame topics:  and < param name="map_frame" value="/mapcurrent" /> .
+Comment by mksun on 2015-12-10:
+that's how i do. but now hector mapping have another problem: it may publish a warning message after one hour runtime. MessageFilter[target=mapcurrent]:Dropped 100.00% of messages so far.please turn the ros.hector_mapping.message notifier] rosconsole logger to DEBUG for more information.
+Comment by ne0h on 2015-12-10:
+I am sorry I never had this warning. Does your CPU have enough power? ROS starts dropping messages when the system load increases dramatically.
+Comment by kesuke on 2018-07-04:
+@neOh why did you use amcl since hector_slam gives the position ?
+
+A:
+
+Haven´t tried it myself, but setting the "pub_map_odom_transform" transform parameter to "false" and remapping the map topic to somewhere else should help.
+Then, two options for doing things come to my mind:
+
+By using the undocumented
+"pub_odometry" parameter set to true,
+odometry is published as a
+nav_msgs/Odometry
+message on the "scanmatch_odom"
+topic. This could the used to
+generate the proper tf odometry via
+robot_pose_ekf or so.
+AMCL supports the "odom_frame_id"
+parameter. If you set that to
+"scanmatcher_frame", there´s a chance things work. I´m not 100% sure the transform scanmatcher_frame has the correct parent link though.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2013-11-26
+This answer was ACCEPTED on the original site
+Post score: 4
+

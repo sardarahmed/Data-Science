@@ -1,0 +1,60 @@
+Q:
+
+IK - 3dof - iterative
+
+I want to solve for a 3dof planar arm using gradient descent to approximate end position. Now I am a little confused about the formula and was wondering if someone can help me out.
+This is my thought process:
+
+First start about using the forward kinematic solution mapping angles to euclidean space:
+$x = l_1 * cos\theta_1 + l_2 * \cos(\theta_1 + \theta_2) + l_3 * \cos(\theta_1 + \theta_2 + \theta_3)$
+$y = l_1 * sin\theta_1 + l_2 * \sin(\theta_1 + \theta_2) + l_3 * \sin(\theta_1 + \theta_2 + \theta_3)$
+$\phi = (\theta_1 + \theta_2 + \theta_3)$
+Now to I need to define a cost function ( that is where I get a little stuck), I know from a 2dof example, that I need to minimize the distance from the endpoint of my arm $x_{ep} $ to the target in euclidean space $x_{tg}$. defined as: $|| x_{ep} - x_{tg}||^2$ using gradient descent. Now, for a 3dof arm, obviously I would have an unlimited amount of solutions with this solution, so that I need to add one additional constraint, namely the angle $\phi$ for my endeffector too. Here I am not quite sure on how to add the angle to the cost function as a parameter.
+Then I would find the gradient function $\nabla f_{cost} $ for each $\theta$, in respect to my cost function, specified above using partial derivatives. 
+$\frac{\partial f_{cost}}{\partial \theta_{1}}(|| \begin{bmatrix}
+           x_{ep} \\
+           y_{ep} \\
+           \phi_{ep}
+         \end{bmatrix} - \begin{bmatrix}
+           x_{tg} \\
+           y_{tg} \\
+           \phi_{tg}
+         \end{bmatrix}||^2)$, $\frac{\partial f_{cost}}{\partial \theta_{2}} ...$ , $\frac{\partial f_{cost}}{\partial \theta_{3}} ...$
+
+Then we simply try to iteratively minimize the cost function until we are below a tolerance $tol$.
+I know there is a missing piece, but I am not quite sure where, I believe it lies the cost function. Maybe I am wrong, thank you for your suggestions!
+
+A:
+
+It can be demonstrated that the Gradient Descent (GD) policy corresponds to the use of the classical Jacobian transposed method for solving IK problems in robotics.
+This strategy does not suffer from singularities but turns out to be slow and can get stuck in particular circumstances. More importantly, GD does not offer a principled way to deal with multiple prioritized objectives as you are looking for, instead.
+To this end, you ought to make use of the Jacobian pseudoinverse $\mathbf{J}^+$ that allows you to exploit kinematic redundancies to implement a hierarchy of tasks to be attained.
+In particular, this policy can be represented by the following relation:
+$$
+\mathbf{\dot{q}} = \mathbf{J}^+ \cdot \left( \mathbf{x}_\text{tg} - \mathbf{x}_\text{ep} \right) + \left( \mathbf{I} - \mathbf{J}^+\mathbf{J} \right) \cdot \mathbf{\dot{q}_0},
+$$ 
+where:
+
+$\mathbf{\dot{q}}$ is the direction where to convergence iteratively (or, equivalently, the velocity that you would send to the joints).
+$\left( \mathbf{x}_{tg} - \mathbf{x}_{ep} \right)$ is the primary task that encodes the reaching in position.
+$\mathbf{J}^+=\mathbf{J}^T\left(\mathbf{J}\mathbf{J}^T\right)^{-1}$ is the pseudoinverse of the Jacobian of the primary task $\mathbf{J}=\frac{\partial \left( \mathbf{x}_\text{tg} - \mathbf{x}_\text{ep} \right)}{\partial \mathbf{\theta}}$ (as $\mathbf{J}$ is not square).
+$\mathbf{\dot{q}_0}$ is the Jacobian of the secondary task − not yet specified − that encodes the reaching in orientation.
+$\left( \mathbf{I} - \mathbf{J}^+\mathbf{J} \right)$ is the Null Space projection ensuring that the secondary task won't interfere with the primary task. In essence, the algorithm will provide directions that will drive the system toward both the objectives, if possible; otherwise, the primary task will take over the secondary task. Therefore, the primary task acts as a constraint in a typical optimization setting.
+
+In our context, the simplest secondary objective $q_0$ could be:
+$$
+q_0 = \left( \phi_\text{tg} - \phi \right)^2.
+$$
+Hence, it stems that:
+$$
+\mathbf{\dot{q}_0} = \frac{\partial q_0}{\partial \mathbf{\theta}}.
+$$
+Remarkably, $\mathbf{J}^+$ is prone to singularities, thus it can be replaced by the Damped Least-Squares version $\mathbf{J}_\text{DLS}^+$ that makes the policy work very similarly to a Jacobian transposed in the neighborhood of singularities:
+$$
+\mathbf{J}_\text{DLS}^+ = \mathbf{J}^T\left(\mathbf{J}\mathbf{J}^T + \mu^2\mathbf{I}\right)^{-1},
+$$ 
+where $\mu$ is a damping factor that can be chosen as a function of the smallest singular value of $\mathbf{J}$.
+Interestingly enough, we challenge students with the same exact problem during our school on robot programming  
+References
+https://www.dis.uniroma1.it/~deluca/rob2_en/02_KinematicRedundancy.pdf
+

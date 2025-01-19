@@ -1,0 +1,58 @@
+Q:
+
+Problems with publishing a cmd_vel message
+
+Hey,
+I am just trying to send my robot a msg that he starts moving forward. When it comes to receiving a msg, I can use rospy.wait_for_message to be sure that one has received that one. When it comes to moving the bot around, normally that  worked well with the following code:
+def moving(self): 
+   self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5) 
+   vel_cmd = Twist() 
+   vel_cmd.linear.x = 0.1 
+   self.pub_cmd_vel.publish(vel_cmd) 
+
+But the robot wasn´t moving. That´s why I implemented this code, which was working again:
+def moving(self): 
+       self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=5) 
+       self.finish = True 
+       while self.finish: 
+          vel_cmd = Twist() 
+          vel_cmd.linear.x = 0.1 
+          self.pub_cmd_vel.publish(vel_cmd) 
+
+My question is now, why is the one option working but the other don´t.
+Thanks for your help!
+
+Originally posted by Tima1995 on ROS Answers with karma: 17 on 2019-08-21
+Post score: 0
+
+Original comments
+Comment by PapaG on 2019-08-21:
+Can you confirm your loop is running with a print or something?
+Comment by Tima1995 on 2019-08-21:
+Yes it is running. When i have a print the terminal is full of it. I am thinking about the while not rospy.is_shutdown, that might be missing
+
+A:
+
+Your first code snippet is not working because ROS Publishers take a small amount of time to connect to other nodes so that messages can be delivered. Any messages published on them before then will get lost, which is the case here.
+Your second code snippet works because even though the first few messages are lost, the while loop keeps publishing them  so after a short while they will reach the destination node.
+If you want to send a single message you can wait until at least one other node has connected to the publisher before publishing the message using the code below:
+while self.pub_cmd_vel.get_num_connections() < 1:
+    pass
+
+Hope this helps.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2019-08-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Tima1995 on 2019-08-21:
+Working :) Thanks for your answer!
+Comment by Tima1995 on 2019-10-16:
+Hello again,
+i have one additional question. I tried to implement that solution into a bigger code. There, depending on a laser scan, I calculate the next action using a NN. This loop is performed several hundred times. But when I try your solution, I get stuck with self.pub_cmd_vel.get_num_connections() because it is constant 1 after execution. Is there another solution for the problem of sending till it is received so I can immediately continue afterwards?
+I was thinking about a dirty solution like haveing a while loop that stops the pubishing after a certain amount of time (i.e. 0.05 sec) that ensure delivering the message. But there might be another better suited solution.
+Kind regards and thanks in advance!
+Comment by PeteBlackerThe3rd on 2019-10-27:
+If you need to guarantee delivery of a piece of information from one node to another, a topic is not the tool to use. You want to use a service instead, these have receipt acknowledgment, and are designed for this type of use.
+

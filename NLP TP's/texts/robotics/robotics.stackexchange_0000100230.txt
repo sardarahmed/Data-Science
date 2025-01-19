@@ -1,0 +1,108 @@
+Q:
+
+Publisher and subscriber in one ROS node error
+
+I`m doing some underwater UUV Gazebo simulation and would like to use the
+hector_pose_estimation
+
+package to fuse IMU and Fluid pressure sensors input for pose estimation.
+So my Pressure Sensor has sensor_msgs/FluidPressure but the package wants pressure_height (geometry_msgs/PointStamped) as input. So I created a ROS C++ node to republish sensor_msgs/FluidPressure as the geometry_msgs/PointStamped. The code compiled with no error, but when run it I got error. Firstly, this is the code
+#include "ros/ros.h"
+#include <sensor_msgs/FluidPressure.h>
+#include <std_msgs/Float64.h>
+#include <geometry_msgs/PointStamped.h>
+
+double current_pressure;
+double depth;
+ros::Publisher pub;
+geometry_msgs::PointStamped pressure_height;
+void pressureCallback(const sensor_msgs::FluidPressure::ConstPtr& msg)
+{
+  
+     current_pressure= msg->fluid_pressure;
+
+     depth=current_pressure / (997.04 * 9.8);
+
+     //geometry_msgs::PointStamped::ConstPtr& output;
+    
+     pressure_height.point.z = depth;
+     //positions_pub.publish(output_msg); 
+
+     std::cout << "Pressure: " << pressure_height << std::endl;
+
+      //pressure_height = output.point.z;
+      pub.publish(pressure_height);
+       
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "pressure_republisher");
+  ros::NodeHandle n;
+  ros::Subscriber sub = n.subscribe("/rexrov2/pressure", 10, pressureCallback);
+  ros::Publisher pub = n.advertise<geometry_msgs::PointStamped>("pressure_height", 100);
+  ros::spin();
+  return 0;
+}
+
+And when run it this it the ERROR:
+[FATAL] [1633258406.824329181, 173.610000000]: ASSERTION FAILED
+    file = /opt/ros/melodic/include/ros/publisher.h
+    line = 106
+    cond = false
+    message = 
+[FATAL] [1633258406.826511155, 173.612000000]: Call to publish() on an invalid Publisher
+[FATAL] [1633258406.826551511, 173.612000000]: 
+
+Any help?
+
+Originally posted by Astronaut on ROS Answers with karma: 330 on 2021-10-03
+Post score: 0
+
+A:
+
+This is a C++ problem.
+You have:
+#include "ros/ros.h"
+...
+
+ros::Publisher pub;
+
+...
+
+int main(int argc, char **argv)
+{
+  ...
+  ros::Publisher pub = n.advertise<geometry_msgs::PointStamped>("pressure_height", 100);
+  ...
+}
+
+The pub  outside your main(..) (ie: in the global scope) is not the same ros::Publisher as the one you create and initialise inside main(..). The latter is a new variable, which happens to have the same name (it shadows the pub in the global scope).
+In your pressureCallback(..) you then try to use the pub in the global scope, which hasn't been initialised yet. This is an error, as you can't use a ros::Publisher which hasn't been initialised, hence the fatal error message .
+You should be able to do this:
+int main(int argc, char **argv)
+{
+  ...
+  pub = n.advertise<geometry_msgs::PointStamped>("pressure_height", 100);
+  ...
+}
+
+Having written that, the following might be easier, and still results in the conversion being performed:
+rosrun topic_tools transform /rexrov2/pressure /pressure_height geometry_msgs/PointStamped \
+  'geometry_msgs.msg.PointStamped( \
+    header=m.header, \
+    point=geometry_msgs.msg.Point( \
+      x=0.0, \
+      y=0.0, \
+      z=(m.fluid_pressure / (997.04 * 9.8)) \
+    )' \
+   --import geometry_msgs
+
+This uses topic_tools/transform, which avoids the need to write your own node entirely.
+Note 1: this ignores the variance in the FluidPressure message.
+Note 2: I haven't tested this, so there may be a syntax error hidden there.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-10-03
+This answer was ACCEPTED on the original site
+Post score: 1
+

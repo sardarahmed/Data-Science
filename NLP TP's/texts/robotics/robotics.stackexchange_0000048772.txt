@@ -1,0 +1,99 @@
+Q:
+
+Query a frame from a video passed as a message by ROS to OpenCV
+
+hi everybody,
+I'm trying to extract a frame from a video passed  by a ROS node to OpenCV. Obviously I made the necessary conversion (via cv_bridge) exactly as suggested in ros.org/wiki/cv_bridge/Tutorials/UsingCvBridgeToConvertBetweenROSImagesAndOpenCVImages .
+namespace enc = sensor_msgs::image_encodings;
+static const char WINDOW[] = "Image window";
+class ImageConverter
+{
+ros::NodeHandle nh_;
+image_transport::ImageTransport it_;
+image_transport::Subscriber image_sub_;
+image_transport::Publisher image_pub_;
+
+public:
+ImageConverter()
+: it_(nh_)
+{
+image_pub_ = it_.advertise("out", 1);
+image_sub_ = it_.subscribe("in", 1, &ImageConverter::imageCb, this);
+
+cv::namedWindow(WINDOW);
+} 
+
+~ImageConverter()
+{
+cv::destroyWindow(WINDOW);
+}
+
+void imageCb(const sensor_msgs::ImageConstPtr& msg)
+{
+cv_bridge::CvImagePtr cv_ptr;
+try
+{
+  cv_ptr = cv_bridge::toCvCopy(msg, enc::BGR8);
+}
+catch (cv_bridge::Exception& e)
+{
+  ROS_ERROR("cv_bridge exception: %s", e.what());
+  return;
+}
+ 
+if (cv_ptr->image.rows > 60 && cv_ptr->image.cols > 60)
+  cv::circle(cv_ptr->image, cv::Point(50, 50), 10, CV_RGB(255,0,0));
+ 
+cv::imshow(WINDOW, cv_ptr->image);
+cv::waitKey(3);
+
+image_pub_.publish(cv_ptr->toImageMsg());
+}
+};
+
+int main(int argc, char** argv)
+{
+ros::init(argc, argv, "image_converter");
+ImageConverter ic;
+ros::spin();
+return 0;
+}
+
+So I don't have to do a cvCapture operation and now the video data (cv_ptr->image) are in the form cv::Mat .
+if I write the following code:
+IplImage* frame_act;
+frame_act = cvQueryFrame(cv_ptr->image);
+
+i receive this error:
+error: cannot convert ‘cv::Mat’ to ‘CvCapture*’ for argument ‘1’ to ‘IplImage* cvQueryFrame(CvCapture*)’
+
+have you same ideas in order to solve this small problem?
+thank you very much for your help!
+
+Originally posted by mateo_7_7 on ROS Answers with karma: 90 on 2013-02-27
+Post score: 1
+
+Original comments
+Comment by ramanan1991 on 2016-10-26:
+I am facing the same problem. Is there a solution? i just need to save the first two frames from a ROS topic, saved into a cv mat variable to perform object tracking.
+
+A:
+
+Your subscriber will receive the video frame-by-frame, so the data referenced by cv_ptr is already a single frame. No need for cvQueryFrame.
+
+Originally posted by Dan Lazewatsky with karma: 9115 on 2013-02-27
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mateo_7_7 on 2013-02-28:
+oh..ops, ok
+Comment by mateo_7_7 on 2013-02-28:
+thanks!!  but..how can i acquire consecutive frames in separate variables?
+ex. first_frame=...
+second_frame=....
+Comment by Dan Lazewatsky on 2013-02-28:
+A global std::vector<cv::Mat> would probably work.
+Comment by mateo_7_7 on 2013-02-28:
+thanks again, but please...i'm not so expert about c++. could you explain tour last suggestion?
+

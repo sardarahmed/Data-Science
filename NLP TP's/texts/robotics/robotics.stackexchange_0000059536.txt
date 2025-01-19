@@ -1,0 +1,70 @@
+Q:
+
+Unable to lookup transform
+
+Using this code
+geometry_msgs::PoseStamped current_position()  
+{  
+        tf::TransformListener my_temp_listener;  
+        geometry_msgs::PoseStamped  pose;  
+        pose.header.stamp = ros::Time::now();  
+        pose.header.frame_id = "/base_link";  
+        pose.pose = pose_zero;  
+        my_temp_listener.waitForTransform("map", "/base_link", ros::Time(0), ros::Duration(3.0));  
+        tf::StampedTransform my_transform;  
+        my_temp_listener.lookupTransform("/map","/base_link",ros::Time(0), my_transform);  
+        my_temp_listener.transformPose("map", pose, pose);   
+        return pose;  
+}  
+
+I get terminate called after throwing an instance of tf::ExtrapolationException
+  what():  Unable to lookup transform, cache is empty, when looking up transform from frame [/base_link] to frame [/map] at runtime.
+
+However, looking at the frames using rosrun tf tf_echo /base_link /map I correctly get
+At time 1400687504.239
+
+Translation: [-8.817, 0.695, 0.000]
+Rotation:
+- in Quaternion [0.000, 0.000, 0.097, 0.995]
+- in RPY [0.000, -0.000, 0.194]
+Thank you!
+
+Originally posted by Rahndall on ROS Answers with karma: 133 on 2014-05-21
+Post score: 0
+
+A:
+
+Thank for the suggestion
+I solved in this way and it works, I don't know if it is the best solution
+geometry_msgs::PoseStamped current_position()  
+{ 
+        ros::Time now = ros::Time::now();  
+        geometry_msgs::PoseStamped  pose;  
+        pose.header.stamp = now;  
+        pose.header.frame_id = "/base_link";  
+        pose.pose = pose_zero;  
+        tf::StampedTransform my_transform;
+
+        try {
+                mRosTransformListener->waitForTransform("/base_link", "/map", (now+ros::Duration(1.0)), ros::Duration(10.0) );
+                mRosTransformListener->lookupTransform("/base_link", "/map", now, my_transform);
+        } 
+        catch (tf::TransformException ex) { ROS_ERROR("%s",ex.what()); }
+        if (mRosTransformListener->frameExists("/map"))
+                ROS_INFO ("/map exist");
+        if (mRosTransformListener->frameExists("/base_link"))
+                ROS_INFO ("/base_link exist");
+        try {
+                mRosTransformListener->transformPose("/map", pose, pose);
+        } 
+        catch (tf::TransformException ex) { ROS_ERROR("%s",ex.what()); }       
+        ROS_INFO("pose %f %f %f", pose.pose.position.x, pose.pose.position.y, pose.pose.position.z);                
+        return pose;
+}
+
+Thank you again for you support
+
+Originally posted by Rahndall with karma: 133 on 2014-05-22
+This answer was ACCEPTED on the original site
+Post score: 0
+

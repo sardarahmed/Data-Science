@@ -1,0 +1,97 @@
+Q:
+
+Simulation of Navigation_2D/nav2d package in Gazebo
+
+Hello,
+I am currently trying to implement the navigation_2d package using Gazebo with a Husky Robot Model and am facing several problems. Is there anyone out there who has managed to successfully implement the navigation_2d package in Gazebo?
+EDIT: So far, I have managed to successfully launch Gazebo, however I believe there is an error in the tf tree. The following warning is seen when the launch is started:
+Node: /Operator
+Time: 05:30:35.510000000 (1970-01-01)
+Severity: Warn
+Published Topics: /rosout
+Waiting on transform from base_link to odom to become available before running costmap, tf error:
+Location:
+/tmp/buildd/ros-hydro-costmap-2d-1.11.11-0quantal-20140919-0015/src/costmap_2d_ros.cpp:Costmap2DROS::Costmap2DROS:95
+The launch file, tf tree, rqt_graph and images of the simulation once launched, can be found here.
+When the command to start mapping is issued, the following error is printed:
+Could not get robot position: "map" passed to lookupTransform argument target_frame does not exist.
+Basically, I do not understand why the robot fails to localize. If it is an error in the tf tree, do I need to modify the sdf file of the Husky IIRC? The simulation, despite inputting the laser scan data, does not localize the robot nor create a map. Any help at all will be gratefully accepted. I apologize for the overload of information.
+Thank you.
+
+Originally posted by Ashwin27 on ROS Answers with karma: 34 on 2014-10-15
+Post score: 0
+
+Original comments
+Comment by ROSCMBOT on 2014-10-15:
+What is your specific problem?
+
+A:
+
+I used it in Gazebo (also with a Husky IIRC) and it should work pretty much the same as with Stage.
+The warning from the Operator about the missing tf-transform is no problem, if it happens once at startup. (Some nodes need some more time to start, so a transform can be unavailable at first.) It should not happen during runtime though.
+Both ros-graph and tf-graph seem to be fine. What is the error when you call StartMapping?
+With the changed husky definition I could start your launch file and identify two problems:
+Operator is not connected to gazebo, because topics don't match.
+So add the following  to the Operator node in your launch file:
+<remap from="cmd_vel" to="husky/cmd_vel"/>
+
+Your laser is mounted higher then usual, so you have to increase the max_obstacle_height in costmap.yaml in nav2d_tutorials:
+scan: {data_type: LaserScan, expected_update_rate: 0.4, observation_persistence: 0.0, marking: true, clearing: true, max_obstacle_height: 1.0, min_obstacle_height: 0.08}
+
+After these changes the exploration with the Husky works for me. However there still seems to be an issue with the Husky's Odometry, causing a significant drift when turning the robot. The mapping cannot always compensate for that.
+
+Originally posted by Sebastian Kasperski with karma: 1658 on 2014-10-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Ashwin27 on 2014-10-16:
+Hello Sebastien, thanks for the reply!
+If it's not too much to ask, would you please share your launch file for the gazebo simulation?
+Comment by Sebastian Kasperski on 2014-10-17:
+Sorry, can't find it anymore. Do you have problems starting Gazebo or running the nav2d stuff on the simulated robot?
+Comment by Ashwin27 on 2014-10-21:
+I have updated the question with some more details, Sebastien. Please do let me know if there is any other information that you would like.
+Comment by Ashwin27 on 2014-10-23:
+The error printed once I Start Mapping is "Could not get robot position: "map" passed to lookupTransform argument target_frame does not exist."
+I've also included my gazebo launch file here(http://).
+Thanks again!
+Comment by Sebastian Kasperski on 2014-10-23:
+In your launchfile, there is Stage and the pioneer model included. As it does not appear in the graph, you probably removed it locally already, but if not, you should do so. I think your problem is, that the robot is not moving. Can you control it with a joystick (as in tutorial1)?
+Comment by Sebastian Kasperski on 2014-10-23:
+Nevermind, I see it's commented out...
+Have you changed anything in gazebo_ros or husky_gazebo package? And you are using hydro, right?
+Comment by Sebastian Kasperski on 2014-10-23:
+Ok, while looking into this, I remembered where I put my launchfiles long ago. I pushed to Github and deleted them on my PC: https://github.com/skasperski/gazebo_robots
+Can you try to start the drive.launch? It uses a pioneer instead of a husky though.
+Comment by Sebastian Kasperski on 2014-10-23:
+I can start your launch file, but then the Husky has no laser scanner. So no map is build at all, but driving it around using the Operator works.
+Comment by Ashwin27 on 2014-10-23:
+Thanks for checking out the launch file, Sebastien! I am using hydro and made one change to the husky urdf file, adding a LIDAR sensor as per the instructions given here. I've uploaded the changed urdf file to the drive folder.
+Comment by Ashwin27 on 2014-10-23:
+As for the drive.launch file you've uploaded, it runs on my system. However, once I call the /scout/StartMapping service to begin mapping, the robot doesn't do anything. I don't really have a joystick, I just directly call the services to begin mapping and exploration.
+Comment by Ashwin27 on 2014-10-23:
+On running the drive.launch, I've realized there is currently nothing being published on the topic /scout/base_scan. However, in the simulation I've created, I am publishing laser scanner data, /map is successfully published and yet, I can't seem to get the mapping to work.
+Comment by Sebastian Kasperski on 2014-10-24:
+From your RVIZ-screenshot I would say that the mapping is doing fine. I assume that the problem is with the navigation. With the drive.launch, do you get the same error message when you call StartMapping as with your own launch file?
+Comment by Ashwin27 on 2014-10-24:
+The only warning I get is "The Navigator is busy." And that is probably when I start Exploration. When I start mapping, there is nothing being printed on the rqt_console, and yes, it is the same on the drive.launch file as well as in mine.
+Comment by Ashwin27 on 2014-10-24:
+Thanks for the updated answer, Sebastien. I had tried the remapping to husky/cmd_vel earlier but had received the error: Client [/gazebo] wants topic /husky/cmd_vel to have datatype/md5sum [geometry_msgs/Twist/9f...], but our version has [nav2d_operator/cmd/90c...]. Dropping connection.
+Comment by Ashwin27 on 2014-10-24:
+Does it depend on the version of gazebo you're using? Or do I have to make changed in the husky's urdf file again? I'm currently using gazebo-1.9. Would updating it help solve this error.
+Comment by Sebastian Kasperski on 2014-10-24:
+Don't confuse cmd(Navigator -> Operator) and cmd_vel(Operator -> Robot/Gazebo). cmd_vel has Type Twist and can be mapped to /husky/cmd_vel.
+Comment by Sebastian Kasperski on 2014-10-24:
+I am also using Gazebo 1.9 (The one that ships with Ubuntu 12.04)
+Comment by Ashwin27 on 2014-10-24:
+Oh, my mistake, sorry about that. The reason I tried /cmd instead of /cmd_vel was because nothing is being published on cmd_vel. /cmd does have something published on it once I start Mapping.
+Comment by Ashwin27 on 2014-10-24:
+I've uploaded a screenshot of my rqt_console here. I called the StartMapping service at #19, after which the Navigator was initialised. After this, it just continuously prints the tf error. The robot does not move.
+Comment by Sebastian Kasperski on 2014-10-24:
+This is strange now, as I am using your launch file and it works here. Are you sure you haven't done any other changes in nav2d or the husky_gazebo? Are you using nav2d debian packets or did you build from source?
+Comment by Ashwin27 on 2014-10-24:
+Sorry about that, Sebastien, I downloaded the packages again and it's working now. Although, yes, the Husky's odometry does seem to be causing issues. Still, it's running now, I'll try to figure the rest out and keep you posted, if I get the maping to run better.
+Comment by Ashwin27 on 2014-10-24:
+And thank you so much! It really is brilliant of you to offer so much help.
+

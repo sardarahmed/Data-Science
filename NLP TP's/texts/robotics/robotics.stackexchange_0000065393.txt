@@ -1,0 +1,50 @@
+Q:
+
+How to power off Kinect from software
+
+I have a Kinect connected to the onboard Linux-based PC on my robot.
+However, in many scenarios I am not using the Kinect, so I would like to be able to turn it off from command line to save power.
+I tried the following:
+echo '1-1' > /sys/bus/usb/drivers/usb/unbind
+
+This works, in the sense that the power light of the Kinect goes off for a moment, and the USB device is removed. However, the Kinect gets redetected within a second - re-enabling it.
+Following results in the same behaviour:
+echo '1' > /sys/bus/usb/devices/1-1/remove
+
+Note that I am using a 3.4 kernel, and following does not work:
+echo '0' > /sys/bus/usb/devices/1-1/power/autosuspend_delay_ms"
+echo 'auto' > /sys/bus/usb/devices/1-1/power/control"
+
+Is there a way to disable the Kinect from software?
+Thank you!
+
+Originally posted by Kristof on ROS Answers with karma: 141 on 2015-01-25
+Post score: 0
+
+A:
+
+I found that the command
+echo '1-1' > /sys/bus/usb/drivers/usb/unbind
+
+works, but it needs to be repeated twice in a well timed way.
+What works reliably for me is the following:
+echo '1-1' > /sys/bus/usb/drivers/usb/unbind; sleep 2.5; echo '1-1' > /sys/bus/usb/drivers/usb/unbind
+
+Note that the 2.5 seconds sleep is crucial - 2 seconds will not work (too fast), 3 seconds neither (too slow). This was so on both machines on which I tested this.
+It seems that the sweet spot is when the Kinect USB Hub is detected, but not yet any of the actual Kinect devices:
+[ 3451.492033] usb 1-1: new high-speed USB device number 109 using ehci-pci
+[ 3451.624348] usb 1-1: New USB device found, idVendor=0409, idProduct=005a
+[ 3451.624351] usb 1-1: New USB device strings: Mfr=0, Product=0, SerialNumber=0
+[ 3451.624860] hub 1-1:1.0: USB hub found
+[ 3451.624970] hub 1-1:1.0: 3 ports detected
+
+When troubles finding the sweet spot, you can just "bruteforce" it, as follows:
+for (( i=0 ; i < 10 ; i++)) ; do echo '1-1' > /sys/bus/usb/drivers/usb/unbind; sleep 0.5; done
+
+Finally, to re-enable:
+echo '1-1 > /sys/bus/usb/drivers/usb/bind
+
+Originally posted by Kristof with karma: 141 on 2015-02-13
+This answer was ACCEPTED on the original site
+Post score: 1
+

@@ -1,0 +1,97 @@
+Q:
+
+Mapping with Sonar Data?
+
+Hi All,
+Had anyone had any success creating a reasonable map in ROS with just sonar and odometry data?
+If so I'd like to know what map type; setup etc you used.
+Currently the map is a mess (An only home brew solution works just fine) so I'm sure it must be possible.
+FYI the Sonar data is being published as both Range and laser_scan message types.
+EDIT - Sonar Laser Code for benefit of others:
+bool ToeminatorROSBridge::publishSonarAsLaserData(ros::Time time, RobotData* pRobotData)
+{
+tf::TransformBroadcaster laser_broadcaster;
+ros::NodeHandle n;
+
+// Laser/Sonar Range Test
+bool publish_laser = true;
+n.param("publish_laser", publish_laser, publish_laser);
+ros::Publisher laser_pub;
+
+if(publish_laser) 
+{
+     laser_pub = n.advertise<sensor_msgs::LaserScan>("sonar_laser_scan", 1000);
+}
+
+unsigned int num_readings = 7;
+double laser_frequency = 2;
+//populate the LaserScan message
+sensor_msgs::LaserScan scan;
+   scan.header.stamp = time;
+   scan.header.frame_id = "base_laser";
+   scan.angle_min = -1.57;
+   scan.angle_max = 1.57;
+   scan.angle_increment = 3.14 / num_readings;
+   scan.time_increment = (1 / laser_frequency) / (num_readings);
+   scan.range_min = 0.0;
+   scan.range_max = 10.0;
+
+   scan.ranges.resize(num_readings+1);
+   scan.intensities.resize(num_readings+1);
+
+   for(int i=1; i<=7; i++)
+{
+    scan.ranges[i] = pRobotData->SonarMeasurements[i-1]/100.0; // Convert to Meters             
+}
+
+laser_pub.publish(scan);
+        
+laser_broadcaster.sendTransform(tf::StampedTransform(tf::Transform(tf::createQuaternionFromRPY(0, 0, degree_to_radian(ROS_FrontSonarAngle)), 
+                                                                    tf::Vector3(0.0, 0.15, 0.0)),
+                                                                    scan.header.stamp,
+                                                                    "base_link", 
+                                                                    "base_laser"));
+return true;
+}
+
+Many Thanks
+Mark
+
+Originally posted by MarkyMark2012 on ROS Answers with karma: 1834 on 2012-08-15
+Post score: 1
+
+Original comments
+Comment by Kristof on 2013-07-14:
+Hi Mark, Did you make any progress on this? I am currently grappling with the exact same question. Thanks!
+Comment by MarkyMark2012 on 2013-08-27:
+Hi Kirstof - sorry for the late reply.
+No not really - I upgraded to groovy and knackered my system & not really had time to sort it out. I was slightly perplexed why I couldn't get anything decent when my home brew app could do a reasonable job.
+Comment by albert on 2016-05-25:
+Hi Mark, I did the same thing with 13 sonar. But have problem to clear obstacles in map when the obstacle is not there anymore. Can you give me some advice?
+Comment by MarkyMark2012 on 2016-05-31:
+@albert What map(s) set up do you have?
+Comment by albert on 2016-06-01:
+I used the costmap_2d package in the navigation stack,
+Comment by bill on 2017-01-12:
+can you upload the code of costmap_2d ? i have the same problem
+Comment by ahendrix on 2017-01-12:
+costmap_2d is part of the navigation stack. Like most ROS packages, the link to the source code is on the costmap_2d wiki page, and that points to github: https://github.com/ros-planning/navigation
+Comment by bill on 2017-01-13:
+i mean ,how you connect the sonar data with the costmap_2d, sorry for the stupid question but i am new in ros
+Comment by MarkyMark2012 on 2017-01-13:
+@bil - Whilst I never did it - other suggest creating a course laserscan - the data of which is made up from the sonar results
+Comment by ahendrix on 2017-01-13:
+There's also now a costmap layer specifically for range (IR and ultrasonic) sensors: http://wiki.ros.org/range_sensor_layer . @bill if you have further specific questions it would be better to ask a new question.
+
+A:
+
+Ultrasonic sensors suffer from several drawbacks such as bandwith and cross-sensivity. Published accuracy values for ultrasonics are based on perpendicular reflections of the sound wave off an acoustically reflective material. Narrow opening angle for the sound beam in order to obtain precise directional information about objects that are encountered, you cannot acquire depth data points but rather entire regions of constant depth this means the sensors tell us only that there is a object at the area of the measurement cone. If two or more sonar's are fired together then they could pick up each other "ping" resulting in a false readings. These limitations make ultrasonic rangers bad map builders in my opinion. Hope helps you
+
+Originally posted by cagatay with karma: 1850 on 2012-08-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by MarkyMark2012 on 2012-08-16:
+Yep I know - as mentioned maps I've generated in the past (as have others) - non ROS give a resonable depiction of the environment. I'm thinking SLAM needs more data in this case. Any suggestion for a simple occupancy grid I could use?
+

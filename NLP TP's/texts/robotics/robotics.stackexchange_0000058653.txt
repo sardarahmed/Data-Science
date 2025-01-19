@@ -1,0 +1,75 @@
+Q:
+
+Problem with ikfast_moveit tutorial
+
+link: http://moveit.ros.org/wiki/Kinematics/IKFast
+when I finish the tutorial, I try to run: "roslaunch motoman_mh5_moveit_config demo.launch"
+The rviz opens correctly, but then it closes and the terminal shows:
+All is well! Everyone is happy! You can start planning now!
+
+[ INFO] [1397151951.649167498]: Loading robot model 'motoman_mh5'...
+[ INFO] [1397151951.649462158]: No root joint specified. Assuming fixed joint
+[ INFO] [1397151952.044567779]: joint_s -2.9671 2.9671 1
+[ INFO] [1397151952.044887373]: joint_l -1.1345 2.618 1
+[ INFO] [1397151952.045032293]: joint_u -2.3736 4.4506 1
+[ INFO] [1397151952.045166528]: joint_r -3.3161 3.3161 1
+[ INFO] [1397151952.045301182]: joint_b -2.1817 2.1817 1
+[ INFO] [1397151952.045439119]: joint_t -6.2831 6.2831 1
+[ INFO] [1397151952.225434215]: Starting scene monitor
+[ INFO] [1397151952.227811123]: Listening to '/move_group/monitored_planning_scene'
+[ INFO] [1397151952.732558619]: No active joints or end effectors found for group ''. Make sure you have defined an end effector in your SRDF file and that kinematics.yaml is loaded in this node's namespace.
+
+[name_machine_15204_2001356156261009935-4] process has died [pid 15262, exit code -11, cmd /opt/ros/hydro/lib/rviz/rviz -d ~/catkin_workspace/src/motoman_mh5_moveit_config/launch/moveit.rviz __name:=rviz_machine_15204_2001356156261009935 __log:=~/.ros/log/e8dfae26-c0d5-11e3-9580-00216a36b28c/rviz_ismael_ThinkPad_T500_15204_2001356156261009935-4.log].
+log file: ~/.ros/log/e8dfae26-c0d5-11e3-9580-00216a36b28c/rviz_machine_15204_2001356156261009935-4*.log
+
+Update:
+kinematics.yaml:
+planning_group:
+    kinematics_solver: motoman_mh5_planning_group_kinematics/IKFastKinematicsPlugin
+    kinematics_solver_attempts: 3
+    kinematics_solver_search_resolution: 0.005
+    kinematics_solver_timeout: 0.005
+
+Originally posted by Bastbeat on ROS Answers with karma: 131 on 2014-04-10
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2014-04-11:
+RViz seems to be crashing with a SIGSEGV (segmentation fault: -11), which can be caused by trying to access an invalid pointer fi. Is this with the IKFast plugin configured in the kinematics.yaml file?
+Comment by gvdhoorn on 2014-04-14:
+It would seem you created the MH5 IKFast plugin yourself (AFAIK ROS-Industrial does not supply an MH5 setup). It would help if you could make your pkg / code available somewhere.
+Comment by Bastbeat on 2014-04-16:
+Which file do you need?
+Comment by gvdhoorn on 2014-04-16:
+All of the pkgs that you created yourself, relating to the MH5 (so the MoveIt configuration pkg and the IKFast plugin package).
+Comment by gvdhoorn on 2014-04-16:
+Also, have you checked those logfiles? There could be something in there which could help in debugging this issue (graphics card driver failure, etc).
+Comment by Bastbeat on 2014-04-16:
+Here, I have Upload my files: https://github.com/Bastbeat/ikfastproblem
+
+A:
+
+After taking a look at your MoveIt configuration package, it appears you have defined a planning group by selecting the Add Joints option. From your motoman_mh5.srdf file:
+<group name="planning_group">
+    <link name="base_link" />
+    <link name="link_b" />
+    ...
+    <joint name="joint_s" />
+    <joint name="joint_l" />
+    ...
+</group>
+
+I'm not sure why (yet), but MoveIt (or RViz) doesn't seem to like that (see also ros-industrial/universal_robot#41).
+If you instead define your planning group as a kinematic chain, things should work just fine. You can do this using the MoveIt Setup Assistant, or just editing your srdf directly. Something like the following should do:
+<group name="planning_group">
+    <chain base_link="base_link" tip_link="link_t" />
+</group>
+
+BTW: your MoveIt configuration package was missing quite a few launch files (demo.launch and move_group.launch among others). Make sure it is complete.
+
+You also might want to rename your planning group to manipulator, which is the ROS-Industrial standard name for a planning group (see also the Create a MoveIt Package for an Industrial Robot tutorial).
+
+Originally posted by gvdhoorn with karma: 86574 on 2014-04-18
+This answer was ACCEPTED on the original site
+Post score: 2
+

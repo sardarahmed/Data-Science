@@ -1,0 +1,64 @@
+Q:
+
+Is it possible to know diff_drive_controller frequency?
+
+Hi all,
+My problem is the following:
+
+I am using TIAGoSimulation in Gazebo to perform some experiments with wheeled mobile robots.
+
+My goal is to have the robot performing autonomously a desired trajectory.
+
+From this paper I found parametric equations for the 8-shaped trajectory and therefore I can compute linear and angular velocity commands for executing it.
+
+Now, my assumption is:
+
+the diff_drive_controller is a "low-level" controller that receives as input linear and angular velocities for the mobile platform, converts them in rotational velocities for left and right wheel and ensures that the wheels rotate at that speed.
+
+Therefore, my question is:
+
+Which is the operational frequency of the diff_drive_controller?
+
+Plus, once I know it, in order to execute the desired trajectory, is it enough to do something like that?
+cmd_vel_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+...
+cmd_vel_pub.publish(cmd_vel_msg);
+ros::Rate(controller_frequency).sleep();
+
+where controller_frequency is, of course, the controller frequency.
+Thanks,
+Federico.
+
+Originally posted by schizzz8 on ROS Answers with karma: 183 on 2019-05-02
+Post score: 0
+
+A:
+
+Which is the operational frequency of the diff_drive_controller?
+
+This is a slightly ambiguous question, as it's actually the driver node (ie: the one that hosts the hardware_interface) that determines this. It's not a property of the controller.
+In the case of the Tiago simulation, gazebo_ros_control is used, which is added to the simulation here and is configured with a control rate of 1 kHz here.
+So if the diff_drive_controller is loaded there, it should be updated at the same rate.
+
+Plus, once I know it, in order to execute the desired trajectory, is it enough to do something like that?
+cmd_vel_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+
+...
+cmd_vel_pub.publish(cmd_vel_msg);
+ros::Rate(controller_frequency).sleep();
+
+where controller_frequency is, of course, the controller frequency.
+
+You can certainly try this as a first approach.
+Thing is: doing it this way won't time-synchronise your node with the Gazebo simulation, which complicates things (ie: there is no lock-step between your script and Gazebo's dynamics).
+If time-synchronisation is important (and because of the potential for Gazebo simulations to run at a slower rate than Wallclock it probably is), afaik there are two possible approaches:
+
+implement your controller as a ros_control controller as well (and combine it with the diff_drive_controller): it will then run in the same execution context as gazebo_ros_control, thereby guaranteeing it will run at exactly the same rate)
+setup a lock-step setup with Gazebo
+
+Neither of those are necessarily easy, but both should be doable. The latter has been discussed a few times both here on ROS Answers as well as on Gazebo Answers and might require a custom Gazebo plugin (but I'm not a Gazebo expert so I may be wrong).
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-05-02
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,97 @@
+Q:
+
+Rtabmap_ros with realsense odometry: Could not get transform from base_link to camera_color_optical_frame
+
+I am trying to use RTABMAP_ROS with realsense as the RGB-D input.
+Thanks to the useful tips from the post of http://answers.ros.org/question/218957/realsense-r200-with-rtabmap-rgbd-odometry/
+I am able to see the data and get the rtabmap node running, but I am keep getting the warning of
+[ WARN] [1452906467.763968588]: odometry: Could not get transform from base_link to camera_color_optical_frame (stamp=1452906467.632809) after 0.100000 seconds ("wait_for_transform_duration"=0.100000)!
+
+and no map was shown in the rtabmapviz.
+command used:
+roslaunch realsense realsense_r200_launch.launch dHeight:=240 dWidth:=320 dFPS:=30 cHeight:=240 cWidth:=320 cFPS:=30
+roslaunch rtabmap_ros rgbd_mapping.launch rgb_topic:=/camera/color/image_raw depth_registered_topic:=/camera/depth/image_raw camera_info_topic:=/camera/color/camera_info frame_id:=base_link rtabmap_args:="--delete_db_on_start" estimation:=1
+My rqt_graph: https://drive.google.com/file/d/0B_NR... Thank you very much !
+The rosbag recorded are shared here: https://drive.google.com/file/d/0B2puf8bD_Nz8RjdtQzlQUGhUNFk/view?usp=sharing
+Does any body know the reason ?
+
+Originally posted by sevense77 on ROS Answers with karma: 3 on 2016-01-15
+Post score: 0
+
+Original comments
+Comment by matlabbe on 2016-01-15:
+Can you add the TF tree to your question?
+$ rosrun tf view_frames
+$ evince frames.pdf
+Comment by sevense77 on 2016-01-16:
+I don't have the right to attach, shared the frames.pdf in google drive: https://drive.google.com/open?id=0B2puf8bD_Nz8R0RsdHB0MmlXdENmVFBPb3dkMnF5c0JzcFRN
+Thank you very much !
+Comment by matlabbe on 2016-01-16:
+The realsense_frame is not connected to TF tree. What is your launch file, or commands used? Normally, if you have RGB image + Registered depth image + RGB camera info topics and corresponding frames in TF, you should be good to map.
+Comment by sevense77 on 2016-01-17:
+I just attached the files I used, i thought I was following your advices in http://answers.ros.org/question/218957/realsense-r200-with-rtabmap-rgbd-odometry/
+Thank you. Maybe I miss something.
+
+A:
+
+I tried the bag with your modified rgbd_mapping.launch. Did you record the bag with only realsense_r200_launch.launch? If yes, the realsense camera node publishes already transforms /realsense_frame->/camera_depth_optical_frame and /realsense_frame->/camera_color_optical_frame. The warning you are getting is because there are static_transform_publishers publishing also the same transforms when launching rgbd_mapping.launch.
+Use this:
+<!-- Frames: tf  -->
+<node pkg="tf" type="static_transform_publisher"  name="base_to_realsense"
+      args="0 0 0 -1.5707963 0 -1.5707963 /base_link /realsense_frame 100" />    
+
+instead of
+<!-- Frames: tf  -->
+<node pkg="tf" type="static_transform_publisher"  name="base_to_color"
+      args="0 0 0 -1.5707963 0 -1.5707963 /base_link /camera_color_optical_frame 100" /> 
+<node pkg="tf" type="static_transform_publisher" name="color_to_depth"
+      args="-0.1325 -0.1975 0.0 -1.570796327 0.0 0.0 /camera_color_optical_frame /camera_depth_optical_frame 100" /> 
+
+So with your rosbag:
+$ rosbag info 2016-01-18-16-14-41.bag
+topics:      /camera/color/camera_info                  555 msgs    : sensor_msgs/CameraInfo     
+             /camera/color/image_raw/compressed         554 msgs    : sensor_msgs/CompressedImage
+             /camera/depth/image_raw/compressedDepth    555 msgs    : sensor_msgs/CompressedImage
+             /tf                                       1110 msgs    : tf2_msgs/TFMessage
+
+Launch the example like that:
+$ roslaunch rgbd_mapping.launch rgb_topic:=/camera/color/image_raw depth_registered_topic:=/camera/depth/image_raw camera_info_topic:=/camera/color/camera_info frame_id:=base_link rtabmap_args:="--delete_db_on_start" estimation:=1 compressed:=true
+$ rosparam set use_sim_time true
+$ rosbag play --clock 2016-01-18-16-14-41.bag
+
+The warning may apppear on start 2-3 times but after it is ok:
+[ INFO] [1453176055.454777214]: rtabmap 0.10.12 started...
+[ WARN] [1453176067.382156280, 1453162481.896671693]: odometry: Could not get transform from base_link to camera_color_optical_frame (stamp=1453162481.777381) after 0.100000 seconds ("wait_for_transform_duration"=0.100000)!
+[ WARN] [1453176067.479223601, 1453162482.000379765]: odometry: Could not get transform from base_link to camera_color_optical_frame (stamp=1453162481.886188) after 0.100000 seconds ("wait_for_transform_duration"=0.100000)!
+[ INFO] [1453176067.531584531]: Odom: quality=0, std dev=1.000000m, update time=0.042757s
+[ INFO] [1453176067.700283209]: Odom: quality=30, std dev=0.182574m, update time=0.141564s
+[ INFO] [1453176067.835296760]: rtabmap: Rate=1.00s, Limit=0.000s, RTAB-Map=0.3025s, Pub=0.0020s (local map=1, WM=1)
+[ INFO] [1453176067.874122050]: Odom: quality=65, std dev=0.124035m, update time=0.150594s
+
+Here some screenshots:
+
+cheers
+
+Originally posted by matlabbe with karma: 6409 on 2016-01-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sevense77 on 2016-01-19:
+Yes, I recorded  the bag with only realsense_r200_launch, it is the default launch file of realsense_ros.
+Thank you for your help. Your answer is very clear, thank you !
+Comment by sevense77 on 2016-01-20:
+Hi Mathieu, after following  your suggestion above, I still couldn' get the result,
+Same warning appears.
+The frame image is https://drive.google.com/file/d/0B2puf8bD_Nz8dW5CV3kwcTg1TG8/view?usp=sharing Seems map and odom haven't been linked.
+Comment by matlabbe on 2016-01-20:
+The /map and /odom frames will be published only if odometry is working. Doing it live, you should not use compressed:=true and rosparam set use_sim_time true. You can increase the wait time with argument wait_for_transform:=1 for 1 sec instead of 0.1 sec.
+Comment by sevense77 on 2016-01-20:
+Thanks, Mathieu. Finally got the live version worked. RTABMAP is awesome. Seems the realsense_ros is not very stable though.
+Comment by Gabee on 2016-08-03:
+Hey sevense77, how exactly did you get it to work? Because I tried the frame_id thing in the launch file but I am still getting "odometry: Could not get transform from base_link to camera_depth_optical_frame (stamp=1452906467.632809) after 0.100000 seconds ("wait_for_transform_duration"=0.100000)!"
+Comment by Gabee on 2016-08-03:
+I am also getting the error :  "rtabmapviz: Could not get transform from odom to camera_link after 1.000000 seconds (for stamp=1470155388.571447)!" . Thanks for the help :)
+Comment by matlabbe on 2016-08-03:
+Tutorial http://wiki.ros.org/rtabmap_ros/Tutorials/HandHeldMapping has been updated for RealSense R200
+

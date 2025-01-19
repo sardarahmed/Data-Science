@@ -1,0 +1,80 @@
+Q:
+
+Mocking call to third-party module from Publisher
+
+I have just started working with ROS2 in python on an existing project and have to write unit tests to begin with. The production code will run on a raspberry pi, but testing is being done in an Ubuntu VM on Parallels. My first attempt starts the publisher from within the test, subscribes to it and then checks the message content. The publisher reports, among other things, the CPU temperature, which it gets from the gpiozero module. This crashes when run on the VM because it tries to access the pi-specific hardware. Although this particular issue could be resolved by using the platform-independent psutil package, it will occur in other situations, so I think I need a solution that enables me to use stub packages when running tests, ideally without any modification to the actual code.
+As the publisher is started in a different process, I think I have established that none of the 'mocking' approaches of unittest or pytest will work. My only solution at the moment is to put this code in the package script before it attempts to import gpiozero:
+if os.environ.get('PYTEST_CURRENT_TEST') is not None:
+    sys.path.insert(0, os.getcwd()+'/test')
+import gpiozero
+
+I have been trying to find a way that doesn't require this addition to the source. LaunchDescription might offer such a solution, but I have been unable to see it.
+Is there a standard way of doing this?
+
+A:
+
+It turns out a straightforward way of overcoming the problem is to use the multi-threaded executor. This requires the publishing node to be created in the script instead of via LaunchDescription. The hardware-dependent library can then be mocked in conftest.py using pytest-stub.
+from rclpy.executors import MultiThreadedExecutor
+
+class ExampleSubscriber(Node):
+
+    def __init__(self):
+        super().__init__('minimal_subscriber')
+        self.msgs_rx = []
+        self.subscription = self.create_subscription(
+            msg_type=Example,
+            topic='example',
+            callback=lambda msg: self.msgs_rx.append(msg),
+            qos_profile=10)
+
+class TestExampleLink(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        rclpy.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        rclpy.shutdown()
+
+    def setUp(self):
+        self.node = rclpy.create_node('test_example_link')
+        self.executor = MultiThreadedExecutor(num_threads=4)
+
+        self.publisher = ExampleNode(publishing_interval=1)
+        self.subscriber = ExampleSubscriber()
+
+        self.executor.add_node(self.publisher)
+        self.executor.add_node(self.subscriber)
+
+    def tearDown(self):
+        self.node.destroy_node()
+
+    def test_stats_mt(self):
+        try:
+            end_time = time.time() + 10
+            while time.time() < end_time:
+                self.executor.spin_once(timeout_sec=0.1)
+                if len(self.subscriber.msgs_rx) > 0:
+                    break
+
+            self.assertGreater(len(self.subscriber.msgs_rx), 0, 'Failed to receive any messages')
+            # remaining asserts go here
+        finally:
+            self.executor.shutdown()
+            self.publisher.destroy_node()
+            self.subscriber.destroy_node()
+
+conftest.py:
+from pytest_stub.toolbox import stub_global
+
+class CPUTemperature():
+
+    temperature = 42.0
+
+stub_global({
+    'gpiozero': {
+        'CPUTemperature': CPUTemperature,
+    }
+})
+

@@ -1,0 +1,215 @@
+Q:
+
+how to draw lines from a plugin or via messages
+
+Hello,
+can anyone tell me how to draw lines via messages or from a plugin?
+I already tried DynamicLines and Scene->DrawLine from inside a world plugin
+but without results. It either crashed the server or nothing happened at all.
+Thanks for the help and best regards
+Bastian
+
+Originally posted by Karandaras on Gazebo Answers with karma: 76 on 2012-10-11
+Post score: 3
+
+A:
+
+Thanks for the answer.
+I already added a simple way of drawing to the Scene class. It is probably not the best way, but it works for me and allows me to continue my work.
+Here is the code I used for that.
+Added needed stuff to the Scene header
+gazebo/rendering/Scene.hh
+/// \brief Subscribe to draw for line drawing
+private: transport::SubscriberPtr drawingSub;
+
+/// \brief Drawing callback
+/// \param[in] _msg The message data.
+private: void OnDrawing(ConstDrawingPtr &_msg);
+
+/// \brief Process a drawing message
+/// \param[in] _msg The message data.
+private: bool ProcessDrawingMsg(ConstDrawingPtr &_msg);
+
+/// \def DrawingMsgs_L
+/// \brief List of drawing messages.
+typedef std::list<boost::shared_ptr<msgs::Drawing const> > DrawingMsgs_L;
+
+/// \brief List of drawing message to process.
+private: DrawingMsgs_L drawingMsgs;
+
+New functions for the drawing
+gazebo/rendering/Scene.cc
+/////////////////////////////////////////////////
+void Scene::OnDrawing(ConstDrawingPtr &_msg)
+{
+  boost::mutex::scoped_lock lock(*this->receiveMutex);
+  this->drawingMsgs.push_back(_msg);
+}
+
+/////////////////////////////////////////////////
+bool Scene::ProcessDrawingMsg(ConstDrawingPtr &_msg)
+{
+  Ogre::SceneNode *sceneNode = NULL;
+  Ogre::ManualObject *obj = NULL;
+  bool attached = false;
+
+  if (this->manager->hasManualObject(_msg->name()))
+  {
+    sceneNode = this->manager->getSceneNode(_msg->name());
+    obj = this->manager->getManualObject(_msg->name());
+    attached = true;
+  }
+  else
+  {
+    sceneNode = this->manager->getRootSceneNode()->createChildSceneNode(_msg->name());
+    obj = this->manager->createManualObject(_msg->name());
+  }
+
+  sceneNode->setVisible(_msg->visible());
+  obj->setVisible(_msg->has_visible());
+  obj->estimateVertexCount(_msg->point_size());
+
+  obj->clear();
+  std::string material = "Gazebo/Red";
+  if(_msg->has_material()) {
+    material = _msg->material();
+  }
+
+  if(!_msg->has_mode())
+    obj->begin(material, Ogre::RenderOperation::OT_LINE_LIST);
+  else if(_msg->mode() == msgs::Drawing::POINT_LIST)
+    obj->begin(material, Ogre::RenderOperation::OT_POINT_LIST);
+  else if(_msg->mode() == msgs::Drawing::LINE_LIST)
+    obj->begin(material, Ogre::RenderOperation::OT_LINE_LIST);
+  else if(_msg->mode() == msgs::Drawing::LINE_STRIP)
+    obj->begin(material, Ogre::RenderOperation::OT_LINE_STRIP);
+  else if(_msg->mode() == msgs::Drawing::TRIANGLE_LIST)
+    obj->begin(material, Ogre::RenderOperation::OT_TRIANGLE_LIST);
+  else if(_msg->mode() == msgs::Drawing::TRIANGLE_STRIP)
+    obj->begin(material, Ogre::RenderOperation::OT_TRIANGLE_STRIP);
+  else if(_msg->mode() == msgs::Drawing::TRIANGLE_FAN)
+    obj->begin(material, Ogre::RenderOperation::OT_TRIANGLE_FAN);
+
+  int p = _msg->point_size();
+  for(int i=0; i<p; i++) {
+    obj->position(_msg->point(i).position().x(), _msg->point(i).position().y(), _msg->point(i).position().z());
+    if(_msg->point(i).has_color())
+      obj->colour(Conversions::Convert(msgs::Convert(_msg->point(i).color())));
+  }
+  obj->end();
+
+  if (!attached)
+    sceneNode->attachObject(obj);
+
+  if(_msg->has_pose()) {
+    sceneNode->setPosition(Conversions::Convert(msgs::Convert(_msg->pose().position())));
+    sceneNode->setOrientation(Conversions::Convert(msgs::Convert(_msg->pose().orientation())));
+  }
+
+  return true;
+}
+
+Changes adding the new function to be processed during prerender
+gazebo/rendering/Scene.cc
+void Scene::PreRender()
+{
+  // ...
+  static SensorMsgs_L::iterator sensorIter;
+  static LinkMsgs_L::iterator linkIter;
+  static DrawingMsgs_L::iterator drawingIter;
+
+  // ...
+  // Process the link messages
+  linkIter = this->linkMsgs.begin();
+  while (linkIter != this->linkMsgs.end())
+  {
+    if (this->ProcessLinkMsg(*linkIter))
+      this->linkMsgs.erase(linkIter++);
+    else
+      ++linkIter;
+  }
+
+  // Process the drawing messages
+  drawingIter = this->drawingMsgs.begin();
+  while (drawingIter != this->drawingMsgs.end())
+  {
+    if (this->ProcessDrawingMsg(*drawingIter))
+      this->drawingMsgs.erase(drawingIter++);
+    else
+      ++drawingIter;
+  }
+  // ...
+}
+
+Registering the new subscriber
+gazebo/rendering/Scene.cc
+Scene::Scene(const std::string &_name, bool _enableVisualizations)
+{
+  // ...
+  this->sceneSub = this->node->Subscribe("~/scene", &Scene::OnScene, this);
+
+  this->drawingSub = this->node->Subscribe("~/draw", &Scene::OnDrawing, this);
+  // ...
+}
+
+Message definition
+gazebo/msgs/drawing.proto
+package gazebo.msgs;
+
+/// \ingroup gazebo_msgs
+/// \interface Drawing 
+/// \brief Message that is used to draw inside gazebo
+/// \verbatim
+
+import "vector3d.proto";
+import "pose.proto";
+import "color.proto";
+
+message Drawing
+{
+  enum Mode
+  {
+    POINT_LIST     = 1;
+    LINE_LIST      = 2;
+    LINE_STRIP     = 3;
+    TRIANGLE_LIST  = 4;
+    TRIANGLE_STRIP = 5;
+    TRIANGLE_FAN   = 6;
+  }
+  
+  message Point
+  {
+    required Vector3d position  = 1;
+    optional Color color        = 2;
+  }
+
+  required string name          = 1;
+  required bool visible         = 2;
+  optional Pose pose            = 3;
+  optional string material      = 4;
+  optional Mode mode            = 5;
+  repeated Point point          = 6;
+}
+
+/// \endverbatim
+
+It is probably not the best way to solve my problem, but it works for me.
+Bastian
+Here are the files/patches, hope everything works, since I am not familiar with diff
+Drawing.proto
+Patch for CMakeLists.txt
+Patch for Scene.cc
+Patch for Scene.hh
+
+Originally posted by Karandaras with karma: 76 on 2012-10-21
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Karandaras on 2013-01-05:
+I would be glad to hear if my code got used. Keep up the good work with the simulator.
+Comment by nkoenig on 2013-01-09:
+I will start integrating you code shortly. For future reference, it's better to submit changes through a pull request on our bitbucket site: http://bitbucket.org/osrf/gazebo.
+Comment by nkoenig on 2013-01-11:
+Ticketed here: https://bitbucket.org/osrf/gazebo/issue/382/render-via-message
+

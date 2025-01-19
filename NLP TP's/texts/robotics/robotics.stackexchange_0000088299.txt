@@ -1,0 +1,65 @@
+Q:
+
+G2O BlockSolver Initialization Crash on Unix System
+
+I have a project which possesses and uses G2O library, it runs on both platforms(win/Unix).
+(WINDOW PASSED / UNIX CRASHED)
+We can see in both platforms, these lines:
+g2o::SparseOptimizer optimizer;
+g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+
+linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+
+Next steps, in window os we have this:
+g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+
+But Unix system can't compile those lines because it says
+
+my_file_G2o.cpp: In member function 'int Refiner_G2O::refinePose(cv::Mat&, const std::vector<cv::Point3_ >&, const std::vector<cv::KeyPoint>&, const cv::Mat&, float, std::vector&)': my_file_G2o.cpp --> no matching function for call to 'g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>::BlockSolver(g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>::LinearSolverType&)'
+^
+In file included from G2o/include/g2o/core/block_solver.h:199:0,
+G2o/include/g2o/core/block_solver.hpp:40:1: note: candidate: g2o::BlockSolver::BlockSolver(std::unique_ptr) [with Traits = g2o::BlockSolverTraits<6, 3>; typename Traits::LinearSolverType = g2o::LinearSolver<Eigen::Matrix<double, 6, 6, 0> >]
+BlockSolver::BlockSolver(std::unique_ptr linearSolver)
+
+When I see these errors, I complete my Unix code with this new block
+auto solver_ptr = g2o::make_unique<g2o::BlockSolver_6_3>(linearSolver); // [SEGFAULT LINE]
+auto solver = g2o::make_unique<g2o::OptimizationAlgorithmLevenberg>(solver_ptr);
+optimizer.setAlgorithm(solver.get());
+
+So now, I can build/run but I meet a segfault on the line with [SEGFAULT LINE] tag.
+I don't understand, why? if someone has an idea I want to understand how in Window it works and not in Unix system, will feel wonderful if you help.
+LINUX Version: Ubuntu 16.04
+CMAKE Version: 3.11.4
+Best regards,
+
+Originally posted by Simontraww on ROS Answers with karma: 16 on 2018-08-02
+Post score: 0
+
+A:
+
+SOLVED:
+G2O optimise:
+g2o::SparseOptimizer optimizer;
+
+auto linearSolver = std::make_unique<g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>>();
+
+auto solver = new g2o::OptimizationAlgorithmLevenberg(std::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
+
+optimizer.setAlgorithm(solver);
+
+MISC.H:
+template<typename T, typename ...ArgTs>
+std::unique_ptr<T> make_unique(ArgTs&& ...args)
+{
+  return std::unique_ptr<T>(new T(std::forward<ArgTs>(args)...));
+};
+
+Originally posted by Simontraww with karma: 16 on 2018-08-03
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Vignesh_93 on 2020-12-12:
+Can you explain the MISC.H, do we need to create this file separately or we can add this to the existing file itself ?
+

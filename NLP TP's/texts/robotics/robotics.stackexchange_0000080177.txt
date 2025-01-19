@@ -1,0 +1,119 @@
+Q:
+
+Convert commands from prismatic joint to revolute for FollowJointTrajectory controller, robot arm gripper
+
+I have a robotic arm (Cyton Gamma 300) with a 2-finger gripper, one joint mimics another (see the picture below).
+My goal is to control and execute trajectories on the gripper using MoveIt.
+
+The gripper-related URDF/xacro chunk is as follows (the complete xacro description of the robot is here):
+    <joint name="gripper_finger1_joint" type="prismatic">
+        <parent link="wrist_roll" />
+        <child link="gripper_finger1" />
+        <origin xyz="${gripper_finger1_joint_init_xyz}" rpy="${gripper_finger1_joint_init_rpy}" />
+        <limit lower="-0.008" upper="0.008" effort="100.0" velocity="1.0" />
+        <axis xyz="1 0 0" />
+    </joint>
+    <link name="gripper_finger1">
+          <!-- Link Description omitted for brevity -->
+    </link>
+
+    <joint name="gripper_finger2_joint" type="prismatic">
+        <!-- Joint Description omitted for brevity -->
+        <mimic joint="gripper_finger1_joint" multiplier="-1"/> 
+    </joint>
+    <link name="gripper_finger2">
+          <!-- Link Description omitted for brevity -->
+    </link>
+
+As it can be seen from the description, (i) the joints are defined as prismatic, and as it can be seen from the photo,
+(ii) the gripper of the real robot is controlled by one 'dynamixel' motor, which is revolute. For the prismatic joint the displacement is specified in meters, whether for the dynamixel joint the rotation angle is defined in Radians.
+My goal is to use MoveIt, both with Gazebo and the real robot and be able to pick/place objects with the arm,
+leveraging available MoveIt capabilities. I am able to plan & execute trajectories for the manipulator (i.e. shoulder/wrist/elbow, 7 dynamixel motors in total), and bring the arm to the target position in space.
+However, I cannot execute a trajectory for the gripper properly, since MoveIt reads URDF description and generates a trajectory w.r.t to limits in the URDF, (i.e. it provides displacements in meters, not angle in Radians).
+To execute a trajectory in MoveIt I define FollowJointTrajectory controller as follows (complete configuration can be found here):
+controller_manager_ns: controller_manager
+controller_list:
+  - name: cyton_gamma_300/arm_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - shoulder_roll_joint
+      - shoulder_pitch_joint
+      - elbow_roll_joint
+      - elbow_pitch_joint
+      - elbow_yaw_joint
+      - wrist_pitch_joint
+      - wrist_roll_joint
+  - name: cyton_gamma_300/gripper_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - gripper_finger1_joint
+
+For instance, If I want to plan the following trajectory (gripper should come from red to yellow):
+
+I get the following on my /cyton_gamma_300/gripper_controller/follow_joint_trajectory/goal (which is exactly a displacement):
+goal: 
+  trajectory: 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 0
+        nsecs:         0
+      frame_id: /world
+    joint_names: ['gripper_finger1_joint']
+    points: 
+      - 
+        positions: [0.00961187223614116]
+        velocities: [0.0]
+        accelerations: [-0.9530453139061077]
+        effort: []
+        time_from_start: 
+          secs: 0
+          nsecs:         0
+      - 
+        positions: [0.008]
+        velocities: [-0.042613731475556624]
+        accelerations: [-0.9775129354039888]
+        effort: []
+        time_from_start: 
+          secs: 0
+          nsecs:  58159883
+      - 
+        positions: [0.007838502345021854]
+        velocities: [-0.058384310708380155]
+        accelerations: [-0.6298771853005602]
+        effort: []
+        time_from_start: 
+          secs: 0
+          nsecs:  60967905
+      - 
+      #and so on... the rest is omitted for brevity
+
+Although the trajectory is fine for Gazebo, and will be executed as expected, for the real robot it is a problem since these command would be interpreted as rotation angle, which is not correct.
+Question: how to map commands from FollowJointTrajectory to another type (i.e. from prismatic to revolute), and map the results back (i.e. feedback). Is there a standard way of approaching this problem?
+P.S. code is here. Thanks in advance!
+
+Originally posted by selyunin on ROS Answers with karma: 96 on 2017-04-13
+Post score: 1
+
+Original comments
+Comment by Anirudh_s on 2017-08-09:
+Did you manage to figure it out? If yes,please update ,I am facing a similar issue where the robotic arm is placed on a linear actuator.
+
+A:
+
+If I got it correctly, I wouldn't bother with that and declared a pseudo-prizmatic joint for the gripper. Then you can transform linear coordinates of this pseudo-motor to angular for the real robot, using something like
+arccos(linear_coord / dynamixel_radius)
+
+Originally posted by eugene.katsevman with karma: 115 on 2017-04-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by selyunin on 2017-04-15:
+I am not sure what are you referring to with a 'pseudo-prismatic' joint. I cannot find this type of joint in the documentation.
+My question is about finding a standard way  of mapping one FollowJointTrajectory controller to another  and remapping back results
+

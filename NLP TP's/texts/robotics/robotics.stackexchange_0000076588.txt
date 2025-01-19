@@ -1,0 +1,101 @@
+Q:
+
+Can I determine the topic which executed a callback in rosserial?
+
+I have a few PWM input/output pairs connected to my Arduino Nano and defined in an array.
+typedef struct {
+        char *name;
+        byte pin_in;
+        byte pin_out;
+        unsigned long rise_time;
+        unsigned long fall_time;
+        byte value_in;
+        byte value_out;
+        byte state;
+} control_t;
+
+control_t controls[]={
+     { .name="throttle", .pin_in=3, .pin_out=11, },
+     { .name="steering", .pin_in=4, .pin_out=10, },
+     { .name="transmission", .pin_in=5, .pin_out=9, },
+     { .name=NULL}
+};
+
+I want to create a subscriber and publisher for each one so that the input value (from the physical control) is published and the output value (sent to the robot) can be subscribed.  I tried using classes but discovered that rosserial doesn't support using class methods for callbacks.  So I thought I could have one subscriber callback for all of the controls.  It just needs to know the topic used so that it can do a lookup on the control name and set the PWM output of the corresponding pin.  For example, publishing 123 to /myrobot/steering/set(?) should put the value 123 on pin 10.  (I also welcome help with topic names.)
+Is it possible to get the topic name (or ID?) inside the callback?  Or is there a better way to handle this?
+Thank you.
+--kyler
+[updates to keep them all together...]
+
+There is good info here on how classes are implemented in C++:  http://stackoverflow.com/questions/400257/how-can-i-pass-a-class-member-function-as-a-callback
+
+boost::bind and boost::function (from #1) appear to do what I want.
+
+There is a (partial) Boost library for Arduino:  https://github.com/vancegroup/arduino-boost
+
+C++11 can do lambda/anonymous functions.  C++11 still seems to be experimental for Arduino.
+
+I wonder if I should subclass the rosserial code to make it do what I need.
+
+I'm going to try #4 first.  I welcome alternatives.
+[...]
+I punted and made another option:
+
+Use the preprocessor.
+
+I don't like that I have to both define and initialize the controls, but it's otherwise workable and should be easy to extend.
+#define CONTROL(n, pi, po, ptmin, ptmax) \
+        static control_t control_ ## n = { name:(char *)#n, pin_in:pi, pin_out:po, pt_min:ptmin, pt_max:ptmax, }; \
+        void put_ ## n( const std_msgs::UInt8& msg ) { \
+                sprintf(buf, "put %s: %u", control_ ## n.name, msg.data); \
+                nh.logwarn(buf); \
+                control_ ## n.value_out = msg.data; \
+                analogWrite(control_ ## n.pin_out, control_ ## n.value_out); \
+        } \
+
+#define INIT_CONTROL(n) \
+        control_ ## n.next=controls; \
+        controls=&control_ ## n; \
+        static ros::Subscriber<std_msgs::UInt8> n ## _sub("/" #n "/put", &put_ ## n ); \
+        nh.subscribe(n ## _sub); \
+
+control_t *controls = NULL;
+
+CONTROL(throttle, 3, 11, 0, 0)
+CONTROL(transmission, 4, 10, 0, 0)
+CONTROL(steering, 5, 9, 110, 145)
+
+void setup()
+{
+        nh.initNode();
+
+        INIT_CONTROL(throttle);
+        INIT_CONTROL(transmission);
+        INIT_CONTROL(steering);
+[...]
+
+(I added support for a min/max range so that I can revert to passthrough mode if a control moves out of the range.  IOW, if the steering wheel is moved, full control is passed to the local operator.
+I've been a bit concerned about processing several 500 Hz PWM signals but it's working fairly well so far.  I need to add at least one more.)
+
+Originally posted by kylerlaird on ROS Answers with karma: 104 on 2016-10-04
+Post score: 0
+
+Original comments
+Comment by JoshMarino on 2016-10-04:
+Can you not get around this by using some global class, that way it can be accessed in any function? Or if it is possible, pass the class as an argument to the callback function?
+Comment by kylerlaird on 2016-10-05:
+No, I can't use a class function because ros::Subscriber (in rosserial) requires a plain function with no arguments (including "this").  It looks like the Boost libraries make it possible to create new (argument-less) functions like this.  Doing this on Arduino will take some effort.
+Comment by ahendrix on 2016-10-10:
+It might make more sense to define a custom message type that includes all three control signals, and publish and subscribe to that.
+Comment by kylerlaird on 2016-10-10:
+Thank, ahendrix, it probably would make sense for the current situation.  But then I'll add some more more controls (perhaps splitting them over multiple Arduinos), and I'll have different nodes publishing to different controls.  It would be a pain to keep refactoring and compiling new message types
+
+A:
+
+I believe the answer to my question is "no."  You can only extract the data (and checksum, etc.) from the message passed to the callback.  There does not seem to be a clean way to use a single callback function for multiple subscribers in rosserial.
+The real solution is to update Subscriber in rosserial so that it handles arguments (like full ROS does).
+
+Originally posted by kylerlaird with karma: 104 on 2016-10-09
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,88 @@
+Q:
+
+What packages are in different ros dockerhub images?
+
+What are the differences between the different images listed in https://hub.docker.com/_/ros?
+For example:
+noetic-ros-core, noetic-ros-core-focal
+noetic-ros-base, noetic-ros-base-focal, noetic
+noetic-robot, noetic-robot-focal
+noetic-perception, noetic-perception-focal
+noetic-ros-core-buster
+noetic-ros-base-buster
+noetic-robot-buster
+noetic-perception-buster
+
+The ones listed on the same lines are the same, aliases for each other.  Ubuntu 20.04 is focal, I think buster is just for arm architectures, or maybe even just raspberry pi.  Does perception have everything in robot but then some more packages on top of that?
+Following one of the links leads to
+https://github.com/osrf/docker_images/blob/df19ab7d5993d3b78a908362cdcd1479a8e78b35/ros/noetic/ubuntu/focal/perception/Dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ros-noetic-perception=1.5.0-1*
+
+So the right apt/dpkg command could list everything in ros-noetic-perception or ros-noetic-robot (I'm looking now but I'm not coming up with the right search terms).
+I could pull down the images and run dpkg -l | grep ros-noetic in them (though I wasn't intending to work with the containers directly, just wanted one for use in a github action).
+http://wiki.ros.org/noetic/Installation/Ubuntu#Installation-1 has some clues for some of the packages but doesn't quite get there- maybe desktop-full overlaps with ros-perception, but neither is a superset of the other, or it has everything in perception then more besides?
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2022-01-17
+Post score: 0
+
+A:
+
+I believe the naming of these images -- and their contents -- follows the variants defined in REP-150: ROS Melodic and Newer Metapackages (for ROS 2, it's REP-2001: ROS 2 Variants).
+For ros_core for instance:
+
+The ros_core metapackage composes the core communication protocols. It may not contain any GUI dependencies.
+- ros_core:
+     packages: [catkin, class_loader, cmake_modules, common_msgs, gencpp,
+
+                geneus, genlisp, genmsg, gennodejs, genpy, message_generation,
+                message_runtime, pluginlib, ros, ros_comm,
+                rosbag_migration_rule, rosconsole, rosconsole_bridge,
+                roscpp_core, rosgraph_msgs, roslisp, rospack, std_msgs,
+                std_srvs]
+
+that's why you only see apt-get install [..] ros-noetic-perception in the Dockerfile.
+It just installs the perception variant.
+The focal and buster suffixes are indeed to differentiate between the different OS supported by a particular ROS version.
+ROS Noetic supports both Ubuntu Focal and Debian Buster. But the ros_core variant is part of both of those.
+So to differentiate between them, the OS code name was added, which makes it
+
+The ros_core variant of ROS Noetic on Ubuntu Focal
+
+and similar for Debian Buster.
+Those Dockerfiles are not written by hand, but generated using the scripts in the osrf/docker_images repository. Those scripts parse a large .yaml file which contains information on all the different OS + ROS version + variant combinations. See osrf/docker_images/ros/manifest.yaml for the information used to generate the ROS Noetic images.
+The tags for each image are also generated based on this information:
+
+noetic:
+
+  eol: 2025-05
+  os_names:
+    ubuntu:
+      os_code_names:
+        focal:
+          <<: *DEFAULT_ROS1
+          archs:
+            - amd64
+            - arm32v7
+            - arm64v8
+          tag_names:
+            ros-core:
+              aliases:
+                - "$release_name-ros-core"
+                - "$release_name-ros-core-$os_code_name"
+    debian:
+      [..]
+
+See the aliases key, which is responsible for the noetic-ros-core, noetic-ros-core-focal images you found (and which indeed contain the same packages).
+
+Originally posted by gvdhoorn with karma: 86574 on 2022-01-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by lucasw on 2022-01-17:
+https://ros.org/reps/rep-0150.html answers the robot vs. perception question- they both use ros_base but have nothing in common besides that.
+What I really want is a desktop_full image, which exists on https://github.com/osrf/docker_images/blob/master/ros/noetic/ubuntu/focal/desktop-full/Dockerfile - but isn't list on dockerhub.
+Comment by lucasw on 2022-01-17:
+https://github.com/osrf/docker_images/blob/e95025e4b17349438a4b68951bd6d8702b0020be/ros/noetic/debian/buster/Makefile#L18 - there's a desktop-full entry but it's commented out, but I can docker pull it and it's listed under osrf https://hub.docker.com/layers/osrf/ros/noetic-desktop-full/images/sha256-32662064d4572123b8e6644bfb1b1b655053e760d10062b7a11e032b75e71929?context=explore  ... but it's 6 months old, so probably an apt update/upgrade is more expensive than a more recent image of noetic-perception or noetic-robot and installing the minimum of additional packages
+

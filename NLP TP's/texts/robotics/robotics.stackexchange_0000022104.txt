@@ -1,0 +1,52 @@
+Q:
+
+Robots Following Robots with Safety Distance Planning and Coordination
+
+I have two robots, I wish for the second robot to follow the first one while keeping a constant distance d_safe between them. I am trying to implement a PID controller that takes as input the current distance between the second robot and the first one and then returns the second robot's velocity. I need help with the mapping of the information provided by the PID to the velocity. I can measure the current distance between the two robots at any time. Approaches I have tried in vain:
+
+using the error, e(t) provided by the PID as the acceleration of the following robot over time. This seemed to me as the most appealing approach, however, its main flaws include the second robot reversing when the acceleration turns out to be negative for a given period. I wish to avoid reversing and backward motion. However, stopping is fine. So let's say it's a stop-go system.
+used velocity equation:
+
+v2 = v2 + e(t) * dt
+where dt is the change in time and v2 is the velocity of the second robot that is following.
+
+I tried setting the absolute value of the error as the velocity and only reduce the velocity component by this much if and only if the velocity remains greater or equal to zero if necessary (robots getting too close to each other). But with this approach I can never reach my desired distance between robots especially when the velocity of the first vehicle is smaller than the distance I wish.
+So any approach, modification suggestions are all appreciated in advance. Implementation tests being performed in python - for what it is worth. Thanks. If there's something unclear, please let me know.
+
+A:
+
+I think you've got a conceptual issue here with your PID setup. You mention both:
+
+a PID controller that takes as input the current distance between the second robot and the first one
+
+and
+
+using the error, e(t) provided by the PID
+
+A PID controller accepts an error as an input and tries to drive that error to zero. If you are providing an absolute position as an input then I can definitely see where you would be having issues, because the PID controller should react to drive the input to zero. Again, then input should be error.
+To get the error, you should take your inter-robot distance feedback and compare that to your desired inter-robot distance reference to get the distance error, like
+float distanceError = distanceReference - distanceFeedback;
+
+This is your proportional error. The integral and derivative errors are calculated by taking the integral and derivative of that error, like:
+float dT = // however you get elapsed time on your system. 
+// don't forget to reset your timer/stopwatch so you can get elapsed time on the next loop
+
+static float distanceIntegralError = 0; // static so the value is retained call-to-call; "persistent" in Matlab
+float distanceProportionalError = distanceError; // For naming consistency
+distanceIntegralError += distanceError * dT;
+float distanceDerivativeError = distanceError / dT;
+
+Once you've got your proportional, derivative, and integral errors, you can do the PID control. You multiply each error term by its corresponding gain term, and then sum those products:
+float pProduct = pGain * distanceProportionalError;
+float iProduct = iGain * distanceIntegralError;
+float dProdcut = dGain * distanceDerivativeError;
+
+float pidOutput = pProduct + iProduct + dProduct;
+
+Typically the output of the PID controller is applied to whatever units are the derivative of the reference input; if you're trying to control position (as in this example) then you'd use the output as a speed reference, or if you're trying to control speed (as in a cruise control system) then you'd use the output as acceleration (torque) reference.
+It's possible that you've got some other scaling that happens on the output of your PID controller, but that generally doesn't matter because it'll be "absorbed" by the PID gains when you do your tuning.
+For tuning I always point people at the Ziegler–Nichols method because it's a methodical way to tune that's been proven to work, but it's your system - feel free to adjust it however you like.
+The last comment I'll make about this is that you should to save the PID controller to make up honest error in the control; if you use feed forward in addition to your PID controller then you get "bulk" movement out of the feed-forward signal and PID makes up the difference.
+So, for example, if you have the speed reference going to the first robot, pass that same speed reference to the second robot. The PID controller then only has to do a little bit of work to make up for minor differences, like traction, wind, weight, motor power, etc.
+You'll get much, much more consistent performance with feed-forward and PID than with just PID alone. The total output of the controller would just be the sum of the feed-forward term and the pidOutput.
+

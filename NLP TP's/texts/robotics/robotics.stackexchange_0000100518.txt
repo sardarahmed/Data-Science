@@ -1,0 +1,137 @@
+Q:
+
+How to use API created by python in C ++ node
+
+Hi,
+We are programming a pick-and-place work using the gripper of the robot arm. The program for opening and closing the purchased gripper is created by Python API, but I would like to use it in a C ++ node. Could you please tell me the easiest way to use the Python API in C ++?
+A program for opening and closing the gripper is attached.
+I want to use set_encorder () below in a C ++ node.
+Thank you
+import logging
+import sys
+
+from pymycobot.log import setup_logging
+from pymycobot.error import check_datas
+from pymycobot.common import Command, DataProcessor
+
+class MycobotCommandGenerater(DataProcessor):
+
+    """MyCobot Python API (Chain operation: *)
+
+    Supported methods:
+
+        # JOG mode and operation
+  
+            set_encoder()
+
+    """
+
+    def __init__(self, debug=False):
+        """
+        Args:
+            port     : port string
+            baudrate : baud rate string, default '115200'
+            timeout  : default 0.1
+            debug    : whether show debug info
+        """
+        self._version = sys.version_info[:2][0]
+        self.debug = debug
+        setup_logging(self.debug)
+        self.log = logging.getLogger(__name__)
+
+    def _mesg(self, genre, *args, **kwargs):
+        """
+
+        Args:
+            genre: command type (Command)
+            *args: other data.
+                   It is converted to octal by default.
+                   If the data needs to be encapsulated into hexadecimal,
+                   the array is used to include them. (Data cannot be nested)
+            **kwargs: support `has_reply`
+                has_reply: Whether there is a return value to accept.
+        """
+        command_data = self._process_data_command(args)
+
+        LEN = len(command_data) + 2
+        command = [
+            Command.HEADER,
+            Command.HEADER,
+            LEN,
+            genre,
+            command_data,
+            Command.FOOTER,
+        ]
+
+        real_command = self._flatten(command)
+        has_reply = kwargs.get("has_reply", False)
+
+        return real_command, has_reply
+
+    # JOG mode and operation
+ 
+     def set_encoder(self, joint_id, encoder):
+        """Set joint encoder value.
+
+        Args:
+            joint_id: Joint id 1 - 7
+            encoder: The value of the set encoder.
+        """
+        return self._mesg(Command.SET_ENCODER, joint_id, [encoder])
+
+    def get_encoder(self, joint_id):
+        """Get servo encoder
+
+        Args:
+            joint_id (int): servo number.
+
+        Returns:
+            (int16): servo encoder value.
+        """
+        return self._mesg(Command.GET_ENCODER, joint_id, has_reply=True)
+
+    def set_encoders(self, encoders, sp):
+        """Set all servo encoder.
+
+        Args:
+            encoders (list): encoder list
+            sp (int): speed
+
+        Returns:
+            (str): command.
+        """
+        return self._mesg(Command.SET_ENCODERS, encoders, sp)
+
+    def get_encoders(self):
+        return self._mesg(Command.GET_ENCODERS, has_reply=True)
+
+Originally posted by yo4hi6o on ROS Answers with karma: 71 on 2021-11-11
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2021-11-11:
+What about creating a stand-alone Python node which wraps the example you show here? Then create a couple of services (open/close gripper) and invoke those services from your C++ node.
+Comment by yo4hi6o on 2021-11-11:
+@gvdhoorn thank you for your quick response. Do you know a git project created that way or a helpful article?I'm learning python and I'm not used to it yet. thank you.
+Comment by gvdhoorn on 2021-11-11:
+The Writing a Simple Service and Client (Python) page shows how to create a simple server and client using rospy. Once you complete that, you can probably extend it to make a server for your services. The client would be on the C++ side, just as any other regular roscpp service clients.
+Comment by yo4hi6o on 2021-11-11:
+@gvdhoorn
+thank you.
+I'll try
+
+A:
+
+Doesn't elephantrobotics/mycobot_ros already provide ROS nodes? This node even seems to have a "gripper" service.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-11-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by yo4hi6o on 2021-11-11:
+@gvdhoorn Thank you, I just noticed it. I will use that. Thank you
+Comment by yo4hi6o on 2021-11-14:
+@Using the service server provided by elephantrobotics, which you mentioned. I was able to make it work. I was able to learn one more.
+Thank you very much.
+

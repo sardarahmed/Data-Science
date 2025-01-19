@@ -1,0 +1,59 @@
+Q:
+
+avoid obstacles while using computeCartesianPath
+
+Hi everyone!
+I got a problem while using computeCartesianPath to avoid obstacles  in moveit!
+I define an object in the xacro file, and indeed the object could be detected and avoided. but all i want is when the object is detected along the path, the planner could re-plan the path in order to avoid the object. But obviously, it fails. It just follows the original path and stops when it's adjacent to the object. Could anyone has some ideas about this or do I really did it the right way?
+Here are the relevant code:
+void movetopose(const geometry_msgs::Pose& pose)
+{
+move_group_interface::MoveGroup::Plan my_plan;
+moveit_msgs::RobotTrajectory trajectory;
+std::vector<geometry_msgs::Pose> waypoints;
+group_ptr->setStartStateToCurrentState();
+waypoints.push_back(this->group_ptr->getCurrentPose().pose);
+waypoints.push_back(pose);
+double fraction = group_ptr->computeCartesianPath(waypoints,
+                        0.01,   //eef_step
+                        0.0,    //jump_thredshold
+                        trajectory, true);
+
+ROS_INFO("Visualizing plan 4 (cartesian path) (%.2f%% acheived)",
+    fraction * 100.0);
+
+robot_trajectory::RobotTrajectory rt(this->kinematic_state->getRobotModel(),"manipulator");
+rt.setRobotTrajectoryMsg(*(this->kinematic_state), trajectory);
+
+// Thrid create a IterativeParabolicTimeParameterization object
+trajectory_processing::IterativeParabolicTimeParameterization iptp;
+bool success = iptp.computeTimeStamps(rt);
+ROS_INFO("Computed time stamp %s",success?"SUCCEDED":"FAILED");
+
+// Get RobotTrajectory_msg from RobotTrajectory
+rt.getRobotTrajectoryMsg(trajectory);
+// Finally plan and execute the trajectory
+my_plan.trajectory_ = trajectory;
+success = this->group_ptr->execute(my_plan);
+ROS_INFO("Executing the plan %s",success?"SUCCEDED":"FAILED");
+
+this->kinematic_state = this->group_ptr->getCurrentState();
+waypoints.clear();
+
+}
+};
+xacro:
+
+Thanks a lot.
+
+Originally posted by hecatezxx on ROS Answers with karma: 1 on 2015-11-19
+Post score: 0
+
+A:
+
+The cartesian path functionality is solely intended for computing cartesian paths and the behavior you request is highly application-dependent. You could either implement your own move group plugin that performs specialized treatment on failure or add your own logic for treating failures in the code where you call computeCartesianPath() (for instance checking if the goal has been reached, and triggering normal planning if this is not the case).
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2015-11-19
+This answer was ACCEPTED on the original site
+Post score: 1
+

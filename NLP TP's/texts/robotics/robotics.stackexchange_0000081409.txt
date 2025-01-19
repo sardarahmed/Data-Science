@@ -1,0 +1,75 @@
+Q:
+
+How can I get a Clearpath Jackal to receive HDL-32 data?
+
+This may be more of a general networking question but because it's relevant to the ROS community I felt like this was the most appropriate place to discuss it.
+The Problem (TL;DR)
+I have a Velodyne HDL-32 connected to a Clearpath Jackal over LAN. I'm using the ROS Velodyne drivers. When I run the commands on a laptop running Ubuntu, everything works as expected and I can see the data in RViz and in the ROS topic /velodyne_points When I run the same commands on the Jackal, the drivers launch as normal but I get nothing.
+The Problem (full explanation)
+I have an HDL-32, one Ethernet switch (not router), one Windows PC, one Ubuntu PC and one Clearpath Jackal connected over LAN as shown (note: on each device all WiFi connections and firewalls are disabled):
+
+The HDL-32 publishes it's data as UDP packets to the IP address 192.168.3.255. Any device with an IP device on subnet "3" can listen to and display the data using either Veloview for Windows or RViz and the ROS drivers for Linux.
+
+If the Windows PC is configured as shown, I can view the data in real-time in Veloview
+If the Ubuntu PC is configured as shown, and I run the Velodyne drivers, I can view the data in real-time in RViz. I can also see the raw data on the velodyne_points rostopic.
+BUT if I run the same drivers on the Jackal, the drivers launch but never receive any data and nothing is published to the velodyne_points rostopic.
+
+How can I make drivers on the jackal work? Any advice or help will be greatly appreciated.
+
+Some specifics about the setup with Jackal:
+
+The Jackal has one static Ethernet port "br0" and one DHCP port "eth0". There is also a "eth1" port which I  haven't placed yet.
+I access the jackal via SSH on the static port with the IP address 192.168.1.11.
+After getting in with SSH, the "br0" connection has the IP 192.168.11 and the "eth0" connection appears un-initialized. After running the "ifconfig" commands as stated on the Velodyne driver page the "eth0" connection is configured as shown in the diagram above.
+The "eth0" connection on the Ubuntu PC (when everything works) appears as follows:
+
+Note that the "RX Packets' show that the connection is receiving data.
+5. If I also plug the DHCP into the network (adding it to the connections in the diagram above) and run the driver commands I get the same configuration on the "eth0" port:
+
+And the port seems to be receiving the HDL data (hence the high volume of RX packets - 1+ GB). But the drivers still don't seem to be getting the data from the port as nothing is published to the /veoldyne_points topic.
+6. As a side note, the connection via SSH suffers from significant latency when the DHCP port is plugged into the network.
+7. Unfortunately I'm not the first person to use this HDL. I can't access the web interface to change it's source IP or any of it's other parameters. The cause of that problem may or may not be related to the cause of this one.
+
+Originally posted by M@t on ROS Answers with karma: 2327 on 2017-06-21
+Post score: 0
+
+A:
+
+The Solution (TL;DR)
+Contact Clearpath customer support or edit the /etc/network/interfaces file as shown below.
+The Solution (full explanation)
+The Jackal UGV has two physical Ethernet ports, but they are both tied to the same IP address (which defaults to 192.168.1.11). This is done (I assume) so that even if something goes wrong on one port, you can still plug into the other one and access your robot.
+However, this also complicates the connection if you want the Jackal to talk to a sensor over Ethernet and talk to it via a separate device (such as a laptop) at the same time. In my setup, as described above, this causes issues because the Velodyne drivers don't know how to deal with this interface, and because the shear amount of data coming from the HDL-32 floods the channel with data, creating latency issues.
+To fix this, you need to separate the two ports. Note that this solution works for a 2016 Clearpath Jackal UGV. If you are using another one of Clearpath's robots, or using a Jackal produced more recently, this may not be a problem or the solution may be different. If in doubt, contact Clearpath customer support directly.
+To separate the two ports, edit the /etc/network/interfaces file:
+sudo nano /etc/network/interfaces
+
+And change it to look like this:
+auto lo br0 br0:0 eth0 eth1
+iface lo inet loopback
+
+# Bridge together physical ports on machine, assign standard Clearpath Robot IP.
+iface br0 inet static
+  bridge_ports regex eth0
+  address 192.168.1.11
+  netmask 255.255.255.0
+
+# Also seek out DHCP IP on those ports, for the sake of easily getting online,
+# maintenance, ethernet radio support, etc.
+iface br0:0 inet dhcp
+
+iface eth1 inet static
+  address <broadcast IP>
+  netmask 255.255.255.0
+
+Where <broadcast IP> is the IP that the sensor is broadcasting to. If you are using a Velodyne sensor like I am, this should be 192.168.3.XXX where 'XXX' can be any 2 or 3 digit number you like. You should then be able to plug your sensor into one Ethernet port, plug your laptop into the other, and have the Jackal talk to both just fine, as per this diagram:
+
+As a side note, if you are using a Velodyne sensor and these Velodyne drivers, the drivers won't see the data by default. You will also need to add a static route with this command:
+route add 192.168.1.201 eth1
+
+(or use eth0 depending on your setup). To make this configuration permanent, add the same command to the /etc/rc.local file.
+
+Originally posted by M@t with karma: 2327 on 2017-07-31
+This answer was ACCEPTED on the original site
+Post score: 0
+

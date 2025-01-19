@@ -1,0 +1,39 @@
+Q:
+
+Accelerometer deterministic errors
+
+I am working on MEMS accelerometers, and I want to understand the difference between, 
+
+Cross axis sensitivity
+Axis Misalignment
+Non Orthogonality
+
+In literature, people use it interchangeably. 
+These physical parameters cause deterministic errors, which I want to correct during calibration
+
+A:
+
+Cross-axis sensitivity: A reading on one axis creates a false reading on another axis. This could be because the signal traces are close together and capacitive coupling induces a voltage on the adjacent trace. 
+Axis misalignment: The x-axis of the sensor is not aligned with the x-axis of the package, so when you are expecting an x-axis reading because you moved the package along its x-axis, you instead get readings of not-quite-full scale on x and a smaller reading on the y- and/or z-axes. 
+Non-orthogonality: The sensor is deformed and the portion of the sensor that is supposed to detect acceleration on the y-axis is instead "bent" and "leans" toward the x- and/or z-axes. Same goes for the other axes. 
+
+So, let's use the example of sliding the accelerometer purely along the x-axis. You take measurements and find that you're getting a non-zero, positive reading on the y-axis in addition to a "roughly correct" reading on the x-axis. What is the cause?
+
+Cross-axis sensitivity - could be the y-axis signal line is coupled to the x-axis signal line and the x-axis reading induces a voltage that is read by the y-axis ADC and returned.
+Axis misalignment - The z-axis is reading zero (in this example), so it is pointing in the correct direction, but the sensor could be rotated about the z-axis relative to the package (an angle $\theta$), such that the y-axis points a little in the direction of the +x-axis. When the package is slid along the package's x-axis, the sensor's x-axis reads $\ddot{x}_{\mbox{package}}\cos{\theta}$ and the sensor's y-axis reads $\ddot{x}_{\mbox{package}}\sin{\theta}$.
+Non-orthogonality - The sensor's x-axis is actually pointing correctly in the package's x-axis and the sensor's z-axis is correctly pointing in the package's z-axis, but the sensor's y-axis is "bent" and it's not perpendicular to the x- and z-axes. Now the x-axis is reading the correct value, but the y-axis is incorrectly reading some value because it's bent towards the x-axis. 
+
+Why do people use them interchangeably? Because you can't see behind the scenes and see what's causing the y-axis to incorrectly report readings. It could be any one of the three, or all three, or any other permutation. 
+:EDIT:
+OP asked about mathematical modelling of the errors, and while I don't have any resources on these exactly, I can offer a couple things to think about that you could consider as "guidelines" for designing the tests to differentiate these errors:
+
+Cross-axis sensitivity. Here the assumption is that there's some coupling between sensor axes internally. With the (almost certainly capacitive) coupling, there's an associated time constant. That is, if you could get the sensor to maintain a constant acceleration on one axis, if there is cross-axis sensitivity, the reading on the other axis should be time-dependent and should display a familiar shark fin shape. Keep in mind that a object on a circular path always needs a constant acceleration towards the axis of rotation (centripetal force), so a turntable would be an easy way to set this up. 
+Axis misalignment. If the reading on the un-actuated axis does not change with time (and know that the capacitance between those sensor lines could be very, very small - very fast time constant!), then check that the readings affect both axes equally. That is, when accelerating on the x-axis, you might get $\ddot{x}_{\mbox{package}}\cos{\theta}$ on the sensor's x-axis and $\ddot{x}_{\mbox{package}}\sin{\theta}$ on the sensor's y-axis. You have no way of knowing what $\theta$ is because it's supposed to be zero. BUT, when you re-orient the sensor and accelerate along the y-axis, you should now expect the sensor to read $\ddot{y}_{\mbox{package}}\cos{\theta}$ on the sensor's y-axis and $\ddot{y}_{\mbox{package}}\sin{\theta}$ on the sensor's x-axis. If the y-axis reading when testing the x-axis the same as the x-axis reading when testing the y-axis, then both axes are skewed and the sensor is rotated with respect to the package. Going back to the example where we're testing on the x-axis, the y-axis value should be smaller, and if you divide the y-axis reading by the x-axis reading, you get: $(\ddot{y}/\ddot{y})(\sin{\theta}/\cos{\theta})$, which is equal to $\tan{\theta}$. Now take the inverse tangent of the y/x reading and you'll get the rotation angle. 
+Non-orthogonality. This error is where one or more axes are bent such that they're not perpendicular. In this case, let's assume the sensor x- and z-axes are correctly aligned with respect to the package, but the y-axis is bent. In this case, in the same test as #2 above, you should find that when you accelerate the package along its x-axis, the y-axis is bent so it has a reading, but when you accelerate the package along its y-axis, the x-axis does not have a reading. This is because the sensor's x-axis is orthogonal to the package's y-axis, so there's nothing to sense. The sensor's y-axis is not orthogonal to the package's x-axis, though, which is why you do get a reading when moving along that axis. 
+
+To summarize: 
+If the false reading is time-dependent, it's a coupling issue. The rise and fall times give you the time constant, which in turn should allow you to model the coupling. Note that these rise/fall times might be very fast.
+If a y-axis acceleration causes a reading on the x-axis that's symmetric to the y-axis reading caused during an x-axis acceleration, the sensor is rotated with respect to the package. Take the arctangent of the readings to get the rotation angle. 
+If the readings aren't symmetric, one (or more) axes are bent. Here you'd use the arcsine (or arccosine, depending on your definition) to get the bend angle, because the unaffected axis should read the full value.
+You'll find this to be more complex in reality, because you could have all three problems on all three axes. A time-dependent coupling that doesn't start at zero indicates problem #1 with (#2 and/or #3). A related but not perfectly symmetric set of readings when swapping axes indicates problems #2 and #3 together. This should give you enough to get started designing your own tests. 
+

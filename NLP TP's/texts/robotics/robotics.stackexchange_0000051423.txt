@@ -1,0 +1,146 @@
+Q:
+
+Ogre fails to build on Mac OS 10.8.3 during rosdep install
+
+I am trying to install ROS using the homebrew based directions found on the main site (I can't publish links).
+I am doing the (recommended) Desktop install, and I am running to problems at the resolving dependencies step. Specifically, the 'brew install ogre' is failing. I filed a ticket with Homebrew, but it seems that they don't support the ogre brew formula.
+I want to post the output of the rosdep command as well as a link to the gist that I created for a brew ticket, but I am completely hamstrung by my the wiki's refusal to post links. So I'll just post the tail of the output and hope that I can somehow pass the relevant information as a response to someone's comments. I appreciate your help, and please let me know what else you'd like to see. Thanks!
+rosdep install --from-paths src --ignore-src --rosdistro groovy -y
+i've removed a bunch of stuff b/c the wiki thinks I'm posting links...
+==> cmake -DCMAKE_OSX_ARCHITECTURES='x86_64' -DOGRE_BUILD_PLUGIN_CG=OFF -DCMAKE_INSTALL_PREFIX=/usr/local/Cellar/ogre/1.7.4 -DCMAKE_B
+==> make install
+ld: symbol(s) not found for architecture x86_64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+make[2]: *** [lib/libOgreMain.1.7.4.dylib] Error 1
+make[1]: *** [OgreMain/CMakeFiles/OgreMain.dir/all] Error 2
+make: *** [all] Error 2
+READ THIS: /brew troubleshooting link/
+ERROR: the following rosdeps failed to install
+homebrew: command [brew install ogre] failed
+
+Originally posted by Ampers4nd on ROS Answers with karma: 11 on 2013-05-26
+Post score: 1
+
+Original comments
+Comment by Ampers4nd on 2013-05-26:
+This is the gist for the brew ticket, which contains the verbose output of the brew install command:  https://gist.github.com/Ampers4nd/5651663
+Comment by Ampers4nd on 2013-05-26:
+It seems I can add the links here:-) This is a link to the rosdep install output, also posted as a gist: https://gist.github.com/Ampers4nd/5654513
+Comment by Crusty on 2013-05-29:
+I have the exact same problem. Uninstalling boost and "brew install boost --universal" didnt resolve the problem.
+Comment by Crusty on 2013-06-05:
+I have updated my answer, and it solved my problem. Try it!
+
+A:
+
+Update:
+I have finally managed to build it!!! It seems the Ogre homebrew installs is pretty old (1.7) and depends on an old boost (1.49). The current boost on homebrew is 1.53 as of this date.
+The key was not using "boost149" keg-only, because it wasn't detected as satisfying the dependency properly. The following steps actually solved my problem:
+$ cd /usr/local/Cellar
+$ brew versions boost
+
+Outputs many boost versions, among this one:
+1.49.0   git checkout e40bc41 /usr/local/Library/Formula/boost.rb
+$ git checkout e40bc41 /usr/local/Library/Formula/boost.rb
+$ brew install boost
+$ brew install ogre
+
+Further info:
+And as a little side note as you seem to go through the same issues as me:
+pydot and pyparsing are the next things that are gonna fail on your ros homebrew build now that ogre works. Fastest was to get it done is to download the packages from their respective homepages directly and then
+sudo python setup.py install
+
+For pyparsing you need to grab version 1.5.7 because that's the last version supporting python 2.7
+------------ snip snip: for reference the original problem: -------------
+I have the same problem, additional information:
+Cant post links (man this is annoying), info is in ogre3d forums, forum ID in the URL is 2, thread ID is 72223
+Seems to be an incompatibility with a newer boost version.
+Verbose information from linker:
+ Linking CXX shared library ../lib/libOgreMain.dylib
+brew: superenv removed: -arch x86_64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk
+Undefined symbols for architecture x86_64:
+  "boost::this_thread::interruption_point()", referenced from:
+      boost::condition_variable::wait(boost::unique_lock<boost::mutex>&) in OgreWorkQueue.cpp.o
+      void boost::condition_variable_any::wait<boost::unique_lock<boost::recursive_mutex> >(boost::unique_lock<boost::recursive_mutex>&) in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::this_thread::disable_interruption::disable_interruption()", referenced from:
+      boost::shared_mutex::lock() in OgreWorkQueue.cpp.o
+      boost::shared_mutex::lock_shared() in OgreWorkQueue.cpp.o
+  "boost::this_thread::disable_interruption::~disable_interruption()", referenced from:
+      boost::shared_mutex::lock() in OgreWorkQueue.cpp.o
+      boost::shared_mutex::lock_shared() in OgreWorkQueue.cpp.o
+  "boost::detail::get_tss_data(void const*)", referenced from:
+      boost::thread_specific_ptr<Ogre::MaterialSerializer>::reset(Ogre::MaterialSerializer*) in OgreMaterialManager.cpp.o
+      Ogre::ScriptCompilerManager::parseScript(Ogre::SharedPtr<Ogre::DataStream>&, std::string const&) in OgreScriptCompiler.cpp.o
+      boost::thread_specific_ptr<Ogre::ScriptCompiler>::reset(Ogre::ScriptCompiler*) in OgreScriptCompiler.cpp.o
+  "boost::detail::set_tss_data(void const*, boost::shared_ptr<boost::detail::tss_cleanup_function>, void*, bool)", referenced from:
+      boost::thread_specific_ptr<Ogre::MaterialSerializer>::reset(Ogre::MaterialSerializer*) in OgreMaterialManager.cpp.o
+      boost::thread_specific_ptr<Ogre::MaterialSerializer>::~thread_specific_ptr() in OgreMaterialManager.cpp.o
+      boost::thread_specific_ptr<Ogre::ScriptCompiler>::reset(Ogre::ScriptCompiler*) in OgreScriptCompiler.cpp.o
+      boost::thread_specific_ptr<Ogre::ScriptCompiler>::~thread_specific_ptr() in OgreScriptCompiler.cpp.o
+  "boost::detail::thread_data_base::~thread_data_base()", referenced from:
+      boost::detail::thread_data<Ogre::DefaultWorkQueueBase::WorkerFunc>::~thread_data() in OgreDefaultWorkQueueStandard.cpp.o
+      boost::detail::thread_data<Ogre::DefaultWorkQueueBase::WorkerFunc>::~thread_data() in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::detail::get_current_thread_data()", referenced from:
+      boost::detail::interruption_checker::interruption_checker(_opaque_pthread_mutex_t*, _opaque_pthread_cond_t*) in OgreWorkQueue.cpp.o
+      boost::detail::interruption_checker::interruption_checker(_opaque_pthread_mutex_t*, _opaque_pthread_cond_t*) in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::system::system_category()", referenced from:
+      __GLOBAL__I_a in OgreAlignedAllocator.cpp.o
+      __GLOBAL__I_a in OgreAnimable.cpp.o
+      boost::unique_lock<boost::recursive_mutex>::lock() in OgreAnimation.cpp.o
+      __GLOBAL__I_a in OgreAnimation.cpp.o
+      boost::unique_lock<boost::recursive_mutex>::lock() in OgreAnimationState.cpp.o
+      boost::recursive_mutex::recursive_mutex() in OgreAnimationState.cpp.o
+      __GLOBAL__I_a in OgreAnimationState.cpp.o
+      ...
+  "boost::system::generic_category()", referenced from:
+      __GLOBAL__I_a in OgreAlignedAllocator.cpp.o
+      __GLOBAL__I_a in OgreAnimable.cpp.o
+      __GLOBAL__I_a in OgreAnimation.cpp.o
+      __GLOBAL__I_a in OgreAnimationState.cpp.o
+      __GLOBAL__I_a in OgreAnimationTrack.cpp.o
+      __GLOBAL__I_a in OgreArchiveManager.cpp.o
+      __GLOBAL__I_a in OgreAutoParamDataSource.cpp.o
+      ...
+  "boost::thread::join_noexcept()", referenced from:
+      Ogre::DefaultWorkQueue::shutdown() in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::thread::native_handle()", referenced from:
+      Ogre::DefaultWorkQueue::shutdown() in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::thread::hardware_concurrency()", referenced from:
+      Ogre::Root::Root(std::string const&, std::string const&, std::string const&) in OgreRoot.cpp.o
+  "boost::thread::start_thread_noexcept()", referenced from:
+      boost::thread::start_thread() in OgreDefaultWorkQueueStandard.cpp.o
+  "boost::thread::detach()", referenced from:
+      boost::thread::~thread() in OgreDefaultWorkQueueStandard.cpp.o
+  "typeinfo for boost::detail::thread_data_base", referenced from:
+      typeinfo for boost::detail::thread_data<Ogre::DefaultWorkQueueBase::WorkerFunc> in OgreDefaultWorkQueueStandard.cpp.o
+  "vtable for boost::detail::thread_data_base", referenced from:
+      boost::detail::thread_data_base::thread_data_base() in OgreDefaultWorkQueueStandard.cpp.o
+  NOTE: a missing vtable usually means the first non-inline virtual member function has no definition.
+ld: symbol(s) not found for architecture x86_64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+make[2]: *** [lib/libOgreMain.1.7.4.dylib] Error 1
+make[1]: *** [OgreMain/CMakeFiles/OgreMain.dir/all] Error 2
+make: *** [all] Error 2
+==> Configuration
+HOMEBREW_VERSION: 0.9.4
+HEAD: 28981100af3c0ca218ede4dcfadcef40635e5e6c
+CPU: 8-core 64-bit ivybridge
+OS X: 10.8.3-x86_64
+Xcode: 4.6.2
+CLT: 4.6.0.0.1.1365549073
+X11: 2.7.4 => /opt/X11
+==> ENV
+HOMEBREW_CC: clang
+MAKEFLAGS: -j8
+CMAKE_PREFIX_PATH: /usr/local
+CMAKE_INCLUDE_PATH: /opt/X11/include/freetype2:/usr/include/libxml2:/opt/X11/include
+CMAKE_LIBRARY_PATH: /opt/X11/lib
+PKG_CONFIG_PATH: /usr/local/opt/freetype/lib/pkgconfig:/usr/local/opt/libzzip/lib/pkgconfig
+PKG_CONFIG_LIBDIR: /usr/lib/pkgconfig:/usr/local/Library/ENV/pkgconfig/10.8:/opt/X11/lib/pkgconfig:/opt/X11/share/pkgconfig
+ACLOCAL_PATH: /usr/local/share/aclocal:/opt/X11/share/aclocal
+OBJC: cc
+
+Originally posted by Crusty with karma: 70 on 2013-05-29
+This answer was ACCEPTED on the original site
+Post score: 1
+

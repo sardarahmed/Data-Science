@@ -1,0 +1,50 @@
+Q:
+
+exampe of using AsyncParametersClient for multiple params
+
+I am trying to use a parameter node to store all the params that define a robot using the guide HERE.
+The examples show are for only one param, how would you do set it up for multiple params? Do I really have to do all those lines of code for each param?
+class TestGetGlobalParam : public rclcpp::Node
+{
+public:
+    TestGetGlobalParam() : Node("test_get_global_param")
+    {
+        parameters_client = 
+            std::make_shared<rclcpp::AsyncParametersClient>(this, "/global_parameter_server");
+  
+            parameters_client->wait_for_service();
+            auto parameters_future = parameters_client->get_parameters(
+                {"my_global_param"},
+                std::bind(&TestGetGlobalParam::callbackGlobalParam, this, std::placeholders::_1));
+        }
+        void callbackGlobalParam(std::shared_future<std::vector<rclcpp::Parameter>> future)
+        {
+            auto result = future.get();
+            auto param = result.at(0);
+            RCLCPP_INFO(this->get_logger(), "Got global param: %s", param.as_string().c_str());
+        }
+private:
+    std::shared_ptr<rclcpp::AsyncParametersClient> parameters_client;
+};
+
+While I know ROS2 is trying to get away from global params, but for the project I have envisioned it's the best way I can think of. I am trying to write a set of packages for legged robots (3 or 4 dof, and 4, 6 or 8 legs) where the user defines their robot via YAML and the code sets up the low level controller for IK, gait, etc.
+
+Originally posted by lutinplunder on ROS Answers with karma: 55 on 2020-11-02
+Post score: 1
+
+A:
+
+The call to get_parameters may take one or more parameter names. Check out this demo where multiple parameters are requested in a single service call:
+parameters_client->get_parameters({"foo", "baz", "foobarbaz", "toto"});
+
+Also note, the type of the future argument in the callback is a vector of parameters. This vector should contain all of the parameters requested.
+Hopefully this answers your question.
+
+Originally posted by jacobperron with karma: 1870 on 2020-11-04
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by lutinplunder on 2020-11-04:
+thanks jacobperron, the ROS2 documentation is even worse than the ROS1 version. given what you told me and what the demo shows I should be able to make it work by using get_parameters to retrieve all the variables I need and then simply map the necessary values from the array to a local name.
+

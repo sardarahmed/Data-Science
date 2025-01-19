@@ -1,0 +1,167 @@
+Q:
+
+PD Algorithm for a Quadrotor [Simulation]
+
+I have a big problem trying to stabilize a quadrotor with a PD controller.
+The model and the program has been written in C++ and the model dynamic has been taken from this source in internet: 
+Well, in my code I wrote the model like in the eq. system ( see eq. 3.30 on page 21):
+/* Calculate the acceleration about all 6 axis */
+body_pos_current_.x_dot_2 =  ( thrust_.total / masse_ ) * ( sin( body_ang_current_.theta ) * cos( body_ang_current_.phi ) * cos( body_ang_current_.psi ) + sin( body_ang_current_.psi ) * cos( body_ang_current_.phi ) );
+body_pos_current_.y_dot_2 =  ( thrust_.total / masse_ ) * ( sin( body_ang_current_.theta ) * sin( body_ang_current_.psi ) * cos( body_ang_current_.phi ) - cos( body_ang_current_.psi ) * sin( body_ang_current_.phi ) * cos( body_ang_current_.psi ) );
+body_pos_current_.z_dot_2 =  ( thrust_.total / masse_ ) * ( cos( body_ang_current_.theta ) * cos( body_ang_current_.phi ) ) - 9.81;
+
+body_ang_current_.phi_dot_2   = ( torque_.phi   / Jxx_ );
+body_ang_current_.theta_dot_2 = ( torque_.theta / Jyy_ );
+body_ang_current_.psi_dot_2   = ( torque_.psi   / Jzz_ );
+
+where body_ang_current.<angle> and body_pos_current_.<position> are structures defined in a class to store position, velocities and accelerations of the model given the 4 motor velocities about all 3 axis.
+$$
+\large \cases{ 
+ \ddot X = ( \sin{\psi} \sin{\phi} + \cos{\psi} \sin{\theta} \cos{\phi}) \frac{U_1}{m}  \cr
+ \ddot Y = (-\cos{\psi} \sin{\phi} + \sin{\psi} \sin{\theta} \cos{\phi}) \frac{U_1}{m} \cr
+ \ddot Z = (-g + (\cos{\theta} \cos{\phi}) \frac{U_1}{m} \cr
+ \dot p  = \frac{I_{YY} - I_{ZZ}}{I_{XX}}qr - \frac{J_{TP}}{I_{XX}} q \Omega + \frac{U_2}{I_{XX}} \cr
+ \dot q  = \frac{I_{ZZ} - I_{XX}}{I_{YY}}pr - \frac{J_{TP}}{I_{YY}} p \Omega + \frac{U_3}{I_{YY}} \cr
+ \dot r  = \frac{I_{XX} - I_{YY}}{I_{ZZ}}pq - \frac{U_4}{I_{ZZ}}
+}
+$$
+Once I get the accelerations above I m going to integrate them to get velocities and positions as well:
+/* Get position and velocities from accelerations */
+body_pos_current_.x_dot = body_pos_current_.x_dot_2 * real_duration + body_pos_previous_.x_dot;
+body_pos_current_.y_dot = body_pos_current_.y_dot_2 * real_duration + body_pos_previous_.y_dot;
+body_pos_current_.z_dot = body_pos_current_.z_dot_2 * real_duration + body_pos_previous_.z_dot;
+
+body_ang_current_.phi_dot   = body_ang_current_.phi_dot_2   * real_duration + body_ang_previous_.phi_dot;
+body_ang_current_.theta_dot = body_ang_current_.theta_dot_2 * real_duration + body_ang_previous_.theta_dot;
+body_ang_current_.psi_dot   = body_ang_current_.psi_dot_2   * real_duration + body_ang_previous_.psi_dot;
+
+body_pos_current_.x = 0.5 * body_pos_current_.x_dot_2 * pow( real_duration, 2 ) + ( body_pos_previous_.x_dot * real_duration ) + body_pos_previous_.x;
+body_pos_current_.y = 0.5 * body_pos_current_.y_dot_2 * pow( real_duration, 2 ) + ( body_pos_previous_.y_dot * real_duration ) + body_pos_previous_.y;
+body_pos_current_.z = 0.5 * body_pos_current_.z_dot_2 * pow( real_duration, 2 ) + ( body_pos_previous_.z_dot * real_duration ) + body_pos_previous_.z;
+
+body_ang_current_.phi   = 0.5 * body_ang_current_.phi_dot_2   * pow( real_duration, 2 ) + ( body_ang_previous_.phi_dot   * real_duration ) + body_ang_previous_.phi;
+body_ang_current_.theta = 0.5 * body_ang_current_.theta_dot_2 * pow( real_duration, 2 ) + ( body_ang_previous_.theta_dot * real_duration ) + body_ang_previous_.theta;
+body_ang_current_.psi   = 0.5 * body_ang_current_.psi_dot_2   * pow( real_duration, 2 ) + ( body_ang_previous_.psi_dot   * real_duration ) + body_ang_previous_.psi;
+
+/* Copy the new value into the previous one (for the next loop) */
+body_pos_previous_.x = body_pos_current_.x;
+body_pos_previous_.y = body_pos_current_.y;
+body_pos_previous_.z = body_pos_current_.z;
+
+body_pos_previous_.x_dot = body_pos_current_.x_dot;
+body_pos_previous_.y_dot = body_pos_current_.y_dot;
+body_pos_previous_.z_dot = body_pos_current_.z_dot;
+
+body_ang_previous_.phi   = body_ang_current_.phi;
+body_ang_previous_.theta = body_ang_current_.theta;
+body_ang_previous_.psi   = body_ang_current_.psi;
+
+body_ang_previous_.phi_dot   = body_ang_current_.phi_dot;
+body_ang_previous_.theta_dot = body_ang_current_.theta_dot;
+body_ang_previous_.psi_dot   = body_ang_current_.psi_dot;
+
+The model seems to work well but, as like reported in many papers, is very unstable and needs some controls.
+The first approach for me was to create a controller (PD) to keep the height constant without moving the quadcopter, but just putting a value (for example 3 meter) and see how it reacts.
+Here the small code I tried:
+/* PD Controller */
+double e = ( 3.0 - body_pos_current_.z );  // 3.0 is just a try value!!!
+thrust_.esum = thrust_.esum + e;
+thrust_.total = 1.3 * e + 0.2 * real_duration * thrust_.esum;
+
+The problem, as you can see here in this video, is that the copter starts falling down into the ground and not reaching the desired altitude (3.0 meters).
+Then it comes back again again like a spring, which is not damped.
+I tried already many different value for the PD controller but it seems that it doesn't affect the dynamic of the model.
+Another strange thing is that it goes always to a negative point under the ground, even if I change the desired height (negative or positive).
+What s wrong in my code? 
+Could you me please point to some documents or code which is understandable and well documented to start?
+Thanks
+EDIT:
+Many thanks to your suggestion.
+Hi was really surprise to know, that my code had lots of potential problems and was not very efficient. So I elaborate the code as your explanation and I implementers a RK4 for the integration. After I ve read those articles: here and here I got an idea about RK and its vantage to use it in simulations and graphics PC.
+As an example I rewrote again the whole code:
+/* Calculate the acceleration about all 6 axis */
+pos_.dVel.x =  ( ( thrust_.total / masse_ ) * ( -sin( body_position_.angle.theta ) * cos( body_position_.angle.phi ) * cos( body_position_.angle.psi ) - sin( body_position_.angle.phi ) * sin( body_position_.angle.psi ) ) );
+pos_.dVel.y =  ( ( thrust_.total / masse_ ) * ( sin( body_position_.angle.phi ) * cos( body_position_.angle.psi ) - cos( body_position_.angle.phi ) * sin( body_position_.angle.theta ) * sin( body_position_.angle.psi ) ) );
+pos_.dVel.z =  ( ( thrust_.total / masse_ ) * ( -cos( body_position_.angle.phi ) * cos( body_position_.angle.theta ) ) - 9.81 );
+
+pos_.dOmega.phi   = ( torque_.phi   / Jxx_ );
+pos_.dOmega.theta = ( torque_.theta / Jyy_ );
+pos_.dOmega.psi   = ( torque_.psi   / Jzz_ );
+
+/* Get position and velocities from accelerations */
+body_position_ = RKIntegrate( body_position_, real_duration );
+
+which is much more clear and easy to debug. Here some useful functions I implemented:
+QuadrotorController::State QuadrotorController::evaluate( const State &initial, const Derivative &d, double dt ) {
+
+State output;
+output.position.x = initial.position.x + d.dPos.x * dt;
+output.position.y = initial.position.y + d.dPos.y * dt;
+output.position.z = initial.position.z + d.dPos.z * dt;
+
+output.velocity.x = initial.velocity.x + d.dVel.x * dt;
+output.velocity.y = initial.velocity.y + d.dVel.y * dt;
+output.velocity.z = initial.velocity.z + d.dVel.z * dt;
+
+output.angle.phi   = initial.angle.phi   + d.dAngle.phi   * dt;
+output.angle.theta = initial.angle.theta + d.dAngle.theta * dt;
+output.angle.psi   = initial.angle.psi   + d.dAngle.psi   * dt;
+
+output.omega.phi   = initial.omega.phi   + d.dOmega.phi   * dt;
+output.omega.theta = initial.omega.theta + d.dOmega.theta * dt;
+output.omega.psi   = initial.omega.psi   + d.dOmega.psi   * dt;
+
+return output;
+
+};
+
+QuadrotorController::Derivative QuadrotorController::sampleDerivative( double dt, const State &sampleState ) {
+
+Derivative output;
+
+output.dPos = sampleState.velocity;
+output.dVel.x = pos_.dVel.x;
+output.dVel.y = pos_.dVel.y;
+output.dVel.z = pos_.dVel.z;
+
+output.dAngle = sampleState.omega;
+output.dOmega.phi   = pos_.dOmega.phi;
+output.dOmega.theta = pos_.dOmega.theta;
+output.dOmega.psi   = pos_.dOmega.psi;
+
+return output;
+
+};
+
+QuadrotorController::State QuadrotorController::RKIntegrate( const State &state, double dt ) {
+
+const double C1 = 0.0f;
+const double C2 = 0.5f, A21 = 0.5f;
+const double C3 = 0.5f, A31 = 0.0f, A32 = 0.5f;
+const double C4 = 1.0f, A41 = 0.0f, A42 = 0.0f, A43 = 1.0f;
+
+const double B1 = 1.0f/6.0f, B2 = 1.0f/3.0f, B3 = 1.0f/3.0f, B4 = 1.0f/6.0f;
+
+Derivative k1 = sampleDerivative( 0.0f, state );
+Derivative k2 = sampleDerivative( C2 * dt, evaluate( state, k1 * A21, dt ) );
+Derivative k3 = sampleDerivative( C3 * dt, evaluate( state, k1 * A31 + k2 * A32, dt ) );
+Derivative k4 = sampleDerivative( C4 * dt, evaluate( state, k1 * A41 + k2 * A42 + k3 * A43, dt ) );
+
+const Derivative derivativeSum = k1 * B1 + k2 * B2 + k3 * B3 + k4 * B4;
+
+return evaluate( state, derivativeSum, dt );
+}
+
+Now I m really lost because...because the simulated qudrotor has the same behavior as before. Nevertheless I ve implemented the same PD algorithm as discussed in the paper, it stabilize on Z (height) but it get really crazy due to unstable behavior. 
+So... I dunno what is wrong in my code and my implementation. And above all I cannot find any source in internet with a good self explaned dynamic model for a quadrotor.
+Regards
+
+A:
+
+At the end I discovered Simulink and the possibility to write a non linear system with it.
+Simply take the differential equations in the paper and put them as they are in simulink. Really strightforward.
+After I ve written a PID controller for my system it seems to work really good.
+The ide a linearized system to implement was good but for some reason didn t have the expected reaction during simulation.
+Anyway many thanks to all explanations and the suggestions that other people gave me.
+Regards
+

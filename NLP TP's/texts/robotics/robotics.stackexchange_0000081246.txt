@@ -1,0 +1,77 @@
+Q:
+
+ros::moveit adding rotation to xyz-coordinates
+
+Hello people,
+I am currently programming a 6 DOF robotic arm using ros and moveit for the navigation. My goals are to send x,y,z coordinates as well as a fixed orientation of my gripper in order to succesfully grab certain objects.
+Following the tutorial i can send x,y,z coordinates like this just fine:
+geometry_msgs::Pose target_pose1;
+target_pose1.orientation.w = 1;
+target_pose1.position.x = 0;
+target_pose1.position.y = 0;
+target_pose1.position.z = 0.55;
+move_group.setPoseTarget(target_pose1);
+
+Using this method, my end effector stays in its start orientation.
+I can also send a effector orientation like this:
+move_group.setRPYTarget(1,1,0);
+
+However, now i the orientation changes to the given values but the x,y,z-coordinates seem rather random.
+Using both commands in a row, the sedond one overwrites the first one, leading to an insufficient result.
+Right now I am stuck messing around with quaternion transformation using the tf package not knowing whether this is is the right way at all. Seems like this package is unable to combine both position and orientation as well.
+Does somebody know a way to send x,y,z-coordinates AND rpy-orientations (c++)?
+Thank you in advance,
+Felix
+
+Originally posted by Felix_N on ROS Answers with karma: 115 on 2017-06-11
+Post score: 0
+
+Original comments
+Comment by ufr3c_tjc on 2017-06-11:
+Setting a pose target is the correct way to do it. However, you have to make sure of two things. First, the pose must be reachable but the end-effector. Secondly, the quaternion must be valid, and accurate to a fair number of decimal places (6+). Ensure both of these are satisfied, then report back.
+
+A:
+
+I found the mistake myself.
+Seems like i lacked basic understanding of the geometry message. But for other beginners like me, heres the solution:
+Given values of the goal position are cx,cy,cz coordinates as well as orientations rotx, roty, rotz. The move group needs the message type "geometry_msgs::Pose" which again needs the orientation as a quaternion instead of euler angles.
+So the steps are the following:
+
+Generate a quaternion object
+Transform euler angles into the quaternion
+Write coordinates as well as the quaternion items into the Pose message
+Set and plan the goal
+
+The code looks like this:
+//....
+#include <tf/transform_datatypes.h>
+//....
+
+tf::Quaternion q;
+
+q.setEulerZYX(rotz,roty,rotx);
+
+geometry_msgs::Pose target_pose1;
+target_pose1.position.x = cx;
+target_pose1.position.y = cy;
+target_pose1.position.z = cz;   
+target_pose1.orientation.x = q.x();
+target_pose1.orientation.y = q.y();
+target_pose1.orientation.z = q.z();
+target_pose1.orientation.w = q.w();
+
+move_group.setPoseTarget(target_pose1);
+
+moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+
+Thanks to anyone, who took his/her time to read this anyway.
+
+Originally posted by Felix_N with karma: 115 on 2017-06-12
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by UR5e on 2019-10-18:
+Thank you for your answer. I have the same problem. What robot are youusing? What values are you using for the rotx/y/z? radiants?
+w must be 1, right?
+

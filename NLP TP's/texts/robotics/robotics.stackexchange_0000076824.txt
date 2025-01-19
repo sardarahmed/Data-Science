@@ -1,0 +1,87 @@
+Q:
+
+Add a shared library to a catkin package
+
+Hello,
+I have compiled a third-party library from a non-catkin package and I would like to use this library in my project. I have already seen how to link a library against an executable as explained here and here, but there is still something I do not quite understand. As far as I know, in order to use the shared library in my nodes, I need the header files, so I can "#include" them in my .cpp file. But none of the mentioned sources seem to take care of that.
+Should I add all the headers to the include_directories() macro in the CMakeLists?
+i.e: The library I intend to use is libLanelet, so I compiled it using SCons and I obtained the library libLanelet.so. I copied this library into "package_path/libs". In my CMakeLists I have
+
+target_link_libraries(node ${catkin_LIBRARIES} ${PROJECT_SOURCE_DIR}/libs/libLanelet.so)
+
+Should I copy all .hpp files inside, say, "package_path/include" and then in the CMakeLists add
+
+include_directories(${PROJECT_SOURCE_DIR}/include)                     ?
+
+In case this is right is this the proper way to do it?
+I have just started to "get my hands dirty" writing ROS code and I recently started learning C++, so many concepts are still unclear to me.
+Regards
+
+Originally posted by OMC on ROS Answers with karma: 74 on 2016-10-19
+Post score: 1
+
+A:
+
+Update 2020-09-08: please note the answer below was written in 2016, before "modern CMake" really became a thing.
+These days, while the ideas are similar, you'd probably use target_link_libraries(..) with a properly setup and exported (INTERFACE) target or an IMPORTED library and other targets.
+You could still use those with target_link_libraries(..) as below, but writing a Find*.cmake script may not be the go-to approach any more these days.
+
+In a nutshell:
+
+install your third-party library as you would normally do this (ie: to /usr/local or some other location)
+
+either write a CMake FindYourLibrary.cmake script (the correct way), or hard-code locations of libraries and header files in CMake variables (ie: lanelet_LIBRARIES, lanelet_INCLUDE_DIRS, etc)
+
+now use those as you would any other CMake compatible library:
+include_directories(
+  [..]
+  ${lanelet_INCLUDE_DIRS}
+  [..]
+)
+
+target_link_libraries(node
+  ${catkin_LIBRARIES}
+      [..]
+      ${lanelet_LIBRARIES}
+  [..]
+)
+
+So:
+
+Should I add all the headers to the include_directories() macro in the CMakeLists?
+
+No, you should only use include_directories(..) to tell CMake which path it should add to the compiler's include search path (see above).
+
+Should I copy all .hpp files inside, say, "package_path/include" and then in the CMakeLists add
+
+No, unless you want to create a wrapper package for the library. As I wrote above: install the library "system-wide" as you would normally do, and make your Catkin package (really: CMake) find it using the normal means.
+
+I have just started to "get my hands dirty" writing ROS code and I recently started learning C++, so many concepts are still unclear to me.
+
+Then please understand that Catkin is basically a bunch of CMake macros and functions that make it easier to work with in a ROS context, but that it is really CMake doing all the work. Whenever you think you should search for "how does catkin do ..", first try "how does cmake do ..", especially when dealing with headers, libraries and finding dependencies.
+Also: check out the catkin documentation, especially the How to do common tasks.
+
+Originally posted by gvdhoorn with karma: 86574 on 2016-10-20
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by OMC on 2016-10-20:
+Thank you very much for your answer.
+I wanted my package to have all necessary files to work by itself (not sure if that's exactly a wrapper).
+I think I can include the headers and the library and in the CMakeLists add the headers' path and link the executable against the library. It seems to work
+Comment by gvdhoorn on 2016-10-20:\
+
+I wanted my package to have all necessary files to work by itself
+
+That can work, but you need to understand that you're now responsible for keeping track of upstream changes / bug fixes.
+Comment by gvdhoorn on 2016-10-20:\
+
+(not sure if that's exactly a wrapper).
+
+well, it is a wrapper combined with your own package. Not something I'd recommend (as it's not exactly proper separation of concerns), but it will work.
+Comment by OMC on 2016-10-20:
+Ok, I understand why it might be a good idea let the final user of my package take care of external libraries.
+I will decide how to handle it with my colleges when I have the chance.
+Thanks for the explanations.
+

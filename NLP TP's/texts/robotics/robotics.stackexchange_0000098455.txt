@@ -1,0 +1,118 @@
+Q:
+
+Convert pose data into twist message
+
+I am working through a tutorial in which I have a series of pose positions for a robot saved to a file. Example below:
+rostopic echo /amcl_pose
+header:
+  seq: 0
+  stamp:
+    secs: 2846
+    nsecs: 567000000
+  frame_id: "map"
+pose:
+  pose:
+    position:
+      x: -0.0395007291156
+      y: -0.0213931718838
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.00131714215996
+      w: 0.999999132568
+  covariance: [0.20861109843009223, 0.003308687018433075, 0.0, 0.0, 0.0, 0.0, 0.003308687018433077, 0.22561699161902968, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05838497295545044]
+---
+
+I have multiple pose.pose data sections, containing the position and orientation, saved to a file.
+I want to send my robot to each of my saved poses but how can I convert the position and orientation amcl_pose data into linear and angular geometry_msgs/Twist messages ?
+**UPDATE: **
+I am following Mastering with ROS: Summit XL - Set Indoor Navigation Stack on theConstructSim.
+My code for sending my goal to the move_base is as follows:
+#! /usr/bin/env python
+
+import rospy
+import actionlib
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+
+class SummitNavigationClient() :
+
+    def __init__(self) :
+        rospy.loginfo('... navigation-client starting')
+
+        move_base = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+        move_base.wait_for_server()
+            
+        goal = MoveBaseGoal()
+        goal.target_pose.pose.position.x = -2.76009410711
+        goal.target_pose.pose.position.y = -3.60989414856
+        goal.target_pose.pose.position.z = 0.0
+        goal.target_pose.pose.orientation.x = 0.0
+        goal.target_pose.pose.orientation.y = 0.0
+        goal.target_pose.pose.orientation.z = 0.000899836262279
+        goal.target_pose.pose.orientation.w = 0.999999595147
+
+        move_base.send_goal(goal)
+
+if __name__ == '__main__' :
+    rospy.init_node('my_summit_navigation_client')
+    try :
+        navigator = SummitNavigationClient()
+        rospy.spin()
+    except rospy.ROSInterruptException as e :
+        rospy.logerr('Something went wrong: %s', e)
+
+Originally posted by sisko on ROS Answers with karma: 247 on 2021-03-01
+Post score: 0
+
+Original comments
+Comment by tryan on 2021-03-01:
+Please, add a link to the tutorial you're following.
+Comment by sisko on 2021-03-02:
+I just realised there was a typo in my code the the point where I was executing move_base.send_goal(...).
+It is now corrected.
+
+A:
+
+That is the job of navigation, or maybe a controller, depending on your application.  One option is to use move_base (wiki) and send each pose as a goal once your robot has achieved the previous pose.  Another option (ignoring obstacles and other complications) could be to implement a feedback controller that simply operates on the difference between the current pose and the desired pose, though that may be tricky depending on the robot's dynamics.  If you provide more information about your application and intent, we can find a more specific answer.
+
+Originally posted by tryan with karma: 1421 on 2021-03-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sisko on 2021-03-01:
+I appreciate your input. My question is updated with my code.
+Comment by tryan on 2021-03-02:
+Since you found the typo in your code, is your question satisfied?
+Comment by sisko on 2021-03-02:
+Actually, no. My robot still does not move when I send my goal to my move_base client.
+Comment by tryan on 2021-03-02:
+I assume you would have posted any errors, so can you confirm if the goal is actually sent to the server by running rostopic echo /move_base/goal in a terminal and looking for the correct goal data?  Can you also confirm whether move_base is sending twist messages by echoing cmd_vel?
+Comment by sisko on 2021-03-02:
+No data is being published to /move_base/goal, /move_base_simple/goal nor /summit_xl_control/cmd_vel
+I am not sure thie line is having any effect: move_base = actionlib.SimpleActionClient('move_base', MoveBaseAction).
+I replaced move_base with something obviously incorrect and the system did not complain. So, I am unsure how to discover the correct move_base node.
+**UPDATE:**I just noticed and confirmed there is a /move_base/goal topic so it seems my code above is valid
+Comment by tryan on 2021-03-02:
+Try filling out the header of the goal message, for example:
+goal.target_pose.header.frame_id = "map"
+goal.target_pose.header.stamp = rospy.Time.now()
+
+Comment by sisko on 2021-03-02:
+I have tried adding those lines as you suggested but my robot still did not move.
+Just to make you aware of my steps, I start by executing rosrun move_base move_base and then I execute my python script containing my code in the original question.
+In the move_base terminal, there is the following warning:
+[ WARN] [1614737784.021718163, 266.005000000]: Timed out waiting for transform from base_link tomap to become available before running costmap, tf error: canTransform: source_frame base_link does not exist.. canTransform returned after 0.1 timeout was 0.1.
+[ WARN] [1614737789.044118992, 271.012000000]: Timed out waiting for transform from base_link tomap to become available before running costmap, tf error: canTransform: source_frame base_link does not exist.. canTransform returned after 0.1 timeout was 0.1.
+
+I'm not sure why or if it has some bearing on why my robot is still unresponsive.
+Comment by tryan on 2021-03-03:
+Have you been able to get your robot to move without your script, i.e., by sending a direct cmd_vel message or move_base goal?
+Comment by sisko on 2021-03-03:
+I can issue a cmd_vel command and the robot does move. But for move_base, I am using my python script as detailed above to set a goal - which is what isn't working
+Comment by tryan on 2021-03-03:
+The tutorial you linked has previous exercises for navigation with move_base.  Did you complete those sections?  cmd_vel works, so the next step is to make sure move_base functions with input from RViz or the command line before trying to use custom code.  Also, have you tried getting help from The Construct Forum?  They are certainly more familiar with the tutorial than I am.
+Comment by sisko on 2021-03-03:
+You are quite correct but the tutorial I'm on did not require previously completing a move_base course. It's worth considering at this point.
+

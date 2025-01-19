@@ -1,0 +1,128 @@
+Q:
+
+Docker on WSL2: Dockerfile: how to test whether ROS gazebo can connect to already working X server (using its X11 display on Windows)
+
+I had the following errors and warnings in a ROS project. They showed up using docker-compose or when running a mere container from the image, which strangely had worked once somehow but then later did not open the RViz anymore:
+process[rviz-3]: started with pid [124]
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+qt.qpa.screen: QXcbConnection: Could not connect to display
+Could not connect to any X display.
+
+or:
+talker_1      | [Err] [RenderEngine.cc:725] Can't open display: 
+talker_1      | [Wrn] [RenderEngine.cc:93] Unable to create X window. Rendering will be disabled
+talker_1      | [Wrn] [RenderEngine.cc:293] Cannot initialize render engine since render path type is NONE. Ignore this warning ifrendering has been turned off on purpose.
+listener_1    |  * /nodes/slam_QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+listener_1    | qt.qpa.screen: QXcbConnection: Could not connect to display 
+listener_1    | Could not connect to any X display.
+listener_1    | [rviz-2] process has died [pid 64, exit code 1, cmd /opt/ros/melodic/lib/rviz/rviz -d /MYPROJECT/src/MYPROJECT_common/config/config.rviz __name:=rviz __log:=/root/.ros/log/8a57a040-8bf6-11eb-bfa4-0242ac120003/rviz-2.log].
+
+or:
+talker_1      | [Err] [CameraSensor.cc:112] Unable to create CameraSensor. Rendering is disabled.
+
+or:
+WARNING: Unable to locate/open X configuration file.
+
+or:
+WARNING: Unable to parse X.Org version string.
+
+or:
+Package xorg-server was not found in the pkg-config search path.
+Perhaps you should add the directory containing `xorg-server.pc'
+to the PKG_CONFIG_PATH environment variable
+No package 'xorg-server' found
+Option "AllowEmptyInitialConfiguration" "True" added to Screen "Screen0".
+
+or:
+ERROR: Unable to write to directory '/etc/X11'.
+
+Because of all of these errors and warnings, it slowly and all of a sudden caught my mind that it might be about that X / X11 :)...
+I left my project aside since the errors and warnings could have been caused by the image itself. Instead, I started from scratch, using a general guide with an easy image. I am following Running ROS with GUI in Docker using Windows Subsystem for Linux 2 (WSL2) about how to setup the X server on Windows and use it as the output of the ROS gazebo visualization. In order to automate the setup test and have a better overview, I put it in this Dockerfile:
+--- Start of the Dockerfile ---
+# Start this Dockerfile by going to the Dockerfile's directory in terminal and enter
+#docker build -t ros-test .
+
+FROM osrf/ros:kinetic-desktop-full
+#ARG HOSTNAME
+
+RUN apt-get update && \
+    apt-get install -y dbus
+
+RUN apt-get install -y mesa-utils libgl1-mesa-glx
+
+ENV LIBGL_ALWAYS_INDIRECT=0
+# "host.docker.internal" only works in Docker Desktop, on WSL distro, you will need to run with either
+# your Windows computer name (like "DESKTOP-1234567") or with your Windows computer IP "xxx.xxx.xxx.xxx", for example:
+# docker run -it --name ros-test -e DISPLAY=xxx.xxx.xxx.xxx:0.0 -e LIBGL_ALWAYS_INDIRECT=0 osrf/ros:kinetic-desktop-full bash
+ENV DISPLAY=host.docker.internal:0.0 
+#ENV DISPLAY=$HOSTNAME:0.0
+#ENV DISPLAY=DESKTOP-1234567:0.0
+#ENV DISPLAY=xxx.xxx.xxx.xxx:0.0
+
+RUN bash -c "echo 'source /opt/ros/kinetic/setup.bash' >> ~/.bashrc; \
+    source ~/.bashrc"
+
+--- End of the Dockerfile ---
+Here are the steps how you could get the Dockerfile working on WSL2, no matter whether you use Docker Desktop or a Linux distro. It is put in tiny steps so that it can be followed by newcomers, I will not shrink it to its core since it might also help someone like this.
+# Download vcxsrv from https://sourceforge.net/projects/vcxsrv/
+# install 
+# start XLaunch.exe (Desktop link)
+# choose next (multiple windows, display number -1)
+# start no client
+# (check Clipboard, this is checked by default), uncheck "Native opengl", check "Disable access control"
+# finish without saving the configuration
+
+# start container from image with:
+#docker run -it --name ros-test -e DISPLAY=host.docker.internal:0.0 -e LIBGL_ALWAYS_INDIRECT=0 osrf/ros:kinetic-desktop-full bash
+#docker run -it --name ros-test -e DISPLAY=xxx.xxx.xxx.xxx:0.0 -e LIBGL_ALWAYS_INDIRECT=0 osrf/ros:kinetic-desktop-full bash
+#docker run -it --name ros-test -e DISPLAY=DESKTOP-1234567:0.0 -e LIBGL_ALWAYS_INDIRECT=0 osrf/ros:kinetic-desktop-full bash
+
+# If the following commands do not work since there is already such a container name, you can
+#docker stop ros-test
+#docker rm ros-test
+# If this is not possible and you are asked to force "(must force)", use
+#docker rm ros-test -f
+# before you go on.
+
+# since environment variables are set already in the image, you can also start with:
+# If you use Docker Desktop, `DISPLAY=host.docker.internal:0.0` is standard:
+#docker run -it --name ros-test -e ros-test bash
+# If you use a distro on WSL2, you need to find out your IP using ipconfig in Windows PowerShell (Drahtlos-LAN-Adapter WLAN: --> IPv4-Adresse  . . . . . . . . . . :):
+#docker run -it --name ros-test -e DISPLAY=xxx.xxx.xxx.xxx:0.0 ros-test bash
+# If you use a distro on WSL2, you can also ask for your hostname in Windows PowerShell by entering `hostname` and run it like this:
+#docker run -it --name ros-test -e DISPLAY=DESKTOP-1234567:0.0 ros-test bash
+
+# or if you want to see the content of all directories:
+#docker run -it --volume :./:./ --name ros-test ros-test bash
+#docker run -it --volume :./:./ --name ros-test -e DISPLAY=xxx.xxx.xxx.xxx:0.0 ros-test bash
+#docker run -it --volume :./:./ --name ros-test -e DISPLAY=DESKTOP-1234567:0.0 ros-test bash
+
+# If you have already run the container, but the bash is not there, or you want to start a second container in another terminal, use
+#docker exec -it ros-test bash
+
+# If the container is not running, but is already there (`docker ps -a`) start it again.
+#docker start ros-test
+#docker exec -it ros-test bash
+
+# Open a second terminal with the same container so that you have two bash terminals open.
+#docker exec -it ros-test bash
+
+# In the first terminal:
+#roscore
+
+And now comes the actual code line in question:
+# After roscore has started, start on a second terminal and enter:
+#gazebo worlds/pioneer2dx.world
+
+This gazebo worlds/pioneer2dx.world does not open any window; it is already good that it does not throw any error either. The question remains: How can I test a gazebo visualization (no matter which) in the X11 window with the given image?
+
+A:
+
+This command opens the RViz in an X11 window of the Windows X server.
+After roscore has started, start a second terminal and enter (according to http://gazebosim.org/tutorials?tut=ros_roslaunch) (you do not need to have the firewall deactivated for this to run, at least in my case):
+roslaunch gazebo_ros empty_world.launch
+
+#For killing the app, press Ctrl+C in the roscore terminal
+
+This setting also works in docker-compose, see this example which starts many containers in one go. The docker-compose now opens RViz in the X11 window on Windows X server with just one terminal command.
+

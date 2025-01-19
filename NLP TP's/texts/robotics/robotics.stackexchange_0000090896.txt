@@ -1,0 +1,102 @@
+Q:
+
+Converting encoder ticks to motor control on RPi
+
+Hello,
+I wanted to control my robot using teleop_twist_keyboard so that i can move it around for gmapping. I have an odometry source in the form of wheel encoders and a LIDAR. I have found a node that takes a Twist message and converts into number of encoder ticks that are to be actuated. I am having difficulty converting these ticks back into wheel motion. Can someone please suggest any source that might help or another way to approach this problem?
+
+Originally posted by Hemanth on ROS Answers with karma: 13 on 2019-03-14
+Post score: 0
+
+Original comments
+Comment by billy on 2019-03-14:
+For now don't assume you need to use the twist to tick nodes.
+What kind of motors are you using and what kind of driver are you using for the motor?
+The correct answer will depend these bits of info.
+Provide as much detail as you can. I will try to help if you provide enough info.
+Comment by Hemanth on 2019-03-14:
+I am using 6 pin rotary motors with wheel encoders and L298N motor driver. Two of the 6 pins are connected to the motor driver, two of them to give the encoder output to the Raspberry pi and the other two for Vcc and ground. If there is a way to convert a twist message i publish directly into GPIO outputs to control the motors, that would be awesome. Thank you so much for your help.
+Comment by billy on 2019-03-14:
+My understanding: You have DC brushed motors being driven through PWM into an H-Bridge driver.  Your RPi will need to generate a direction and PMW signal for each motor.
+What you need to do:
+1 - Find or develop a node that controls the velocity of each motor based on encoder feedback and PWM/Direction signals out. At the level of this node velocity will be equivalent to encoder counts per second.  I suggest you search for pre-existing node but don't be afraid to try one your self if needed.  This node will will include some type of control algorithm like PID on velocity.
+2 - Convert the twist message that is in meters/second and radians/second to encoder count/second for each motor. It's likely there is a node for this also.
+3 - Use the motor commands from 2 as input to the node in 1.
+I know there is a set of nodes for differential drive controller, but I haven't used it. I have looked at it though and it seems pretty confusing. Start there though and see how it goes.
+Comment by Hemanth on 2019-03-15:
+I have a node that you referred to as number 2 that takes in a twist message and converts to encoder counts/second. Finding node 1 that will convert this encoder counts into motor control using Rpi GPIO is what im trying to do. Here is what i got.
+https://notepad.pw/tbkrfz1s
+Im not sure  how to store the desired rate into a variable and compare it to encoder feedback until it hits the target.
+Comment by billy on 2019-03-16:
+I see a misunderstanding. Your code looks like you're trying to send steps to a stepper motor drive, but you're not using stepper motors. You're using brushed motors based on your description.
+Your output will need to be a PWM and direction as appropriate for the hardware you've described. The PID link Mark posted may help you understand. A PID loop is one way to get the PWM command you'll need).
+You still appear to be missing the single most complicated part of the setup which is the feedback from the encoders. The encoder enables your PID loop to understand how fast the wheels are turning. That's required for it to work.
+Please explain what you are doing with the encoder lines from the motors. Please sketch the wiring and upload a picture. Then we can help you better.
+Comment by Hemanth on 2019-03-19:
+I think this is something similar to what I was looking for.
+https://snapcraft.io/blog/your-first-robot-the-driver-4-5
+I have encoders to use though. They dont use them in the above link. What do you think of this?
+Comment by billy on 2019-03-19:
+I've never tried to do open loop motor control on a robot, but it doesn't sound fun.  If your lidar is very fast it probably can be made to work open loop but it will be easier and better using the encoders.  Alternately if the gearing on the motors is very high and robot will move slowly, then it can probably work even with a budget lidar.  With proper encoder reading, a budget lidar can be used and get good results.
+I do not know what your application or budget is. If you have a good lidar your budget is likely not an issue and you should get a module for reading encoders. If your lidar is slow, then you will benefit a lot from encoders and should get a module for reading encoders.
+If this is all just for fun/learning and you're OK with having a few iterations of HW with varying levels of success, then try doing with the link you've provided(without encoder). More effort = more learning.
+The link you provided will show you how to determine the PWM to velocity measurement.
+Comment by Hemanth on 2019-03-21:
+Thank you so much for your help. I really appreciate it.
+
+A:
+
+You'll find a more detailed treatment in a reference like Introduction to Autonomous Mobile Robots by Siegwart, et. al.
+You didn't say what type of drive system you have, so I'm assuming differential drive. At a high level, you need something like this:
+
+A way of converting from the Twist message in /cmd_vel to linear speeds for the left and right wheel frames.
+A conversion from linear speeds above to desired encoder speeds for the motors.
+A motor controller that drives the motors to the desired encoder speeds.
+
+Generally, one more more ROS nodes cooperate to supply all three. 1) The diff_drive_controller package does it all, and works out-of-the-box for several commercial robots. 2) The diff_drive_controller node in the diff_drive package does #1 and #2, and publishes the desired encoder rates as lwheel_desired_rate and rwheel_desired_rate. 3) The ros_arduino_bridge package does all three  things for a limited set of motor interfaces. 4) the differential_drive package has nodes for all three items, albeit without a mechanism for communicating with the hardware.
+If you want to do things yourself, a few definitions:
+v = velocity of the robot directly ahead, in m/s
+v_l = velocity of the center of the left wheel, straight ahead, in m/s
+v_r = velocity of the center of the right wheel, straight ahead, in m/s
+l = separation of the two wheels, in m
+z = angular velocity of the robot, in rad/s
+
+From the Twist message, v = msg.linear.x and z = msg.angular.z. For a differential drive robot:
+v = (v_r + v_l) / 2
+z = (v_r - v_l) / l
+
+Combining and simplifying we get:
+2*v + l*z = 2*v_r
+v_r = v + l*z/2
+v_l = v_r - l*z = v - l*z/2
+
+If the motor gives ticks_per_rev ticks per revolution, and the wheel diameter is d (in m), then:
+wheel_circumference = pi * d
+wheel_rotations_per_meter = 1 / (pi * d)
+ticks_per_meter = wheel_rotations_per_meter * ticks_per_rev
+ticks_per_second_l = v_l * ticks_per_meter
+ticks_per_second_r = v_r * ticks_per_meter
+
+A couple more complexities:
+
+The equations above may give you left and right velocities that are not achievable. If the maximum of the two wheel speeds is greater than some maximum limit, then you probably should reduce both wheel speeds by the same factor to keep under that limit.
+If a wheel motor speed is below the stall speed for the motor, then it is pointless to send it any current (and may be problematic). So if either wheel speed is below some minimum limit, you should probably set that wheel speed to zero.
+
+You still need a lower-level controller to drive the motors to the desired ticks/sec speeds. The form of that controller will depend on your hardware.
+
+Originally posted by Mark Rose with karma: 1563 on 2019-03-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Hemanth on 2019-03-15:
+I have used the diff_drive package and the diff_drive_controller and diff_drive_odometry nodes. I am able to get the desired rate for the wheels. It was converting this desired rate into actual wheel movement that i had the problem in. Like you said, i need a lower-level controller to drive the motors to the desired speed. If you could help me in that, i would really appreciate it.
+Here is what i managed to write till now. Im not sure if im going in the right direction.
+https://notepad.pw/tbkrfz1s
+Comment by Mark Rose on 2019-03-15:
+You might look at the doPID function in diff_controller.h in the ros_arduino_bridge package. That code figures out the error (desiredTicks - actualTicks), the derivative of actualTicks, and the accumulated error, and calculates the motor voltage value based on the current values and a PID equation based on those errors and the PID constants.
+Comment by Mark Rose on 2019-03-15:
+There's a pseudocode example of PID control for a motor here: An introduction to PID control with DC motor
+Comment by Mark Rose on 2019-03-15:
+In practice you can get by with just the proportional constant non-zero.
+

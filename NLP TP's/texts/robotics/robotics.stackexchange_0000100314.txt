@@ -1,0 +1,87 @@
+Q:
+
+Convert Time Stamp from rosbag(Topic) to Understandable Format Y/M/D H:M:S
+
+Hi  someone would you know what the following TimeStamp means? and how to convert it to seconds or other understable format such year/month/day Hour:Minutes:Seconds?
+I have a car-robot that has driven 80 meters in about 1 min of simulation. However when I recorded the rosbag I had the:
+First Timestamp =1,63277521885359E+018
+and the
+Last TimeStamp from this topic (odom) = 1,63277529735619E+018
+I do not know to convert this data to an understandable format such as Y/M/D H:M:S
+Some tool makes the trick? Or some Python Library such as DateTime (how to specific use, suitable class to apply?)
+I have done some research herehttps://discourse.ros.org/t/timestamps-and-rosbags-discussing-an-alternative-to-clock-and-use-sim-time/3238/9 But  these steps seem too complex http://wiki.ros.org/rosbag/Cookbook
+In addition, I got another column in my rosbag called field.header.sec
+that intuitively should return the seconds. But assessing this data again. The first/end data are:
+T0 = 7348
+TF = 8036
+Subtracting these values I have 688 seconds = 11 minutes. And this is Not realistic because I have killed the simulation and the rosbag after 2 minutes( max) and the car in the simulation achieved the goal after 1 min, not 11 minutes....
+I wonder how to understand and convert the TimeStamp extracted from rosbags.
+If someone could help me, I would be very grateful
+Beginning of csv file (localizer or odom topic)
+https://aws1.discourse-cdn.com/business7/uploads/ros/original/2X/f/f3cb0d690ea58fdb73a36d2d14afdd64462c9a58.png
+End of csv file
+https://aws1.discourse-cdn.com/business7/uploads/ros/original/2X/7/7773cabae44ccebc654301fcf9877eada01dde44.png
+
+Originally posted by Vini71 on ROS Answers with karma: 266 on 2021-10-14
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-10-14:
+Did you cross-post this to ROS Discourse here?
+Comment by Vini71 on 2021-10-14:
+yes sorry I am trying to get as much ideas as possible to help on this issue.
+Comment by gvdhoorn on 2021-10-14:
+That's not how it works, and is actually pretty annoying. At best it leads to duplicated answers. In most cases it leads to wasted effort.
+And it's not such a special problem. The Q&As I've linked in my answer already discuss this, and they're years old.
+Comment by Vini71 on 2021-10-14:
+Ok....I respect your point of view...because actually there are different channels, different experts that will visualize...so..., I think different..but ok.
+Could you take a look at my own answer below, please? I am trying to figure out what is wrong with the code.
+Comment by gvdhoorn on 2021-10-14:
+It's not just my point of view: https://en.wikipedia.org/wiki/Crossposting
+Comment by Vini71 on 2021-10-14:
+Hummm ok I got the idea @gvdhoorn, I have tooken a quick read...so much rules to be aware...not easy. But thanks to share these rules to me. I will try to follow all of them. Additionally let me ask you, I have edited the question on ROS Discourse, and instead put the whole question as here I have just put this link of ROS Answers for other ROS users visualize. Would this be the right manner or not? I mean if I wish that some question be visualized by different communities...which is the right way?? And thanks again for your answer!! It saved my time!
+
+A:
+
+I have a car-robot that has driven 80 meters in about 1 min of simulation. However when I recorded the rosbag I had the: First Timestamp =1,63277521885359E+018 and the Last TimeStamp from this topic (odom) = 1,63277529735619E+018
+I do not know to convert this data to an understandable format such as Y/M/D H:M:S Some tool makes the trick?
+
+Afaik, this is just a Unix Epoch stamp. See #q273953 or #q296045 for instance.
+If you run rosbag info /path/to/your.bag, it should show you something like this (from here):
+start:       Jun 17 2010 14:24:58.83 (1276809898.83)
+end:         Jun 17 2010 14:25:00.01 (1276809900.01)
+
+note the number in brackets: that's the Unix Epoch stamp. The 'human readable' version is printed before it.
+
+In addition, I got another column in my rosbag called field.header.sec that intuitively should return the seconds.
+
+field.header.seq is not a timestamp. Is the sequence ID field. That's just a message counter.
+Refer to std_msgs/Header:
+
+# sequence ID: consecutively increasing ID 
+
+uint32 seq
+
+Edit:
+
+but for the data I have, that is
+
+unix_epoch_timestamp_t0 Out[29]: 1632775218853592670
+
+and unix_epoch_timestamp_tf Out[30]: 1632775297356186066
+
+1632775218853592670 is not a valid Unix Epoch stamp. Or at least, not for the functions you are using, as they will expect a resolution of seconds. Note the warning epochconverter.com gives you:
+
+Assuming that this timestamp is in nanoseconds
+
+You're likely concatenating the seconds and the nanoseconds from the std_msgs/Header colums in your .csv as strings, and then trying to interpret that as a single number. That doesn't work.
+You can probably pass time.localtime(..) a float, in the form of seconds.nanoseconds:
+>>> time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime(1632775297.356186066))
+'Mon, 27 Sep 2021 22:41:37 +0000'
+
+Note that your format string doesn't allow for showing the nanosecond precision of the stamp, and Python renders this in my local timezone (UTC+2). I'm also not sure hard-coding a +0000 for the time-zone is a good idea.
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-10-14
+This answer was ACCEPTED on the original site
+Post score: 0
+

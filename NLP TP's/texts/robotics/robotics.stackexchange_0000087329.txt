@@ -1,0 +1,157 @@
+Q:
+
+Is it possible to shut down a service from its client?
+
+I have a ROS service written in Python as shown below-
+from beginner_tutorials.srv import *
+import rospy
+
+def handle_add_two_ints(req):
+    print "Returning [%s + %s = %s]"%(req.a, req.b, (req.a + req.b))
+    return AddTwoIntsResponse(req.a + req.b)
+
+def add_two_ints_server():
+    rospy.init_node('add_two_ints_server')
+    s = rospy.Service('add_two_ints', AddTwoInts, handle_add_two_ints)
+    print "Ready to add two ints."
+    rospy.spin()
+
+if __name__ == "__main__":
+    add_two_ints_server()
+
+The service client is written in C++ as shown below-
+#include "ros/ros.h"
+#include "beginner_tutorials/AddTwoInts.h"
+
+int main(int argc, char **argv){
+  ros::init(argc, argv, "add_two_ints_client");
+
+  ros::NodeHandle n;
+  ros::ServiceClient client = n.serviceClient<beginner_tutorials::AddTwoInts>("add_two_ints");
+  beginner_tutorials::AddTwoInts srv;
+  srv.request.a = 10;
+  srv.request.b = 20;
+  if (client.call(srv)){
+    long int sum = srv.response.sum;
+    ROS_INFO("Sum: %ld", sum);
+    if (sum > 100){
+      // calling 'ros::shutdown()' stops only this node as expected
+      ros::shutdown();
+    }
+  } else {
+    ROS_ERROR("Failed to call service add_two_ints");
+    return -1;
+  }
+
+  return 0;
+}
+
+Depending on the response from the service, I want to stop both the client and server (i.e., service written in Python above) node. Any suggestions, please?
+
+Originally posted by ravijoshi on ROS Answers with karma: 1744 on 2018-06-11
+Post score: 0
+
+A:
+
+Hi,
+It's indeed possible, but I wouldn't recommend it to you, as other node can still be using this service, or the service can probably be restarted in other way (for example, wait a parameter to be on, or wait for an other service to be called).
+To make the server kill himself :
+What you can do is to set a flag to shutdown the service : (Warning : not safe, the script can terminate before the response is sent, use at your own risk)
+from beginner_tutorials.srv import *
+import rospy
+    
+manual_shutdown = False
+    
+def handle_add_two_ints(req):
+    global manual_shutdown
+    print "Returning [%s + %s = %s]"%(req.a, req.b, (req.a + req.b))
+    response = AddTwoIntsResponse(req.a + req.b)
+    manual_shutdown = True
+    return response 
+    
+def add_two_ints_server():
+    rospy.init_node('add_two_ints_server')
+    s = rospy.Service('add_two_ints', AddTwoInts, handle_add_two_ints)
+    print "Ready to add two ints."
+    r = rospy.Rate(10)
+    while not rospy.is_shutdown() and not manual_shutdown:
+        r.sleep()
+    rospy.sleep(1)
+    s.shutdown()
+    
+if __name__ == "__main__":
+    add_two_ints_server()
+
+Also, you can replace the signal_shutdown by what you want or even put the "manual_shutdown" in the while-loop and do thing after the loop.
+I used a while loop instead of rospy.spin(), you can check why here : https://answers.ros.org/question/110336/python-spin-once-equivalent/
+For completion, you can check these questions : https://answers.ros.org/question/198134/is-it-bad-practice-to-create-and-shutdown-services-during-runtime/ or https://answers.ros.org/question/109951/check-to-see-if-a-service-is-running/
+Edit 2 : To make the client kill the server (make a node kill another node):
+You can apply the method 1 above to create a "kill me" service and call it from the client.
+Or even simpler, you just have to use the rosnode command :
+node1:
+import rospy
+def node1():
+    rospy.init_node('node1')
+    r = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        r.sleep()
+
+if __name__ == "__main__":
+    node1()
+
+node 2:
+import rospy
+from subprocess import call
+def node2():
+    rospy.init_node('node2')
+    rospy.sleep(10) # Wait 10 second to kill node1
+    call(["rosnode", "kill", "node1"], shell=True) # be careful here https://stackoverflow.com/questions/3172470/actual-meaning-of-shell-true-in-subprocess
+    
+if __name__ == "__main__":
+    node2()
+
+Edit 1 : Some more answers :
+(1) My code is not good at all so I edited it, if you don't return immediately after setting manual_shutdown = True, the client will have an error since the connection is broken (in rospy, all callback are in a thread).
+The error :
+
+ERROR: transport error completing
+service call: unable to receive data
+from sender, check sender's logs for
+details
+
+You can try it by adding a rospy.sleep(1) after the manual_shutdown=True to see the error
+You can try to minimize the effect by putting the flag to True just before the return and putting a rospy.sleep() after the loop, but it's quite a ugly method. I'm still searching a correct way to do this
+(2) you can add and you SHOULD add a rospy.sleep() or a rospy.rate() in the loop in Python, otherwise you CPU will work for nothing. You can check with the command top the CPU usage :
+top without rospy.rate(10) : CPU : 100%
+top with rospy.rate(10) :  CPU : 0.5%
+(3) You don't have to set disable_signals=True. You should use this command when you want to register your own shutdown hook, where you will call service and set parameters (but don't send message) or when you want to not quit node by "ctrl+c" (but you will have to catch the KeyboardInterrupt Exception) : http://wiki.ros.org/rospy/Overview/Initialization%20and%20Shutdown#Shutting_down
+(4) service.shutdown() will only quit the service, It should be called before the end of the node to "properly" exit the service (You should also use the same shutdown for Publisher and Subscriber, even if I never had problem without shutting down).
+You can just end the script normally, signal_shutdown should be used only in very specific use-case (so I remove it from my answer).
+
+Originally posted by lmathieu with karma: 591 on 2018-06-11
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by ravijoshi on 2018-06-11:
+Thanks a lot. I have four queries (1) The flag manual_shutdown is set inside def handle_add_two_ints(req). On the other hand while not rospy.is_shutdown() is running and checking the flag. What would happen if rospy.signal_shutdown is called before def handle_add_two_ints(req) return?
+Comment by ravijoshi on 2018-06-11:
+(2) I believe it would be nicer to add rate.sleep() inside while not rospy.is_shutdown() where rate = rospy.Rate(10). I am not sure about it. What do you say?
+Comment by ravijoshi on 2018-06-11:
+(3) As per this post, rospy.init_node should be called along with disable_signals=True. So it should be rospy.init_node('add_two_ints_server', disable_signals=True)
+Comment by ravijoshi on 2018-06-11:
+(4) Instead of rospy.signal_shutdown("Because"), we also have service.shutdown(). In this scenario, which one do you prefer and why?
+Comment by lmathieu on 2018-06-11:
+That  a lot of interesting question, I will try to answers them :)
+Comment by gvdhoorn on 2018-06-11:
+Pedantic perhaps, but: this is not an actual answer: the question was whether a service server can be shutdown by a client. The code shown here makes the server shutdown itself.
+Comment by lmathieu on 2018-06-11:
+You are actually right @gvdhoorn, It's even a duplicate of : https://answers.ros.org/question/174714/could-a-node-can-be-stoped-by-another-node/ , I was so busy trying to see if I could that I didn't think if I should. But hey, I'm gonna edit my answer one last time for the sake of completion :)
+Comment by ravijoshi on 2018-06-11:
+Very informatic answer! Thank you very much.
+Comment by gvdhoorn on 2018-06-12:
+I'm happy that @Ravi Joshi is content with the answer he received, but your latest answer is also not an answer :) You're killing the complete node, which may be hosting more service servers and/or publishers.
+I believe the only answer would be: no, this is not possible (directly).
+Comment by gvdhoorn on 2018-06-12:
+And I'm happy it isn't, as that would make denial-of-service attacks all too easy.
+

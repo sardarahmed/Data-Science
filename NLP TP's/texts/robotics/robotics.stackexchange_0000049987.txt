@@ -1,0 +1,163 @@
+Q:
+
+Predefined global path for robot navigation
+
+Hallo, ROS users.
+What I want is to use predefined global path for navigation. So I have a 2D map and do not want to use global_planner to compute a plan, but my own set of path points. I think it's a common thing but never met a question about this kind of move_base forking.
+Could anybody give me a hint or neat approach for solving the problem?
+Where can I store this set of points?
+How do I provide these points to move_base?
+How many points (or sampling step) do I need for stable navigation?
+Thanks a lot for help!
+
+Originally posted by Peter Listov on ROS Answers with karma: 338 on 2013-04-02
+Post score: 5
+
+Original comments
+Comment by tianb03 on 2013-04-02:
+We have developed one from carrot_planner. The global path is calculated from global costmap, you can just skip that. If you want the robot move in a free space, the spacing of the points can be 0.5 m or bigger. We are using around 0.2m. Some other parameters will also affect the performance.
+Comment by Peter Listov on 2013-04-02:
+tianb03, could you please add some details about your implementation? Carrot_planner gives you straight line between two points if I'm not mistaken. How do you draw the path? Should I overload make_plan function for just downloading the path instead of computing it? Thank you.
+
+A:
+
+Hi Peter, we made a new copy of navigation package. We did not make a overload function, just rewrite it :) Sure you can make the code more flexible with overload.
+bool CarrotPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
+  {
+
+    if(!initialized_)
+    {
+      ROS_ERROR("The planner has not been initialized, please call initialize() to use the planner");
+      return false;
+    }
+
+    ROS_DEBUG("Got a start: %.2f, %.2f, and a goal: %.2f, %.2f", start.pose.position.x, start.pose.position.y, goal.pose.position.x, goal.pose.position.y);
+
+    plan.clear();
+    costmap_ros_->getCostmapCopy(costmap_);
+
+    if(goal.header.frame_id != costmap_ros_->getGlobalFrameID()){
+      ROS_ERROR("This planner as configured will only accept goals in the %s frame, but a goal was sent in the %s frame.",
+          costmap_ros_->getGlobalFrameID().c_str(), goal.header.frame_id.c_str());
+      return false;
+    }
+
+   bool done = false;
+
+  int i,n;
+  float *Coordinate_Array = NULL;
+  char* Filename;
+  Filename = "/home/p3dx/fuerte_workspace/navigation/carrot_planner/src/Coordinate.txt";
+  FILE *fp = NULL;
+  fp = fopen(Filename, "r");
+  fscanf(fp, "%d", &n);
+     
+  Coordinate_Array = Readfile2D(Filename);
+   
+    for (i=0; i<n; i++)
+    {
+        geometry_msgs::PoseStamped first_start = start;
+        geometry_msgs::PoseStamped first_goal = goal;
+
+        first_start.pose.position.x=Coordinate_Array[i*2]-Coordinate_Array[0];//offset
+        first_start.pose.position.y=Coordinate_Array[i*2+1]-Coordinate_Array[1];
+       
+        first_goal.pose.position.x=Coordinate_Array[i*2+2]-Coordinate_Array[0];
+        first_goal.pose.position.y=Coordinate_Array[i*2+3]-Coordinate_Array[1];
+
+        plan.push_back(first_start);
+
+        tf::Stamped<tf::Pose> goal_tf;
+        tf::Stamped<tf::Pose> start_tf;
+
+        poseStampedMsgToTF(first_goal,goal_tf);
+        poseStampedMsgToTF(first_start,start_tf);
+
+        double useless_pitch, useless_roll, goal_yaw, start_yaw;
+        start_tf.getBasis().getEulerYPR(start_yaw, useless_pitch, useless_roll);
+        goal_tf.getBasis().getEulerYPR(goal_yaw, useless_pitch, useless_roll);
+
+        double goal_x = first_goal.pose.position.x;
+        double goal_y = first_goal.pose.position.y;
+
+        double target_x = goal_x;
+        double target_y = goal_y;
+        double target_yaw = goal_yaw;
+
+        geometry_msgs::PoseStamped new_goal = first_goal;
+        tf::Quaternion goal_quat = tf::createQuaternionFromYaw(target_yaw);
+
+        new_goal.pose.position.x = target_x;
+        new_goal.pose.position.y = target_y;
+
+        new_goal.pose.orientation.x = goal_quat.x();
+        new_goal.pose.orientation.y = goal_quat.y();
+        new_goal.pose.orientation.z = goal_quat.z();
+        new_goal.pose.orientation.w = goal_quat.w();
+
+        plan.push_back(new_goal);
+       
+
+    }//end for i
+    done = true;
+   return (done);
+  }//end of makePlan
+
+This is the make_plan, we just make it as little change as we can. There is a function for reading predefined points written in a .txt file.
+float* CarrotPlanner::Readfile2D (char* filename)
+{
+    int i ,n;
+    float *array = NULL;
+    char read[101];
+
+    FILE *fp = NULL;
+    fp = fopen(filename, "r");
+    if(fp == NULL)
+       ROS_INFO("Error in reading file");
+
+    //get number of required elemenets for the array to store
+    fscanf(fp, "%d", &n);
+    fgets(read, 100, fp);
+
+    array=(float*)calloc(2*n,sizeof(float));
+    if(array==NULL)
+        ROS_INFO("Error in dynamic memory allocation");
+
+    for(i = 0; i < n; i ++)
+    {
+        //get the value
+        fscanf(fp, "%s", &read); array[i*2] = (float)atof(read);
+        fscanf(fp, "%s", &read); array[i*2+1] = (float)atof(read);
+       
+        //flush of comments
+        fgets(read, 100, fp);
+    }
+    fclose(fp);
+    return array;
+}
+
+Here I provide a sample .txt for you.. The first num in the .txt file is to indicate how many entries in this file, to allocate space for the array to store the data. We have only x and y coordinates here.
+10
+0.1 0
+0.2 0
+0.3 0
+0.4 0
+0.5 0
+0.6 0
+0.7 0
+0.8 0
+0.9 0
+1   0
+
+Hope you can get some idea from my post and make your code work.
+
+Originally posted by tianb03 with karma: 710 on 2013-04-07
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Peter Listov on 2013-04-08:
+Yeah, thank you! Actually I did all the same.)
+Comment by malgudi on 2018-05-18:
+Hello!! Thank you very much for example code. I have a question. Suppose the robot moved away from its waypoints (due to some reason), then how would it find the next waypoint?  Would you discuss on this issue? Thank you.
+

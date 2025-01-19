@@ -1,0 +1,47 @@
+Q:
+
+What do the commutation waveforms look like for a brushless motor?
+
+I have seen waveforms for driving a brushless motor.
+
+I guess this is the waveform used for the simpler block commutation. But if I want to do sinusoidal waveforms, what does the PWM signal look like now? Is there a need to carefully synchronise the edges on the three phases?
+
+A:
+
+There is a fair deal of literature on the implementation of brushless motor control but here is an overview.
+To understand the differences between commutation waveforms it is important to understand how brushless motors operate.
+
+A three phase (two pole) motor will have three coils around a single magnet in the center.  The goal is to energize the coils in sequence so that the shaft of the motor (and its magnet) rotates.
+There are two magnetic fields that are important here, the field of the rotor (rotating magnet) and the field of the stator (static coils):
+
+We refer to the direction of the magnetic field as its "flux vector" because it sounds super cool.  The most important thing to learn from this image is that you want the two magnetic fields to be at right angles to each other.  This maximizes efficiency and torque.
+The dumbest commutation scheme is trapezoidal.  Using either hall sensors or back EMF from the motor, it is possible to determine if the motor is in one of a discrete number of positions and perform on/off control on one or two coils to lead the magnetic field around the motor:
+
+Because there might only be six separate orientations for the stator field, the flux vector of the motor could be anywhere from 60-120 degrees (instead of the desired 90) and therefore you get torque ripple and poor efficiency.
+An obvious solution here is to switch to sinusoidal commutation and just smooth out the waveform:
+
+If you know the exact orientation of the rotor you can just do some trig to calculate the exact PWM duty cycle to apply to each coil in order to keep the flux vector at 90 degrees and bam you have a beautiful 90 degree flux vector.  (The rotor orientation can be determined via encoder, interpolation or more advanced estimation such as a kalman filter).
+So right now you might be wondering how you can do better than sinusoidal commutation.  The key flaw of sinusoidal commutation is that the outputs are sent straight to PWM.  Because of coil inductance, the current (and therefore flux vector) will lag behind the commanded values and as the motor approaches its top speed the flux vector will be at 80 or 70 degrees instead of 90.
+This is why sinusoidal commutation has poor high speed performance.
+This finally brings us to flux-vector control which is a name given to (often proprietary) control algorithms that attempt to ensure the magnetic flux stays at 90 degrees even at high speeds.  The simplest way to do this would be to lead the field by, for example, 90-120 degrees depending on how fast you are going, knowing that the actual magnetic flux will lag.
+More robust solutions involve PID/feedforward to accurately control the current going through each phase.  Every servo manufacturer has their own in-house algorithm so I am sure there is some pretty complicated stuff at the bleeding edge.
+To put it in simplest terms, flux vector control is sinusoidal control of the current going to each phase (instead of just the PWM duty cycle).
+The line between sinusoidal/flux vector is pretty vague since some companies perform advanced control on their "sinusoidal" drives (which essentially makes them flux vector).  Also, since you can technically call almost anything flux vector control the quality of implementations can vary.
+
+A:
+
+The diagram you show looks like it would produce a pretty rough trapezoidal Back-EMF. I'm assuming that the gates that are at 100% are the lower legs of the motor drive bridge. I can't think of a reason you would want to do this. In general you want the gate voltage of the return leg to be the complement of the gate voltage of the supply leg.
+In six-step trapezoidal commutation, you typically ramp the PWM up to 100%, leave it there for a while (~30 electrical degrees of rotation), and then ramp it back down again.
+
+In sinusoidal commutation, the PWM duty cycle is continuously varied in sinusoidal values. Here is a good diagram showing the difference between sinusoidal drive and trapezoidal drive PWM and phase signals:
+
+This Fairchild app note shows the PWM though a full 360° rotation:
+
+It's useful to look at what's going on in the signal up close. What you're really doing is gradually varying the current in a triangular wave so that it slowly builds up in the stator of the motor. You have more control over this buildup if you drive the supply and return gates in a complementary fashion rather than holding the lower leg open.
+
+Computing a sine wave is more computationally intensive (unless you use a lookup table) than a simple ramp up, hold, ramp down. But it produces a much smoother drive.
+Space-vector commutation is even more computationally intensive. And while it has more torque ripple than a sinusoidal drive, it makes higher utilization of the bus voltage and is therefore more efficient in terms of power.
+The phase voltage in space vector drive ends up looking like this:
+
+This is done by varying the PWM duty cycle in all three phases at the same time. This is opposed to having just a single phase driven as in two-quadrant drive or having two phases driven in complementary pairs as in four-quadrant drive.
+

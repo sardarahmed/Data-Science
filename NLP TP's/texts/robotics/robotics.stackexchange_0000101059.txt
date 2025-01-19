@@ -1,0 +1,50 @@
+Q:
+
+colcon not adding Python module built with cmake to PYTHONPATH
+
+My package is building a Python module using SWIG and cmake. It is a pure cmake package, using the <build_type>cmake</build_type> tag in package.xml. The build succeeds, and the PATH and CMAKE_PREFIX_PATH are updated, but PYTHONPATH is not. I can see the Python package installed to install/<package_dir>/lib/python3/dist-packages, so I know the Python package is being installed properly. --merge-install also correctly installs the package but does not update PYTHONPATH. The same package works properly with catkin_make_isolated.
+Why is colcon not finding the Python package?
+colcon-core version 0.7.1
+colcon-cmake version 0.2.26
+
+Originally posted by johnw on ROS Answers with karma: 33 on 2022-01-18
+Post score: 1
+
+Original comments
+Comment by osilva on 2022-01-19:
+Hi @johnw Just an observation the question’s title doesn’t connect well with the tags and actual question. This may limit the number of people that review the question
+Comment by johnw on 2022-01-20:
+@osilva apparently the title got borked, I've fixed it.
+Comment by osilva on 2022-01-20:
+that makes so much sense @johnw. Thank you for updating.
+
+A:
+
+It turns out we had already solved this problem in a different project. See https://github.com/tesseract-robotics/tesseract_python/tree/master/tesseract_python for an example.
+The solution is to use colcon hooks to update PYTHONPATH.
+First, add the following to CMakeLists.txt:
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/share/ament_index/resource_index/packages/${PROJECT_NAME} "")
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/ament_index/resource_index/packages/${PROJECT_NAME} DESTINATION share/ament_index/resource_index/packages)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/ament_prefix_path.dsv "prepend-non-duplicate;AMENT_PREFIX_PATH;")
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/ament_prefix_path.dsv DESTINATION share/${PROJECT_NAME}/hook)
+
+if (${PYTHON_VERSION_MAJOR} LESS 3)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/python_path.dsv "prepend-non-duplicate;PYTHONPATH;lib/python2.7/dist-packages")
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/python_path.dsv DESTINATION share/${PROJECT_NAME}/hook)
+else()
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/python_path.dsv "prepend-non-duplicate;PYTHONPATH;lib/python3/dist-packages")
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/${PROJECT_NAME}/hook/python_path.dsv DESTINATION share/${PROJECT_NAME}/hook)
+endif()
+
+This assumes that PROJECT_NAME exactly matches the ROS package name. See https://github.com/tesseract-robotics/tesseract_python/blob/8d9db169c63c2b238c6fe8ea06042983cdc51a4a/tesseract_python/CMakeLists.txt#L155 for an example.
+Then create a colcon.pkg file with the following contents, replacing <PROJECT_NAME> with the name of the package. It must match the CMakeLists PROJECT_NAME exactly.
+{
+    "hooks": ["share/<PROJECT_NAME>/hook/ament_prefix_path.dsv", "share/<PROJECT_NAME>/hook/python_path.dsv"]
+}
+
+Once the hook is created, the PYTHONPATH should be updated when the colcon setup scripts are sourced.
+
+Originally posted by johnw with karma: 33 on 2022-05-31
+This answer was ACCEPTED on the original site
+Post score: 1
+

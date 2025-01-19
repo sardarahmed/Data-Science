@@ -1,0 +1,128 @@
+Q:
+
+gazebo ros bumper not working with fused links
+
+Dear all,
+I'm struggling with the gazebo_ros_bumper when applied to a link which is statically fused to another one.
+My system is Ubuntu 16.04 with Kinetic.
+My robot has a leg composed by four components: hip assemply, upper leg, lowel leg and foot (full description is here).
+Between lower leg and foot there is a fixed joint:
+    <joint name="${name}_foot_joint" type="fixed">
+        <origin xyz="${lowerleg_length} 0 0" rpy="${PI/2} 0 ${-PI/2}"/>
+        <parent link="${name}_lowerleg"/>
+        <child  link="${name}_foot"/>
+    </joint>
+    <!-- Lower leg link -->
+    <link name="${name}_lowerleg">
+        <inertial>
+            <origin xyz="${xcom_lowerleg} ${reflect_front*ycom_lowerleg} ${reflect_front*zcom_lowerleg}"/>
+            <!-- adding half kg to lf lowerleg -->
+                <mass value="${m_lowerleg}"/>
+            <inertia ixx="${ixx_lowerleg}" iyy="${iyy_lowerleg}" izz="${izz_lowerleg}"
+                     ixy="${reflect_front*ixy_lowerleg}" ixz="${reflect_front*ixz_lowerleg}" iyz="${iyz_lowerleg}"/>
+        </inertial>
+        <visual>
+            <geometry>
+                <mesh filename="package://hyq_description/meshes/leg/lowerleg.dae" scale="1 1 1"/>
+            </geometry>
+            <material name="white"/>
+        </visual>
+        <collision>
+            <origin xyz="${lowerleg_length/2.0} 0 0" rpy="0 ${-PI/2}  0"/>
+            <geometry>                  
+                <cylinder length="${lowerleg_length}"  radius="0.02"/>
+            </geometry>
+        </collision>
+    </link>
+    <!-- Foot link -->
+    <link name="${name}_foot">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.02175"/>
+            </geometry>
+        </collision>
+        <visual>
+            <geometry>
+                <sphere radius="0.02175" />
+            </geometry>
+            <material name="black" />
+        </visual>
+    </link>
+
+To both the lower leg and foot I have attached a bump sensor:
+        <gazebo reference="${name}_lowerleg">
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <mu1>1.0</mu1>
+        <mu2>1.0</mu2>
+        <maxVel>1.0</maxVel>
+        <maxContacts>1</maxContacts>
+        <sensor name="${name}_shin_contact_sensor" type="contact">
+            <always_on>true</always_on>
+            <update_rate>250.0</update_rate>
+            <contact>
+              <collision>${name}_lowerleg_collision</collision>
+            </contact>
+            <plugin name="${name}_shin_bumper" filename="libgazebo_ros_bumper.so">
+              <bumperTopicName>/${name}_shin_sensor</bumperTopicName>
+              <frameName>base_link</frameName>
+            </plugin>
+        </sensor>   
+    </gazebo>
+
+    <gazebo reference="${name}_foot">
+                    <kp>1000000.0</kp>
+                    <kd>100.0</kd>
+                    <mu1>1.0</mu1>![image description](https://ftp.osuosl.org/pub/ros/download.ros.org/downloads/se_migration/ros/1518629691790135.png)
+                    <mu2>1.0</mu2>
+                    <maxVel>1.0</maxVel>
+        <maxContacts>1</maxContacts>
+        <sensor name="${name}_foot_contact_sensor" type="contact">
+            <always_on>true</always_on>
+            <update_rate>250.0</update_rate>
+            <contact>
+                <collision name="${name}_foot_collision">${name}_foot_collision</collision>
+                <topic>/${name}_foot_collision_topic</topic>
+            </contact>
+            <plugin name="${name}_foot_bumper" filename="libgazebo_ros_bumper.so">
+                <bumperTopicName>/${name}_bumper</bumperTopicName>
+                <frameName>base_link</frameName>
+            </plugin>
+        </sensor>
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+However, only the shin sensor outputs contacts, while the foot sensor outputs on the topic /${name}_bumper an empty list contacts, even if I can clearly see the contacts in Gazebo.
+I suspect this is related to the fact that the lowerleg get fused inside gazebo.
+From the interface I see the collision has a strange name (${name}_lowerleg_fixed_joint_lump__${name}_foot_collision_1)
+
+I even tried to put this name in the <collision> tag, either in the name attribute or within the tag, with no success.
+What can I do?
+What am I missing?
+
+Originally posted by mark_vision on ROS Answers with karma: 275 on 2018-02-14
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-02-14:
+I seem to remember that Gazebo will merge all links (and properties of those links, such as collision geometry, etc) that are connected with fixed joints into one. That could be what is happening here.
+A work-around I've seen is using revolute joints with lower==upper==0.0.
+Comment by gvdhoorn on 2018-02-14:
+This question would perhaps have been better asked over at answers.gazebosim.org btw.
+
+A:
+
+It seems that my initial intuition was correct. I have to set the weird name shown in the Gazebo screen (${name}_lowerleg_fixed_joint_lump__${name}_foot_collision_1) for collision.
+I must have mispelled it when I tried earlier.
+The way I got to the solution was to generate the SDF file and replicate the name for both <collision> tags (link and sensor)
+Unfortunately, this solution is not back-compatible with Gazebo 2.
+
+Originally posted by mark_vision with karma: 275 on 2018-02-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by bhooshan_deshpande on 2022-05-20:
+I tried @gvdhoorn's answer of replacing fixed joints with revolute joints, and it worked. Thanks! Really helpful!
+

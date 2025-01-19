@@ -1,0 +1,119 @@
+Q:
+
+Colcon Build Error with ROS2 Eloquent and Libtorch
+
+Hello. I am trying to build my package with colcon and it has stoped building correctly over the past day and I am not sure why. I have attached the error that colcon emits below. Reading through it signals to me that there is an issue with the linker but I cant figure out how to solve it. I have also attached my CMakeLists for the package as well so you can check that out. The strange part is that this worked a couple of days ago and on multiple versions of my package. Now it does not work on any past or present version and on either ARM or X86 machines (all running ROS2 eloquent + Ubuntu 18.04). Any help is greatly appreciated.
+CMakeLists:
+cmake_minimum_required(VERSION 3.5)
+project(br-detection)
+
+# Default to C99
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+list(APPEND CMAKE_PREFIX_PATH "~/.local/lib/python3.6/site-packages/torch")
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(rclpy REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+find_package(OpenCV 4.2 REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(message_filters REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_geometry REQUIRED)
+find_package(OpenMP)
+find_package(Torch REQUIRED)
+
+ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+add_executable(br-human-tracking src/pose_tracker.cpp src/pose_tracker_helpers.cpp src/tracking.cpp)
+
+target_link_libraries(br-human-tracking "${TORCH_LIBRARIES}")
+target_link_libraries(br-human-tracking OpenMP::OpenMP_CXX)
+set_property(TARGET br-human-tracking PROPERTY CXX_STANDARD 14)
+
+target_include_directories(br-human-tracking PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/br-detection>
+        $<INSTALL_INTERFACE:include/br-detection>)
+
+target_include_directories(br-human-tracking PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/br-detection>
+        $<INSTALL_INTERFACE:include/br-detection>)
+
+ament_target_dependencies(
+        br-human-tracking
+        rclcpp
+        message_filters
+        sensor_msgs
+        cv_bridge
+        OpenCV
+        image_geometry
+        tf2
+        tf2_ros
+        ament_index_cpp
+        Eigen3
+        Torch
+)
+
+install(TARGETS br-human-tracking
+        EXPORT export_${PROJECT_NAME}
+        DESTINATION lib/${PROJECT_NAME})
+
+install(
+        DIRECTORY models
+        DESTINATION share/${PROJECT_NAME}/
+)
+
+install(DIRECTORY launch
+        DESTINATION share/${PROJECT_NAME}/
+)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # uncomment the line when a copyright and license is not present in all source files
+  #set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # uncomment the line when this package is not in a git repo
+  #set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()
+
+Error:
+
+This code block was moved to the following github gist:
+https://gist.github.com/answers-se-migration-openrobotics/aa0ce48672627c0915aa1cd96897a7da
+
+Originally posted by mequi on ROS Answers with karma: 111 on 2020-05-17
+Post score: 0
+
+A:
+
+Ok, so I figured it out. Apparently the libtorch binaries installed by pip are compiled pre GCC 5.0 and so have ABI = 0 which messes with the linking of other C++ libraries. The cxx11 ABI (ABI = 1) version of libtorch downloadable from here https://pytorch.org/ fixed the problem. I am not sure exactly why the python binaries are still Pre-cxx11 ABI for X86 since on the Jetson Nano the ones provided by Nvidia are cxx11 ABI and hence worked fine and led partly to all this confusion.
+
+Originally posted by mequi with karma: 111 on 2020-05-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Santosh Balaji on 2023-06-16:
+Thanks for the solution. Saved my day !!!
+

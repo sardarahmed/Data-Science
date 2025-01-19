@@ -1,0 +1,189 @@
+Q:
+
+HC-05 connection to ROS using Arduino?
+
+Hello, guys.
+I've been trying to get my HC-05 bluetooth module working with ROS through an Arduino, but I haven't got success so far. In order to just establish the connection between the module and my computer, I have followed this tutorial (link text), which uses bluez bluez-tools. Here are the exactly steps I've taken:
+$ hcitool scan
+Scanning ...
+20:15:07:27:76:81      HC-05
+
+$ bluez-simple-agent hci0 20:15:07:27:76:81
+RequestPinCode (/org/bluez/731/hci0/dev_20_15_07_27_76_81)
+Enter PIN Code: 1234
+Release
+New device (/org/bluez/731/hci0/dev_20_15_07_27_76_81)
+
+Then, I've made my /etc/bluetooth/rfcomm.conf file as follows:
+rfcomm0 {
+              bind no;
+              device 20:15:07:27:76:81;
+              channel 1;
+              comment "Arduino";
+}
+
+Then, back to terminal:
+$ sudo rfcomm connect 0
+Connected /dev/rfcomm0 to 20:15:07:27:76:81 on channel 1
+Press CTRL-C for hangup
+
+Then I start ROS by using
+$ roscore
+
+And finally, I try and fail to establish the connection.
+$ rosrun rosserial_python serial_node.py /dev/rfcomm0 _baud:=9600
+[INFO] [WallTime: 1470448881.996747] ROS Serial Python Node
+[INFO] [WallTime: 1470448882.001542] Connecting to /dev/rfcomm0 at 9600 baud
+[ERROR] [WallTime: 1470448899.106085] Unable to sync with device; possible link problem or link software version mismatch such as hydro rosserial_python with groovy Arduino.
+
+The problem isn't in my arduino code, because when I use the USB cable, the topics are successfully created and I'm able to see what's going on inside them.
+I'm using
+
+Ubuntu 14.04
+ROS Indigo
+ros-indigo-rosserial-arduino
+ros-indigo-rosserial
+
+Can anyone help me, please?
+Thank you.
+
+Originally posted by Giovani Debiagi on ROS Answers with karma: 31 on 2016-08-05
+Post score: 0
+
+A:
+
+I have already got the bluetooth connection to work with this module by setting some data to be printed on the Serial monitor of Arduino, but nothing related to ROS. The command lines I used were:
+$ sudo rfcomm bind 0&
+$ cat /dev/rfcomm0
+
+By using this, I've got the data printed on my linux machine terminal. But I don't need just to see them, I need to get them with a node to make some operations.
+And I have already tried that same procedure with a 57.600 baud rate, and got the same error message.
+
+EDITED
+I have tried to change the serial port by using the class definition below, but it didn't recognize Serial1.
+class NewHardware : public ArduinoHardware
+{
+   public:
+   NewHardware():ArduinoHardware(&Serial1, 57600){};
+};
+
+ros::NodeHandle_<NewHardware>  nh;
+
+So, I added this line in the beginning of my sketch
+# define USBCON
+
+which would change the serial port, according to some page on the internet. And now, I get a new error message.
+[INFO] [WallTime: 1470535945.212095] ROS Serial Python Node
+[INFO] [WallTime: 1470535945.215136] Connecting to /dev/rfcomm0 at 57600 baud
+Traceback (most recent call last):
+  File "/opt/ros/indigo/lib/rosserial_python/serial_node.py", line 80, in <module>
+    client = SerialClient(port_name, baud)
+  File "/opt/ros/indigo/lib/python2.7/dist-packages/rosserial_python/SerialClient.py", line 385, in __init__
+    self.requestTopics()
+  File "/opt/ros/indigo/lib/python2.7/dist-packages/rosserial_python/SerialClient.py", line 392, in requestTopics
+    self.port.flushInput()
+  File "/usr/lib/python2.7/dist-packages/serial/serialposix.py", line 500, in flushInput
+    termios.tcflush(self.fd, TERMIOS.TCIFLUSH)
+termios.error: (5, 'Input/output error')
+
+Any ideas? This new error message doesn't even say what the problem is.
+
+"SOLVED"
+Well, I ended up choosing another way to accomplish my goal. I've developed (not alone) a ROS code, on my laptop, that gets data directly from serial port. This is the code:
+#include "ros/ros.h"
+#include <fcntl.h>
+#include <termios.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+
+int main(int argc, char **argv)
+{
+    ros::init (argc,argv,"imu_node");
+    ros::NodeHandle nh;
+    ros::Rate loop_rate(50); //Hz
+    std::string aux;
+    
+    //Begin serial communication with Arduino
+        struct termios toptions;
+    int fd, n;
+    float roll, pitch, yaw;
+    
+    nh.getParam("imu_node/serial_port",aux);
+    ROS_INFO_STREAM(aux);
+    
+    fd = open(aux.c_str(), O_RDWR | O_NOCTTY);
+    
+    /* wait for the Arduino to reboot */
+    usleep(3500000);
+
+    /* get current serial port settings */
+    tcgetattr(fd, &toptions);
+    /* set 9600 baud both ways */
+    cfsetispeed(&toptions, B115200);
+    cfsetospeed(&toptions, B115200);
+    /* 8 bits, no parity, no stop bits */
+    toptions.c_cflag &= ~PARENB;
+    toptions.c_cflag &= ~CSTOPB;
+    toptions.c_cflag &= ~CSIZE;
+    toptions.c_cflag |= CS8;
+    /* Canonical mode */
+    toptions.c_lflag |= ICANON;
+    /* commit the serial port settings */
+    tcsetattr(fd, TCSANOW, &toptions);
+
+    while(ros::ok())
+    {
+        char buf[64]="temp text";
+        write(fd, "I\n", 2);
+        usleep(500);
+        /* Receive string from Arduino */
+        do
+        {
+            n = read(fd, buf, 32);
+        }while (n < 10);
+        /* insert terminating zero in the string */
+        buf[n] = 0;     
+        sscanf(buf, "I|%f|%f|%f|*\r\n", &yaw, &pitch, &roll);
+        ROS_INFO_STREAM(buf);
+            ROS_INFO_STREAM("accel_x: " << roll);
+            ROS_INFO_STREAM("accel_y: " << pitch);
+            ROS_INFO_STREAM("yaw: " << yaw);
+            
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
+}
+
+Then, I link the rfcomm0 port created by the bluetooth connection to another random serial port, because, apparently, the parameter setting doesn't work with the original bluetooth port (rfcomm0).
+$ sudo ln -s /dev/rfcomm0 /dev/ttyBT
+
+And finally, I set the node parameter and run the node.
+$ rosparam set /imu_node/serial_port /dev/ttyBT
+$ rosrun imu imu
+
+Originally posted by Giovani Debiagi with karma: 31 on 2016-08-06
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by mcshicks on 2016-08-06:
+It seems like you test only checks transmit, not receive on the arduino.   If you haven't check receive I would do that.  Also you have to change the serial port from the Arduino one to BT, something like this
+class NewHardware : ....
+NewHardware():ArduinoHardware(&Serial1, 57600){};... good luck!
+Comment by ogruiz on 2016-10-09:
+Any solutions to this problem? I am getting the exact same error.
+Comment by Giovani Debiagi on 2016-10-09:
+No, ogruiz, sorry. I ended up choosing another way to accomplish my goal. I've developed a ROS code, on my laptop, that gets data directly from serial port. Then, I make a linking between the bluetooth port (rfcomm0) and a new random serial port, and set this new port as a parameter of my ROS node.
+Comment by ogruiz on 2016-10-09:
+Would you be able to share this new ROS code? I am trying what you suggested but have not succeeded. I am using Virtual Machine VMware to run Ubuntu 14.04 and indigo and connecting my host's bluetooth to the serial port on the VM.
+Comment by Giovani Debiagi on 2016-10-09:
+Actually, this code is not entirely made by myself (I know very little about serial-linux), so I'd have to ask permission for some people before sharing it, I'm sorry. But I've found some answers around here with code examples that might help. Apparently, this one has the same structure as mine.
+Comment by Giovani Debiagi on 2016-10-09:
+http://answers.ros.org/question/10114/how-can-ros-communicate-with-my-microcontroller/
+Comment by Giovani Debiagi on 2016-10-09:
+This other one is really similar to mine:
+http://stackoverflow.com/questions/18108932/linux-c-serial-port-reading-writing
+Let me know if it helps.
+Comment by Giovani Debiagi on 2016-10-10:
+ogruiz, I've got permission to share the code now. It's up above, inside my answer.
+

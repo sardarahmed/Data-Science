@@ -1,0 +1,47 @@
+Q:
+
+using tf data from bag files
+
+I'm wondering if there is a good way to get transforms (rotation and translation) from tf data recorded in bag files.  I'm working in python and I don't want to replay the bag file as part of the solution.  Instead I want to be able to get other messages from the bag file and use tf to find the euclidean distance between two frames on the robot at the same time instant as my message of interest.  Any thoughts?
+I could look at parent-child relationships in a single tf message and string the transforms together, but then I'd be recreating the functionality of tf.  Is there a utility or tool for getting a transformation from a single tf message (i.e. not using ROS to wait for transform or having to replay the bag file).  Thanks a lot for any ideas.
+
+Originally posted by mkillpack on ROS Answers with karma: 340 on 2011-10-08
+Post score: 8
+
+A:
+
+The main problem is that playing a bag files in conjunction with tf is problematic. Tf messages arent't synchronized with the current rosTime. Several alternatives has been proposed but apparently they don't work (at least not for me in python). See http://answers.ros.org/question/1114/waitfortransform-use_sim_time-python and see also http://ros-users.122217.n3.nabble.com/tf-use-sim-time-clock-and-bag-files-td1305066.html
+AFAIK this problem is still not solved for tf in python. I think it would be possible if the TransformListener::subscription_callback were public. Am I right? tf::tfMessage's could be retrieved from bag and pushed manually using this method and the Bag API (see below a pythonic code - pytf.cpp modifications also needed):
+
+bag = rosbag.Bag(bag_file)
+listener = tf.TransformListener()
+for topic, msg, t in bag.read_messages(topics=['/tf']):
+     listener.subscription_callback(msg)
+
+To reproduce bags with tf messages are very interesting specially in geometric learning problems where bags files with transform information can be used as training database (this is my case).
+Until now I'm using this solution to simulate tf in a bag messages at the current time(though I don't like it so much):
+
+import roslib
+roslib.load_manifest('tf')
+import rospy
+import tf
+
+rospy.init_node("tf_restamper")
+tfpublisher= rospy.Publisher("tf",tf.msg.tfMessage)
+
+def tfcallback(tfmessage):
+    for transf in tfmessage.transforms:
+        transf.header.stamp=rospy.Time.now()
+    tfpublisher.publish(tfmessage)
+
+tfproxy = rospy.Subscriber("tf_old",tf.msg.tfMessage,tfcallback)
+rospy.spin()
+
+Originally posted by Pablo Iñigo Blasco with karma: 2982 on 2011-10-17
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by mkillpack on 2012-02-25:
+It seems like some of the timing issues can be dealt with by setting the /use_sim_time parameter to true (use --clock option for rosbag play).  However, this doesn't work to play/look at more than one bag file in a single process.  When the time starts over for the 2nd bag file, tf freaks out.
+

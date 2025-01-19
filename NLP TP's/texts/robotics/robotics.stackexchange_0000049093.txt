@@ -1,0 +1,49 @@
+Q:
+
+Using moveit kinematics plugin without moveit (undefined symbol for urdf)
+
+I have IKFast MoveIt kinematics plugin created according to this tutorial. It works fine within MoveIt framework, however I would like to use it as a separate kinematics solver with service/topic interface.
+So I wrote a small wrapper that loads plugin with pluginlib (based on tutorial).
+However I am getting runtime error:
+
+lwa_ikfast_wrapper_node: symbol lookup error: liblwa_moveit_arm_kinematics.so: undefined symbol: _ZN4urdf5Model10initStringERKSs
+
+Demangled symbol is:
+
+urdf::Model::initString(std::basic_string<char, std::char_traits, std::allocator > const&)
+
+This function is called within plugin's KinematicBase::initialize() method.
+Obviously that happens because urdf libraries are not linked to plugin at compile time. Thus, they have to be linked to node executable somehow. But that only happens if there is an explicit call to model::initString() in my node.
+I tried to add all sort of dependencies to CMakeLists.txt and package.xml, but can't get rid of the problem.
+The relevant files (stripped versions):
+
+lwa_ikfast_wrapper_node.cpp
+CMakeLists.txt
+package.xml
+
+EDIT:
+When model::initString() is called explicitly, ldd reports the following urdf libraries for executable:
+liburdf.so => /opt/ros/groovy/lib/liburdf.so (0x00007fe421056000)
+liburdfdom_model.so => /opt/ros/groovy/lib/liburdfdom_model.so (0x00007fe41e9f0000)
+
+However adding these to dependencies doesn't solve the problem.
+Any ideas?
+P.S. It is maybe more of general programming question, but I think it might be interesting to the community in the context.
+Thanks,
+Boris
+
+Originally posted by Boris on ROS Answers with karma: 3060 on 2013-03-06
+Post score: 0
+
+A:
+
+Ok, that was a silly mistake - not the executable, but plugin library should be linked with dependencies. That is quite obvious now, but somehow I missed it at the beginning.
+So linker adds reference to shared library only if it finds that there is something that uses it. Since there is explicit call in plugin library reference is added there without a problem.
+Thus, the sufficient solution is to add the following to CMakeLists.txt in plugin package:
+find_package(catkin REQUIRED COMPONENTS ... urdf)
+target_link_libraries(lwa_ikfast_plugin ${catkin_LIBRARIES})
+
+Originally posted by Boris with karma: 3060 on 2013-03-07
+This answer was ACCEPTED on the original site
+Post score: 0
+

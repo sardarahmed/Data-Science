@@ -1,0 +1,139 @@
+Q:
+
+Dynamic parameters update from the code (cpp)
+
+Hello, folks!
+I am having trouble to update the dynamic parameters from c++ code. My first attempt was to follow hokuyo_node tutorial. So I put this line in my code:
+system("rosrun dynamic_reconfigure dynparam set My_node My_param Value &");
+The & sign in the end was due to the information I print in my code. Without it the code stops. But when I started to test the code in Gazebo and invoked the command much often, processor load went to around 100% (without the line it worked on 40-50%). Maybe I need to invoke the command in another way?
+Another solutions I found regarding my problem:
+
+dynamic reconfigure: How explicity fetch data from parameter
+server?
+Bi-directional
+dynamic_reconfigure
+Notify changes to
+dynamic_reconfigure
+
+the solution presented in first two links didn't work for me (maybe because of my wrong initialization of dynamic_reconfigure::Server inside the class, I will put my code below). If I initialize dynamic_reconfigure::Server giving my node as an argument, nothing shows up in rqt_reconfigure.
+The code from the last "Notify changes ... " was more similar to mine - it also based on classes, so It showed some work ability. But when I started rqt_reconfigure the parameter's values in my node were completely random and didn't change with my inputs.
+Here is how my code look like:
+main
+int main(int argc, char * *argv)  
+{  
+    ros::init(argc, argv, "flight_controller");  
+    ros::NodeHandle my_node;  
+    static My_class *class = new My_class(my_node);  
+}  
+
+My_class
+class My_class  
+{  
+private:  
+ros::NodeHandle node;  
+    dynamic_reconfigure::Server<Config> param_server;  
+    dynamic_reconfigure::Server<Config>::CallbackType call_type;  
+public:  
+    My_class(ros::NodeHandle &node_)  
+    //,param_server(node)   if this line uncomment, rqt_reconfigure doesn't see the node  
+    {  
+        node = node_;  
+        call_type = boost::bind(&My_class::parametersCallback, this, _1, _2);  
+        param_server.setCallback(call_type);  
+    }  
+}  
+
+Thank you in advance for help!
+
+Edit: @ahendrix
+So I am not changing the parameters often. But there is one parameter being changed inside the program, but not rqt_reconfigure. I want those parameters to be synchronized.
+Lets say I have parameters A=1 and B=2 (I can see it in rqt_reconfigure). Program changes value A=3, rqt_reconfigure continue to display A=1. When I after change through rqt B=4, it changes B=4 and A=1!, since it was the last value displayed in rqt_reconfigure and rqt call_back looks like that:
+parametersCallback(prodrone::ProdroneConfig &config, uint32_t level)
+{
+A = config.a;
+B = config.b;
+}
+
+I want to change only B, without touching A, so that A has to be updated in rqt as soon as it changes inside the program.
+
+Originally posted by postal on ROS Answers with karma: 41 on 2016-02-23
+Post score: 2
+
+Original comments
+Comment by Thomas D on 2016-02-23:
+Did you look at this question/answer?
+Comment by postal on 2016-03-15:
+Thank you Thomas!
+I did try but I'm having the same problem that was mentioned by lucasw (Jul 8 '15) in comments.
+
+A:
+
+So I found the solution for my self, not exactly what I wanted, but it works.
+I finally managed  the code from Notify changes to dynamic_reconfigure question to work. My problem was that I didn't initialize the dyn_config properly in a class constructor, which entailed the parameters to constantly update with random, out-of-scope numbers. But this solution didn't work for me eventually and here is why. From the example, in the link above, we can see the function void ScitosBase::dynamicReconfigureUpdaterLoop that updates the parameters every ros::Rate loop_rate = 0.5 sec. The problem is how the rqt_reconfigure node reacts on these updates: if you didn't manage to move the slider at the position you want within this 0.5 sec to change the value, it put it to the position you had it taken from; whereas if you try to change the value by typing manually, you should also do it in a half of second, otherwise the pointer drop out from typing bar. So this solution doesn't work for me - I need the parameters to update fast while having the time to type a new value.
+So what I do in short - I don't update the values constantly with some specific update rate, but run the analog of
+void ScitosBase::dynamicReconfigureUpdaterLoop each time I update the dyn_param value from the code:
+main
+int main(int argc, char * *argv)  
+{  
+    ros::init(argc, argv, "flight_controller");  
+    ros::NodeHandle my_node;  
+    static My_class *class = new My_class(my_node);      
+}  
+
+My_class
+class My_class  
+{  
+private:  
+    ros::NodeHandle node;  
+    void parametersCallback(Config &config, uint32_t level);  
+    dynamic_reconfigure::Server<Config> param_server;  
+    dynamic_reconfigure::Server<Config>::CallbackType call_type;  
+    boost::recursive_mutex config_mutex; //I am not sure whether I need it 
+public:  
+    My_class(ros::NodeHandle &node_)  
+    {  
+        node = node_;  
+
+        boost::recursive_mutex::scoped_lock dyn_reconf_lock(config_mutex);  
+        dyn_reconf_lock.unlock();  
+
+        call_type = boost::bind(&My_class::parametersCallback, this, _1, _2);  
+        param_server.setCallback(call_type);  
+        /* Initialize the parameters at once, otherwise the values will be random */
+        Config config;
+        param_server.getConfigDefault(config);
+        param_server.updateConfig(config);
+    }  
+void dynamicReconfigureUpdate(); 
+double a,b; 
+}
+
+void My_class::dynamicReconfigureUpdate()  
+{  
+    Config config;
+    /* You need to assign every single value of you dyn_parameters configuration. Unassigned values will turn into random at rqt_reconfigure */
+    config.a = my_a_value_in_code;
+    config.b = my_b_value_in_code;
+    boost::recursive_mutex::scoped_lock lock(config_mutex); // I am not sure I need it
+    param_server.updateConfig(config);
+    lock.unlock();
+}
+
+void My_class::parametersCallback(Config &config, uint32_t level)  
+{
+    a = config.a;  
+    b = config.b;
+}   
+
+So each time I am changing a or b within my program I run My_class::dynamicReconfigureUpdate() to update the rqt_reconfigure. It will not work if you call the function less than it takes for you to move rqt slider or input the value manually, which is not my case.
+The last question I have is regarding the recursive_mutex. It is said here that you need to implement it if you call void updateConfig(const ConfigType &config) but I am not familiar with the recursive_mutex and I am not sure I am using it right. Can somebody give me a hint?
+
+Originally posted by postal with karma: 41 on 2016-03-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Dave Barnett on 2017-11-02:
+Found your code useful.  When I implemented similar, I got a warning when 'updateConfig' is called telling me I need a mutex.  I'm guessing you did too and expect this code still to.
+Add ": param_server(config_mutex)" to your constructor and the mutex gets used.  Otherwise it does nothing.
+

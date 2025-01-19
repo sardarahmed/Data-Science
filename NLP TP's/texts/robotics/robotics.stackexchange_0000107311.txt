@@ -1,0 +1,667 @@
+Q:
+
+problems trying to use navsat_transform into robot_localization ekf_node
+
+I'm using robot_localization from binary in foxy. I have an IMU, a magnetometer, wheel encoders and a GPS. I'm trying to integrate all of them into one odom message. I've already done that in the past on kinectic and ROS1, but now I spend a couple of days trying to understand the problem.
+I fuse IMU (gyro + accel) and magnetometer data using imu_filter_madgwick, getting a new IMU message with earth's referenced orientation. I'm not using accelerometers on RL for now.
+For testing purpose I made a node that suscribe to each sensor, overwrite covariance matrix with custom values and republish them, just to test different values of sensor noise. My test, rigth now, are statics one, that is with the robot fixed on the ground.
+In order to isolate the probelm I made 3 launch file and 3 yaml file. The first one is for odomo to base_link and use imu and wheel odometry, I set world_frame: odom. In the second one I want to have map to base_link using IMU, wheel encoder and GPS odometry from a navsat_transform_node. The first test was whitout this information. In this ekf I set world_frame: map. Finally I launch navsat_transform_node using the IMU and the odomotry of the second EKF.
+This are my config files:
+ekf_filter_node_odom:
+    ros__parameters:
+        frequency: 30.0
+        sensor_timeout: 0.1
+        two_d_mode: true
+        transform_time_offset: 0.0
+        transform_timeout: 0.0
+        print_diagnostics: true
+        debug: false
+
+        map_frame: map              # Defaults to "map" if unspecified
+        odom_frame: odom            # Defaults to "odom" if unspecified
+        base_link_frame: base_link  # Defaults to "base_link" if unspecified
+        world_frame: odom           # Defaults to the value of odom_frame if unspecified
+
+        odom0: /chori/odom
+        odom0_config: [false, false, false,   # x, y, z
+                       false, false, false,   # roll, pitch, yaw
+                       true, true, false,     # vx, vy, vz
+                       false, false, false,   # vroll, vpitch, vyaw
+                       false, false, false]   # ax, ay, az
+        odom0_queue_size: 10
+        odom0_differential: false
+        odom0_relative: false
+
+        imu0: /imu_filt/data
+        imu0_config: [false, false, false,   # x, y, z
+                      false,  false,  true,   # roll, pitch, yaw
+                      false, false, false,     # vx, vy, vz
+                      false,  false,  true,   # vroll, vpitch, vyaw
+                      false,  false,  false]   # ax, ay, az
+        imu0_differential: false
+        imu0_relative: false
+        imu0_queue_size: 10
+        imu0_remove_gravitational_acceleration: true
+
+        # odom1: /odometry/gps
+        # odom1_config: [true,  true,  false,
+        #             false, false, false,
+        #             false, false, false,
+        #             false, false, false,
+        #             false, false, false]
+        # odom1_queue_size: 10
+        # odom1_differential: false
+        # odom1_relative: false
+
+        use_control: false
+
+        process_noise_covariance: [0.5, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.5, 0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.06, 0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.03, 0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.03, 0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.06, 0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.025, 0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.025, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.04, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.01, 0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.01, 0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.02, 0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.01, 0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.01, 0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.015]
+
+        initial_estimate_covariance: [1.0, 1.0, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9]
+
+ekf_filter_node_map:
+    ros__parameters:
+        frequency: 30.0
+        sensor_timeout: 0.1
+        two_d_mode: true
+        transform_time_offset: 0.0
+        transform_timeout: 0.0
+        print_diagnostics: true
+        debug: false
+
+        map_frame: map              # Defaults to "map" if unspecified
+        odom_frame: odom            # Defaults to "odom" if unspecified
+        base_link_frame: base_link  # Defaults to "base_link" if unspecified
+        world_frame: map           # Defaults to the value of odom_frame if unspecified
+
+        odom0: /chori/odom
+        odom0_config: [false, false, false,   # x, y, z
+                       false, false, false,   # roll, pitch, yaw
+                       true, true, false,     # vx, vy, vz
+                       false, false, false,   # vroll, vpitch, vyaw
+                       false, false, false]   # ax, ay, az
+        odom0_queue_size: 10
+        odom0_differential: false
+        odom0_relative: false
+
+        imu0: /imu_filt/data
+        imu0_config: [false, false, false,   # x, y, z
+                      false,  false,  true,   # roll, pitch, yaw
+                      false, false, false,     # vx, vy, vz
+                      false,  false,  true,   # vroll, vpitch, vyaw
+                      false,  false,  false]   # ax, ay, az
+        imu0_differential: false
+        imu0_relative: false
+        imu0_queue_size: 10
+        imu0_remove_gravitational_acceleration: true
+
+        # odom1: /odometry/gps
+        # odom1_config: [true,  true,  false,
+        #             false, false, false,
+        #             false, false, false,
+        #             false, false, false,
+        #             false, false, false]
+        # odom1_queue_size: 10
+        # odom1_differential: false
+        # odom1_relative: false
+
+        use_control: false
+
+        process_noise_covariance: [0.00005, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.00005, 0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.06, 0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.03, 0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.03, 0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.06, 0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.025, 0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.025, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.04, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.01, 0.0,    0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.01, 0.0,    0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.02, 0.0,    0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.01, 0.0,    0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.01, 0.0,
+                                   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.015]
+
+        initial_estimate_covariance: [1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9]
+
+navsat_transform:
+    ros__parameters:
+        frequency: 30.0
+        delay: 3.0
+        magnetic_declination_radians: 0.0
+        yaw_offset: 0.0
+        zero_altitude: true
+        broadcast_utm_transform: false
+        broadcast_utm_transform_as_parent_frame: false
+        publish_filtered_gps: true
+        use_odometry_yaw: false
+        wait_for_datum: false
+        datum: [55.944904, -3.186693, 0.0]
+
+Commenting the odom from navsat_node everithing works as expected:
+/odometry/local:
+header:
+  stamp:
+    sec: 1703877370
+    nanosec: 618882913
+  frame_id: odom
+child_frame_id: base_link
+pose:
+  pose:
+    position:
+      x: -3.265787509571813e-08
+      y: -2.5325475992428667e-08
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.9464920648473698
+      w: 0.3227270846721146
+  covariance:
+  - 105.41803562756589
+  - 0.9999999997402413
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 8.97322730679937e-11
+  - 104.41803562743078
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 9.97250753351147e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 9.945240794569202e-07
+  - -8.99665850990115e-32
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 4.53524026675228e-32
+  - 9.945240794569202e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.00045500753652848267
+twist:
+  twist:
+    linear:
+      x: -5.0e-324
+      y: -5.0e-324
+      z: 0.0
+    angular:
+      x: 0.0
+      y: 0.0
+      z: -0.016021900057577837
+  covariance:
+  - 0.003166571002366939
+  - 5.0e-324
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 5.0e-324
+  - 0.003166571002366939
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 9.958846128129104e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 9.838374544094523e-07
+  - -2.133540770254387e-40
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0760776055407016e-40
+  - 9.838374544094523e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0005829180548309103
+
+/odometry/global:
+header:
+  stamp:
+    sec: 1703877524
+    nanosec: 533675418
+  frame_id: map
+child_frame_id: base_link
+pose:
+  pose:
+    position:
+      x: -5.5119621632357074e-08
+      y: -5.058970622734353e-08
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.943614123552411
+      w: 0.33104740722805115
+  covariance:
+  - 0.2039609652147536
+  - 7.435771160987088e-10
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 8.815912973107209e-11
+  - 0.20396096408126818
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 4.993807114645625e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 4.987659973458145e-07
+  - 8.449250328203822e-33
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0860977782637455e-34
+  - 4.987659973458145e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 9.300757210968958e-05
+twist:
+  twist:
+    linear:
+      x: -5.0e-324
+      y: -5.0e-324
+      z: 0.0
+    angular:
+      x: 0.0
+      y: 0.0
+      z: -0.01235058626604838
+  covariance:
+  - 0.003366571597252472
+  - 5.0e-324
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 5.0e-324
+  - 0.003366571597252472
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 4.990727864575202e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 4.963516746353309e-07
+  - 7.982007752141765e-41
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -1.1567015083963526e-42
+  - 4.963516746353309e-07
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0004669832570670235
+
+/odometry/gps:
+header:
+  stamp:
+    sec: 1703877582
+    nanosec: 399740028
+  frame_id: map
+child_frame_id: ''
+pose:
+  pose:
+    position:
+      x: -0.008271901635453105
+      y: -1.2983679128810763
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+  covariance:
+  - 0.010000000000000002
+  - -1.727544254342965e-20
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -2.1858820742247025e-20
+  - 0.01
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.01
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+twist:
+  twist:
+    linear:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+  covariance:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+
+So, it seems that each node is consuming the correct topic.
+The problem begin as soon as I un-comment odom1: /odometry/gps in 2nd EKF instance. Doing that makes the filter to diverge (?) and getting NaN in /odometry/global and tf errors on each nodes.
+This are some sensor messages:
+IMU:
+header:
+  stamp:
+    sec: 1703877924
+    nanosec: 612979324
+  frame_id: base_link
+orientation:
+  x: -0.021131203593264605
+  y: -0.00959170781407142
+  z: -0.9435509779280431
+  w: 0.3304134129041116
+orientation_covariance:
+- 0.0001
+- 0.0
+- 0.0
+- 0.0
+- 0.0001
+- 0.0
+- 0.0
+- 0.0
+- 0.0001
+angular_velocity:
+  x: 0.0
+  y: 0.0
+  z: -0.0127901965752244
+angular_velocity_covariance:
+- 0.001
+- 0.0
+- 0.0
+- 0.0
+- 0.001
+- 0.0
+- 0.0
+- 0.0
+- 0.001
+linear_acceleration:
+  x: 0.42631348967552185
+  y: -0.014370117336511612
+  z: 9.81
+linear_acceleration_covariance:
+- 0.001
+- 0.0
+- 0.0
+- 0.0
+- 0.001
+- 0.0
+- 0.0
+- 0.0
+- 0.001
+---
+
+Encoder:
+header:
+  stamp:
+    sec: 1703878128
+    nanosec: 55326030
+  frame_id: odom
+child_frame_id: base_link
+pose:
+  pose:
+    position:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+  covariance:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+twist:
+  twist:
+    linear:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular:
+      x: 0.0
+      y: 0.0
+      z: -0.0
+  covariance:
+  - 0.01
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.01
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+
+GPS:
+header:
+  stamp:
+    sec: 1703878190
+    nanosec: 899551033
+  frame_id: base_link
+status:
+  status: 0
+  service: 0
+latitude: -33.5079348
+longitude: -60.0621127
+altitude: 56.347
+position_covariance:
+- 0.01
+- 0.0
+- 0.0
+- 0.0
+- 0.01
+- 0.0
+- 0.0
+- 0.0
+- 0.01
+position_covariance_type: 0
+---
+
+Do I missing something?
+EDIT: I can't make the map to base_link to work alone even publishing fake /odometry/gps without runnning navsat_transform_node.
+if I enable that message in the sensors list then the ekf_node broke as soon as I run it and print "Critical Error, NaNs were detected in the output state of the filter. This was likely due to poorly coniditioned process, noise, or sensor covariances"
+But I can't find a good starting point to work with.
+
+A:
+
+Anytime NaN values start to show up in your filter, there are really only two possibilities:
+
+Your sensor data contains NaN values, or the covariance matrices in your sensor data are singular (or nearly so).
+You are not measuring some part of your state that needs to be measured, and the covariance is growing without bound.
+
+If I were you, I'd:
+
+Record a bag of everything in your system from bringup until you start getting NaN values/warnings
+Look at the state and covariance values of the EKF output leading up to the NaN reports. Are they stable, and then suddenly change to NaN? Are they increasingly unstable?
+Look at the input messages to the filter leading up to the NaN reports (look at the raw GPS as well)
+
+Just a quick note: I'd avoid fusing absolute yaw from your IMU, at least in the odom frame EKF. I'd just fuse yaw velocity and wheel encoder yaw velocity. Not your issue, but worth mentioning.
+

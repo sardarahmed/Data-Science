@@ -1,0 +1,75 @@
+Q:
+
+frame passed to lookupTransform does not exist
+
+I have encountered a peculiar error with the tf. The python lookupTransform function throws an exception saying that requested frame does not exists whereas tools like tf_echo do not report any problems. Since the setup I am trying to run is extremely simple, I have no idea what could be wrong. Either I have missed something very simple which I can't see right now or this is a bug in tf.
+I am running stage with the willow-erratic.world file:
+rosrun stage_ros stageros -g willow-erratic.world 
+together with the following node:
+#!/usr/bin/env python
+import rospy
+import tf
+from sensor_msgs.msg import LaserScan
+
+listener = tf.TransformListener()
+
+def scanCb(msg):
+        print 'laserscan received'
+        print msg.angle_max   
+
+        # lookup base_link -> laser frame transformation
+        (trans, rot) = listener.lookupTransform('base_link', 'base_laser_link', rospy.Time())
+
+rospy.init_node('console_interface')
+rospy.Subscriber('/base_scan', LaserScan, scanCb)
+rospy.spin()
+
+The output is:
+laserscan received
+2.35837626457
+[ERROR] [WallTime: 1424179111.916555] [4010.900000] bad callback: <function scanCb at 0x7fa22abe2cf8>
+Traceback (most recent call last):
+  File "/opt/ros/indigo/lib/python2.7/dist-packages/rospy/topics.py", line 688, in _invoke_callback
+    cb(msg)
+  File "/home/vagrant/test_ws/src/scout_nav/scripts/console_iface", line 14, in scanCb
+    (trans, rot) = listener.lookupTransform('base_link', 'base_laser_link', rospy.Time())
+LookupException: "base_link" passed to lookupTransform argument target_frame does not exist. 
+
+tf_echo does not seem to have problems with looking up the transform:
+rosrun tf tf_echo base_link base_laser_link
+At time 4147.200
+- Translation: [0.050, 0.000, 0.250]
+- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
+            in RPY [0.000, -0.000, 0.000]
+
+Does anyone see what is wrong with my approach?
+Thanks
+
+Originally posted by Yorick on ROS Answers with karma: 116 on 2015-02-17
+Post score: 3
+
+A:
+
+I figured out what was causing the problem...
+The call listener = tf.TransformListener() should be after the node initialization.
+
+Originally posted by Yorick with karma: 116 on 2015-02-17
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by jarvisschultz on 2015-02-17:
+Yeah that is definitely a problem as well! I missed that :) ... I do believe my answer still provides several useful tips.
+Comment by jarvisschultz on 2015-02-17:
+I'm quite sure that even if you swap the order of the listener creation and the call to init_node, your node will occasionally crash with the same error you originally presented if, just by chance, the /base_scan topic gets published immediately after the creation of the Subscriber.
+Comment by jwhendy on 2017-07-05:
+For what it's worth, I was having this error about target_frame not existing and played with incantations of where to define listener, but my issue ended up being this one. Namely, use tf2.
+Comment by M@t on 2019-06-30:
+Also worth noting, it seems that sometimes if you call lookupTransform too quickly after init_node you will get the error shown in the original question. To deal with this, you can use waitForTransform first, e.g.:
+listener = tf.TransformListener()
+listener.waitForTransform("/frame1", "/frame2", rospy.Time(), rospy.Duration(4.0))
+(trans, rot) = listener.lookupTransform("/frame1", "/frame2", rospy.Time(0))
+
+Comment by ignacio on 2021-03-08:
+I had a similar issue and adding rospy.Duration(4) was essential
+

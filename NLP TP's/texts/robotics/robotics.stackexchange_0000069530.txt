@@ -1,0 +1,184 @@
+Q:
+
+problem installing sbpl from source in ROS Indigo
+
+Hi all,
+I am trying to install sbpl from source because I have to make some changes to the CMakeLists.txt file so that it works on my ARM Processor Single board computer (see this). While installing sbpl from source, I ran following commands (from catkin_ws/src/) :
+git clone https://github.com/sbpl/sbpl.git   
+cd sbpl   
+mkdir build   
+cd build   
+cmake ..   
+make   
+sudo make install
+
+All the commands ran successfully but when I do roscd sbpl after it, the output is :
+roscd: No such package/stack 'sbpl'.
+Update:
+Also, I tried installing and using SBPL as a ROS package but that does not seem to be working:
+git clone https://github.com/sbpl/sbpl.git  
+rosmake sbpl # sbpl is in my ROS_PACKAGE_PATH
+
+but I get the following output:
+[ rosmake ] rosmake starting...                                                 
+[ rosmake ] Packages requested are: ['sbpl']                                    
+[ rosmake ] Logging to directory /home/naman/.ros/rosmake/rosmake_output-20150908-105307
+[ rosmake ] Expanded args ['sbpl'] to:
+[]                                       
+[ rosmake ] WARNING: The following args could not be parsed as stacks or packages: ['sbpl']
+[ rosmake ] ERROR: No arguments could be parsed into valid package or stack names.
+
+Does anyone have any idea why is it still not able to find sbpl and what am I doing wrong?
+Update 2:
+So, I tried installing sbpl as a CMake Package (as mentioned above) and tried using it as a system dependency as suggested in the answer. When I do catkin_make in catkin_ws/ to build the sbpl_lattice_planner, I get the following error:
+[ 97%] make[2]: *** No rule to make target `/opt/ros/indigo/lib/libsbpl.so', needed by `/home/naman/catkin_ws/devel/lib/libsbpl_lattice_planner.so'.  Stop.
+make[1]: *** [dr_sbpl_planner/sbpl_lattice_planner/CMakeFiles/sbpl_lattice_planner.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+
+It looks like sbpl_lattice_planner is not able to find the necessary sbpl library and is throwing an error and hence its not able to run.
+Update 3:
+@gvdhoorn: I am using the fork you mentioned. My PKG_CONFIG_PATH is:
+/home/naman/catkin_ws/devel/lib/pkgconfig:/home/naman/catkin_ws/devel/lib/x86_64-linux gnu/pkgconfig:/opt/ros/indigo/lib/x86_64-linux-gnu/pkgconfig:/opt/ros/indigo/lib/pkgconfig
+
+Therefore, sbpl_lattice_planner looks for libsbpl.so in /opt/ros/indigo/lib and is not able to find it.
+Once, I build sbpl as mentioned above, it installs libsbpl.so in /usr/local/lib and sbpl.pc in /usr/local/lib/pkgconfig but its not in the PKG_CONFIG_PATH and therefore its not able to find the required files BUT even if I add /usr/local/lib/pkgconfig to PKG_CONFIG_PATH, it still looks for the file in /opt/ros/indigo/lib and hence gives the same error as mentioned above which is really confusing for me.
+Just to check, I also tried copying libsbpl.so and sbpl.pc to /home/naman/catkin_ws/devel/lib/ and  /home/naman/catkin_ws/devel/lib/pkgconfig respectively but again it always looks at /opt/ros/indigo/lib and throws an error.
+And yeah, If I copy files to /opt/ros/indigo/lib and /opt/ros/indigo/lib/pkgconfig, it works without any error!
+Update 4:
+
+Why did you link to the original sbpl
+repository then in your question?
+
+That was my mistake, sorry about that! I am using tu-darmstadt-ros-pkg fork.
+The output of pkg-config --libs --cflags sbpl :
+-I/usr/local/include  -L/usr/local/lib -lsbpl 
+
+and the output of PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH pkg-config --libs --cflags sbpl :
+-I/usr/local/include  -L/usr/local/lib -lsbpl
+
+And this is with the
+tu-darmstadt-ros-pkg fork?
+
+Yes.. this is with the tu-darmstadt-ros-pkg fork!
+
+Can you make sure those two lines
+(with find_library(..)) are present in
+the CMakeLists.txt of your
+sbpl_lattice_planner?
+
+and yes, CMakeLists.txt of sbpl_lattice_planner has following lines:
+find_library(SBPL_LIBRARY NAMES sbpl PATHS ${SBPL_LIBRARY_DIRS} NO_DEFAULT_PATH)  
+set(SBPL_LIBRARIES ${SBPL_LIBRARY})
+
+and the output after adding message("SBPL_LIBRARIES: ${SBPL_LIBRARIES}")  is:
+SBPL_LIBRARIES: /opt/ros/indigo/lib/libsbpl.so
+
+Any help will be appreciated.
+Thanks in advance.
+Naman Kumar
+
+Originally posted by Naman on ROS Answers with karma: 1464 on 2015-09-08
+Post score: 3
+
+A:
+
+All the commands ran successfully but when I do roscd sbpl after it, the output is : roscd: No such package/stack 'sbpl' . Does anyone have any idea why is it still not able to find sbpl and what am I doing wrong?
+
+Judging by the contents of the repository you linked, I'd say SBPL is not a catkin/rosbuild package, but a regular CMake package. The way you built and installed it also seems to point in that direction.
+As such, you cannot roscd to it, as that only works with ROS packages.
+
+Edit:
+
+Also, I tried installing and using SBPL as a ROS package but that does not seem to be working
+
+[..]
+
+Does anyone have any idea why is it still not able to find sbpl and what am I doing wrong?
+
+Yes: SBPL is still not a ROS package. You adding it to your ROS_PACKAGE_PATH and trying to build it using rosmake does not change that.
+Afaict, SBPL is not meant to be a ROS package. It's used as a system dependency (see CMakeLists.txt - lines 13 to 15 of sbpl_lattice_planner).
+
+Edit 2:
+
+It looks like sbpl_lattice_planner is not able to find the necessary sbpl library and is throwing an error and hence its not able to run.
+
+I'm pretty certain it should've worked after you sudo make installed your version of SBPL and then tried to build sbpl_lattice_planner from source (PkgConfig should've picked up your customised version, if you got the PKG_CONFIG_PATH setup correctly).
+But looking at one of the forks (the tu-darmstadt-ros-pkg one) recommended to you in your other question about sbpl_lattice_planner, it could also be that CMake needs a little help determining the correct path to libsbpl.so (from here):
+[..]
+find_library(SBPL_LIBRARY NAMES sbpl PATHS ${SBPL_LIBRARY_DIRS} NO_DEFAULT_PATH)
+set(SBPL_LIBRARIES ${SBPL_LIBRARY})
+[..]
+
+This snippet adds the full path to libsbpl.so, which then gets linked later on. Any reason you are not using this fork?
+Btw: the error is not 'thrown' by sbpl_lattice_planner, but is reported by make. It just can't resolve the dependency on libsbpl.so needed for the sbpl_lattice_planner target.
+
+Edit 3:
+
+@gvdhoorn: I am using the fork you mentioned.
+
+That would've nice to know before we started all this. Why did you link to the original sbpl repository then in your question?
+
+My PKG_CONFIG_PATH is:
+
+/home/naman/catkin_ws/devel/lib/pkgconfig:/home/naman/catkin_ws/devel/lib/x86_64-linux gnu/pkgconfig:/opt/ros/indigo/lib/x86_64-linux-gnu/pkgconfig:/opt/ros/indigo/lib/pkgconfig
+
+Therefore, sbpl_lattice_planner looks for libsbpl.so in /opt/ros/indigo/lib and is not able to find it.
+
+No. make can't find the library, sbpl_lattice_planner has not even been built yet. It is not involved here at all.
+Please add the output of pkg-config --libs --cflags sbpl and PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH pkg-config --libs --cflags sbpl to your question. Both times after you've sourced your workspace.
+
+Once, I build sbpl as mentioned above, it installs libsbpl.so in /usr/local/lib and sbpl.pc in /usr/local/lib/pkgconfig but its not in the PKG_CONFIG_PATH and therefore its not able to find the required files BUT even if I add /usr/local/lib/pkgconfig to PKG_CONFIG_PATH, it still looks for the file in /opt/ros/indigo/lib and hence gives the same error as mentioned above which is really confusing for me.
+
+And this is with the tu-darmstadt-ros-pkg fork? Can you make sure those two lines (with find_library(..)) are present in the CMakeLists.txt of your sbpl_lattice_planner? Can you add:
+message("SBPL_LIBRARIES: ${SBPL_LIBRARIES}")
+
+right before the # Generate messages line and add the output of this in a new run of catkin_make to your question?
+
+Edit 4:
+
+and the output of PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH pkg-config --libs --cflags sbpl:
+
+-I/usr/local/include  -L/usr/local/lib -lsbpl
+
+I'm guessing you don't have ros-indigo-sbpl installed on that system?
+Just to be sure: are you trying to cross-compile? Or are you building on your Jetson board itself?
+As to the rest: I cannot reproduce this on my system. I've installed SBPL from the repository you linked (installs into /usr/local), then made sure there is a sbpl.pc in /usr/local/lib/pkgconfig.
+Running catkin_make in a freshly created catkin workspace with just sbpl_lattice_planner in it returns the correct paths (ie: cmake finds sbpl in the right place). The planner pkg builds successfully.
+The only thing that requires some care is when the system does have the ROS provided ros-indigo-sbpl installed. As PKG_CONFIG_PATH is set to /opt/ros/indigo/lib/pkgconfig, pkg-config will ignore the sbpl.pc in /usr/local/lib/pkgconfig. Explicitly setting PKG_CONFIG_PATH to have the /usr/local location first resolves this, and the from-source compiled SBPL will be found again.
+In summary, this gets me a working sbpl_lattice_planner:
+mkdir -p /tmp/sbpl_ws/src
+cd /tmp/sbpl_ws/src
+git clone https://github.com/tu-darmstadt-ros-pkg/sbpl_lattice_planner.git
+
+cd /tmp/sbpl_ws
+git clone https://github.com/sbpl/sbpl.git
+# create build dir, config, make, sudo make install
+# sbpl is now installed in '/usr/local'
+
+source /opt/ros/indigo/setup.bash
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+catkin_make
+
+# output here is (among other things)
+SBPL_LIBRARIES: /usr/local/lib/libsbpl.so
+SBPL_LIBRARY_DIRS: /usr/local/lib
+SBPL_INCLUDE_DIRS: /usr/local/include
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-09-08
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Naman on 2015-09-08:
+Thanks for the answer @gvdhoorn! I have updated my original question where I tried installing SBPL as a  ROS Package.
+Comment by Naman on 2015-09-23:
+@gvdhoorn! Yeah.. When I removed the build and the devel folder from my workspace and built all the packages including sbpl again, everything seems to be working. Thanks a lot! :)
+Comment by non-conventional_stuff on 2016-09-02:
+Hello Sir,
+Installed sbpl at /usr/local
+I did the following :
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+I get the following error on $roslaunch sbpl_lattice_planner move_base_sbpl_fake_localization_2.5cm.launch
+ResourceNotFound : sbpl
+

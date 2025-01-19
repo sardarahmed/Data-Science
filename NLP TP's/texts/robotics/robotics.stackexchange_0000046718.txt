@@ -1,0 +1,56 @@
+Q:
+
+What frame is sensor_msgs::Imu.orientation relative to?
+
+I have been looking at REP 103 and REP 105 along with nav_msgs::Odometry and sensor_msgs::Imu and I would like to know if there is a standard convention for the frame that sensor_msgs::Imu.orientation is relative to? It seems clear that nav_msgs::Odometry.pose.pose.orientation goes from header.frame_id to  child_frame_id (or parent to child), but there is no child_frame_id in the sensor_msgs::Imu message and I do not see that described in either of the REPs. The two obvious choices are map and odom, but I don't know if one is preferred over the other.
+I can make all of my own code consistent by picking either map or odom, but I worry about when I try to integrate third party packages. I would like to be able to simply subscribe to sensor_msgs::Imu messages and handle them in a generic way, but if there is no consistency then it's likely I would have to add extra code to look at the frame_id to find the source of the data and handle it differently based on the data source.
+
+Originally posted by Thomas D on ROS Answers with karma: 4347 on 2012-12-20
+Post score: 8
+
+A:
+
+The ultimate answer to this is that the frame_id of the imu must be the frame in which it is mounted.
+
+The followup is, of course, the problem and that is that IMUs have much more variety than say laser scanners.  An example would be if a laser scanner did not scan in a regular angular increment, but instead varied the angle between beams.  However, almost every laser scanner fits the LaserScan message.  Every IMU fits the IMU message, but there are a few cases that are not made clear:
+
+Orientation not provided.  This is just some gyros and accelerometers, no fusion yet.  Setting msg.orientation_covariance[0] = -1, will tell other software to not use the orientation.
+
+Orientation integrated with drift from where the IMU started.  This IMU doesn't even guarantee a known reference position.  It's possible for the ROS software to startup after the IMU calibrated, so the reference position is completely unknown due to drift.  These IMUs are uncommon, but essentially only integrate the gyros for orientation and do not use a gravity reference.  This a purely inertial output and the best you could do in empty space.  The issue using this type in ROS is that the message itself does not let you know that the orientation is relative rather than absolute.
+
+This is the case that ROS handles today and is a form of dead reckoning/Odometry.  Turtlebot and robot_pose_ekf all use the IMU only for the change in orientation, not the absolute orientation.  This is ultimately safest, as any orientation can be fused in this manner.  Unfortunately you lose the ability to remove drift, so more complicated approaches exist.
+
+Orientation integrated with drift but pitch and roll referenced to gravity.  This IMU is the most common.  It uses the gyros to determine angle from startup, but references pitch and roll to gravity.  The assumption here is that you will have to re-reference before you travel far enough for the Earth's gravity vector to not aligned down in your Cartesian frame.  In this case, 'yaw' or 'heading' still drifts since the gravity component for yaw is 0, so you cannot  determine absolute heading with only those 6 measurements.
+
+This is shown in the following image.  Initially (x, y, z), the cartesian coordinate frame is tangential to the Earth's surface.  As the IMU travels very, very far (x', y', z'), the gravity reference drifts and no longer aligns with the z-axis.  Where this becomes a problem depends on the specific application.
+
+Orientation reference to gravity and magnetic north.  This is another very common sensor and typically adds two or more magnetometers to reference the heading to magnetic north.  The problem using this method is that the frame must still be tangential to the Earth's surface and that the magnetic field has 'declination' that varies based on where the IMU is located on the Earth's surface.  The message has no indicator of this at all.
+
+Orientation fused from a more complicated system (GPS INS).  This can be the output a full sensor fusion system, but I highly recommend to NOT use this method.  If there is GPS, Odometry, INS, and more being fused into a globally corrected x, y, z, and orientation, the output should primarily be a nav_msgs/Odometry.  However, if acceleration is required, the IMU message can be output, but I'd recommend it be the 'raw' sensor values and to use an approach like (1).
+
+What can we do to clarify this?
+A) Do nothing.
+Well, I guess that works.  What we do now is case (2) and works okay for all users.  But we really want to get the most information out of our sensors.  What other options are there?
+B) Add an orientation_reference_frame_id.
+This isn't a good idea since this is unknown and undefined for (1), (2), and (3).  These don't specify a reference that is repeatable.  In the cases where you could provide it (4), (5), it still does not really solve the problem since the gravity and magnetometer reference frames are not Cartesian.  So in order to accommodate ALL use cases, you'd have to reference something like this for gravity, but also factor in the magnetic field.  Oh, and did I mention this varies over time?
+To make matters worse, that complicated frame is outside of the scope of what TF can handle: http://ros.org/wiki/tf/Overview/Transformations  Ultimately, you would end up with something like AMCL that publishes a correction to /odom that accounts for all drift.  In this case, drift would include breaking the tf approximations and trying to keep /odom tangential to earth's surface.
+C) Add an orientation_type field as well
+This is possible.  However, it is pretty difficult to change messages with such a large community now and such a large amount of bagged data that would be invalidated.  I am a proponent of redefining some of these messages for "ROS 2.0", so if that happens we could certainly look into this.  However, that's still no guarantee the the field would be filled (how many covariance estimates are empty?).  So this leaves us with:
+D) Let the sensor fusion stage handle it.
+This is ultimately the best solution.  Since the sensor fusion stage has to handle custom orientation parameters, you might as well also define an imu_type parameter that can be changed to determine how best to use the IMU.  Good examples to start with are (1) through (5).  Names could be something like 'no_orientation', 'relative_orientation', 'gravity_referenced', 'yaw_referenced', and 'absolute_referenced'.
+This stage needs to know the most about the sensors and the assumptions on the inputs/outputs, so the parameters for a well configurable sensor fusion library should be something like
+imu_config1: {topic: "/microstrain" message_type: "IMU" imu_type: "gravity_referenced" override_covariance: {1.0, 0.0, ... 0.0, 1.0}}
+imu_config2: {topic: "/gyro_integrated" message_type: "IMU" imu_type: "relative_orientation"}.
+
+It's unfortunate that so many sensors can output data in many different fashions.  This sort of ambiguity is what we try to avoid if at all possible and should be looked at if ROS does a large shift (to 'ROS 2.0' or otherwise) at some point.
+
+Originally posted by Chad Rockey with karma: 4541 on 2012-12-20
+This answer was ACCEPTED on the original site
+Post score: 16
+
+Original comments
+Comment by Ivan Dryanovski on 2012-12-20:
+I like D as the option. Could we use (semantic) topic conventions for this? Currently some sensors publish on /imu/raw for case 1 (no orientation, only ang. vel. and accelerations). Once it's fused, we can publish on /imu/data_XXX for the different use cases. Applications can remap if needed.
+Comment by Chad Rockey on 2012-12-20:
+That would be a good idea.  Do you want to send an email on ros-sig-drivers? https://groups.google.com/forum/?fromgroups#!forum/ros-sig-drivers  I've always wanted to publish android's linear_acceleration excluding gravity: http://developer.android.com/guide/topics/sensors/sensors_overview.html
+

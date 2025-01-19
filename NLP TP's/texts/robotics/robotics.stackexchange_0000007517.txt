@@ -1,0 +1,65 @@
+Q:
+
+Need help regarding EKF in MonoSLAM
+
+I am trying to understand the implementation of Extended Kalman Filter for SLAM using a single, agile RGB camera. 
+The vector describing the camera pose is 
+$$
+\begin{pmatrix}
+r^W \\
+q^W  \\
+V^W \\
+\omega^R \\
+a^W \\
+\alpha^R
+\end{pmatrix}
+$$
+where:
+
+$r^W$ :   3D coordinates of camera w.r.t world
+$q^W$ :   unit quaternion describing camera pose w.r.t world
+$V^W$ :   linear velocity along three coordinate frames, w.r.t world
+$\omega$ :   angular velocity w.r.t body frame of camera
+
+The feature vector set is described as 
+$$
+\begin{pmatrix}
+y_1 \\
+y_2  \\
+\vdots \\
+y_n
+\end{pmatrix}
+$$
+where, each feature point is described using XYZ parameters.
+For the EKF acting under an unknown linear and angular acceleration $[A^W,\psi^R] $ , the process model used for predicting the next state is:
+$$
+\begin{pmatrix}
+r^W + V^W\Delta t + \frac{1}{2}\bigl(a^W + A^W\bigr)\Delta t^2 \\
+q^W \bigotimes q^W\bigl(\omega^R\Delta t + \frac{1}{2}\bigl(\alpha^R + \psi^R\bigr)\Delta t^2\bigr)   \\
+V^W + \bigl(a^W + A^W\bigr)\Delta t\\
+\omega^R + \bigl(\alpha^R + \psi^R\bigr)\Delta t \\
+a^W + A^W \\
+\alpha^R + \psi^R
+\end{pmatrix}
+$$
+
+So far, I'm clear with the EKF steps. Post this prediction step, I'm not clear how to perform the measurement update of the system state.
+From this slide, I was under the impression that we need to initialize random depth particles between 0.5m to 5m from the camera. But, at this point, both the camera pose and the feature depth is unknown.
+
+I can understand running a particle filter for estimating feature
+depth if camera pose is known. I tried to implement such a concept in this project: where I read the camera pose from a ground truth file and keep triangulating the depth of features w.r.t world reference frame
+I can also comprehend running a particle filter for estimating the
+camera pose if feature depths are known.
+
+But both these parameters are unknown. How do I perform the measurement update?
+I can understand narrowing down the active search region for feature matching based on the predicted next state of the camera. But after the features are matched using RANSAC (or any other algorithm), how do I find the updated camera pose? We are not estimating homography, are we?
+If you have any idea regarding MonoSLAM (or RGB-D SLAM), please help me out with understanding the EKF steps.
+
+To be more specific: is there a homography estimation step in the algorithm? how do we project the epipolar line (inverse depth OR XYZ) in the next frame if we do not have any estimate of the camera motion?
+
+A:
+
+I found an answer to this question. 
+Homography estimation is not needed at all. The  EKF takes care of the problem of depth estimation. If you start with an initial inverse depth estimate of $\rho_0 = 0.1 $ and $\sigma_\rho = 0.5$, the depth estimate would range from [-0.9,1.1]. This depth estimate would be corrected based on the observed values, obtained through feature matching. Please refer to this paper.
+Anybody trying to learn this algorithm would do well by going through this publicly available dissertation by Sven Albrecht. To my understanding, the mathematics involving MonoSLAM can't be elucidated any better than this! 
+

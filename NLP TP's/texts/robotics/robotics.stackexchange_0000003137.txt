@@ -1,0 +1,43 @@
+Q:
+
+How to use quaternions to feed a PID quadcopter stabilization loop?
+
+I'm making a quadcopter. I have set up a PID loop to stabilize it to a given Euler angle (pitch and roll). The problem arises when the roll approaches 90 degrees (45 degrees and up). The values don't make sense anymore, as it approaches the gimbal lock. I intend to make it do complex maneuvers like looping etc., which exceeds the 45 degree roll limit.
+How can I use quaternions to overcome this problem? (I get quaternions from the MPU-9150.) I have read many articles on the matter of quaternions, but they all talk about rotations in 3D software, and tweening between two rotation points. This makes little sense as I do not know imaginary numbers and matrices.
+
+A:
+
+A quadcopter contains (among other things) two separate and independent algorithms: an attitude estimation algorithm, and a control algorithm.
+The attitude estimation algorithm computes information about the orientation of the quadcopter: the roll, pitch and yaw angles.
+The control algorithm is responsible for driving the motors so that the orientation of the quadcopter matches what the pilot (or the autopilot software) expects. This algorithm is what would read the estimated quadcopter angles (from the attitude estimation algorithm) and change the motors speed to attempt to match the desired angles. PIDs are a well-suited and common control algorithm for quadcopters.
+Gimbal lock is a phenomenon which may happen in the attitude estimation algorithm. It has nothing to do with the control algorithm. As such you don't need ESCs, motors or propellers to test for gimbal lock: you could modify your code to display your roll, pitch and yaw angles, and test that the correct values are calculated as you manually move your quadcopter around. You might be able to do this with the quadcopter tethered to your computer, via Bluetooth, or using other methods depending on your platform.
+If the angles are calculated correctly you don't need to worry about quaternions. If they are not calculated correctly, quaternions might help you. The attitude estimation algorithm shall output 3 angles for the control algorithm to use, however it might use a different internal representation such as quaternions or 3x3 matrices. In that case it would still convert the attitude information to angles so as to provide usable data to the control algorithm. Generally speaking quaternions are unintuitive but computationally efficient. This makes them well suited for slow platforms such as Arduino. Matrices or angles may be an easier choice for faster hardware. If you need me to elaborate on one solution or the other please let me know, but it would be quite premature for me to give details at this stage as I am not convinced you need to implement quaternions.
+Finally if the angles are calculated correctly the way to make your quadcopter loop is to control the angular rate rather than the angle. If your sticks represent the quadcopter angle there is no way to make it do a full loop: try to visualise the sticks position as the quadcopter loops and you should understand why. However if the sticks control the angular rate then you can control the speed at which it loops.
+Good luck with your project!
+Note: For the sake of simplicity I have not mentioned the theoretical option to manipulate the data as matrices or quaternions both in the attitude estimation algorithm and the control algorithm. I have never seen a quadcopter implementing such algorithms.
+
+A:
+
+First, I think you need to go back and look at your code. Gimbal lock is only a problem when you get very near (within a couple degrees) of 90. If you are seeing strange behavior at 45 degrees something else is the cause. 
+As for your question, quaternions are usually not used directly in basic PID control since they have complicated behavior resulting in non-intuitive results. Usually they are either converted to Euler angles and then used in the normal PID controller, or special nonlinear controllers are designed to use them.
+Note that for your looping maneuvers, PID is generally not a very good controller: the gains that work well near hover no longer work well at large angles. Usually, when someone wants to do a loop they go "open loop", i.e. they start the maneuver under control and then once they get past a certain angle just just apply a fixed series of commands until they have completed the loop. Figuring out what fixed series of commands to use is the tricky part and often uses reinforcement learning (kind of like a formal way of doing trial and error).
+
+A:
+
+This paper, Full Quaternion Based Attitude Control for a Quadrotor by
+Emil Fresk and George Nikolakopoulos, demonstrates what you are trying to achieve.
+
+Abstract— The aim of this article is to present a novel quaternion based control scheme for the attitude control problem of a quadrotor.
+  A quaternion is a hyper complex number of rank 4 that can be utilized
+  to avoid the inherent geometrical singularity when representing rigid
+  body dynamics with Euler angles or the complexity of having coupled
+  differential equations with the Direction Cosine Matrix (DCM). In the
+  presented approach both the quadrotor’s attitude model and the
+  proposed non-linear Proportional squared (P2) control
+  algorithm have been implemented in the quaternion space, without any
+  transformations and calculations in the Euler’s angle space or DCM.
+  Throughout the article, the merits of the proposed novel approach are
+  being analyzed and discussed, while the efficacy of the suggested
+  novel quaternion based controller are being evaluated by extended
+  simulation results.
+

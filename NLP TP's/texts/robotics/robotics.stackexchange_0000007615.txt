@@ -1,0 +1,150 @@
+Q:
+
+Problem with acceleration sensor
+
+I’m using the BMA020 (from ELV) with my Arduino Mega2560 and trying to read acceleration values that doesn’t confuse me.
+First I connected the sensor in SPI-4 mode. Means
+CSB <-> PB0 (SS)
+SCK <-> PB1 (SCK)
+SDI <-> PB2 (MOSI)
+SDO <-> PB3 (MISO)
+Also GND and UIN are connected with the GND and 5V Pins of the Arduino board.
+Here is the self-written code I use
+#include <avr/io.h>
+#include <util/delay.h>
+
+#define sensor1     0
+typedef int int10_t;
+
+int TBM(uint8_t high, uint8_t low)
+{   
+    int buffer = 0;
+    if(high & (1<<7)) {
+        uint8_t high_new = (high & 0x7F);
+        buffer = (high_new<<2) | (low>>6);
+        buffer = buffer - 512;
+    }
+    else
+        buffer = (high<<2) | (low>>6);
+
+    return buffer;
+}
+
+void InitSPI(void);
+void AccSensConfig(void);
+void WriteByteSPI(uint8_t addr, uint8_t Data, int sensor_select);
+uint8_t ReadByteSPI(int8_t addr, int sensor_select);
+void Read_all_acceleration(int10_t  *acc_x, int10_t *acc_y, int10_t *acc_z, int sensor_select);
+
+int main(void)
+{
+    int10_t S1_x_acc = 0, S1_y_acc = 0, S1_z_acc = 0;
+    InitSPI();
+    AccSensConfig();
+    while(1) {
+        Read_all_acceleration(&S1_x_acc, &S1_y_acc, &S1_z_acc, sensor1);
+    }
+}
+
+void InitSPI(void) {
+
+    DDRB |= (1<<DDB2)|(1<<DDB1)|(1<<DDB0);
+
+    PORTB |= (1<<PB0);
+
+    SPCR |= (1<<SPE);
+    SPCR |= (1<<MSTR);  
+    SPCR |= (0<<SPR0) | (1<<SPR1);  
+    SPCR |= (1<<CPOL) | (1<<CPHA);  
+}
+
+void AccSensConfig(void) {
+
+    WriteByteSPI(0x0A, 0x02, sensor1);
+    _delay_ms(100);
+
+    WriteByteSPI(0x15,0x80,sensor1);    //nur SPI4 einstellen
+}
+
+void WriteByteSPI(uint8_t addr, uint8_t Data, int sensor_select) {
+
+    PORTB &= ~(1<<sensor_select);   
+    SPDR = addr;                    
+    while(!(SPSR & (1<<SPIF)));     
+
+    SPDR = Data;                    
+    while(!(SPSR & (1<<SPIF)));     
+
+    PORTB |= (1<<sensor_select);    
+}
+
+uint8_t ReadByteSPI(int8_t addr, int sensor_select)
+{
+    int8_t dummy = 0xAA;
+
+    PORTB &= ~(1<<sensor_select);   
+
+    SPDR = addr;                    
+    while(!(SPSR & (1<<SPIF)));     
+    SPDR = dummy;                   
+    while(!(SPSR & (1<<SPIF)));     
+
+    PORTB |= (1<<sensor_select);    
+
+    addr=SPDR;
+    return addr;
+}
+
+void Read_all_acceleration(int10_t  *acc_x, int10_t *acc_y, int10_t *acc_z, int sensor_select)
+{
+    uint8_t addr = 0x82;
+    uint8_t dummy = 0xAA;
+    uint8_t high = 0;
+    uint8_t low = 0;
+
+    PORTB &= ~(1<<sensor_select);   
+
+    SPDR = addr;
+    while(!(SPSR & (1<<SPIF)));
+
+    SPDR = dummy;           
+    while(!(SPSR & (1<<SPIF)));
+    low = SPDR;     
+    SPDR = dummy;   
+    while(!(SPSR & (1<<SPIF)));
+    high = SPDR;                    
+    *acc_x = TBM(high, low);
+
+    SPDR = dummy;       
+    while(!(SPSR & (1<<SPIF)));
+    low = SPDR;     
+    SPDR = dummy;   
+    while(!(SPSR & (1<<SPIF)));
+    high = SPDR;    
+    *acc_y = TBM(high, low);
+
+    SPDR = dummy;       
+    while(!(SPSR & (1<<SPIF)));
+    low = SPDR; 
+    SPDR = dummy;   
+    while(!(SPSR & (1<<SPIF)));
+    high = SPDR;    
+    *acc_z = TBM(high, low);
+
+    PORTB |= (1<<sensor_select);    
+}
+
+And now here is what really confuses me. I got 5 of this sensors. One is working with this code perfectly fine. The Data I get is what I expect. I measure earth gravity in z-component if Iay the sensor on the table, if I start turning it I measure the earth gravity component wise in x-, y- and z- direction depending on the angle I turn the sensor.
+From the other 4 sensors I receive data that is different. The values jump from -314 (about -1.2 g) to +160 (about 0.5g). With the same code, the same wires and the same Arduino.
+I checked the register settings of all sensors, they are all the same. I checked the wire connection to the first component at the sensors, they are all around 0.3 Ohm. I used an Oscilloscope and made sure CSB, SCK and MOSI work properly.
+Am I missing something? What causes this similar but wrong behavior of 4 out of 5 sensors?
+
+A:
+
+Earlier answer, regarding the self-test
+Section 3.3.2 describes how to do the self test, section 3.4.1 describes how to read the result. 
+There is a note about not overwriting bits 5, 6, and 7 of register 14h at the start of chapter 3, so read that and then check that you have scaling set correctly (bits 0 and 1 of register 14h).
+As the chips that are suspect all also fail the self test and voltages on the board are normal, I would blame physical damage (were dropped/thrown during shipping, etc) and ask for an RMA for the parts.
+A caution
+While the board linked in the question accepts an input voltage of up to 6V, the board features a regulator and level shifters. The chip itself operates at a much lower voltage. 
+

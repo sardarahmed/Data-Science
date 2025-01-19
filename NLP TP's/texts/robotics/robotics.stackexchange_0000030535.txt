@@ -1,0 +1,109 @@
+Q:
+
+What are 'bond' topics for?
+
+.. and why are there so many connections involving them. e.g.:
+bouffard@lipschitz:~/ros$ rosnode info /pelican2/camera1394_nodelet
+--------------------------------------------------------------------------------
+Node [/pelican2/camera1394_nodelet]
+...    
+contacting node http://pelican2:59141/ ...
+Pid: 7324
+Connections:
+...
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/camera1394_nodelet
+    * direction: outbound
+    * transport: INTRAPROCESS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/camera_nodelet_manager
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/jplvision_node
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:59141/
+    * direction: inbound
+    * transport: INTRAPROCESS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:35545/
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:52260/
+    * direction: inbound
+    * transport: TCPROS
+
+and
+bouffard@lipschitz:~/ros$ rosnode info /pelican2/camera_nodelet_manager
+--------------------------------------------------------------------------------
+Node [/pelican2/camera_nodelet_manager]
+...
+contacting node http://pelican2:35545/ ...
+Pid: 7317
+Connections:
+...
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/camera_nodelet_manager
+    * direction: outbound
+    * transport: INTRAPROCESS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/camera1394_nodelet
+    * direction: outbound
+    * transport: TCPROS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: /pelican2/jplvision_node
+    * direction: outbound
+    * transport: TCPROS
+...
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:35545/
+    * direction: inbound
+    * transport: INTRAPROCESS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:59141/
+    * direction: inbound
+    * transport: TCPROS
+ * topic: /pelican2/camera_nodelet_manager/bond
+    * to: http://pelican2:52260/
+    * direction: inbound
+    * transport: TCPROS
+...
+
+In particular I'm interested why there are multiple connections on the same bond topic, some of which are using transport TCPROS despite the use of nodelets?
+Edit with a followup question:
+Doesn't having a 'spawner' process that hangs around for the lifetime of my nodelet, and moreover, is constantly communicating over TCPROS, defeat some of the main purposes of having nodelets, namely to reduce the number of processes and unnecessary network-level communication? In all my use cases at least, nodelets are a nice way to couple together what would otherwise be nodes but I don't need any of the respawning behaviour that you describe--either the entire manager plus its loaded nodelets are up, or they are all down. Could the 'spawner' nodes optionally exit after their nodelet has been loaded successfully?
+
+Originally posted by Patrick Bouffard on ROS Answers with karma: 2264 on 2011-03-20
+Post score: 4
+
+A:
+
+Bond is a tool which connects two units of code together with a heartbeat such that if one side goes down the other also goes down.  See bond on the wiki for more information.
+Nodelets use bond to connect the nodelet spawner to the dynamically loaded instance in the manager.  By doing this if the manager dies, all the spawner instances come down, and if desired can be relaunched.  And if a spawner process is killed (even with a -9, or a segfault) the nodelet will be unloaded when the bond is broken.
+The nodelet spawner processes are separate processes which is why the connections are TCPROS.
+Re: Followup on the overhead of bond.
+The purpose of nodelets was to allow zero copy transports of high volume data (either fast or big or both). Passing images or PointClouds through the network interface with 1-2 memcopies is prohibitively expensive even on fast hardware.  Bond only uses heartbeat at the default rate of 1Hz.   Keeping a couple sockets open with a 1 Hz update is a low enough overhead that I doubt that the difference is measurable.  The first implementation of nodelets did not have bond and it was added to provide more control, the ability to introspect, and to allow error recovery in the case of failures.
+
+Originally posted by tfoote with karma: 58457 on 2011-03-20
+This answer was ACCEPTED on the original site
+Post score: 8
+
+Original comments
+Comment by Patrick Bouffard on 2011-03-20:
+I just created https://code.ros.org/trac/ros-pkg/ticket/4878 with some thoughts on implementation.
+Comment by Patrick Bouffard on 2011-03-20:
+While I can't comment on how much sense this makes for other use cases, in my own if the manager or its nodelets are crashing, then it makes sense to fix the underlying issue, not to just respawn. I think I'll look into what it would take to make 'bondage' optional.
+Comment by tfoote on 2011-03-20:
+control: you can easily stop it by killing the spawner.  Introspection: if the spawner's up you know that the nodelet is still running.  Error recovery: if the nodelet manager crashes the spawner will crash and whatever requested the nodelet has an option to respond. (often it's roslaunch with respawn = true)
+Comment by Patrick Bouffard on 2011-03-20:
+Thanks for the update -- could you expand on specifically what kinds of control, introspection, and error recovery are enabled by the bond?
+Comment by tfoote on 2011-03-20:
+I've updated my answer.  You could make that feature request, but I'd want a measurable improvement for some usecase before I increased the complexity of the API.
+Comment by Patrick Bouffard on 2011-03-20:
+Thanks, but see my followup question above.
+Comment by lucasw on 2019-09-24:
+Is there an updated url for that ticket?
+

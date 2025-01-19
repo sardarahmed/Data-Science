@@ -1,0 +1,52 @@
+Q:
+
+OSX10.10.4 installation. Failed to process package 'catkin'
+
+I'm using homebrew to install ROS indigo on OS X 10.10.4 with 'Desktop Install (recommended): ROS, rqt, rviz, and robot-generic libraries', and I've gone to this step without error:
+ ./src/catkin/bin/catkin_make_isolated --install -DCMAKE_BUILD_TYPE=Release
+
+the error log is:
+==> Processing catkin package: 'catkin'
+Makefile exists, skipping explicit cmake invocation...
+==> make cmake_check_build_system in '/Users/xgwang/Workspace/ros_catkin_ws/build_isolated/catkin'
+dyld: Symbol not found: __cg_jpeg_resync_to_restart
+  Referenced from: /System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
+  Expected in: /usr/local/lib/libJPEG.dylib
+ in /System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
+make: *** [cmake_check_build_system] Trace/BPT trap: 5
+<== Failed to process package 'catkin':
+  Command '['make', 'cmake_check_build_system']' returned non-zero exit status 2
+
+Reproduce this error by running:
+==> cd /Users/xgwang/Workspace/ros_catkin_ws/build_isolated/catkin && make cmake_check_build_system
+
+Command failed, exiting.
+
+What should I do to finish the installation? Thanks for any advice.
+
+Originally posted by gnhf on ROS Answers with karma: 3 on 2015-07-22
+Post score: 0
+
+A:
+
+You installed something from Homebrew which installed the jpeg formula. This formula is not compatible with the version of libjpeg in the System, so when you try to use something which is built against the System version of libjpeg, you have jpeg installed from Homebrew, and /usr/local/lib is on the DYLD_LIBRARY_PATH then you'll get this error. Individually all of these things are fine, but together they cause an issue. To address this I usually unlink libjpeg, libpng, and libtiff from Homebrew:
+$ brew unlink jpeg libpng libtiff
+
+This will work around your issue there, but anything installed with Homebrew which utilized jpeg from Homebrew, for example opencv, then you'll get a similar error when you try to run something that uses it. To address this I usually use otool -L to figure out which executables and library refer to /usr/local/lib/libjpeg...dylib and install_name_tool to change that to /usr/local/opt/jpeg/lib/libjpeg...dylib.
+
+Originally posted by William with karma: 17335 on 2015-07-23
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gnhf on 2015-07-23:
+Yes, I have jpeg libpng libtiff in my brew list, and I installed opencv through Homebrew.
+I get this after otool -L /usr/local/lib/libjpeg*
+/usr/local/lib/libjpeg.dylib:
+    /usr/local/lib/libjpeg.8.dylib
+    /usr/lib/libSystem.B.dylib
+
+So should I use install_name_tool to change them?
+Comment by William on 2015-07-24:
+You need to use install_name_tool to change the references that other shared libraries and executables have to /usr/local/lib/libjpeg.8.dylib (for example libopencv...dylib) rather than making changes to libjpeg.8.dylib itself.
+

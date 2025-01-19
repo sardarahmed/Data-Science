@@ -1,0 +1,107 @@
+Q:
+
+Nav2: Migrate from nav_msg::getPlan
+
+I've been migrating to ROS Humble a ROS 1 exploration project in C++.
+This project considers a list of goal candidates and to evaluate them we use to call the service nav_msgs::GetPlan to the move_base global planner ("move_base/NavfnROS/make_plan"). It provided the information of whether all the candidate goals are reachable and their path length without actually sending any goal to the action server.
+Now in Nav2 there is no this service anymore, the closest thing I found is the action nav2_msgs::action::ComputePathToPose.
+Also, there is the "typical" (asyncronous) action client that actually sends the goal to the be reached by the robot (nav2_msgs::action::NavigateToPose).
+I managed to call the action nav2_msgs::action::ComputePathToPose synchronously (I want to evaluate all the candidates and decide afterwards). It required a Multithreaded executor and a callback_group (reentrant). The code of this synchronous call follows in case it is useful:
+double ExplorationBase::computePathLength(const geometry_msgs::msg::Pose &goal_pose)
+{
+    if (not compute_path_client_->wait_for_action_server(std::chrono::milliseconds(50)))
+    {
+        RCLCPP_ERROR(this->get_logger(), "Action server compute_path_to_pose not available after waiting 50ms");
+        return -1;
+    }
+
+    if (not compute_path_client_->action_server_is_ready())
+    {
+        RCLCPP_ERROR(this->get_logger(), "Action server compute_path_client_ not ready");
+        return -1;
+    }
+
+    // Populate a goal
+    auto goal_msg = ComputePath::Goal();
+    goal_msg.goal.header.frame_id = "map";
+    goal_msg.goal.pose = goal_pose;
+    goal_msg.use_start = false; // use current robot pose as path start
+    goal_msg.planner_id = "GridBased";
+
+    // Wait 50ms for the server to accept the goal
+    auto goal_handle_future = compute_path_client_->async_send_goal(goal_msg);
+    if (goal_handle_future.wait_for(std::chrono::milliseconds(1000)) == std::future_status::timeout)
+    {
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: send goal call failed :(");
+        return -1;
+    }
+
+    GoalHandleComputePath::SharedPtr goal_handle = goal_handle_future.get();
+    if (!goal_handle)
+    {
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: Goal was rejected by the server");
+        return -1;
+    }
+
+    // Wait 50ms more for the server to be done with the goal
+    auto result_future = compute_path_client_->async_get_result(goal_handle);
+    if (result_future.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout)
+    {
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: get result call failed :(");
+        return -1;
+    }
+
+    // get the result
+    GoalHandleComputePath::WrappedResult wrapped_result = result_future.get();
+
+    switch (wrapped_result.code)
+    {
+    case rclcpp_action::ResultCode::SUCCEEDED:
+        break;
+    case rclcpp_action::ResultCode::ABORTED:
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: Goal was aborted");
+        return -1;
+    case rclcpp_action::ResultCode::CANCELED:
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: Goal was canceled");
+        return -1;
+    default:
+        RCLCPP_ERROR(this->get_logger(), "compute_path_to_pose: Unknown result code");
+        return -1;
+    }
+
+    // compute path length
+    double length = 0.0;
+    if (wrapped_result.result->path.poses.size() >= 1)
+    {
+        for (unsigned int i = 1; i < wrapped_result.result->path.poses.size(); i++)
+        {
+            double &x1 = wrapped_result.result->path.poses[i - 1].pose.position.x;
+            double &y1 = wrapped_result.result->path.poses[i - 1].pose.position.y;
+            double &x2 = wrapped_result.result->path.poses[i].pose.position.x;
+            double &y2 = wrapped_result.result->path.poses[i].pose.position.y;
+            double d = sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+            length += d;
+        }
+    }
+
+    return length;
+}
+
+However, eventually I experience a runtime error:
+what(): Executing action client but nothing is ready
+I do not know which is the issue here. In both actions, I added wait_for_action_server(50ms) and check action_server_is_ready() before calling each of the action servers. Also, added try-catch in all code related with these actions and still experience this problem.
+I'd appreciate some help, thanks.
+
+A:
+
+Ok, after trying I ended up with an implementation that works. I was almost there, actually.
+The solution summarizes as:
+
+Multithreaded executor.
+Two callback groups MutuallyExclusive, one for each action (nav2_msgs::action::NavigateToPose, nav2_msgs::action::ComputePathToPose). The other subscribers/timers can share callback group with one of them.
+The asynchronous call to NavigateToPose action server remains the same as this example.
+The synchronous call to ComputePathToPose action server is implemented as posted in the question.
+
+However, I don't understand which was the error. Somehow, the two action clients sharing the same reentrant callback group were incompatible. Also, I'm not sure if the solution is overkilling in some sense, but it works.
+I don't know how much popular was nav_msgs::GetPlan, in my case it was very useful to evaluate potential goals before deciding where to navigate. The new way of implementing this feature in ROS2 and Nav2 is way more complicated and it is not documented anywhere. I hope this entry can help others that want to implement this or similar features.
+

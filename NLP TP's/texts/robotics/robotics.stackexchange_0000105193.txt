@@ -1,0 +1,122 @@
+Q:
+
+[ROS2][std_msgs::msg::Int8] publisher and create_publisher
+
+Version:
+Ubuntu 22.04 , ROS2 Humble
+ERROR description
+I want to create a publisher that publishes std_msgs::msgs::Int8 messages, but when I write according to the tutorials in the official document, I get errors:
+Lock_Stop_pub = this->create_publisher<std_msgs::msg::Int8>("/stop", 10);
+-----------------------
+ERROR:
+No matching member function for call to 'create_publisher' 
+ clang(ovl_no_viable_member_function_in_call)
+node_impl.hpp(73, 7): Candidate function template not viable: no known conversion from 'SentryMaster' to 'rclcpp::Node' for object argument
+
+rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr Lock_Stop_pub;
+------------------------
+ERROR:
+In template: static assertion failed due to requirement 'rclcpp::is_ros_compatible_type<std_msgs::msg::Int8_<std::allocator<void>>>::value': given message type is not compatible with ROS and cannot be used with a Publisher
+publisher.hpp(80, 3): Error occurred here
+sentry_master.cpp(28, 13): In instantiation of template class 'rclcpp::Publisher<std_msgs::msg::Int8_<std::allocator<void>>>' requested here
+
+The complete minimal program is here
+class SentryMaster: public rclcpp::Node{
+public:
+    SentryMaster():Node("sentry_master_node_cpp"){
+        Lock_Stop_pub = this->create_publisher<std_msgs::msg::Int8>("/stop", 10); 
+    }
+private:
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr Lock_Stop_pub;
+};
+
+Then I found that I can write like this without error
+auto Lock_Stop_pub = this->create_publisher<std_msgs::msg::Int8>("/stop", 10);
+
+Write as it, Clang told me the type of Lock_Stop_pub is std::shared_ptr<Publisher<Int8_<allocator<void>>, allocator<void>>> , but when I change the code, get errors again.
+But why???
+
+Added based on comments:
+
+It is worth noting that this situation is only found when writing the message type "std_msgs::msgs::Int8", but this does not happen with other message types such as "geometry_msgs::msgs::PointStamped".
+
+Other typical open source ROS2 programs will not report errors
+
+if add 'count_(0)' to the code:
+
+SentryMaster():Node("sentry_master_node_cpp"), count_(0){
+        Lock_Stop_pub = this->create_publisher<std_msgs::msg::Int8>("/stop", 10); 
+    }
+-----------------------
+ERROR:
+Member initializer 'count_' does not name a non-static data member or base class
+
+My CMakeLists.txt
+
+cmake_minimum_required(VERSION 3.8)
+project(user_packages)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Export compile commands for clanged
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include_directories(
+  include
+)
+
+set(dependencies
+  rclcpp
+  geometry_msgs
+  nav_msgs
+)
+
+add_executable(sentry_master src/sentry_master.cpp)
+ament_target_dependencies(
+  sentry_master
+  ${dependencies}
+)
+
+install(TARGETS 
+  sentry_master
+  DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()
+
+A:
+
+I think I know the answer, sorry for the rash question.
+I forgot to add the header file. Although clang plug-in will automatically add a fake header file for me, it cannot replace the header file I added.
+"A fake header file" like this:
+#include <std_msgs/msg/detail/int8__struct.hpp>
+
+but what the program need is:
+#include <std_msgs/msg/int8.hpp>
+

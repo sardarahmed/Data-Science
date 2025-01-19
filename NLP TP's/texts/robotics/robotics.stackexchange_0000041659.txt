@@ -1,0 +1,58 @@
+Q:
+
+PR2 sees ghost obstacles in tilting laser
+
+A PR2 I've been working with a while ago has the problem that the tilting laser reports erroneous obstacles to the right and left of the robot, which leads to "ghost obstacles" and messes up navigation. The problem can be seen in the following screenshot:
+
+Note the straight lines on the ground to the right and left of the PR2. They seem to lie above the ground, so they are not caught by the ground removal. The further the points are from the robot, the higher above the ground they are. It looks as if the Hokuyo reported not a straight line, but a bent one.
+Did anybody else see this problem? Any idea what went wrong?
+Here's some more pictures:
+
+Resulting problems in navigation caused by the straight-line artifacts
+
+A photo of the actual scene. The ground here is pretty cluttered, but the same problem exists when there is nothing on the ground at all.
+
+Originally posted by Martin Günther on ROS Answers with karma: 11816 on 2012-06-23
+Post score: 4
+
+Original comments
+Comment by Dan Lazewatsky on 2012-06-23:
+I don't have a solution but I can tell you that I've seen similar behavior on multiple other PR2s.
+
+A:
+
+Note: solved, see update at the end
+I've found the root of the problem. This seems to be a bug in laser_filters. I tried reproducing this in Gazebo to rule out hardware problems, and this is what I get when visualizing the /tilt_scan_shadow_filtered topic:
+
+The blue points on the side have an average height of 0.003 m, the red ones in the middle have an average height of -0.018 m. In Gazebo, all points are still removed by sac_ground_removal, but on the real PR2 I've been working with only the red/yellow/green points in the middle are removed, and the blue ones remain. This is exactly what I am seeing.
+This is clearly a bug in the scan_to_cloud_filter_chain from laser_filters; I tried removing everything from the filter chain except the LaserScanAngularBoundsFilter, and the problem is still there. The "dent" in the point clouds is not present in the original scans:
+
+How to reproduce (Electric):
+roslaunch pr2_gazebo pr2_empty_world.launch
+roslaunch pr2_2dnav_local pr2_2dnav.launch
+
+Update: It's not a bug, it's a feature. To disable it, set the parameter use_hack of the scan_to_cloud_filter_chain node to false, for example like this (in pr2_navigation_perception/lasers_and_filters.xml):
+<node pkg="laser_filters" type="scan_to_cloud_filter_chain" respawn="true" machine="c2" name="tilt_shadow_filter">
+  ...
+  <param name="use_hack" value="false" />
+</node>
+
+Note: In Fuerte, the parameter is called incident_angle_correction.
+This solved the problem on the real (not simulated) PR2.
+
+Originally posted by Martin Günther with karma: 11816 on 2012-06-26
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Lorenz on 2012-06-26:
+The sac_ground_removal node and the whole laser pipeline seems to be pretty out-dated. I guess the only node that hasn't been ported to PCL. In the parsec repo you can find a re-implementation (parsec.googlecode.com), package parsec_perception. In parsec_navigation you can find a launch file.
+Comment by Martin Günther on 2012-06-26:
+Thank you Lorenz, I wasn't aware of that! For the moment I hope that I have found the solution, but if I have to dig deeper, it's good to know there's a better/cleaner alternative to the laser pipeline.
+Comment by weiin on 2012-06-26:
+According to the laser filter wiki http://www.ros.org/wiki/laser_filters/Tutorials/Laser%20filtering%20using%20the%20filter%20nodes#All_in_One_Node:_scan_to_cloud_filter_chain this "offset feature" seems useful for long distance, but not for short range. I'm wondering how you'll reconcile the two?
+Comment by weiin on 2012-06-26:
+of course, i understand the PR2 tilt laser isn't used primarily for long range navigation since it has the base laser. but I'm just wondering if only one tilt laser is sufficient to do both navigation and short range obstacle avoidance
+Comment by Martin Günther on 2012-06-26:
+@weiin: I think if you're interested in that, it would be best to open a new question (link to this one if it's relevant).
+

@@ -1,0 +1,99 @@
+Q:
+
+MoveitPy segfaults loading robot model
+
+I'm trying to load my robot model with the moveit2 python API:
+        moveit_package_name = f"{robot_name}_moveit_config"
+        moveit_config = (
+            MoveItConfigsBuilder(robot_name=robot_name, package_name=moveit_package_name)
+            # .robot_description(file_path=f"config/.urdf.xacro")
+            # .trajectory_execution(file_path="config/gripper_moveit_controllers.yaml")
+            .moveit_cpp(
+                file_path=os.path.join(
+                    get_package_share_directory(moveit_package_name),
+                    "config",
+                    "moveit_cpp.yaml",
+                )
+            )
+            .to_moveit_configs()
+        ).to_dict()
+
+        self.moveitpy_robot = MoveItPy(node_name=f"{robot_name}_moveitpy", config_dict=moveit_config)
+
+This is the STDOUT:
+warning: Using load_yaml() directly is deprecated. Use xacro.load_yaml() instead.
+[INFO] [1709309724.830857728] [moveit_4259393191.moveit_cpp_initializer]: Initialize rclcpp
+[INFO] [1709309724.830881584] [moveit_4259393191.moveit_cpp_initializer]: Initialize node parameters
+[INFO] [1709309724.830890450] [moveit_4259393191.moveit_cpp_initializer]: Initialize node and executor
+[INFO] [1709309724.854189675] [moveit_4259393191.moveit_cpp_initializer]: Spin separate thread
+[INFO] [1709309724.860997104] [moveit_4259393191.RDFLoader]: Loaded robot model in 0.00669455 seconds
+[INFO] [1709309724.861426677] [moveit_4259393191.robot_model]: Loading robot model 'victor'...
+[INFO] [1709309724.861446216] [moveit_4259393191.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[INFO] [1709309725.202013665] [moveit_4259393191.kdl_kinematics_plugin]: Joint weights for group 'left_arm': 1 1 1 1 1 1 1
+[INFO] [1709309725.202645616] [moveit_4259393191.dynamics_solver]: cache file /home/peter/ros2_ws/src/kuka_iiwa_interface/victor_hardware/scripts/victorleft_arm_victor_left_arm_link_0victor_left_tool0_5000_1.000000_1.000000.ikcache initialized!
+malloc(): invalid size (unsorted)
+
+I strongly suspect there is some issue with my build, because I'm building from source on Humble. I am currently on 5887eb0e2eb. Even when I try with the example config it crashes in the same way.
+
+Here's where it's crashing
+void PlanningScene::initialize()
+{
+  name_ = DEFAULT_SCENE_NAME;
+
+  scene_transforms_ = std::make_shared<SceneTransforms>(this); // CRASHES HERE
+
+  robot_state_ = std::make_shared<moveit::core::RobotState>(robot_model_);
+  robot_state_->setToDefaultValues();
+  robot_state_->update();
+
+And here's the stack track from GDB, with a little cleanup from me:
+Thread 1 "python" received signal SIGABRT, Aborted.
+__pthread_kill_implementation (no_tid=0, signo=6, threadid=140737352398656) at ./nptl/pthread_kill.c:44
+44  ./nptl/pthread_kill.c: No such file or directory.
+(gdb) where
+#0  __pthread_kill_implementation (no_tid=0, signo=6, threadid=140737352398656) at ./nptl/pthread_kill.c:44
+#1  __pthread_kill_internal (signo=6, threadid=140737352398656) at ./nptl/pthread_kill.c:78
+#2  __GI___pthread_kill (threadid=140737352398656, signo=signo@entry=6) at ./nptl/pthread_kill.c:89
+#3  0x00007ffff7c42476 in __GI_raise (sig=sig@entry=6) at ../sysdeps/posix/raise.c:26
+#4  0x00007ffff7c287f3 in __GI_abort () at ./stdlib/abort.c:79
+#5  0x00007ffff7c89676 in __libc_message (action=action@entry=do_abort, fmt=fmt@entry=0x7ffff7ddbb77 "%s\n") at ../sysdeps/posix/libc_fatal.c:155
+#6  0x00007ffff7ca0cfc in malloc_printerr (str=str@entry=0x7ffff7ddebc0 "malloc(): invalid size (unsorted)") at ./malloc/malloc.c:5664
+#7  0x00007ffff7ca40dc in _int_malloc (av=av@entry=0x7ffff7e1ac80 <main_arena>, bytes=bytes@entry=7424) at ./malloc/malloc.c:4002
+#8  0x00007ffff7ca5139 in __GI___libc_malloc (bytes=7424) at ./malloc/malloc.c:3329
+#9  0x00007fffd74ae98c in operator new(unsigned long) ()
+   from /lib/x86_64-linux-gnu/libstdc++.so.6
+#10 0x00007fffd6baadf6 in std::vector<Eigen::Transform<double, 3, 1, 0>, std::allocator<Eigen::Transform<double, 3, 1, 0> > >::_M_fill_insert() ()
+   from /home/peter/ros2_ws/install/moveit_core/lib/libmoveit_robot_state.so.2.9.0
+#11 0x00007fffd6b8e837 in moveit::core::RobotState::init() ()
+   from /home/peter/ros2_ws/install/moveit_core/lib/libmoveit_robot_state.so.2.9.0
+#12 0x00007fffd6b8e9ef in moveit::core::RobotState::RobotState(std::shared_ptr<moveit::core::RobotModel const> const&) ()
+   from /home/peter/ros2_ws/install/moveit_core/lib/libmoveit_robot_state.so.2.9.0
+#13 0x00007fffd6cd54c1 in planning_scene::PlanningScene::initialize() ()
+   from /home/peter/ros2_ws/install/moveit_core/lib/libmoveit_planning_scene.so.2.9.0
+#14 0x00007fffd6cd5f92 in planning_scene::PlanningScene::PlanningScene() ()
+   from /home/peter/ros2_ws/install/moveit_core/lib/libmoveit_planning_scene.so.2.9.0
+#15 0x00007fffd457dd45 in planning_scene_monitor::PlanningSceneMonitor::initialize(std::shared_ptr<planning_scene::PlanningScene> const&) ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_planning_scene_monitor.so.2.9.0
+#16 0x00007fffd457f035 in planning_scene_monitor::PlanningSceneMonitor::PlanningSceneMonitor() ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_planning_scene_monitor.so.2.9.0
+#17 0x00007fffd457f467 in planning_scene_monitor::PlanningSceneMonitor::PlanningSceneMonitor() ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_planning_scene_monitor.so.2.9.0
+#18 0x00007fffd457f4f2 in planning_scene_monitor::PlanningSceneMonitor::PlanningSceneMonitor() ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_planning_scene_monitor.so.2.9.0
+#19 0x00007fffd487c70c in moveit_cpp::MoveItCpp::loadPlanningSceneMonitor(moveit_cpp::MoveItCpp::PlanningSceneMonitorOptions const&) ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_cpp.so.2.9.0
+#20 0x00007fffd487cd18 in moveit_cpp::MoveItCpp::MoveItCpp(std::shared_ptr<rclcpp::Node> const&, moveit_cpp::MoveItCpp::Options const&) ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_cpp.so.2.9.0
+#21 0x00007fffd487e91b in moveit_cpp::MoveItCpp::MoveItCpp(std::shared_ptr<rclcpp::Node> const&) ()
+   from /home/peter/ros2_ws/install/moveit_ros_planning/lib/libmoveit_cpp.so.2.9.0
+#22 0x00007fffd48e6bb7 in moveit_py::bind_moveit_cpp::initMoveitPy(pybind11::module_&)
+   from /home/peter/ros2_ws/install/moveit_py/local/lib/python3.10/dist-packages/moveit/planning.cpython-310-x86_64-linux-gnu.so
+#23 0x00007fffd48ee347 in pybind11::detail::initimpl::factory<moveit_py::bind_moveit_cpp::initMoveitPy(pybind11::module_&)
+
+Short of recompiling all of moveit in debug mode and slogging through this, I don't see what the problem is. Thanks!
+
+A:
+
+The solution seems to have been to uninstall the humble version of moveit from /opt. I am then able to run MoveIt 2.9.0 or main (as of the time of writing this) and run it without major errors.
+sudo apt remove ros-humble-moveit-*
+

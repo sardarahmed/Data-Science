@@ -1,0 +1,215 @@
+Q:
+
+How to put a sensor/camera in a .model code? (For Beginner)
+
+Hi again, I have another question today, I need to know
+how to put a sensor in my .model, to know the distance
+of something in front of it. I think I need to
+implement it in a node (using c++ in my case), but I'm lost
+and I searched a lot but no results.
+Thanks :D
+
+Originally posted by Marlon Rocha on ROS Answers with karma: 28 on 2013-03-25
+Post score: 0
+
+A:
+
+If this is for Fuerte then you will be using Gazebo 1.0. In your SDF file, add a sensor element which is a child of your link element. An example is below that includes two camera sensors in the link called base_link
+<link name = "base_link" >
+   <visual name="base_link_visual">
+  <geometry>
+    <mesh filename="Base Assembly.stl" scale="1 1 1"/>
+        </geometry>
+            <origin pose="0 0 0 0 0 0"/>
+            <material script="Gazebo/Grey"/>
+    </visual>
+    <collision name="base_link_collision">
+        <geometry>
+            <box size="1.528 0.491 .825"/>
+        </geometry>
+        <origin pose="0 0 0 0 0 0"/>
+    </collision>
+    <inertial mass ="750.004">
+        <inertia ixx="67.5" ixy="0.022" iyy="67" ixz="-0.363" iyz="-0.0352" izz="25"/>
+        <origin pose=" 0.262 -0.005 0.053 0 0 0" />
+    </inertial> 
+    <sensor name='cam_sensor2' type='camera' always_on='1' update_rate='15'>
+          <origin pose='-1.25 0.4 0.5 0 0.7 1.0'/>
+          <camera>
+            <horizontal_fov angle='1.57'/>
+            <image width='320' height='240' format='R8G8B8'/>
+            <clip near='0.5' far='5'/>
+          </camera>
+          <plugin name='CameraPublisher' filename='libCameraPublisher.so'/>
+        </sensor>
+    <sensor name='cam_sensor1' type='camera' always_on='1' update_rate='15'>
+          <origin pose='1.25 0.4 0.5 0 0.7 2.0'/>
+          <camera>
+            <horizontal_fov angle='1.57'/>
+            <image width='320' height='240' format='R8G8B8'/>
+            <clip near='0.5' far='5'/>
+          </camera>
+          <plugin name='CameraPublisher' filename='libCameraPublisher.so'/>
+        </sensor>   
+</link>
+
+to position your cameras use the  element of the sensor. this position is the difference compared to the link's origin.
+The CameraPublisher is a plugin that I copied probably from the Gazebo website. You shouldn't need to change it as the configuring of the camera (size, framerate etc) occurs in the SDF file. The CameraPublisher plugin's code is here:
+camerapublisher.cpp:
+  #include "gazebo.hh"
+    #include "plugins/CameraPlugin.hh"
+    #include "common/common.h"
+    #include "transport/transport.h"
+    #include <stdio.h>
+    #include "ros/ros.h"
+    #include "sensor_msgs/Image.h"
+    #include "image_transport/image_transport.h"
+    
+    namespace gazebo
+    {   
+      class CameraPublisher : public CameraPlugin
+      { 
+        public: CameraPublisher() : CameraPlugin(),saveCount(0) 
+
+        {
+            std::string name = "CameraPublisher";
+            int argc = 0;
+            ros::init(argc, NULL, name);
+            
+            
+            
+        }
+
+        public: ~CameraPublisher()
+        {
+            delete this->node;
+        }   
+
+        public: void Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
+        {
+
+          // Don't forget to load the camera plugin
+          CameraPlugin::Load(_parent,_sdf);
+            //this->model = _parent;            
+            
+            //ROS Nodehandle
+            
+            
+            //current_time = this->model->GetWorld()->GetSimTime();
+
+            this->node = new ros::NodeHandle("~");
+
+            //this->it = this->node;
+            ros::NodeHandle node_temp = *this->node;
+            image_transport::ImageTransport trans(node_temp);
+            char topicname[12];
+            char fullname[50];
+            std::cout<<this->parentSensor->GetCamera()->GetName().c_str()<<std::endl;
+            
+            snprintf(fullname, 30, "%s", this->parentSensor->GetCamera()->GetName().c_str()); 
+            
+            strncpy(&topicname[0], &fullname[9], 11);
+            topicname[11] ='\0';
+            std::cout<<topicname<<std::endl;
+            //ROS Publisher
+            //this->pub = this->node->advertise<sensor_msgs::Image>(topicname, 1000);
+            this->pub = trans.advertise(topicname, 1);
+                
+            
+            
+        } 
+
+        // Update the controller
+        public: void OnNewFrame(const unsigned char *_image, 
+            unsigned int _width, unsigned int _height, unsigned int _depth, 
+            const std::string &_format)
+        {
+           
+
+            
+            
+                sensor_msgs::Image msg;
+                //msg.header.stamp = this->model->GetWorld()->GetSimTime();
+                
+                msg.is_bigendian = 0;
+                
+
+                
+
+                if(this->pub.getNumSubscribers() >0)
+                {               
+                    //for (int i =0; i<(msg.height*msg.width*3);i++)
+                    //{
+                        //char pixel = this->frame[i];
+                        //std::cout<<"pixel "<<i<<" filled: "<<pixel<<std::endl;
+                        //msg.data[i] = this->frame[i];
+                        //std::cout<<"data is not gay"<<std::endl;
+                    //}
+                    frame = this->parentSensor->GetCamera()->GetImageData(0);
+                msg.height = this->parentSensor->GetCamera()->GetImageHeight();
+                msg.width = this->parentSensor->GetCamera()->GetImageWidth();
+                msg.step = msg.width*3;
+                size_t st0 = msg.step*msg.height;
+                msg.data.resize(st0);               
+                msg.encoding = "rgb8";
+                memcpy(&msg.data[0], frame, st0);
+
+                    this->pub.publish(msg);
+                    //std::cout<<"published"<<std::endl;
+                }                               
+                
+                
+        }         
+
+         // Pointer to the model
+    //private: sensor::SensorPtr model;
+
+        private: int saveCount;
+        private: const unsigned char* frame;
+        
+        // ROS Nodehandle
+        private: ros::NodeHandle* node;
+        
+        //Image Transport
+        //private:image_transport::ImageTransport it;
+
+        //ROS Publisher
+        //private: ros::Publisher pub;
+        image_transport::Publisher pub;
+        common::Time current_time;
+      };
+
+      // Register this plugin with the simulator
+      GZ_REGISTER_SENSOR_PLUGIN(CameraPublisher)
+    }
+
+your must add the lines below to your cmakelists.txt
+rosbuild_add_library(CameraPublisher src/CameraPublisher.cpp)
+target_link_libraries(CameraPublisher ${GAZEBO_libraries} CameraPlugin)
+
+Originally posted by PeterMilani with karma: 1493 on 2013-03-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Marlon Rocha on 2013-04-01:
+Thanks a lot, I'm studying this code right now, but I'm in trouble with the SDF... Like I need to create it, or the ROS have a default?
+Comment by PeterMilani on 2013-04-01:
+SDF is the description format for models in Gazebo. Its based on xml and is relatively equivalent to the URDF used in ROS, though the way SDF treats joint placement is different to URDF. Check tutorials for Gazebo on how to use SDF 1.0. NB it is different to later versions of SDF.
+Comment by Marlon Rocha on 2013-04-01:
+I am having trouble with the imagetransport.h, can't find here :(
+Comment by Marlon Rocha on 2013-04-01:
+Problem solved, now I can't create the .bin with the CameraPublisher.cpp to use with the gazebo
+Comment by PeterMilani on 2013-04-01:
+CameraPublisher should be contained in a library .so file called CameraPublisher.so if you've updated your Cmakelists.txt file as shown
+Comment by Marlon Rocha on 2013-04-02:
+I found the CameraPublisher.so, now, what I have to do? Thanks man :D
+Comment by PeterMilani on 2013-04-02:
+Follow this tutorial. http://gazebosim.org/wiki/Tutorials/1.0/plugins/overview Disregard the part about running the gazebo server from the build directory, start gazebo the way you've been doing
+Comment by Marlon Rocha on 2013-04-03:
+Hmmm ok, I need to know how to put my .model and the plugins in the same project using ROS... Can you help? thanks man
+Comment by PeterMilani on 2013-04-03:
+Well it should work like that. I'm not sure what your errors are now. Use RXGraph to see if your camera topics are being published on the gazebo node. If they are then Hooray, you're done. If not there should be an error message in one of your terminals. see http://www.ros.org/wiki/image_transport
+Comment by Marlon Rocha on 2013-04-03:
+Thanks again man, I will try :D
+

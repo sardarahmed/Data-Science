@@ -1,0 +1,40 @@
+Q:
+
+PID controller that targets a set rotation and a set velocity at that rotation?
+
+I have a 3d physics simulation where I use a PID controller to reach a set orientation (orientation error drives a torque output).  Which works well enough some cases, but in others it's not working as nicely as I would like - especially in the case of rapid rotation.  I am still tuning however.
+I'm not proficient in control theory, but I was thinking maybe perhaps that the controller is only ensuring the desired orientation is reached as a constraint, but not what the angular velocity should be when it gets there - ideally zero in most situations.
+So I was wondering if it made sense to somehow combine a second PID controller that uses angular velocity rather than orientation mismatch as the error.  I'm not sure if this makes sense, and if so if it should just output another torque that is summed with the torque of the other PID?  Or if it's more complicated than that?  Or if it would be duplicating the work of the first PID anyway?
+I think I would want the angular velocity closer to zero, the more closer the orientation error is to zero - so I am not sure if any kind of scaling to do that makes sense?  I can imagine that would then become a balancing act between the two PID's coefficients to determine how fast it can correct vs stability when stopping (But then that kind of sounds like what the first PID would be doing anyway!?).
+Also in general I am not sure of the correct way to combine multiple PID controllers that are trying to balance concerns like that.
+
+A:
+
+Find here a similar question.
+A well-tuned position PID is most of the time capable of accomplishing the task of reaching a target with zero velocity. The central point here is that you shall provide the PID with a smooth reference trajectory (planning or input-shaping) connecting your starting point with the desired orientation.
+Usually, this reference trajectory is generated in the form of a minimum-jerk path that reduces oscillations, especially at the onset and the endpoint. To code this trajectory you ought to resort to a 5th order polynomial:
+$$
+r(t) = r_i + (r_d-r_i) \cdot \left( 10\left(\frac{t}{t_f}\right)^3 -15\left(\frac{t}{t_f}\right)^4 +6\left(\frac{t}{t_f}\right)^5\right),
+$$
+where $t_f$ is the time to execute the whole trajectory, hence $t \in [0,t_f]$ and $r_i$ and $r_d$ are the starting and the ending points, respectively.
+This smooth input will guarantee that the PID won't struggle to deliver its effort to reach the target at a very low speed without overshoot.
+Of course, you are still required to properly tune the PID to let it behave successfully when fed with stepwise inputs.
+That said, adding cascaded PID controllers is also quite common. The diagram foresees that controllers are nested from the inner to the outer following this order:
+
+inner: torque (current) PID
+intermediate: velocity PID
+outer: position PID
+
+Have a look at this quite enlightening resource to see how this is done.
+You could also have implementations with only 2 cascaded PID out of the 3 above (e.g. velocity and position) but always in the prescribed order.
+The key point of cascaded PID controllers is that this design can improve the overall performance and allow for tuning according to this procedure:
+
+First tune the torque (current) inner PID considering the motor+load as the plant;
+Then, tune the velocity intermediate PID considering the motor+load+current_pid as the plant;
+Finally, tune the position outer PID considering the motor+load+current_pid+velocity_pid as the plant.
+
+Thereby, at the end of the story, there will be only one objective that is the position setpoint. Still, a cascaded controller cannot impose velocity setpoints, for example; rather, it will serve "merely" to improve the closed-loop system performance.
+Find below an illustrative example concerned with the altitude control of a drone where a 2-level cascaded PID controller is employed. The outer altitude (position) controller is combined along with the inner velocity controller.
+
+This example is taken from "Understanding PID Control, Part 7: Important PID Concepts" by Brian Douglas.
+

@@ -1,0 +1,178 @@
+Q:
+
+How to fuse linear and angular data from sensors?
+
+My team and I are setting up an outdoor robot that has encoders, a commercial-grade IMU, and GPS sensor. The robot has a basic tank drive, so the encoders sufficiently supply ticks from the left and right wheels. The IMU gives roll, pitch, yaw, and linear accelerations in x, y, and z. We could later add other IMUs, which would give redundancy, but could also additionally provide angular rates of roll, pitch, and yaw. The GPS publishes global x, y, and z coordinates.
+Knowing the robot's x y position and heading will useful for the robot to localize and map out its environment to navigate. The robot's velocity could also be useful for making smooth movement decisions. It's a ground-based robot, so we don't care too much about the z axis. The robot also has a lidar sensor and a camera--so roll and pitch will be useful for transforming the lidar and camera data for better orientation.
+I'm trying to figure out how to fuse all these numbers together in a way that optimally takes advantage of all sensors' accuracy. Right now, we're using a Kalman filter to generate an estimate of [x, x-vel, x-accel, y, y-vel, y-accel] with the simple transition matrix:
+[[1, dt, .5*dt*dt, 0,  0,        0],
+ [0,  1,       dt, 0,  0,        0],
+ [0,  0,        1, 0,  0,        0],
+ [0,  0,        0, 1, dt, .5*dt*dt],
+ [0,  0,        0, 0,  1,       dt],
+ [0,  0,        0, 0,  0,        1]]
+
+The filter estimates state exclusively based on the accelerations provided by the IMU. The IMU isn't the best quality; within about 30 seconds it will show the robot (at rest) drifting a good 20 meters from its initial location. I want to know out how to use roll, pitch, and yaw from the IMU, and potentially roll, pitch, and yaw rates, encoder data from the wheels, and GPS data to improve the state estimate.
+Using a bit of math, we can use the two encoders to generate x, y, and heading information on the robot, as well as linear and angular velocities. The encoders are very accurate, but they can be susceptible to slippage on an outdoor field.
+It seems to me that there are two separate sets of data here, which are difficult to fuse:
+
+Estimates of x, x-vel, x-accel, y, y-vel, y-accel
+Estimates of roll, pitch, yaw, and rates of roll, pitch, and yaw
+
+Even though there's crossover between these two sets, I'm having trouble reasoning about how to put them together. For example, if the robot is going at a constant speed, the direction of the robot, determined by its x-vel and y-vel, will be the same as its yaw. Although, if the robot is at rest, the yaw cannot be accurately determined by the x and y velocities. Also, data provided by the encoders, translated to angular velocity, could be an update to the yaw rate... but how could an update to the yaw rate end up providing better positional estimates?
+Does it make sense to put all 12 numbers into the same filter, or are they normally kept separate? Is there already a well-developed way of dealing with this type of problem?
+
+A:
+
+Two things. 
+
+If you plan to do mapping, you need a full-fledged Simultaneous Localization and Mapping (SLAM) Algorithm. See: Simultaneous Localisation and Mapping (SLAM):
+Part I The Essential Algorithms. In SLAM, estimating the robot state is only half the problem. How to do that is a bigger question than can be answered here.
+Regarding localization (estimating the state of the robot), this is not a job for a Kalman Filter. The transition from
+$x(t)=[x,y,\dot{x},\dot{y},\theta,\dot{\theta}]$ to $x(t+1)$ is not a linear function due to the
+angular accelerations and velocities. Therefore you need to consider
+non-linear estimators for this task. Yes, there are standard ways of
+doing this. Yes, they are available in literature. Yes, typically all
+inputs are put into the same filter. Position, velocity,
+orientation, and angular velocity of the robot are
+used as outputs. And Yes, I'll present a brief introduction to their
+common themes here.   The main take-aways are
+
+include the Gyro and IMU bias in your state or your estimates will
+diverge
+An Extended Kalman Filter
+(EKF) is commonly used for this problem
+Implementations can be derived from scratch, and don't generally
+need to be "looked up". 
+Implementaitons exist for most of the localization and SLAM problem, so don't do more work than you have to. See: Robot Operating System ROS
+
+Now, to explain the EKF in the context of your system.
+We have an IMU+Gyro, GPS, and
+odometry. The robot in question is a differential drive as mentioned.
+The filtering task is to take the current pose estimate of the robot
+${\hat{x}_t}$, the control inputs $u_t$, and the measurements from
+each sensor, $z_t$, and produce the estimate at the next time step
+$\hat{x}_{t+1}$. We'll call the IMU measurements $I_t$, GPS is $G_t$, and
+odometry, $O_t$. 
+I assume we are interested in estimating the robot pose as
+$x_t={x,y,\dot{x},\dot{y},\theta,\dot{\theta}}$.
+The problem with IMU and Gyros is drift. There is a non-stationary
+bias in the accelerations which you must account for in the EKF. This
+is done (usually) by putting the bias into the estimated state. This
+allows you to directly estimate the bias at each time step.
+$x_t={x,y,\dot{x},\dot{y},\theta,\dot{\theta},b}$, for a vector of
+biases $b$.
+I'm assuming:
+
+$O_t$ = two distance measurements representing the distance the
+treads have travelled in some small time increment
+$I_t$ = three orientation measurements ${\alpha, \beta, \theta}$ and three accelleration
+measurements ${\ddot{x},\ddot{y},\ddot{z}}$. 
+$G_t$ = the position of the robot in the global frame,
+$^Gx_t,^Gy_t$.
+
+Typically, the result of the control inputs (desired speeds for each
+tread) are difficult to map to the outputs (the change in the pose of
+the robot).  In place of $u$, it is common (see Thrun, Odometry Question) to use the
+odometry as the "result" of the control. This assumption works well
+when you are not on a near-frictionless surface. The IMU and GPS can
+help correct for slippage, as we'll see.
+So the first task is to predict the next state from the current state:
+$\hat{x}_{t+1} = f(\hat{x}_t,u_t)$. In the case of a differential
+drive robot, this prediction can be obtained directly from literature
+(see On the Kinematics of Wheeled Mobile Robots or the more concise treatment in any modern robotics textbook), or derived from scratch as shown here: Odometry Question.
+So, we can now predict $\hat{x}_{t+1} = f(\hat{x}_t, O_t)$. This is
+the propagation or prediction step. You can operate a robot by simply
+propagating. If the values $O_t$ are completely accurate, you will
+never have an estimate $\hat{x}$ which does not exactly equal your
+true state. This never happens in practice.
+This only gives a predicted value from the previous estimate,
+and does not tell us how the accuracy of the estimate degrades with
+time. So, to propagate the uncertainty, you must use the EKF equations
+(which propagate the uncertainty in closed form under Gaussian noise
+assumptions), a particle filter (which uses a sampling-based
+approach)*, the UKF (which uses a point-wise approximation of the
+uncertainty), or one of many other variants.
+In the case of the EKF, we proceed as follows. Let $P_t$ be the
+covariance matrix of the robot state. We linearize the function $f$
+using Taylor-series expansion to obtain a linear system. A linear
+system can be easily solved using the Kalman Filter. Assume the
+covariance of the estimate at time $t$ is $P_t$, and the assumed
+covariance of the noise in the odometry is given as the matrix $U_t$
+(usually a diagonal $2\times2$ matrix, like $.1\times I_{2\times 2}$).
+In the case of the function $f$, we obtain the Jacobian
+$F_x=\frac{\partial f}{\partial x}$ and $F_u=\frac{\partial f}{\partial
+u}$, then propagate the uncertainty as,
+$$P_{t+1}=F_x*P_t*F_x^T + F_u*U_t*F_u^T$$
+Now we can propagate the estimate and the uncertainty. Note the
+uncertainty will monotonically increase with time. This is expected.
+To fix this, what is typically done, is to use the $I_t$ and $G_t$ to
+update the predicted state. This is called the measurement step of the
+filtering process, as the sensors provide an indirect measurement of
+the state of the robot.
+First, use each sensor to estimate some part of the robot state
+as some function $h_g()$ and $h_i()$ for GPS, IMU. Form
+the residual or innovation which is the difference of the
+predicted and measured values. 
+Then, estimate the accuracy for each sensor estimate in
+the form of a covariance matrix $R$ for all sensors ($R_g$, $R_i$ in
+this case). Finally, find the Jacobians of $h$ and update the state
+estimate as follows:
+For each sensor $s$ with state estimate $z_s$  (Following wikipedia's entry)
+$$v_s=z_s- h_s(\hat{x}_{t+1})$$
+$$S_s = H_s*P_{t+1}*H_s^T + R_s$$
+$$K = P_{t+1}*H_s^T S^{-1}_s$$
+$$\hat{x}_{t+1} = \hat{x}_{t+1} - K*v$$
+$$P_{t+1} = (I-K*H_s)*P_{t+1}$$
+In the case of GPS, the measurement $z_g=h_g()$ it is probably just a
+transformation from latitude and longitude to the local frame of the
+robot, so the Jacobian $H_g$ will be nearly Identity. $R_g$ is
+reported directly by the GPS unit in most cases.
+In the case of the IMU+Gyro, the function $z_i=h_i()$ is an integration of
+accelerations, and an additive bias term. One way to handle the IMU is
+to numerically integrate the accelerations to find a position and
+velocity estimate at the desired time.  If your IMU has a small
+additive noise term $p_i$ for each acceleration estimate, then you
+must integrate this noise to find the accuracy of the position
+estimate.  Then the covariance $R_i$ is the integration of all the
+small additive noise terms, $p_i$. Incorporating the update for the
+bias is more difficult, and out of my expertise. However, since you are interested in planar motion, you can probably simplify the problem. 
+You'll have to look in literature for this.
+Some off-the-top-of-my-head references: 
+
+Improving the Accuracy of EKF-Based Visual-Inertial
+Odometry
+Observability-based Consistent EKF Estimators for Multi-robot
+Cooperative
+Localization
+Adaptive two-stage EKF for INS-GPS loosely coupled system with
+unknown fault bias
+
+This field is mature enough that google (scholar) could probably find
+you a working implementation. If you are going to be doing a lot of
+work in this area, I recommend you pick up a solid textbook. Maybe
+something like Probablistic Robotics by S. Thrun of Google Car fame.
+(I've found it a useful reference for those late-night
+implementations).
+*There are several PF-based estimators available in the
+Robot Operating System (ROS). However, these have
+been optimized for indoor use. Particle filters deal with the
+multi-modal PDFs which can result from map-based localization (am I
+near this door or that door). I believe most outdoor
+implementations (especially those that can use GPS, at least
+intermittently) use the Extended Kalman Filter (EKF). I've
+successfully used the Extended Kalman Filter for an outdoor, ground
+rover with differential drive. 
+
+A:
+
+You can greatly simplify the problem in most common cases:
+
+A lot of "commercial grade" IMus (e.g. Xsens) have very noisy accelerometers. Don't even bother fusing them to get speed, the odometry is already order of magnitudes better. The only usable data the IMU is going to provide is the pitch and roll, and to some extent the heading (see next point)
+heading from IMUs is not that trustworthy. It uses magetometers, and will show huge drifts (up to 25 degrees over 2m in our case) near ferromagnetic masses, such as the one you can find in building walls. What we did to solve this is to use the IMU heading, but estimate a heading bias.
+If you are outdoors, don't forget that travelling 10m on a 10 degree incline does not lead to the same change in X and Y than travelling 10m on a flat terrain. This is usually accounted for by estimating Z, but I guess it can be estimated differently.
+GPS is also a lying bitch, typically in high-multipath environments. Plus low-grade (and even in some conditions high-grade) GPSes have a tendency to report very wrong standard deviations. We used some simple chi-square tests to check whether a particular GPS measurement should be integrated (i.e. checking that it matches the current filter estimate up to a certain point), which gave us decent results.
+
+The "typical" solution for us is to use odometry + IMU to get an ego-motion estimate and then use GPS to correct X,Y,Z and heading bias.
+Here is an EKF implementation that we extensively used. If you need to estimate the IMU's orientation (i.e. if it does not already have a built-in filter), you can also use on of these two filter: UKF and EKF.
+

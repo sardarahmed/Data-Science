@@ -1,0 +1,60 @@
+Q:
+
+MoveGroupSequence PILZ plan only multiple unrelated trajectories
+
+How can I plan ONLY multiple linear trajectories that are independent of each other?
+For my use case, I want to plan several trajectories starting from different states and they are unrelated of each other.
+I am using the SimpleActionClient actionlib.SimpleActionClient("/sequence_move_group", moveit_msgs.msg.MoveGroupSequenceAction). When planning the first trajectory, the result is okay, however when I send the second trajectory to be planned I get the following error:
+
+[ERROR] [1623032769.603690338]: > Planning pipeline threw an exception (error code: -17): Only the first request is allowed to have a start state, but the requests for group: "b_bot" violate the rule
+
+As I understand, the "SequenceManager" seems to interpret the second trajectory as part of the first and then it complains that only the first request is allowed to have a start state. However, how do I tell the "SequenceManager" that the two trajectories are not part of the same sequence and that just treat the second request as a new request?
+If I use the SimpleActionClient with the planning_options.plan_only = False, the first trajectory is planned and executed correctly, then the second trajectory is planned and executed correctly. However if the request is planning_options.plan_only = True the I get the above mentioned error. I do not want to plan1->execute1->plan2->execute2, I want to plan1->plan2->execute1->execute2
+
+Originally posted by cambel07 on ROS Answers with karma: 92 on 2021-06-06
+Post score: 0
+
+Original comments
+Comment by cambel07 on 2021-06-07:
+My bad, for both trajectories I was using the move_group to construct the MotionSequenceRequest. However, for the first trajectory I use the default value of start_state so it worked fine, but for the second trajectory I was setting a desired start_state which was being included in each point of the trajectory. Thus, the planner was complaining about that.
+Comment by fvd on 2021-06-07:
+Could you post your comment as an answer (ideally with some example code) and accept it, so the question is out of the Unanswered queue?
+
+A:
+
+For both trajectories I was using the move_group to construct the MotionSequenceRequest. However, for the first trajectory I use the default value of start_state so it worked fine, but for the second trajectory I was setting a desired start_state which was being included in each point of the trajectory. Thus, the planner was complaining about that.
+Before:
+    msi = moveit_msgs.msg.MotionSequenceItem()
+    msi.req = group.construct_motion_plan_request()
+    msi.blend_radius = 0.0
+    motion_plan_requests.append(msi)
+
+    msi.req.start_state = start_state
+
+    for wp in waypoints:
+        group.set_pose_target(wp)
+        msi = moveit_msgs.msg.MotionSequenceItem()
+        msi.req = group.construct_motion_plan_request()
+        msi.blend_radius = blend_radius
+        motion_plan_requests.append(msi)
+
+After:
+    msi  = moveit_msgs.msg.MotionSequenceItem()
+    msi.req = group.construct_motion_plan_request()
+    msi.blend_radius = 0.0
+    motion_plan_requests.append(msi)
+
+    msi.req.start_state = start_state
+
+    for wp in waypoints:
+        group.set_pose_target(wp)
+        msi = moveit_msgs.msg.MotionSequenceItem()
+        msi.req = group.construct_motion_plan_request()
+        msi.req.start_state = moveit_msgs.msg.RobotState() # Here, resetting the start_state for each point
+        msi.blend_radius = blend_radius
+        motion_plan_requests.append(msi)
+
+Originally posted by cambel07 with karma: 92 on 2021-07-05
+This answer was ACCEPTED on the original site
+Post score: 1
+

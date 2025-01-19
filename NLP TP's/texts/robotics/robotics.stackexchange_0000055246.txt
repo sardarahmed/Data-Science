@@ -1,0 +1,77 @@
+Q:
+
+How to convert PCLPointCloud2 to PointCloud in Hydro?
+
+I've been referencing the ROS PCL tutorials (http://wiki.ros.org/pcl/Tutorials) to get up to speed on using the library in ROS, but I'm running into a little bit of trouble with the conversion to Hydro. According to the note under "sensor_msgs/PointCloud2", the sensor_msgs::PointCloud2 type previously used to send point clouds as ROS messages has been deprecated in favor of pcl::PCLPointCloud2. That section of the tutorial tells you exactly how to adapt your code in the example for the new type - awesome!
+However, inside my node, I'm doing some correspondence grouping work, and the code that I've already gotten working outside of ROS uses a pcl::PointCloudpcl::PointXYZ, so I went down to the "pcl/PointCloud" section and looked for the same migration instructions - no dice. I looked at the migration instructions (http://wiki.ros.org/hydro/Migration) and the API, tried both of these options, where I've substituted the variable names for their types:
+[pcl::PointCloud< pcl::PointXYZ >] = [const pcl::PCLPointCloud2ConstPtr&];
+pcl::fromROSMsg( *[const pcl::PCLPointCloud2ConstPtr&], [pcl::PointCloud< pcl::PointXYZ >] );
+[pcl::PointCloud< pcl::PointXYZ >] = [const pcl::PCLPointCloud2ConstPtr&].makeShared();
+
+Both throw an error, and I've also tried calling fromROSMsg with namespace pcl_conversions. I'm assuming that I am missing something in some piece of documentation, but I can't seem to figure it out. Any help would be appreciated.
+
+Originally posted by teddybouch on ROS Answers with karma: 320 on 2013-11-05
+Post score: 0
+
+A:
+
+I was just working on this same thing and I saw your post! It helped me figure it out.
+You are using the depreciated conversion.h file by calling fromROSMsg. Try this:
+#include <ros/ros.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl/conversions.h> //I believe you were using pcl/ros/conversion.h
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
+#include <iostream>
+#include <pcl/io/pcd_io.h>
+
+#include <pcl/PCLPointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+
+void 
+cloud_cb (const sensor_msgs::PointCloud2 input)
+{
+  pcl::PCLPointCloud2 pcl_pc;
+  pcl_conversions::toPCL(input, pcl_pc);
+
+  pcl::PointCloud<pcl::PointXYZ> cloud;
+
+  pcl::fromPCLPointCloud2(pcl_pc, cloud);
+  pcl::YOUR_PCL_FUNCTION(cloud,...);
+}
+
+int
+main (int argc, char** argv)
+{
+  // Initialize ROS
+  ros::init (argc, argv, "pointcloud2_to_pcd");
+  ros::NodeHandle nh;
+
+  // Create a ROS subscriber for the input point cloud
+  ros::Subscriber sub = nh.subscribe ("cloud", 1, cloud_cb);
+
+  // Spin
+  ros::spin ();
+}
+
+Originally posted by pwong with karma: 447 on 2013-11-05
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by teddybouch on 2013-11-06:
+I found the documentation for converting from sensor_msgs::PointCloud2 to pcl::PointCloudpcl::PointXYZ. The problem that I've run into is that the ROS PCL tutorial indicates that, for Hydro, the input type for the cloud_cb in your example should be pcl::PCLPointCloud2 instead.
+Comment by pwong on 2013-11-06:
+I'm using Hydro myself. For the call back function, my sensor is still publishing out in sensor_msgs::PointCloud2, so I'm still subscribing to that type. Converting to pcl::PCLPointCloud2 format before publishing would be better idea though.
+Comment by ZsurzsaLaszlo on 2013-11-18:
+Hey, I try to do the same thing as shown here. The difference is that I'm doing it for fuerte. I did compile pcl_conversions but I can't load it in my code. How did you proceed in youre case?
+Comment by pwong on 2013-11-18:
+What exactly do you mean by 'load it in my code'?
+Comment by ZsurzsaLaszlo on 2013-11-18:
+I compiled PCL from source now I can't use ros msgs so I wanted to use this package. Although it compiles everything. #include <pcl_conversions/pcl_conversions.h> gives me error. I hope you can help me with this.  I use FUERTE.
+Comment by pwong on 2013-11-18:
+I don't know if Fuerte depreciated sensor_msgs::PointCloud2, but in case it didn't, you can't just go with this set up?
+http://wiki.ros.org/pcl/Tutorials
+I also don't know if the newest version of pcl takes type pcl::PCLPointCloud2 exclusively. Sorry, I don't know if that was very helpful or not.
+

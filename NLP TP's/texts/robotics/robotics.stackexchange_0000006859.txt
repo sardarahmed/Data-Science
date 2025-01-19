@@ -1,0 +1,267 @@
+Q:
+
+how to implement tracking problem with PID controller
+
+I'm trying to implement the tracking problem for this example using PID controller. The dynamic equation is 
+$$
+I  \ddot{\theta} + d \dot{\theta} + mgL \sin(\theta) = u
+$$
+where 
+$\theta$ : joint variable. 
+$u$ : joint torque
+$m$ : mass. 
+$L$ : distance between centre mass and joint. 
+$d$ : viscous friction coefficient
+$I$ : inertia seen at the rotation axis.
+$\textbf{Regulation Problem:}$
+In this problem, the desired angle $\theta_{d}$ is constant and $\theta(t)$ $\rightarrow \theta_{d}$ and $\dot{\theta}(t)$ $\rightarrow 0$ as $t$ $\rightarrow \infty$. For PID controller, the input $u$ is determined as follows
+$$
+u = K_{p} (\theta_{d} - \theta(t)) + K_{d}( \underbrace{0}_{\dot{\theta}_{d}} -  \dot{\theta}(t) ) + \int^{t}_{0} (\theta_{d} - \theta(\tau)) d\tau
+$$
+The result is 
+
+and this is my code  main.m
+clear all
+clc
+
+global error;
+error = 0;
+
+t = 0:0.1:5;
+
+x0 = [0; 0];
+
+[t, x] = ode45('ODESolver', t, x0);
+
+e = x(:,1) - (pi/2); % Error theta
+
+plot(t, e, 'r', 'LineWidth', 2);
+title('Regulation Problem','Interpreter','LaTex');
+xlabel('time (sec)');
+ylabel('$\theta_{d} - \theta(t)$', 'Interpreter','LaTex');
+grid on
+
+and ODESolver.m is 
+function dx = ODESolver(t, x)
+
+global error; % for PID controller
+
+dx = zeros(2,1);
+
+%Parameters:
+m = 0.5;       % mass (Kg)
+d = 0.0023e-6; % viscous friction coefficient
+L = 1;         % arm length (m)
+I = 1/3*m*L^2; % inertia seen at the rotation axis. (Kg.m^2)
+g = 9.81;      % acceleration due to gravity m/s^2
+
+% PID tuning
+Kp = 5;
+Kd = 1.9;
+Ki = 0.02;
+
+% u: joint torque
+u = Kp*(pi/2 - x(1)) + Kd*(-x(2)) + Ki*error;
+error = error + (pi/2 - x(1));
+
+dx(1) = x(2);
+dx(2) = 1/I*(u - d*x(2) - m*g*L*sin(x(1)));
+
+end
+
+$\textbf{Tracking Problem:}$
+Now I would like to implement the tracking problem in which the desired angle $\theta_{d}$ is not constant (i.e. $\theta_{d}(t)$); therefore, $\theta(t)$ $\rightarrow \theta_{d}(t)$ and $\dot{\theta}(t)$ $\rightarrow \dot{\theta}_{d}(t)$ as $t$ $\rightarrow \infty$. The input is 
+$$
+u = K_{p} (\theta_{d} - \theta(t)) + K_{d}( \dot{\theta}_{d}(t) -  \dot{\theta}(t) ) + \int^{t}_{0} (\theta_{d}(t) - \theta(\tau)) d\tau
+$$
+Now I have two problems namely to compute $\dot{\theta}_{d}(t)$ sufficiently and how to read from txt file since the step size of ode45 is not fixed. For the first problem, if I use the naive approach which is 
+$$
+\dot{f}(x) = \frac{f(x+h)-f(x)}{h}
+$$
+the error is getting bigger if the step size is not small enough. The second problem is that the desired trajectory is stored in txt file which means I have to read the data with fixed step size but I'v read about ode45 which its step size is not fixed. Any suggestions!
+
+Edit:
+For tracking problem, this is my code 
+main.m
+clear all
+clc
+
+global error theta_d dt;
+error = 0;
+
+theta_d = load('trajectory.txt');
+
+i    = 1;
+t(i) = 0;
+dt   = 0.1;
+numel(theta_d)
+while ( i < numel(theta_d) )
+   i = i + 1;
+   t(i) = t(i-1) + dt;
+end
+
+x0 = [0; 0];
+options= odeset('Reltol',dt,'Stats','on');
+[t, x] = ode45(@ODESolver, t, x0, options);
+
+ e = x(:,1) - theta_d; % Error theta
+
+plot(t, x(:,2), 'r', 'LineWidth', 2);
+title('Tracking Problem','Interpreter','LaTex');
+xlabel('time (sec)');
+ylabel('$\dot{\theta}(t)$', 'Interpreter','LaTex');
+grid on
+
+ODESolver.m
+function dx = ODESolver(t, x)
+
+persistent i theta_dPrev
+
+if isempty(i)
+    i = 1;
+    theta_dPrev = 0;
+end
+
+global error theta_d dt ; 
+
+dx = zeros(2,1);
+
+%Parameters:
+m = 0.5;       % mass (Kg)
+d = 0.0023e-6; % viscous friction coefficient
+L = 1;         % arm length (m)
+I = 1/3*m*L^2; % inertia seen at the rotation axis. (Kg.m^2)
+g = 9.81;      % acceleration due to gravity m/s^2
+
+% PID tuning
+Kp = 35.5;
+Kd = 12.9;
+Ki = 1.5;
+
+if ( i == 49 )
+    i = 48;
+end
+% theta_d first derivative
+theta_dDot  = ( theta_d(i) - theta_dPrev ) / dt;
+theta_dPrev = theta_d(i);
+
+% u: joint torque
+u = Kp*(theta_d(i) - x(1)) + Kd*( theta_dDot - x(2)) + Ki*error;
+error = error + (theta_dDot - x(1));
+
+dx(1) = x(2);
+dx(2) = 1/I*(u - d*x(2) - m*g*L*sin(x(1)));
+
+i = i + 1;
+end
+
+trajectory's code is 
+clear all 
+clc
+
+a = 0:0.1:(3*pi)/2;
+
+file = fopen('trajectory.txt','w');
+
+for i = 1:length(a)
+    fprintf(file,'%4f \n',a(i));
+end
+
+fclose(file);
+
+The result of the velocity is 
+
+Is this correct approach to solve the tracking problem?
+
+A:
+
+Since both $\theta_d\left(t\right)$ and $\dot\theta_d\left(t\right)$ are references at your disposal, i.e. you have to provide them in some way, why don't you simply play with $\dot\theta_d\left(t\right)$ and then compute $\theta_d\left(t\right)$ accordingly by means of integration? As you might know, integration is a well posed operation compared with the derivative.
+On the other hand, $\dot\theta\left(t\right)$ is a different "beast". In physical systems you barely have access to it (you'd need ad-hoc sensors for measuring it). Valid alternatives are: Kalman estimation, Savitzky-Golay filtering, use of proper D term in the controller equipped with a high-frequency pole.
+
+A:
+
+I've made few changes to your ODESolver:
+
+The time step requested by ODE45 is not going to match what you have in your file. In your ODESolver() desired thetas are read one after the other and then the last one is repeated. As a result the desired theta was not a function of $t$. I used interp1() to fix that.
+The time difference between two iteration of ODE45 is not constant so you can't use dt to calculate the $\Delta{\theta}$. This is fixed by storing the t in a variable for future reference.
+Same goes for calculating the integral part of PID.
+
+Here is the new ODESolver():
+function dx = ODESolver(t, x)
+persistent theta_dPrev time_prev
+
+if isempty(theta_dPrev)
+    theta_dPrev = 0;
+    time_prev = 0;
+end
+
+global error theta_d dt time_array; 
+
+dx = zeros(2,1);
+
+%Parameters:
+m = 0.5;       % mass (Kg)
+d = 0.0023e-6; % viscous friction coefficient
+L = 1;         % arm length (m)
+I = 1/3*m*L^2; % inertia seen at the rotation axis. (Kg.m^2)
+g = 9.81;      % acceleration due to gravity m/s^2
+
+% PID tuning
+Kp = 40;%35.5;
+Kd = 10;%12.9;
+Ki = 20;%1.5;
+
+% theta_d first derivative
+theta_desired_current = interp1(time_array,theta_d,t);
+if t==time_prev
+    theta_dDot = 0;
+else
+    theta_dDot  = ( theta_desired_current - theta_dPrev ) / (t-time_prev);
+end
+theta_dPrev = theta_desired_current;
+
+% u: joint torque
+u = Kp*(theta_desired_current - x(1)) + Kd*( theta_dDot - x(2)) + Ki*error;
+error = error + (theta_desired_current - x(1))*(t-time_prev);
+
+dx(1) = x(2);
+dx(2) = 1/I*(u - d*x(2) - m*g*L*sin(x(1)));
+
+time_prev = t;
+end
+
+I also changed the main.m to the following:
+clear all; close all; clc;
+
+global error theta_d dt time_array;
+error = 0;
+
+theta_d = load('trajectory.txt');
+% theta_d = sin([1:.1:20]/3);
+
+time_array=0:dt:dt*(numel(theta_d)-1);
+
+x0 = [0; 0];
+options= odeset('Reltol',dt,'Stats','on');
+[t_ode, x] = ode45(@ODESolver, [time_array(1),time_array(end)], x0, options);
+
+theta_desired_ode = interp1(time_array,theta_d,t_ode);
+ e = x(:,1) - theta_desired_ode; % Error theta
+
+figure(1)
+plot(t_ode, x(:,2), 'r', 'LineWidth', 2);
+title('Velocity','Interpreter','LaTex');
+xlabel('time (sec)');
+ylabel('$\dot{\theta}(t)$', 'Interpreter','LaTex');
+grid on
+
+figure(2)
+plot(t_ode,x(:,1))
+hold on 
+plot(t_ode,theta_desired_ode)
+title('Theta','Interpreter','LaTex');
+xlabel('time (sec)');
+ylabel('$\dot{\theta}(t)$', 'Interpreter','LaTex');
+legend('Actual Theta', 'Desired Theta')
+grid on
+

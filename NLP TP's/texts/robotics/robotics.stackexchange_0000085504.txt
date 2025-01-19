@@ -1,0 +1,135 @@
+Q:
+
+Gazebo crashes using skid_steer, but works fine with diff_drive
+
+I have a skid steer robot which I'm trying to simulate in Gazebo. In my wheel macro, I have:
+    <transmission name="${wheel_prefix}_transmission">
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="${wheel_prefix}_wheel_joint">
+            <hardwareInterface>EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="${wheel_prefix}_motor">
+            <hardwareInterface>EffortJointInterface</hardwareInterface>
+            <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+    </transmission>
+
+and in my main urdf I have:
+<plugin name="skid_steer_drive_controller" filename="libgazebo_ros_skid_steer_drive.so">
+  <updateRate>100.0</updateRate>
+  <robotNamespace>/</robotNamespace>
+  <leftFrontJoint>front_left_wheel_joint</leftFrontJoint>
+  <rightFrontJoint>front_right_wheel_joint</rightFrontJoint>
+  <leftRearJoint>back_left_wheel_joint</leftRearJoint>
+  <rightRearJoint>back_right_wheel_joint</rightRearJoint>
+  <wheelSeparation>${wheelbase}</wheelSeparation>
+  <wheelDiameter>${2*wheel_radius}</wheelDiameter>
+  <robotBaseFrame>base_link</robotBaseFrame>
+  <torque>20</torque>
+  <commandName>cmd_vel</topicName>
+  <broadcastTF>false</broadcastTF>
+</plugin>
+
+If I use a diff drive controller, like this:
+<plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+  <alwaysOn>true</alwaysOn>
+  <updateRate>20</updateRate>
+  <leftJoint>front_left_wheel_joint</leftJoint>
+  <rightJoint>front_right_wheel_joint</rightJoint>
+  <wheelSeparation>${wheelbase}</wheelSeparation>
+  <wheelDiameter>${2*wheel_radius}</wheelDiameter>
+  <robotBaseFrame>base_link</robotBaseFrame>
+  <torque>20</torque>
+  <commandTopic>cmd_vel</commandTopic>
+  <odometryTopic>odom</odometryTopic>
+  <odometryFrame>odom</odometryFrame>
+</plugin>
+
+Then things work and I can at least use teleop to move the robot backwards and forwards in Gazebo. Any attempt to use the skid steer plugin and Gazebo crashes immediately. It doesn't ever produce a log file, which is unhelpful, so I have no idea what's causing it to break. If I comment out the transmission elements in my xacro file, then Gazebo loads, but obviously I don't get a cmd_vel topic etc. So I guess it's something in the transmission blocks that needs twiddling.
+Is there a way to enable verbose output from Gazebo via the launch file?
+<include file="$(find gazebo_ros)/launch/empty_world.launch" />
+
+It doesn't help that the main documentation is out of date, e.g. it suggets <topicName> which is a deprecated tag, so I don't know if I'm setting up correctly.
+Here's the stdout:
+started roslaunch server http://control:33695/
+
+SUMMARY
+========
+
+PARAMETERS
+ * /robot_description: <?xml version="1....
+ * /rosdistro: kinetic
+ * /rosversion: 1.12.12
+ * /use_sim_time: True
+
+NODES
+  /
+    gazebo (gazebo_ros/gzserver)
+    gazebo_gui (gazebo_ros/gzclient)
+    spawn_urdf (gazebo_ros/spawn_model)
+
+auto-starting new master
+process[master]: started with pid [4819]
+ROS_MASTER_URI=http://localhost:11311
+
+setting /run_id to 2ed86bbe-18a4-11e8-99e9-78d00420dd75
+process[rosout-1]: started with pid [4832]
+started core service [/rosout]
+process[gazebo-2]: started with pid [4842]
+process[gazebo_gui-3]: started with pid [4858]
+process[spawn_urdf-4]: started with pid [4866]
+[ INFO] [1519395408.516996288]: Finished loading Gazebo ROS API Plugin.
+[ INFO] [1519395408.518270471]: waitForService: Service [/gazebo/set_physics_properties] has not been advertised, waiting...
+[ INFO] [1519395408.906177783, 0.022000000]: waitForService: Service [/gazebo/set_physics_properties] is now available.
+[ INFO] [1519395408.941460375, 0.056000000]: Physics dynamic reconfigure ready.
+[ WARN] [1519395409.123089568, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <commandTopic>, defaults to "cmd_vel"
+[ WARN] [1519395409.123128894, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <odometryTopic>, defaults to "odom"
+[ WARN] [1519395409.123145859, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <odometryFrame>, defaults to "odom"
+[ WARN] [1519395409.123172229, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <covariance_x>, defaults to 0.000100
+[ WARN] [1519395409.123191756, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <covariance_y>, defaults to 0.000100
+[ WARN] [1519395409.123209074, 0.149000000]: GazeboRosSkidSteerDrive Plugin (ns = //) missing <covariance_yaw>, defaults to 0.010000
+Segmentation fault (core dumped)
+[gazebo-2] process has died [pid 4842, exit code 139, cmd /opt/ros/kinetic/lib/gazebo_ros/gzserver -e ode worlds/empty.world __name:=gazebo __log:=/home/control/.ros/log/2ed86bbe-18a4-11e8-99e9-78d00420dd75/gazebo-2.log].
+log file: /home/control/.ros/log/2ed86bbe-18a4-11e8-99e9-78d00420dd75/gazebo-2*.log
+[spawn_urdf-4] process has finished cleanly
+log file: /home/control/.ros/log/2ed86bbe-18a4-11e8-99e9-78d00420dd75/spawn_urdf-4*.log
+
+Originally posted by josh on ROS Answers with karma: 41 on 2018-02-23
+Post score: 2
+
+Original comments
+Comment by Martin Günther on 2018-02-23:\
+
+So I guess it's something in the transmission blocks that needs twiddling.
+
+Probably not. It's more likely that the plugin just doesn't reach the point where it's crashing because it aborts before when it cannot find the transmissions.
+
+A:
+
+Turned out to be an embarassingly simple problem with joint names, but without gazebo running in verbose mode, there's no feedback.
+I changed my launch file to include:
+ <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="verbose" value="true"/>
+    <!--arg name="debug" value="true"/-->
+ </include>
+
+Which then gave me the more useful output:
+[Err] [gazebo_ros_skid_steer_drive.cpp:273] EXCEPTION: GazeboRosSkidSteerDrive Plugin (ns = //) couldn't get left rear hinge joint named "back_left_wheel_joint"
+
+[Err] [Model.cc:1010] Exception occured in the Load function of plugin with name[skid_steer_drive_controller] and filename[libgazebo_ros_skid_steer_drive.so]. This plugin will not run.
+
+Although I guess this is a bug in Gazebo, it should fail to load the plugin, not crash out entirely.
+This error wasn't caught with the diff_drive controller because I was using the front wheels joints. My back wheels were prefixed with rear not back hence the failure.
+
+Originally posted by josh with karma: 41 on 2018-02-23
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Max Kiva on 2018-02-27:
+Exactly the same problem ! Thanks !
+Comment by marcoarruda on 2021-10-29:
+Same here! Thanks
+Comment by ymzkp on 2022-04-19:
+Thanks! This Helped
+

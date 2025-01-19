@@ -1,0 +1,144 @@
+Q:
+
+wrong diff_drive_controller pose calculation?
+
+Hallo,
+I am using diff_drive_controller in my project.
+I wrote the hw interface which calculates the distance based on the ticks coming from the left and right wheels. I am sending absolut ticks (increased when moving forward, decreased when moving backwards). The ticks are coming from the robot (slave) left_wheel_ticks and right_wheel_ticks topics, while the hw interface is runing on a master pc and subscribed to these topics. Clocks are in sync. The calculated linear travel distance for each wheels seems to be ok and calculated well, but not the robot's travel distance (position in the odometry)
+ void read(const ros::Duration &period) {
+        double distance_left = (_wheel_ticks[0] * ((_wheel_diameter * M_PI) / _wheel_encoder_ticks));
+        double distance_right = (_wheel_ticks[1] * ((_wheel_diameter * M_PI) / _wheel_encoder_ticks));
+    
+        pos[0] += linearToAngular(distance_left - last_dist_left);
+        vel[0] += linearToAngular((distance_left - last_dist_left) / period.toSec());
+        pos[1] += linearToAngular(distance_right - last_dist_right);
+        vel[1] += linearToAngular((distance_right - last_dist_right) / period.toSec());
+    
+        last_dist_left = distance_left;
+        last_dist_right = distance_right;
+    }
+
+double linearToAngular(const double &travel) const
+  {
+      return travel / _wheel_diameter;
+  }
+
+_wheel_encoder_ticks = 20
+_wheel_diameter = 0.065
+If I am pushing the robot by hand for 1 wheel rotation (20 ticks), I can see, that the left and right wheel (linear) distance is 20cm with my 6.5cm diameter wheels. My wheel raidus is 3.25cm, if I set the wheel_radius_multiplier to 2.0, it seems to be ok ... but I don't have 13cm wheels, but 6.5cm.
+I would assume, that the position in the published odometry topic increases by 20cm / 1 wheel rotation, but it is around the half of it.
+Why? What am I doing wrong?
+Here is the params for the diff_drive_controller:
+mobile_base_controller:
+  type: "diff_drive_controller/DiffDriveController"
+  left_wheel: ['base_lt_wheel_shaft_joint']
+  right_wheel: ['base_rt_wheel_shaft_joint']
+  publish_rate: 50
+  #extra_joints:
+  #  - name: <name_of_caster_wheel_joint>
+  #    position: 0.01
+  #    velocity: 0.0
+  #    effort: 0.0
+  #  - name: <name_of_caster_wheel_joint>
+  #    position: 0.01
+  #    velocity: 0.0
+  #    effort: 0.0
+
+  # Odometry covariances for the encoder output of the robot. These values should
+  # be tuned to your robot's sample odometry data, but these values are a good place
+  # to start
+  pose_covariance_diagonal  : [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+  twist_covariance_diagonal : [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+  estimate_velocity_from_position: false
+  
+  # pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
+  # twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
+
+  cmd_vel_timeout: 0.25
+  velocity_rolling_window_size: 2
+
+  # Top level frame (link) of the robot description
+  base_frame_id: base_footprint
+
+  # Odometry fused with IMU is published by robot_localization, so
+  # no need to publish a TF based on encoders alone.
+  enable_odom_tf: true
+
+  # Jetbot hardware does not provides wheel velocities
+  # estimate_velocity_from_position: true
+
+  # Wheel separation and radius multipliers
+  wheel_separation: 0.12
+  wheel_radius: 0.0325
+  # wheel_separation_multiplier: 1.0 # default: 1.0
+  # wheel_radius_multiplier    : 1.0 # default: 1.0
+
+  # Velocity and acceleration limits for the robot
+  linear:
+    x:
+      has_velocity_limits    : true
+      max_velocity           : 0.1  # m/s
+      has_acceleration_limits: true
+      max_acceleration       : 0.05 # m/s^2
+  angular:
+    z:
+      has_velocity_limits    : true
+      max_velocity           : 0.1  # rad/s
+      has_acceleration_limits: true
+      max_acceleration       : 0.6  # rad/s^2
+
+Thanks!
+
+Originally posted by balint.tahi on ROS Answers with karma: 50 on 2021-06-16
+Post score: 0
+
+Original comments
+Comment by fjp on 2021-10-07:
+The answer/project here might help you too.
+
+A:
+
+Update
+Apparently, my understanding of linear velocity is wrong. The correct term seems to be angular velocity. I did some research and came across this.
+https://answers.gazebosim.org/question/21825/what-is-the-velocity-assigned-to-the-gazebo-ros-conrtol-controller/?answer=22000#post-id-22000
+From what I learned there, I think the following should be changed.
+// Divide the linear velocity by the radius, not the diameter.
+double linearToAngular(const double &travel) const
+{
+  return travel / ( _wheel_diameter / 2 );
+}
+
+I think it is consistent with the case where setting wheel_radius_multiplier to 2.0 works correctly.
+OLD
+pos[0] += linearToAngular(distance_left - last_dist_left);
+vel[0] += linearToAngular((distance_left - last_dist_left) / period.toSec());
+pos[1] += linearToAngular(distance_right - last_dist_right);
+vel[1] += linearToAngular((distance_right - last_dist_right) / period.toSec());
+
+probably don't need linearToAngular. Before doing this operation, the unit is set to meters. (This is the distance the robot has traveled.)
+pos[0] +=(distance_left - last_dist_left);
+vel[0] +=(distance_left - last_dist_left) / period.toSec();
+pos[1] +=(distance_right - last_dist_right);
+vel[1] +=(distance_right - last_dist_right) / period.toSec();
+
+Also, since vel is supposed to be finding the velocity at that point, there is no need to add it.
+pos[0] +=(distance_left - last_dist_left);
+vel[0] = (distance_left - last_dist_left) / period.toSec(); // removed +
+pos[1] +=(distance_right - last_dist_right);
+vel[1] = (distance_right - last_dist_right) / period.toSec(); // removed +
+
+Originally posted by miura with karma: 1908 on 2021-06-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by balint.tahi on 2021-06-21:
+Okay, so as you said, it is in meters (linear). The other commenter said it is in radians (angular) ... where can I find a documentation to figure out which is used by the controller?
+The problem, that this (your suggestion) is not working as well.
+I am not doing anything else, just driving my robot forward, watching for the linear distance for each wheels (lets say 20cm, because that is 1 rotation for the wheels), and checking the odom topic pose/pose/position/x basically, which should match with the linear wheel distance (because of the forward movement, same linear distance for each wheels).
+It is not the same with you calculation and mine and real life basically.
+Comment by balint.tahi on 2021-06-21:
+Just before your answer I found exactly the same issue :) But to be honest, it has to be angular velocity and pos, so the linearToAngular also needed into the pos and vel calculation. Now at least the odom is accurate. The navigation is still not working correctly ... but I am one step further. Thanks for the help.
+Comment by miura on 2021-06-21:
+Thank you too. It was a learning experience.
+

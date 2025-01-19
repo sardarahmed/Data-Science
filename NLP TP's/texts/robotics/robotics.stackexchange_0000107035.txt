@@ -1,0 +1,228 @@
+Q:
+
+Issues with Sending ROS2 Action from roslib.js to rosbridge_suite: Unable to Import Message Classes
+
+I'm encountering difficulties sending a ROS2 action from roslib.js to rosbridge_suite.
+The action is supposed to be handled by rosbridge_suite, but I'm encountering issues related to the import of message classes, such as "Unable to import msg class FollowJointTrajectoryGoal from package control_msgs."
+My setup:
+
+Ubuntu 22.04.2 LTS (Jammy) running on Windows 11 wsl
+ROS2 @ rolling distribution
+roslib.js @ ros2 branch ( commit 6a63a03 )
+rosbridge_suite @ ros2-actions branch ( commit 692f41a )
+ROS_PYTHON_VERSION=3
+
+This is the example action I'm trying to send from roslib.js to rosbridge:
+ros2 action send_goal /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory control_msgs/action/FollowJointTrajectory "{
+  trajectory: {
+    joint_names: [shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint],
+    points: [
+      { positions: [3.02, -1.63, -1.88, 1.01, 1.51, 1.13], time_from_start: { sec: 5, nanosec: 500 } },
+      { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, -1.63], time_from_start: { sec: 6, nanosec: 500 } },
+      { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, 6.2], time_from_start: { sec: 50, nanosec: 500 } }
+    ]
+  },
+  goal_tolerance: [
+    { name: shoulder_pan_joint, position: 0.01 },
+    { name: shoulder_lift_joint, position: 0.01 },
+    { name: elbow_joint, position: 0.01 },
+    { name: wrist_1_joint, position: 0.01 },
+    { name: wrist_2_joint, position: 0.01 },
+    { name: wrist_3_joint, position: 0.01 }
+  ]
+}"
+
+I use the latest roslib.js build from ros2-actions branch and I built and ran rosbridge_websocket (ros2 branch) with the following terminal commands. I could only find ROS1 rosbridge building steps. I modified the steps after some research.
+source /opt/ros/rolling/setup.bash
+mkdir ~/ws
+mkdir ~/ws/src
+cd ~/ws/src
+git clone https://github.com/RobotWebTools/rosbridge_suite.git -b ros2
+cd ~/ws
+sudo apt install python3-colcon-common-extensions
+colcon build --symlink-install
+colcon test
+source install/setup.bash
+ros2 run rosbridge_server rosbridge_websocket
+
+Here's my javascript code for sending the action using roslib.js:
+/* eslint-disable no-undef */
+
+import "./roslib.js"; // https://github.com/RobotWebTools/roslibjs/blob/ros2-actions/build/roslib.js
+
+class RosController {
+    constructor() {
+        this.ros = new ROSLIB.Ros({
+            url: "ws://localhost:9090",
+        });
+
+        this.ros.on('error', (error) => {
+            console.error('Error connecting to ROS:', error);
+        });
+
+        // Create an action client
+        this.actionClient = new ROSLIB.ActionClient({
+            ros: this.ros,
+            serverName: '/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory',
+            actionName: 'control_msgs/action/FollowJointTrajectory'
+        });
+
+        // Create a goal
+        this.goal = new ROSLIB.Goal({
+            actionClient: this.actionClient,
+            goalMessage: {
+                trajectory: {
+                    joint_names: ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint'],
+                    points: [
+                        { positions: [3.02, -1.63, -1.88, 1.01, 1.51, 1.13], time_from_start: { sec: 5, nanosec: 500 } },
+                        { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, -1.63], time_from_start: { sec: 6, nanosec: 500 } },
+                        { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, 6.2], time_from_start: { sec: 50, nanosec: 500 } }
+                    ]
+                },
+                goal_tolerance: [
+                    { name: 'shoulder_pan_joint', position: 0.01 },
+                    { name: 'shoulder_lift_joint', position: 0.01 },
+                    { name: 'elbow_joint', position: 0.01 },
+                    { name: 'wrist_1_joint', position: 0.01 },
+                    { name: 'wrist_2_joint', position: 0.01 },
+                    { name: 'wrist_3_joint', position: 0.01 }
+                ]
+            }
+        });
+
+        // Check the status of the goal
+        this.goal.on('status', (status) => {
+            console.log('Goal status: ' + status.status);
+            if (status.status === 5) { // 5 is the status code for REJECTED
+                console.error('Goal was rejected');
+            }
+        });
+
+        this.ros.on('error', (error) => {
+            console.error('Error connecting to ROS:', error);
+        });
+
+        this.ros.on('connection', () => {
+            console.log('Connected to websocket server.');
+            // ROS is connected, now you can send the goal
+            this.moveUR5eRobot();
+        });
+
+        this.ros.on('close', function () {
+            console.log('Connection to websocket server closed.');
+        });
+
+        // Optional: Listen for result or feedback
+        this.goal.on('result', (result) => {
+            console.log('Action completed successfully:', result);
+        });
+
+        this.goal.on('feedback', (feedback) => {
+            console.log('Received feedback:', feedback);
+        });
+
+        // Optional: Handle errors
+        this.goal.on('timeout', () => {
+            console.error('Action did not complete before timeout');
+        });
+    }
+
+    getRos() {
+        return this.ros;
+    }
+
+    /*
+    https://docs.ros.org/en/iron/Tutorials/Advanced/Simulators/Webots/Installation-Windows.html#launch-the-webots-ros2-universal-robot-example
+    https://index.ros.org/p/webots_ros2_universal_robot/#humble-overview
+    https://github.com/cyberbotics/webots_ros2/wiki/Example-Universal-Robots
+    */
+    moveUR5eRobot() {
+        console.log("moveUR5eRobot");
+        // Send the goal
+        this.goal.send();
+    }
+    
+}
+
+export { RosController };
+
+The rosbridge_suite prints errors indicating problems with importing message classes. I've tried both the rolling and iron distributions, and the issue persists. Am I missing something in my setup, or could the problem be in rosbridge or roslib.js?
+tapani@Desktop:~/ws$ ros2 run rosbridge_server rosbridge_websocket
+registered capabilities (classes):
+ - <class 'rosbridge_library.capabilities.advertise.Advertise'>
+ - <class 'rosbridge_library.capabilities.publish.Publish'>
+ - <class 'rosbridge_library.capabilities.subscribe.Subscribe'>
+ - <class 'rosbridge_library.capabilities.defragmentation.Defragment'>
+ - <class 'rosbridge_library.capabilities.advertise_service.AdvertiseService'>
+ - <class 'rosbridge_library.capabilities.call_service.CallService'>
+ - <class 'rosbridge_library.capabilities.service_response.ServiceResponse'>
+ - <class 'rosbridge_library.capabilities.unadvertise_service.UnadvertiseService'>
+ - <class 'rosbridge_library.capabilities.advertise_action.AdvertiseAction'>
+ - <class 'rosbridge_library.capabilities.action_feedback.ActionFeedback'>
+ - <class 'rosbridge_library.capabilities.action_result.ActionResult'>
+ - <class 'rosbridge_library.capabilities.send_action_goal.SendActionGoal'>
+ - <class 'rosbridge_library.capabilities.unadvertise_action.UnadvertiseAction'>
+[INFO] [1702467864.667909416] [rosbridge_websocket]: Rosbridge WebSocket server started on port 9090
+[INFO] [1702467884.421195988] [rosbridge_websocket]: Calling services in existing thread
+[INFO] [1702467884.421448867] [rosbridge_websocket]: Sending action goals in existing thread
+[INFO] [1702467884.421979997] [rosbridge_websocket]: Client connected. 1 clients total.
+[ERROR] [1702467885.354114994] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] [id: advertise:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal:1] advertise: Unable to import msg class FollowJointTrajectoryGoal from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryGoal'
+[INFO] [1702467885.359658954] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] Subscribed to /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/status
+[ERROR] [1702467885.359900905] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/feedback:4] subscribe: Unable to import msg class FollowJointTrajectoryFeedback from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryFeedback'
+[ERROR] [1702467885.360110707] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/result:5] subscribe: Unable to import msg class FollowJointTrajectoryResult from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryResult'
+[ERROR] [1702467885.360289265] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] [id: publish:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal:7] publish: Cannot infer topic type for topic /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal as it is not yet advertised
+[ERROR] [1702467885.360480628] [rosbridge_websocket]: [Client 27351158-07e8-47e7-9dba-7d897476db2e] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/result:6] subscribe: Unable to import msg class FollowJointTrajectoryResult from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryResult'
+[INFO] [1702467885.491837270] [rosbridge_websocket]: Calling services in existing thread
+[INFO] [1702467885.492038974] [rosbridge_websocket]: Sending action goals in existing thread
+[INFO] [1702467885.492506295] [rosbridge_websocket]: Client connected. 2 clients total.
+[ERROR] [1702467886.352260753] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: advertise:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal:1] advertise: Unable to import msg class FollowJointTrajectoryGoal from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryGoal'
+[INFO] [1702467886.397142045] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] Subscribed to /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/status
+[ERROR] [1702467886.397518737] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/feedback:4] subscribe: Unable to import msg class FollowJointTrajectoryFeedback from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryFeedback'
+[ERROR] [1702467886.398005589] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/result:5] subscribe: Unable to import msg class FollowJointTrajectoryResult from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryResult'
+[ERROR] [1702467886.398194954] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: publish:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal:7] publish: Cannot infer topic type for topic /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal as it is not yet advertised
+[ERROR] [1702467886.398401323] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: subscribe:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/result:6] subscribe: Unable to import msg class FollowJointTrajectoryResult from package control_msgs. Caused by module 'control_msgs.msg' has no attribute 'FollowJointTrajectoryResult'
+[ERROR] [1702467887.947030067] [rosbridge_websocket]: [Client 01c40dd7-4ffc-4c64-abb8-bd477e5c49a0] [id: publish:/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal:8] publish: Cannot infer topic type for topic /ur5e/ur_joint_trajectory_controller/follow_joint_trajectory/goal as it is not yet advertised
+
+Related roslib.js github issue: https://github.com/RobotWebTools/roslibjs/issues/646
+
+A:
+
+The solution was to use ROS2 roslib.js classes for action client and action goal: https://github.com/RobotWebTools/roslibjs/issues/646#issuecomment-1855739957
+Fixed to use ROS2 classes:
+// Create an action client.
+this.actionClient = new ROSLIB.Action({
+    ros: this.ros,
+    name: '/ur5e/ur_joint_trajectory_controller/follow_joint_trajectory',
+    actionType: 'control_msgs/FollowJointTrajectory'
+});
+
+// Create a goal
+this.goal = new ROSLIB.ActionGoal({
+    trajectory: {
+        joint_names: ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint'],
+        points: [
+            { positions: [3.02, -1.63, -1.88, 1.01, 1.51, 1.13], time_from_start: { sec: 5, nanosec: 500 } },
+            { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, -1.63], time_from_start: { sec: 6, nanosec: 500 } },
+            { positions: [-1.01, 0.38, -0.63, -0.88, 0.25, 6.2], time_from_start: { sec: 50, nanosec: 500 } }
+        ]
+    },
+    goal_tolerance: [
+        { name: 'shoulder_pan_joint', position: 0.01 },
+        { name: 'shoulder_lift_joint', position: 0.01 },
+        { name: 'elbow_joint', position: 0.01 },
+        { name: 'wrist_1_joint', position: 0.01 },
+        { name: 'wrist_2_joint', position: 0.01 },
+        { name: 'wrist_3_joint', position: 0.01 }
+    ]
+});
+
+// Send the goal , following the example from https://github.com/RobotWebTools/roslibjs/blob/ros2-actions/examples/ros2_action_client.html
+var goal_id = this.actionClient.sendGoal(this.goal,
+    (result) => {
+        console.log('Result for action goal on ' + this.actionClient.name + ': ' + result.result.sequence);
+    },
+    (feedback) => {
+        console.log('Feedback for action on ' + this.actionClient.name + ': ' + feedback.partial_sequence);
+    },
+);
+

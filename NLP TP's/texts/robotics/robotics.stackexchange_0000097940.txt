@@ -1,0 +1,67 @@
+Q:
+
+Why must rospy.init_node be after rospy.Publisher?
+
+Consider the following simple program
+#!/usr/bin/env python  
+import rospy
+import std_msgs
+
+if __name__ == "__main__":
+        pub = rospy.Publisher('/topic', std_msgs.msg.Int32, queue_size=1)
+        rospy.init_node('test_py')
+        pub.publish(0)
+
+When I run rostopic echo /topic and run the node, it outputs 0 as expected.
+However, when I swap the position of init_node and Publisher as so
+#!/usr/bin/env python  
+import rospy
+import std_msgs
+
+if __name__ == "__main__":
+        rospy.init_node('test_py')
+        pub = rospy.Publisher('/topic', std_msgs.msg.Int32, queue_size=1)
+        pub.publish(0)
+
+It is no longer able to publish.
+Why is that the case?  Given it would seem more natural (and in line with roscpp) to initialize the node via init_node before setting up publishers and subscribers.
+
+Originally posted by Rufus on ROS Answers with karma: 1083 on 2020-12-30
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2020-12-30:
+There is a good chance this is the same as in #q368646.
+Publishing a single message milliseconds after having created the Publisher most likely doesn't work.
+
+A:
+
+As per @gvdhoorn's comment, adding a delay between between Publisher and publish makes it work.
+#!/usr/bin/env python  
+import rospy
+import std_msgs
+
+if __name__ == "__main__":
+    rospy.init_node('test_py')
+    pub = rospy.Publisher('/topic', std_msgs.msg.Int32, queue_size=1)
+    rospy.sleep(2)
+    pub.publish(0)
+
+Or better yet, check that a connection is established first
+#!/usr/bin/env python  
+import rospy
+import std_msgs
+
+if __name__ == "__main__":
+    rospy.init_node('test_py')
+    pub = rospy.Publisher('/topic', std_msgs.msg.Int32, queue_size=1)
+    while pub.get_num_connections() == 0:
+        print("no connections")
+        rospy.sleep(0.2)
+    print("num connections = " + str(pub.get_num_connections()))
+    pub.publish(0)
+
+Originally posted by Rufus with karma: 1083 on 2020-12-30
+This answer was ACCEPTED on the original site
+Post score: 1
+

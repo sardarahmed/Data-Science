@@ -1,0 +1,85 @@
+Q:
+
+This robot has a joint named "foo" which is not in the gazebo model
+
+I'm following http://gazebosim.org/wiki/Tutorials/1.9/ROS_Control_with_Gazebo to create my own project and getting this error:
+[ERROR] [1384781890.186377319, 0.001000000]: This robot has a joint named "joint_seg_1" which is not in the gazebo model.
+[FATAL] [1384781890.186620755, 0.001000000]: Could not initialize robot simulation interface
+
+From the project I've created at https://github.com/lucasw/testbot ( current commit is 0f96ef7fcc8e31ff1bf1883dc10bc32ec440d8f1 )
+I think there is something wrong with my joint or transmission, but I'm not seeing it:
+<joint name="joint_seg_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin rpy="0 0 0" xyz="0.2 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-0.5" upper="0.5" velocity="0.5"/>
+    <dynamics damping="0.5"/>
+  </joint>
+  <transmission name="tran_joint_seg_1">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint_seg_1"/>
+    <actuator name="motor_seg_1">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+The only google hit was the code that outputs the error
+The code producing the error is https://github.com/pal-robotics/ros_control_gazebo/blob/master/ros_control_gazebo_tests/src/robot_sim_rr.cpp
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2013-11-18
+Post score: 8
+
+A:
+
+I think the problem was that the joint_seg_1 was attached to a link with no physical properties, once I created an extra link below base_link (which as the root is not allowed to have physical properties) the error went away:
+<link name="head">
+    <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://testbot_description/meshes/cylinder.dae" scale="${seg_length/3} ${seg_length/6} ${seg_length/3}" />
+        </geometry>
+    </visual>
+   
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <cylinder length="${seg_length/6}" radius="${seg_length/3}" />
+      </geometry>
+    </collision>
+
+    <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="1" />
+        <inertia
+          ixx="1.0" ixy="0.0" ixz="0.0"
+          iyy="1.0" iyz="0.0"
+          izz="1.0" />
+    </inertial>
+
+</link>
+ 
+  <joint name="joint_base_head" type="fixed">
+        <parent link="base_link" />
+        <child link="head" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+  </joint>
+  
+<xacro:segment parent="head" postfix="1" length="${seg_length}" width="${seg_width}" height="${seg_height}" />
+
+https://github.com/lucasw/testbot/commit/a883039bcd4d56917bb3e5da89797e48373e1685
+
+Originally posted by lucasw with karma: 8729 on 2013-11-19
+This answer was ACCEPTED on the original site
+Post score: 8
+
+Original comments
+Comment by Cerin on 2015-05-02:
+I had the same problem, but it's unclear from your terminology, and it took me a while to understand what you discovered, but incase anyone else was wondering, it's because you were missing the  tag. And just using an  tag, which is apparently very different, won't work either.
+Comment by Panda1638 on 2017-08-24:
+The problem occured to me because i used "planar" as a joint type. Gazebo does apparently not support that.
+Comment by jaiswalharsh on 2023-02-02:
+I had the same issue when I generated urdf file for gazebo using MoveIt. It indeed skipped to automatically insert the  tag for one of the joints and was causing the error.
+

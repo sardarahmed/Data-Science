@@ -1,0 +1,71 @@
+Q:
+
+ROSLAUNCH ON MATLAB
+
+Hello all,I want to start a node using roslaunch on MATLAB. The node is defined on the remote system and I've initialized global node on MATLAB with ROS master on the remote system. How to accomplish this?Thanks in advance!
+
+Originally posted by AnandGeorge on ROS Answers with karma: 56 on 2017-02-18
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2017-02-18:
+I'm not sure, but I don't think the robotics toolbox (I assume you're using that) has any support for roslaunch.
+If you can start your node / script in Matlab from the command line, then you could use a simple bash script that roslaunch can start.
+
+A:
+
+I FOUND A WAY!
+posting the answer here, behold, it may look ugly!
+The answer lies with the command system(command) in matlab. With that, you can run any command that you'd run in a terminal.
+The first thing one would do is to simply run:
+system('roslaunch xyz.launch');
+
+But sadly it's not that simple!
+Since matlab exports it's own little world of LD_LIBRARY_PATH, you have the over write the LD_LIBRARY_PATH when you want to execute a command that uses the LD_LIBRARY_PATH that is normally set in your environment outside of matlab. If you want to know what it is, run "echo $LD_LIBRARY_PATH" in a command line.
+for me the output was: "/home/XXXX/catkin_ws/devel/lib:/opt/ros/kinetic/lib:/opt/ros/kinetic/lib/x86_64-linux-gnu". I will refer to it with the name LD_path in the examples bellow.
+So to launch the launch file you have to run:
+system(['export LD_LIBRARY_PATH="LD_path";' 'roslaunch xyz.launch']);
+
+The thing is that it will stall the execution of any script you put it in since the command returns only after you terminate it...
+To be able to continue the script we need to use the "&" character at the end of the command like the following example.
+system(['export LD_LIBRARY_PATH="LD_path";' 'roslaunch xyz.launch &']);
+
+Now the program runs in background, but you wont be able to terminate it upon then end of a script or function.
+To be able to do so, we add the "echo $!" string at the end of the command. This returns the status and PID of the process. We then can kill the process by issuing the kill command. Example bellow:
+[status,cmdout] = system(['export LD_LIBRARY_PATH="LD_path";' 'roslaunch xyz.launch & echo $!']);
+
+system('kill', cmdout);
+
+If you want to make sure the process is killed after a "Ctrl-C" input, the onCleanup() matlab function is pretty useful.
+It creates an object that executes the function passed in parameter when the object is deleted.
+finishup = onCleanup(@() myCleanupFun(cmdout));
+
+"myCleanupFun(cmdout))" being a function I wrote as follows:
+function myCleanupFun(cmdout))
+system('kill',cmdout)
+end
+
+In the case of a script file, since the variables are not deleted upon its termination, you have to call it inside a function. All the variables being local to the function workspace, they are now deleted after the function is stopped thus deleting the "finishup" variable and killing the process.
+
+Originally posted by wonwon0 with karma: 73 on 2018-05-22
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by manuelmelvin on 2019-07-07:
+Thanks for the solution. It worked for me. But I have problem with terminating/stopping the launched file. Can you please help me by explaining more, how to stop/terminate the launched node from MATLAB itself? I also tried " system("pkill roslaunch") ", but it kills all the nodes launched.
+Comment by Yew Hon Ng on 2019-09-10:
+The same method works for rosrun as well, and I assume it works for pretty much all ROS commands. I used it for dynamic_reconfigure and it works like wonder. Thanks!
+Comment by wonwon0 on 2019-11-01:
+Sorry for the delay... @manuelmelvin If you have a matlab script and want to follow the solution i gave to terminate the process (roslaunch xyz.launch), you have ot call you script from a function to ensure the variable "finishup" is deleted (thus triggering the execution of the "mycleanupFun()" function).
+To do so, you create a function that does:
+fucntion my_script_launcher()
+my_scipt_that_launches_the_launch_file;
+end
+
+If inside your script you call the finishup = onCleanup(@() myCleanupFun(cmdout)); line, once the script finishes it will stop only the xyz.launch execution, not all nodes.
+Comment by man469 on 2022-11-06:
+Hello, does your matlab  installed on ubuntu or windows? I try your method in windows, but it seems doesnot work. Look forward to your reply. Thank you!!
+Comment by wonwon0 on 2022-11-07:
+hello, this answer was made for linux systems. I suspect it can be adapted for windows but i am not sure.
+

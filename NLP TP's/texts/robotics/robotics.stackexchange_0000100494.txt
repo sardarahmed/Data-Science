@@ -1,0 +1,67 @@
+Q:
+
+Unsupported interface type {interface_file.suffix}
+
+A bunch of us hit this after doing an apt upgrade these last couple days:
+Traceback (most recent call last):
+
+File "/usr/lib/python2.7/runpy.py", line 163, in _run_module_as_main
+  mod_name, _Error)
+File "/usr/lib/python2.7/runpy.py", line 111, in _get_module_details
+  __import__(mod_name)  # Do not catch exceptions initializing package
+File "/opt/ros/rolling/lib/python3.8/site-packages/rosidl_adapter/__init__.py", line 32
+  assert False, f"Unsupported interface type '{interface_file.suffix}'"
+
+I found that by purging python-is-python2 I could get the problem to go away.  This also uninstalls a couple other packages from the ros ecosystem:
+Commandline: apt purge python-is-python2
+Requested-By: tyler (1000)
+Purge: python-is-python2:amd64 (2.7.17-4), python-vcstools:amd64 (0.1.42-1), python-dev-is-python2:amd64 (2.7.17-4), python-wstool:amd64 (0.1.17-1)
+End-Date: 2021-11-06  18:44:43
+
+I recognize that these are deprecated packages and that they were probably on my system for a long time and not updated recently.  This did seem to affect almost everyone in our office starting on Friday (Nov 5th).
+Jochen found that this specific issue is fixed here: https://github.com/ros2/rosidl/pull/612
+And that because that is not yet published you can hack around it with this:
+sudo sed -i 's/PythonInterp/& 3/' /opt/ros/rolling/share/rosidl_adapter/cmake/rosidl_adapt_interfaces.cmake
+
+The long term solution is that ROS 2 itself should probably use python3 directly instead of any dependence on the state of the symbolic link /usr/bin/python.
+In the comments below it was pointed out that this is only possible if you upgraded to 20.04.  If you upgraded to 20.04 it might be worth purging everything ros/python from your system to avoid issues like this.  This issue is probably not as widespread as I thought it was because the number of people who upgraded from 18.04 is probably much higher on our team here than in the general population of ros.  I'm sorry for making such an issue out of this.  Thank you to those who looked into this.
+
+Originally posted by tylerjw on ROS Answers with karma: 83 on 2021-11-08
+Post score: 1
+
+Original comments
+Comment by Mike Scheutzow on 2021-11-08:
+It's not clear what question you are asking.
+Comment by tylerjw on 2021-11-08:
+I'm here because I thought this belonged on github and I posted it there.  But then a bunch of people on my team hit this so then I thought it was probably affecting a large number of people using ROS so I posted to discourse.  Those that responded there asked me to post here, so here I am.
+My question is two parts, what sort of standard should we have for calling python (and how can we go about making sure that standard is followed) so nothing is using the symlink /usr/bin/python as it is basically useless because of the python-is-* packages in Ubuntu?
+Comment by nuclearsandwich on 2021-11-08:
+Thanks for moving the question here Tyler.
+The packages python-wstool and python-vcstools are not published by Open Robotics for Ubuntu 20.04. In addition to both of those projects being deprecated and archived upstream, we do not publish any python 2 packages for Ubuntu Focal although we still provide the last releases of those projects as python3 packages.
+It's not clear to me how those packages got on your workstation. Was it previously running an earlier version of Ubuntu and then upgraded to 20.04?
+Comment by Mike Scheutzow on 2021-11-08:
+@tylerjw  I think it would help if the title was the actual error message, since that is what people tend to search for.
+Comment by tylerjw on 2021-11-08:
+This machine was upgraded from 18.04.  I would not be surprised if the other machines that people reported this issue from were also running 18.04.  I was not able to reproduce this in any way in a 20.04 docker image.
+Comment by gvdhoorn on 2021-11-09:
+@tylerjw: I'd suggest to post your last edit as an answer. That way we have a clear 'solution', and can mark this question as answered.
+
+A:
+
+In the comments below it was pointed out that this is only possible if you upgraded to 20.04. If you upgraded to 20.04 it might be worth purging everything ros/python from your system to avoid issues like this. This issue is probably not as widespread as I thought it was because the number of people who upgraded from 18.04 is probably much higher on our team here than in the general population of ros. I'm sorry for making such an issue out of this. Thank you to those who looked into this.
+
+Originally posted by tylerjw with karma: 83 on 2021-11-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by nuclearsandwich on 2021-11-10:
+Glad it was resolved. I think it's quite interesting that the problem only surfaced recently. I know that there is work to update the Python CMake integration in ROS 2 but I would expect the issues to be present with the previous state and not with the changes being integrated. If your apt logs include any record of python-is-python2 being installed that might help pinpoint the "what-changed". Otherwise it seems like this could have just been a lingering time bomb.
+Did you run into this error using the Rolling binaries or with a workspace where Rolling was built from source?
+Comment by tylerjw on 2021-11-10:
+I am using the Rolling binaries in this case.  The people on my team who are working on MoveIt are using Rolling from a binary install and everyone seemed to hit this.  I can't find any evidence of python-is-python2 being installed recently on any of our machines.
+Comment by nuclearsandwich on 2021-11-10:
+Do you know what date you first started experiencing the issue? Had it popped up for any other distributions besides Rolling? I'm hoping to find a smoking gun somewhere with what triggered this change.
+Comment by tylerjw on 2021-12-01:
+The first person to encounter this here was on Nov 5th.  Everyone who experienced this found it using Rolling.  We all do have installs of Galactic and Noetic on our systems too though.
+

@@ -1,0 +1,116 @@
+Q:
+
+Why do I get inverted colors in my images?
+
+I am fetching images from a camera/webcam and publishing it's images using image_transport.
+When viewed in RViz the images look correct however when recorded with rosbag the compressed image shows inverted colors.
+Here is the node to record the images:
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <opencv2/highgui/highgui.hpp>
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <cv_bridge/cv_bridge.h>
+#pragma GCC diagnostic pop
+
+int main(int argc,
+         char** argv)
+{
+  ros::init(argc, argv, "image_publisher");
+  ros::NodeHandle nh;
+  image_transport::ImageTransport it(nh);
+  image_transport::Publisher pub = it.advertise("camera", 1);
+
+  cv::VideoCapture cap;
+  if (!cap.open(0))
+    return 1;
+
+  ros::Rate loop_rate(25);
+  while (nh.ok())
+  {
+    cv::Mat frame;
+    cap >> frame;
+    if (frame.empty())
+      break;
+
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", frame).toImageMsg();
+    pub.publish(msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
+
+  return 0;
+}
+
+Minimal example package:
+https://gitlab.com/InstitutMaupertuis/image_transport_test
+RViz
+
+rqt_bag
+
+Why are the colors inverted in the compressed image when reading the bag file?
+
+Originally posted by VictorLamoine on ROS Answers with karma: 1505 on 2017-11-17
+Post score: 0
+
+Original comments
+Comment by CesarHoyosM on 2017-11-17:
+Hello there! Are you sure your format to output these images is "bgr8" and not "rgb8"? This is a typical issue because how openCV handles images, inverting order of input channels of colors. I am not but you can try and give us feedback.
+Comment by VictorLamoine on 2017-11-20:
+@CesarHoyosM I think so while not being 100% sure. If I use rgb8 then the colors are inverted in RViz and in the raw image in the bag file, but then the compressed image has the right colors. In short: this inverts the problem
+
+A:
+
+I am most probably missing a point, either I am not using image_transport properly or there is a bug in the image_transport package.
+The best alternative I have found now is the following one:
+#include <ros/ros.h>
+#include <opencv2/opencv.hpp>
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <cv_bridge/cv_bridge.h>
+#pragma GCC diagnostic pop
+
+int main(int argc,
+         char** argv)
+{
+  ros::init(argc, argv, "image_publisher");
+  ros::NodeHandle nh;
+
+  std::string publish_topic("/webcam");
+  ros::Publisher pub = nh.advertise<sensor_msgs::Image>(publish_topic, 5);
+  ros::Publisher c_pub = nh.advertise<sensor_msgs::CompressedImage>(publish_topic + "/compressed", 5);
+
+  cv::VideoCapture cap;
+  if (!cap.open(0))
+    return 1;
+
+  ros::Rate loop_rate(25);
+  while (nh.ok())
+  {
+    cv::Mat frame;
+    cap >> frame;
+    if (frame.empty())
+      continue;
+
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", frame).toImageMsg();
+    sensor_msgs::CompressedImagePtr c_msg =
+        cv_bridge::CvImage(std_msgs::Header(), "rgb8", frame).toCompressedImageMsg();
+
+    pub.publish(msg);
+    c_pub.publish(c_msg);
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
+
+  return 0;
+}
+
+I set two publishers: one for the raw image (bgr8 encoding) and one for the compressed image (rgb8 encoding)
+This way I get both the JPEG compressed images and the raw image with decent performance and the right colors.
+
+Originally posted by VictorLamoine with karma: 1505 on 2017-11-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by VictorLamoine on 2017-11-27:
+I will not mark this answer as correct as this is only a "good alternative", it does not answer the question.
+

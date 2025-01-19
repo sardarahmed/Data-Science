@@ -1,0 +1,33 @@
+Q:
+
+implement ray-casting in gazebo9, bumped into multithreading issue
+
+Recently, I've been working on a lidar sensor plugin in Gazebo. I'm attempting to initiate a thread within the sensor plugin to continuously execute 'dSpaceCollide2,' but for some reason, it crashes. The following is what I did:
+void Load(sensors::SensorPtr _parent, sdf::ElementPtr sdf)
+{
+    // launch a thread to save point cloud
+    distortpc_thd = std::make_unique<std::thread>(&DistortPC::DistortPCHandler, this);
+}
+
+void DistortPC::DistortPCHandler()
+{
+    //...
+    // here is the operation invoke GetPhysicsUpdateMutex() and dSpaceCollide2()
+    laserShape->GetIntersection(dist, entity);
+    // ...
+}
+
+when i launch gazebo, at random time it crashed.
+I suspect it's due to multiple threads accessing shared resources. However, when I place this operation in the 'worldUpdateBegin' callback, it works fine.
+void Load(sensors::SensorPtr _parent, sdf::ElementPtr sdf)
+{
+    // move thread unsafe ops to event handler, and it works normal!
+    update_connection_ = event::Events::ConnectWorldUpdateBegin(
+        boost::bind(&DistortPC::DistortPCHandler, this));
+
+Yet, I aim to have this operation run continuously rather than waiting for the callback to execute. Could you kindly advise on how to resolve this issue? Or I just want the collison detection like dSpaceCollide2() works instead of the whole physics simulation stuff, how should i disable that? I think only put ray casting on work rather than simulation lower computing load maybe??
+
+A:
+
+Gazebo computes physics updates in the same thread as the worldUpdateBegin  event, which is why it worked properly when your code was in that callback. Gazebo also uses 3 separate threads for its sensor updates (Cameras/Rendering sensors, CPU-based Ray sensors, and all other sensors: IMU, Force-torque, etc), so there will be thread synchronization issues if you want to access the physics-based collision data from those threads. I don't think there's an easy answer to this.
+

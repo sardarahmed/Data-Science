@@ -1,0 +1,178 @@
+Q:
+
+How to move a holonomic robot/object in Gazebo from one position to another?
+
+I have a cylinder model which uses the Gazebo_ROS_planar_move plugin (libgazebo_ros_planar_move.so).
+It uses the Carrot planner for the global path.
+<param name="base_global_planner" value="carrot_planner/CarrotPlanner"/>
+
+When I command it to move from one position to another, it uses the TrajectoryPlannerROS local planner to define local paths for a non-holonomic robot. I tried setting it to SimpleTrajectoryGenerator in the base_local_planner_params.yaml, but it still still works like a non-holonomic robot.
+SimpleTrajectoryGenerator:
+  max_vel_x: 0.5
+  min_vel_x: 0.1
+  max_vel_y: 0.5
+  min_vel_y: 0.1
+  max_rotational_vel: 2.0
+  min_in_place_rotational_vel: 0.1
+
+  acc_lim_th: 3.2
+  acc_lim_x: 2.5
+  acc_lim_y: 2.5
+
+  holonomic_robot: true
+  y_vels:  [-0.3, -0.1, 0.1, 0.3]
+
+  occdist_scale: 0.1
+
+I just want the object to move in a straight path from one position to another (rotation does not matter at all, as it as a vertical cylinder).
+
+Originally posted by webvenky on ROS Answers with karma: 117 on 2016-05-31
+Post score: 0
+
+A:
+
+Write a simple proportional controller like the one below:
+using namespace std;
+
+double curr_pos_x, curr_pos_y, curr_orientation_angle_x,quat_z,quat_w;
+double new_pos_x, new_pos_y, new_orientation_angle_x;
+
+ros::Publisher *vel_pub;
+
+std::vector<std::array<double,2>> waypoints;
+
+void poseCallback(const nav_msgs::Odometry& msgIn)
+{
+  curr_pos_x = msgIn.pose.pose.position.x;
+  curr_pos_y = msgIn.pose.pose.position.y;
+  quat_z = msgIn.pose.pose.orientation.z;
+  quat_w = msgIn.pose.pose.orientation.w;
+  curr_orientation_angle_x = 2*atan2(quat_z,quat_w);
+  // cout<<"Angle ====>>"<<(float)(orientation_angle_x*(180.0/3.1415))<<endl;
+}
+
+void updatePosition(ros::NodeHandle nh, string pose_str, double& temp_pos_x, double& temp_pos_y, double& temp_orientation_angle_x)
+{
+    ros::Rate rate(5);
+    ros::Subscriber sub2 = nh.subscribe(pose_str, 1, &poseCallback);
+
+    curr_pos_x = 0;
+    while(ros::ok()) {
+        
+        ros::spinOnce();
+
+        if(curr_pos_x!=0)
+        {
+            temp_pos_x = curr_pos_x; temp_pos_y = curr_pos_y;
+            temp_orientation_angle_x = curr_orientation_angle_x;
+
+            break;
+        }
+        else
+            // cout<<"\t Updating Position: Waiting for information..."<<endl;
+
+        // Wait until it's time for another iteration.
+        rate.sleep();       
+    }
+}
+
+int main(int argc, const char** argv){
+
+    if(argc!=2)
+    {
+      std::cout<<"Not enough arguments!! (" << argc << "). Exiting!!"<<std::endl;
+      return 0;
+    }
+
+  std::array<int,2> pos = {1,1};
+  std::array<int,2> next_pos;
+
+  char *robot_name = argv[1];
+
+  string pose_str =  "/" ;
+  pose_str += robot_name;
+  pose_str += "/odom";
+
+  string vel_str = "/";
+  vel_str += robot_name;
+  vel_str += "/cmd_vel";
+
+  string node_name = "square_goals_";
+  node_name += robot_name;
+
+  ros::init(argc, (char **)argv, node_name );
+  ros::NodeHandle nh;
+
+  waypoints.push_back({4,4});
+  waypoints.push_back({4,2});
+  waypoints.push_back({2,2});
+  waypoints.push_back({2,4});
+
+  vel_pub = new ros::Publisher(nh.advertise<geometry_msgs::Twist>(vel_str, 1000));
+
+  bool set_new_goal = true;
+
+  cout<<"Updating Position... \n";
+  updatePosition(nh, pose_str, curr_pos_x, curr_pos_y, curr_orientation_angle_x);
+  cout<<" Position Updated. \n";
+
+  int i = 0;
+  int curr_goal_idx = 0;
+  // for(int i=0;i>=0;) // Change this for the number of waypoints
+  while(ros::ok())
+  {
+
+    // cout<<"Going to waypoint # = "<<i<<endl;
+
+  if(set_new_goal == true)
+  {
+
+    cout<<"Curr Goal IDX: = "<<curr_goal_idx<<endl;
+    cout<<"Prev Goal Pos: X = "<<new_pos_x<<", Y = "<<new_pos_y<<";"<<endl;
+
+    curr_goal_idx += 1;
+    curr_goal_idx = curr_goal_idx % 4;
+    next_pos = {waypoints[curr_goal_idx][0], waypoints[curr_goal_idx][1]};
+
+    new_pos_x = next_pos[0];
+    new_pos_y = next_pos[1];
+
+    cout<<"New Goal IDX: = "<<curr_goal_idx<<endl;
+    cout<<"New Goal Pos: X = "<<new_pos_x<<", Y = "<<new_pos_y<<";"<<endl;
+
+    set_new_goal = false;
+    i++;
+    cout<<"===================================="<<endl;
+  }
+
+  // cout<<"Updating Position... \n";
+  updatePosition(nh, pose_str, curr_pos_x, curr_pos_y, curr_orientation_angle_x);
+  // cout<<"Robot Position Updated. \n";
+
+  double dist_to_waypoint = sqrt(pow(curr_pos_x-new_pos_x,2)+pow(curr_pos_y-new_pos_y,2));
+  double vel_x = min(2.5,2*dist_to_waypoint)*(-(curr_pos_x-new_pos_x)/dist_to_waypoint);
+  double vel_y = min(2.5,2*dist_to_waypoint)*(-(curr_pos_y-new_pos_y)/dist_to_waypoint);
+
+  geometry_msgs::Twist msgOut;
+  msgOut.linear.x = vel_x;
+  msgOut.linear.y = vel_y;
+  msgOut.angular.z = 0;
+
+  // cout<<"Sending angular velocity => vel_x = "<<msgOut.linear.x<<"; vel_y = "<<msgOut.linear.y<<endl;
+  vel_pub->publish(msgOut);
+
+  // cout<<"Distance to waypoint = "<<dist_to_waypoint<<endl;
+  if(dist_to_waypoint < 0.2)
+  {
+     set_new_goal = true;
+  }
+
+  }
+
+  return 0;
+}
+
+Originally posted by webvenky with karma: 117 on 2016-07-02
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,118 @@
+Q:
+
+How to get xyz coordinates of pointcloud using Intel Real Sense D415?
+
+I am working on Ubunto 20.4 with ROS noetic. I am having intel Real sense D415 camera by which I can visualize the point cloud on Rviz.
+
+I want to get xyz coordinates of each pointcloud and from that I want to separate min and max point xyz coordinates.
+After getting the min and max values of pointcloud i want to input my target xyz coordinates and want to compute the error difference.
+
+I am very much new to ROS and doesn't have good programming experience as well. I will be very much thankful if anyone can share me any sample code or guide me step by step as i have searched almost all ROS forums but didn't get my answer.
+I have gone through this code (https://www.programmersought.com/article/9245461951/) but it gives out several errors.
+[ERROR] [1622062315.967796]: bad callback: <function callback_pointcloud at 0x7fe9857b61f0>
+Traceback (most recent call last):
+  File "/opt/ros/noetic/lib/python3/dist-packages/rospy/topics.py", line 750, in _invoke_callback
+    cb(msg)
+  File "/home/arif/catkin_ws/src/perception_pcl/pcl_ros/src/pcl_ros/xyz.py", line 14, in callback_pointcloud
+    print (" x : %.3f  y: %.3f  z: %.3f") %(p[0],p[1],p[2])
+TypeError: unsupported operand type(s) for %: 'NoneType' and 'tuple'
+
+Kindly help me out, I will be very much thankful to you.
+
+Originally posted by arifzaman on ROS Answers with karma: 16 on 2021-05-26
+Post score: 0
+
+Original comments
+Comment by Phgo on 2021-05-27:
+Concerning your error message:
+The example code you referenced was written for Python2 but noetic uses python3 which requires brackets around the print statement. The correct syntax here , however, would be print (" x : %.3f y: %.3f z: %.3f"  %(p[0], p[1], p[2])) (mind the position of the brackets).
+I just want to point out that that kind of sting formatting in not very common anymore in python3. See e.g. here for str.format or f-strings, which can be used more intuitively.
+If you are new to ROS/ coding my general advice would be to go through some of the beginner tutorials first (if you have not done so). ROS has good tutorials for different levels of experience here and there are tons of python tutorials out there.
+You might also want to have a look at the realsense ros wrapper examples
+Comment by arifzaman on 2021-05-29:
+Thank you so much for your comment, I have corrected my code, and now its working and giving the xyz values.
+
+A:
+
+Thanks Ranjit once again, I have worked on my code and got the x,y,z coordinates and then finally got the volume of my pointcloud. But I am not sure that what is the unit of output of my x,y,z coordinates?is it in millimeters or meters?
+Here is my code:
+#!/usr/bin/env python
+from sensor_msgs.msg import PointCloud2
+from sensor_msgs import point_cloud2
+from scipy.integrate import quad
+import rospy
+import time
+import numpy as np
+
+des_vol = input('What is the desired volume:    ')
+
+xpoint = []
+ypoint = []
+zpoint = []
+
+def callback_pointcloud(data):
+    global volume
+    global x
+    global y
+    global z
+    assert isinstance(data, PointCloud2)
+    gen = point_cloud2.read_points(data, field_names=("x", "y", "z"), skip_nans=True) 
+
+    for p in gen:
+      xpoint.append(p[0])
+      ypoint.append(p[1])
+      zpoint.append(p[2]) 
+    x = max(xpoint) - min(xpoint)
+    y = max(ypoint) - min(ypoint)
+    cross_section = x*y
+    
+    def f(z):
+        return cross_section
+    
+    i = quad(f,min(zpoint),max(zpoint))
+    volume = i
+
+def main():
+    rospy.init_node('pcl_listener', anonymous=True)
+    rospy.Subscriber('/camera/depth/color/points', PointCloud2, callback_pointcloud)
+    rospy.sleep(10)
+    #rospy.spin()
+    print ("value of x : ", x)
+    print ("value of y : ", y)
+    #print ("value of z : ", z)
+    print ("Total initial volume is : ", volume)
+    remaining_volume = volume - float(des_vol)
+    quotient = remaining_volume/volume
+    percentage = quotient * 100
+    print("Remaining Volume needs to be completed : ",remaining_volume)
+    print("Remaining Percentage needs to be completed : ",percentage)
+
+if __name__ == "__main__":
+    main()
+
+Originally posted by arifzaman with karma: 16 on 2021-06-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Ranjit Kathiriya on 2021-06-11:\
+
+But I am not sure that what is the unit of output of my x,y,z coordinates?is it in millimeters or meters? Here is my code
+
+https://www.ros.org/reps/rep-0103.html
+It will me meters.
+For x,y,z you will get something like this value:
+x,y,z
+-0.043247390386682384, 0.06332617474953332, 0.01003939218142547
+Comment by arifzaman on 2021-06-11:
+No, the values which i am getting are like:
+value of x :  85.66250610351562
+value of y :  48.047407150268555
+value of z :  65.14400362968445
+
+That's why I am wondering that if it is in meters then  these values i don't think right. If i am doing anything wrong?
+Comment by Ranjit Kathiriya on 2021-06-14:
+I think you forgot to do image_geometry.PinholeCameraModel() and vector of that coordinate.
+Comment by arifzaman on 2021-06-17:
+Thanks Ranjit, Got your Point.
+

@@ -1,0 +1,122 @@
+Q:
+
+Multirobot + laser rviz
+
+I have some troubles to see the laser_scan in a simulation with two robots which have the same description file (urdf) in different group with different namespace.
+I launch both in gazebo and works quite good, the robots looks ok but when I launch rviz to see the laser, I select the fixed frame and the target frame of the robot one, I select the robot_description of the robot one and the tfprefix of the robot one. The tf looks great.
+I see the robot one in the center of the visual space in rviz. When I try to see the laser_scan, I select the correct topic but I nothing appear, the error is the next:
+Transform [sender=/gazebo]
+For frame [hokuyo_laser_link]: Frame [hokuyo_laser_link] does not exist
+
+I think the problem come to rviz. Rviz look for the frame described in the urdf robot description and not look for the tf_prefix.
+Here my launch file and my tree of tf:
+<launch>
+  <!-- send summit_xl.urdf to param server -->
+  <group ns="summit_one">
+      <param name="robot_description" textfile="$(find summit_xl_description)/urdf/summit_xl.urdf" />
+      <node name="spawn_summit" pkg="gazebo" type="spawn_model" args="-urdf -param robot_description -x 0.0 -y 0.0 -z 0.5 -model summit_xl_one" respawn="false" output="screen">        
+      </node>
+
+      <!-- Controller manager parameters -->
+      <param name="pr2_controller_manager/mechanism_statistics_publish_rate" value="1.0" />
+      <param name="pr2_controller_manager/joint_state_publish_rate" value="100.0" />
+
+      <!-- Robot state publisher -->
+      <node pkg="robot_state_publisher" type="state_publisher" name="summit_one_state_publisher" output="screen">
+        <param name="publish_frequency" type="double" value="50.0" />
+        <remap from="hokuyo_laser_link" to="summit_one/hokuyo_laser_link" />
+        <param name="tf_prefix" type="string" value="summit_one" />
+      </node>
+
+      <!-- Diagnostics -->
+      <node pkg="pr2_mechanism_diagnostics" type="pr2_mechanism_diagnostics" name="pr2_mechanism_diagnostics_one" />
+      
+      <rosparam file="$(find summit_xl_ctrl)/summit_xl_ctrl.yaml" command="load"/>
+      <param name="pr2_controller_manager/joint_state_publish_rate" value="100.0" />
+      <node name="summit_xl_ctrl" pkg="pr2_controller_manager" type="spawner" args="summit_xl_ctrl" respawn="false" output="screen"/>
+      <node pkg="summit_xl_odometry" type="summit_xl_odometry" name="summit_xl_odometry_node" output="screen"/>   
+  </group>
+
+  <group ns="summit_two">     
+      <param name="robot_description" textfile="$(find summit_xl_description)/urdf/summit_xl.urdf" />
+      <node name="spawn_summit" pkg="gazebo" type="spawn_model" args="-urdf -param robot_description -x 2.0 -y 2.0 -z 0.5 -model summit_xl_two" respawn="false" output="screen" />
+
+      <!-- Controller manager parameters -->
+      <param name="pr2_controller_manager/mechanism_statistics_publish_rate" value="1.0" />
+      <param name="pr2_controller_manager/joint_state_publish_rate" value="100.0" />
+
+      <!-- Robot state publisher -->
+      <node pkg="robot_state_publisher" type="state_publisher" name="summit_two_state_publisher" output="screen">
+        <param name="publish_frequency" type="double" value="50.0" />
+        <!--remap from="joint_states" to="summit_one/joint_states" /-->
+        <param name="tf_prefix" type="string" value="summit_two" />
+      </node>
+
+      <!-- Diagnostics -->
+      <node pkg="pr2_mechanism_diagnostics" type="pr2_mechanism_diagnostics" name="pr2_mechanism_diagnostics_two" />  
+
+      <rosparam file="$(find summit_xl_ctrl)/summit_xl_ctrl.yaml" command="load"/>
+      <param name="pr2_controller_manager/joint_state_publish_rate" value="100.0" />
+      <node name="summit_xl_ctrl" pkg="pr2_controller_manager" type="spawner" args="summit_xl_ctrl" respawn="false" output="screen"/>
+      <node pkg="summit_xl_odometry" type="summit_xl_odometry" name="summit_xl_odometry_node" output="screen"/> 
+  </group> 
+
+</launch>
+
+tf http://tinypic.com/view.php?pic=xngh01&s=6
+tf:
+http://tinypic.com/view.php?pic=xngh01&s=6
+Someone who has the same problem? What should I do with the ghost frames? Is there any way to tell what frame rviz should choose?
+Thanks a lot.
+
+Originally posted by pmarinplaza on ROS Answers with karma: 330 on 2012-08-01
+Post score: 1
+
+Original comments
+Comment by pmarinplaza on 2012-08-02:
+Ok, at last I find the solution. When the tree of tf works fine, we need to lauch rviz node with param like this:   and another rviz node with 
+
+A:
+
+No this is not at all the rviz error. The issue comes from the gazebo_plugins package and in your particular case from the gazebo_ros_laser plugin.
+Current implementation in gazebo_ros_laser.cpp is as follows:
+240: // Add Frame Name
+241: this->laserMsg.header.frame_id = this->frameName;
+
+and earlier
+100: this->frameName = _sdf->GetElement("frameName")->GetValueString();
+
+This means that laser scans in the field frame_id of LaserMsg header got whatever you put in the frameName of your gazebo controller declared in urdf.
+  <controller:gazebo_ros_laser name="gazebo_ros_laser_controller" plugin="libgazebo_ros_laser_relative.so">
+    <hokuyoMinIntensity>101.0</hokuyoMinIntensity>
+    <gaussianNoise>0.005</gaussianNoise>
+    <alwaysOn>true</alwaysOn>
+    <updateRate>20</updateRate>
+    <topicName>scan</topicName>
+    <frameName>hokuyo_link</frameName>
+    <interface:laser name="gazebo_ros_laser_iface" />
+  </controller:gazebo_ros_laser>
+
+And therefore rviz looks how to tansform scans from the link hokuyo_link but it can only find /summit_one/hokuyo_link and /summit_two/hokuyo_link.
+I can see in your launch file that you try to handle that with:
+<remap from="hokuyo_laser_link" to="summit_one/hokuyo_laser_link" />
+
+but remapping works only for nodes and topics names, not for tf transformations, we use tf_prefix for that.
+The  quick and dirty workaround for your problem is to make two copies of your urdf file: one declaring /summit_one/hokuyo_link as frameName and the other with /summit_two/hokuyo_link.
+However the proper solution is to introduce tf resolving in gazebo_ros_laser before storing frame_id in message header.
+This discussion is also valid for the rest of plugins in gazebo_plugins package. I will issue a ticket for this.
+
+Originally posted by Jakub with karma: 1821 on 2012-08-02
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Jakub on 2012-08-02:
+With the double urdf description and later with the laser patch you can visualize two robots at the same time in one rviz instance.
+Comment by Jakub on 2012-08-02:
+Ticket issued: https://code.ros.org/trac/ros-pkg/ticket/5511
+Comment by pmarinplaza on 2012-08-03:
+Thanks a lot, I'm looking forward the next patch ;)
+Comment by pmarinplaza on 2012-08-03:
+If I want use 20 equal robots, the replication of the urdf won't be the best solution. But, I think we start with 2 simple robots.
+

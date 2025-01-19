@@ -1,0 +1,209 @@
+Q:
+
+weird initial path from robot_localization's EKF node
+
+Hi all,
+I am trying to evaluate our EKF fused odom_IMU_DVL performance based on odom_reference that EKF fused by differential GPS and other sensors(IMU...). The odom_IMU_DVL  is fused with IMU(madgwick filtered) and DVL(measured underwater vehicle velocity).
+Performance:
+I have a rosbag included online recorded odom_reference and raw data to do offline EKF for odom_IMU_DVL. In order to align both path for analysis, I set an initial state obtained from odom_reference. There are two issues stop alignment.
+
+wired initial path
+about 10 degree yaw difference at beginning
+
+This is the path at beginning, green is  odom_reference and white is odom_IMU_DVL. We can see there are wired path shown in red dotted circle. The reason I said wire because both of the path should be straight not curved, at least not curved like that.
+
+There is the yaw comparison. Blue is odom_reference, red is odom_IMU_DVL. There are about 10 degree at the beginning. The first range cut by black dotted line is the yaw angle for wired initial path. 10 degree yaw difference at beginning is make sense, the heading of odom_IMU_DVL is not accurate as odom_reference.
+
+This is the entire path according to previous yaw angle plot.
+My questions:
+
+The wired initial path is EKF initialization problem, which is can't avoid ?
+The initial 10 degree yaw difference is normal because different heading accuracy ?
+If those are normal, can I compensate odom_IMU_DVL by giving a GPS heading at first beginning like the method as initial_state in robot_localization?
+If those are normal, can I manually compensate those two error in order to evaluate the entire path by giving a static transformation just at the beginning? Because those error seems should not account for the overall drift.
+
+The EKF config file for your information. Thanks for your help.
+
+UPDATES !!!!!
+Thanks to Dragonslayer's suggestions, the wired initial path caused by wrong static tf setting between sensors frame and base_link.
+So the only problem I have right now is:
+
+a large initial angle between odom_IMU_DVL and odom_reference, which is about 99 degree.
+
+This is the tf:
+
+odom_reference related: utm_local is the parent frame; base_link is the base frame;
+odom_IMU_DVL related: odom_imu is the odom frame assigned in EKF; base_ is the base frame; ustrain_imu is the IMU frame; nortek_dvl is the DVL frame. I set 0 static tf (it's in launch file, not in urdf since it's not related to EKF) between odom_imu and utm_local, so that two path are displayed together.
+forget about base_corr: this is a path I displayed a 99 degree rotation to manually fix this issue.
+
+This is the initial plot: about 90 degree between two path, and it's about rotate 90 degree to whole path. The giant frame in the middle is the utm_local; the slim frame in the center is odom_imu. The blue path is actual path without assign inital_state.
+
+urdf: it's kind complicated based on real setup in boat. just check base link frame, IMU frame and DVL frame.
+
+Originally posted by crazymumu on ROS Answers with karma: 214 on 2020-05-29
+Post score: 0
+
+Original comments
+Comment by Dragonslayer on 2020-05-31:
+Hi, I cant open your EKF config file. What do the ekf inputs look like? EKF doesnt need an initial_pose as it starts at Zero, its localization that gives the map-->odom transform to place the odom frame in the maps initial position. How "large" is this path, are the squares meters wide? What kind of velocities are we talking here, how long does it take to complete the  movement? Are those 400 seconds in the graph?
+Comment by crazymumu on 2020-05-31:
+Hi, thanks for your reply. the config file is accessible right now.
+I know EKF does not need initial_pose, the reason I used because I want align both path together at the beginning for pose error analysis. Because the odom_reference is a differential GPS fused odometry, it's actual starting point always have an actual gap to the parents frame. For my odom_IMU_DVL EKF, I just use odom->base_link for tf, I think usually map->odom is used for GPS data fusion. And I use static_tf to align odom_reference's parent frame with odom_IMU_DVL's parent frame, which is odom. That's why I used initial_pose.
+odom_reference is just from rosbag and consider as ground truth, which is done by my colleague.
+Those just 400 step in the graph, each step is a EKF step I think. In the rviz, each cell is about 25 meter.
+Comment by Dragonslayer on 2020-05-31:
+EKF step? The config file shows frequency 50 that means 8 seconds (400) and the cell widht is 25 meters, averadge ~85 m/s. Rviz seem to shows reference -yaw for the reference but +yaw for odom..., the graphs show both -yaw. They are not diverging by the data. Maybe what we see is really a z movement, you start with -0.018 roll at an acceleration z of nearly 10 m/s. rviz is 3d. gps is 2d. So maybe we see odom frame coming towards the camera at an angle and not really going sideways (perspective). At 10 m/s and a delayed imu/odom update odom skyrockets towards the camera. Maybe test with initial_state velocities and accelerations at Zero.
+Comment by Dragonslayer on 2020-05-31:
+By the way, regarding the 10 degree offset, might the gps give true north while the imu gets magnetic north? Or somehow one interprets it as one or the other?
+Comment by crazymumu on 2020-05-31:
+I am sorry, I double checked the time axis in plot. The 400 step is about 14s. The yaw angle all processed in callbacks directly from EKF odom. The odom are 50 hz, but the yaw angle published in about 28 hz. That's wired. Because the processing is simple and should be published as 50 hz, but it's not. We are collecting data in a pontoon boat driving by people. By calculating based on gps path in rviz, the vehicle velocity is about 2~3 m/s, that's reasonable.
+Comment by crazymumu on 2020-05-31:
+for the 10 degree offset, I think your are right, the vehicle is metal and is huge. We didn't calibrate the mag in 3D space and just drive the vehicle A big 8 for mag calibration. And the heading is mainly from mag, so that's the error we are hoping. The main question I have is the wired path at the beginning.
+Also, I tried without initial_state, the wired path still there.
+Comment by Dragonslayer on 2020-05-31:
+As the "path error" is not there in the data graph, it might just be a rendering bug or something like that in rviz. The data graph definitly doesnt show divergence of the two starting points, just the initial error. Also if you are moving in 2d space I would try to get rid of all pitch roll and z components and try again. The covariances might "go crazy" (lose precission due to unrelated movement taken into consideration that have nothing to do with the relevant 2d movement) specially as the boat is likely riding uneven (waves). Could you post graphs comparisons of the x and y positions, might be helpful?
+Comment by Dragonslayer on 2020-05-31:
+Is the IMU a Bno055? There is a setting to get yaw without the usage of mag, only gyros and acceleratometers.
+Comment by Dragonslayer on 2020-06-01:
+Question: Where are the sensors mounted, are they mounted at the same point of the boat and are they alligned correct/precise?
+Comment by crazymumu on 2020-06-01:
+Hi, thanks for your suggestion. The wired path problem is solved. I've updated the question above. Do you have any suggestion about the 90 degree initial angle? I am using  microstrain AHRS.
+Comment by Dragonslayer on 2020-06-01:
+Nice to hear. Difficult to say without a visual, specially as you say "initial". Does it allign with time or is the whole path off by this 99 degrees? As your (still valid?) data graph shows absolute values there must be a transform off. Can you post a - rosrun tf view_frames - image? Do you use an urdf? Would be nice as well. By the way your rviz pictures are off by 90 degrees. red = +x(up) and green = +y(left) Usually this "means" the north/south axis would be on the red axis.
+What exactly did you change in the static transform?
+Comment by crazymumu on 2020-06-02:
+For what changed: I was just setting 0 static tf between sensors frame between base frame by mistake. I forget the AHRS(IMU) and DVL are mount with a angle. Then I am using urdf to send right tf, which makes the good result.
+I've updated useful information since I can't do that last night.
+I don't get
+
+red = +x(up) and green = +y(left) Usually this "means" the north/south axis would be on the red axis.
+
+Because in my plot, red(+x) is always front of robot
+Comment by crazymumu on 2020-06-02:
+I think I may know where is the problem. I can't directly assign 0 tf between utm_local and odom_imu, they are not 0 static transformation. The utm_local frame is real, because it based on gps station. I need to know what's initial transformation between odom_imu and utm_local.
+Comment by Dragonslayer on 2020-06-02:
+Thanks for the updates. Well your joint for the (frame_to_ustrain_imu joint) position  is rpy o o 1.57 (radians, thats +90 degrees) Your dvl is upside down (guillotine_to... joint, rpy 3.14 0 0), 90 degrees off upside down is -90° (hard to know how ekf is trying to make sense of this) I would try with those two at zero. I would assume dvl output is already made to transform its standard upside down orientation, and mounting an imu 90° off, isnt really best practice.
+Comment by Dragonslayer on 2020-06-02:
+Maybe what we saw with the initial strange path was two difergent sensors due to one beeing upside down, and then ekf getting a hang of it after some datapoints and populated the covariance matrix in a way that it compesated for that. By the way, absolut magnetic yaw and x and y acceleration in an offset imu will give you silly data. In the EKF you use accx and accy from the imu that seems to make sense(dont know what ekf does in this cases really though). If the imu is of by 90° realworld x acceleration would be logged as y, transforming the frame would not work, but it does in this case, also the absolute data graph shows correct heading. Thus I dont think the odom frame transform of rpy 0 0 1.57 is correct. Can you plot a paths with IMU AND dvl only at zero sensor transform in rpy?
+Comment by crazymumu on 2020-06-02:
+I think IMU and DVL transformation should be fine, EKF will looking for tf between sensor frame and base frame, I've seen some warning that I didn't include a tf between DVL and base frame in previously test.
+I tried with your suggestion: set IMU and DVL rpy in urdf with 0. The plot is as same as first plot in red dotted circle. Because I was just set 0 static tf between sensors(IMU,DVL) and base frame at that time. I attached the visualized tf tree
+here
+Comment by crazymumu on 2020-06-02:
+I attached an corrected image.
+I am using this static tf publisher: utm_local is the reference odom parent frame, odom_imu is the imu_dvl ekf parent frame. Use this tf, align both path together. I am using the roll is about 99 degree.
+
+Comment by Dragonslayer on 2020-06-02:
+"I attached visualized tf tree here" thats whithout any manual transforms, Zero, the version that gives the strange initial path? And the "corrected image" is with the transforms, that gives the 90 degree off path? correct?
+Comment by Dragonslayer on 2020-06-02:
+What I really would be interessted in would be the data graph for x and y (position vel acc, whatever is there) straight out of the sensors. The problem I see is that if you turn a frame this adds up, what was heading 150 becomes 60, what was x becomes practically y. The question now is what was actually recorded, this might give a clue how the sensors were actually oriented. By the way what happens if you only set one of the transforms to Zero, either imu or dvl?
+Comment by crazymumu on 2020-06-03:
+For your first comment:
+
+about tf tree: this tf is based on physical setup in the boat, as same as shown in urdf picture above.
+about corrected image: this is manual transform by: x=-2.03545739388; y=-50.7727065098; z=-4.52810203327; yaw=1.7331, which is not 90 degree but 99 degree.
+
+For your second comment:
+
+"data graph for x and y straight out of the sensors": I don't get what is "out of sensors" means?
+your thought about sensor frame is wrong is interesting: so I record here. I tested with four types, with or without IMU and DVL frame rotation.
+
+But the point I want to say: no mater how initial yaw it looks, the entire path(last one in slides) which enabled IMU and DVL tf setup in the URDF above looks most similar to reference path. The EKF result is most reasonable.
+Thanks for discussing with me.
+Comment by Dragonslayer on 2020-06-03:\
+
+I ment graphs similar to what you sent in the slides but not yaw but x and y data printed. But the printed data seems to change with tf, so there must be data pre tf, imu/odom messege raw, so to speak.
+
+Why dont you think slide 4/5 are the best with yaw=0 roll=180? To me that looks exactly what one would expect. It hasnt the "strange initial path" problem anymore. imu orientationis of by 10 degree, but as we have discussed this might be due to magnetic disturbance, declination, mounting etc.
+With the 10 degree initial orientation error its exactly what I would expect.
+An Idea that came to my mind was  also if the negative z position of the dvl might somehow switch the axis arround. You could try with zero z if you like, its more of general interest as ros was initially made with wheeled service robots in mind and might give "strange" behaviour when an unexpected usecase shows up.
+Comment by Dragonslayer on 2020-06-03:
+As a last note: I would consider leaving out all roll and pitch related data in the ekf inputs, as there is no relation between waves hitting the boat and manouvering, with the data in use, ekf tries to "make sense" of this. Probably leading to something analog to raising the noise level beyond whats actually needed.
+
+A:
+
+Sorry, I couldnt upload this pic as a comment. The "Form"/path precission is more accurate in slide 4/5(blue) as opposed to the last slide (orange). Size and starting point is just pixel perfect but specially in the turns I think its clearly seen that the yaw=0 roll=180 (slide 4/5) gives a more accurate ekf output compared to the reference.
+
+EDIT:
+I just realized that your tf tree above might no more be current. Is the static transform publisher between local and imu frame still  active? There yaw is dialed up 99° and now we dialed down yaw in the urdf by 90° leaving a difference of 9°. If this transform is still active going back to the original urdf and setting the static transform correctin yaw to Zero, might finally solve it all.
+I also found in REP 103: "Coordinate Frame Convention".
+Axis Orientation
+In relation to a body the standard is:
+x forward
+y left
+z up
+
+For short-range Cartesian representations of geographic locations, use the east north up [5] (ENU) convention:
+X east
+Y north
+Z up
+
+To avoid precision problems with large float32 values, it is recommended to choose a nearby origin such as your system's starting position.
+Suffix Frames
+In the case of cameras, there is often a second frame defined with a "_optical" suffix. This uses a slightly different convention:
+z forward
+x right
+y down
+
+For outdoor systems where it is desirable to work under the north east down [6] (NED) convention, define an appropriately transformed secondary frame with the "_ned" suffix:
+X north
+Y east
+Z down
+
+Originally posted by Dragonslayer with karma: 574 on 2020-06-03
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by crazymumu on 2020-06-04:
+You are just fine and it's so nice of you to keep talking to me. I think you are right. Maybe I did to much test and forget to compare the result. The slide 4/5 are the most likely to be consider right. It's just 10 degree gap caused by magnetic disturbance.
+Question 1: if I change IMU frame about 90, which x= y; y =-x; but the EKF path is almost same, the difference is just initial angle?
+Question 2: do you think I can manually rotate about 10 degree, specific will obtained from GPS. So I can analysis pose error. Because I think this gap should not account for overall EKF error. Also, I can assume I will assign a heading compensate from GPS at the beginning.
+PS.
+I reason I always believe the original sensor frame setup in urdf, because that's the setup used in my colleague's experiment during the data collection. Maybe they have x,y,z and yaw measurement(they not using z angular velocity measurement from imu) directly from differential gps, which make them no trouble.
+Comment by Dragonslayer on 2020-06-04:
+Question 1: That was just a thought experiment I wouldnt bother.
+Question 2: Yes this should have only minimal impact, as even the 90° transform didnt generate to bad of a path. But really you should transform the gps frame as it contains absolute values where as ekf calculates. I would transform with a static transform publisher and name the frame allignment_Error or something as to make it clear whats going on. What bothers me though is that for all that I know +angular.z should be anticlockwise, but it transformed the path clockwise. Maybe try with position z of dvl and imu at Zero or 0.01 to see if that somehow flips the coordinate system.
+Comment by crazymumu on 2020-06-05:
+Answer to your updated edition:
+all the plots in slides, I didn't manually dialed up any degree. I only thing I did was align the beginning point between two path, which just the transformation not rotation. So I didn't do There yaw is dialed up 99° as you said.
+Comment by Dragonslayer on 2020-06-05:
+OK, its difficult for me to know the exact state of the project as all the files and stuff are on a timeline and maybe by now obsolete. Did you try the Zero z positions? I really dont get how a dvl can be upside down. Could you make it work with the manual 10° correction transform?
+Comment by crazymumu on 2020-06-05:
+Sorry, I didn't explain how DVL works. The DVL is point down to the seabed while echo sound. So the z velocity measurement is the depth direction. That' why it going down. And the DVL measurements only are 3-axis velocity.
+Yes, the manual 10 degree is working. I included a static tf publisher in launch about 9.3 degree, which obtained from gps heading.  This operation just change the path, not change the yaw data in the published data.
+I still confusing about: +angular.z should be anticlockwise, but it transformed the path clockwise. could you explain a little bit? When you say try 0 with z of DVL and IMU, what' that meaning? because they not directly measure z position. DO you means z angular velocity of IMU?
+Comment by Dragonslayer on 2020-06-05:
+About dvl: Thanks I understand it, but one only can mount it one way and get data. I would assume its all set up in a way that you dont need to tranfsform it in any way, rpy wise. One can mount an IMU upside down or left side forward though.
+Positive angular motion about the Z axis is a counerclockwise(left) twist (in all cases I have seen). When the urdf was yaw=+1.57 radian (90 degrees) the path was transformed 90 degrees clockwise though. The only way I can think of this happening is if the coordinate system is upside down from the observers position. The coordinate representations in rviz dont show this. So I got the idea that the negative z position of the sensors might for some reason flip the coordinate system upside down, as this is the only "unconventional" "datapoints" I can see in this setup. (maybe thats mathematically true, or a bug as the nodes were never ment to work with such values). Thats why Iam interessted if anything changes regarding yaw if you make pos.z
+Comment by crazymumu on 2020-06-05:
+Thanks for your explanation. I got your point now. How can I set Zero z position, like EKF's yaml file or other ?
+Comment by Dragonslayer on 2020-06-05:
+In the urdf. one is -0.05 the other -0.9, by the way for this test you would have to set imu yaw back to 1.57 as a flip might not become obvious at Zero yaw.
+Comment by crazymumu on 2020-06-05:
+Like this?
+IMU to -0.05 in urdf:
+
+But the Z of IMU already -0.0585 in the original setup.
+DVL to -0.9 in urdf:
+
+Comment by Dragonslayer on 2020-06-05:
+Yes those entries but set them to zero, or better 0.001. and the imu yaw to 1.57 again.
+Comment by crazymumu on 2020-06-05:
+IMU:
+
+DVL:
+
+I did as you suggested, the path is as same as slides 9.
+Comment by Dragonslayer on 2020-06-05:
+I just found that your static transform lcoal to imu seems to also have a negative z position "-2.03545739388 -50.7727065098 -4.52810203327 1.7331 0 0", as you mentioned the twist is gone now, but there seems to be -4 z position.
+Comment by Dragonslayer on 2020-06-05:
+Thanks for the try.
+Comment by Dragonslayer on 2020-06-05:
+Out of interest, now that you alligned the paths how accureate is your imu/odom vs gps?
+Comment by crazymumu on 2020-06-05:
+I need to record a new rosbag and feed data to evo for pose error analysis. I will let you know when I finished it.
+Also, I will keeping tracking your concern that positive yaw angle lead to anticlockwise rotation. If anything figure out, I will let you know.
+Comment by Dragonslayer on 2020-06-05:
+Thanks, good luck!
+

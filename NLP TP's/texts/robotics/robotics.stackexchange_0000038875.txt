@@ -1,0 +1,70 @@
+Q:
+
+propagate userdata smach
+
+First, am I right in assuming input_keys and output_keys are the preferred method of propagating information throughout a SMACH State Machine? From what I can see, this requires a good deal of bookeeping, but if there's no other way, then that's that.
+I cannot get userdata passing between a State Machine and a Sub-Container. Here's what I would expect to work.
+class QuickTestMain( smach.State ):
+    def __init__( self, name ):
+        smach.State.__init__( self, outcomes = ['succeeded','aborted','preempted'] )
+        self.count = 0
+        self.name = name
+
+    def execute( self, userdata ):
+        r = rospy.Rate( 1 )
+        for i in xrange( 5 ):
+            self.count += 1
+            rospy.logout( '%s at count %3.2f' % (self.name, self.count))
+            r.sleep()
+        return 'succeeded'
+class PrintStr(smach.State):
+    def __init__(self, ins = 'Hello'):
+        smach.State.__init__(self, outcomes=['succeeded', 'aborted', 'preempted'],
+                             input_keys=['in_key'],output_keys=['print_data'])
+        self.ins = ins
+    def execute(self, userdata):
+        userdata.print_data=userdata.in_key  
+        rospy.logout( 'Received input data: %s' % userdata.in_key )  
+        return 'succeeded'
+def sms():
+    smc = smach.StateMachine( outcomes=['succeeded', 'aborted', 'preempted'],
+                              input_keys=['outtie'])
+    print smc.userdata.outtie # Fails
+    with smc:
+        smach.StateMachine.add('MAIN2', QuickTestMain('main2'),transitions={'succeeded':'succeeded'})
+    return smc
+if __name__ == '__main__':
+    rospy.init_node( 'tmp_test')
+    sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'],output_keys=['five'])
+    sm.userdata.five='5'
+    print sm.userdata.five
+    with sm:
+        smach.StateMachine.add( 'PS1', PrintStr(), transitions={'succeeded':'SMS'},remapping={'in_key':'five'})
+        smach.StateMachine.add( 'SMS', sms(), transitions={'succeeded':'succeeded'},remapping={'outtie':'five'})
+    sis = IntrospectionServer( 'sm_test', sm, '/SM_TEST' )
+    sis.start()
+    rospy.sleep( 5 )
+    sm.execute()
+    sis.stop()
+    
+    
+
+I am attempting to pass userdata from a State Machine to a sub-SM with the remapping command, but apparently this doesn't work for Sub-SM ?
+Is there anywhere in the docs I could get more info on this? Thanks
+
+Originally posted by phil0stine on ROS Answers with karma: 682 on 2012-03-21
+Post score: 2
+
+Original comments
+Comment by Mehdi. on 2014-06-30:
+I don't remember seeing a declaration of a state as a function in the tutorials.  Check the tutorial for nested states, it shows how to correctly declare a state as a substatemachine.
+
+A:
+
+Your sms() function is being called when you create the SMS state, not when the state is executed, so that is definitely going to fail.
+W.r.t. userdata remapping, that maps userdata keys to other userdata keys, it does not "set" the value of a userdata key.
+
+Originally posted by jbohren with karma: 5809 on 2014-07-03
+This answer was ACCEPTED on the original site
+Post score: 0
+

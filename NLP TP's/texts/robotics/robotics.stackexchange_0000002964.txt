@@ -1,0 +1,45 @@
+Q:
+
+Quadcopter PID output
+
+I'm trying to develop a control system to a quadcopter and one of my options is to use a PID controller (which I think is the most used method).
+From what I've read, the commom strategy is to run a PID algorithm to each axis. My question is: how the PID output is converted to PWM signals?
+I'm asking that because the three axes and the four rotors depend on each other. I mean, if I slow down a couple of rotors which are opposite to each other then the quadcopter will move down in a vertical axis. But if I speed one of them and slow down the other, the quadcopter will rotate in a different axis.
+So we cannot isolate each axis and associate them with a single rotor or a pair of those. And because of that, how can a PID output (which is associated to an axis) can be converted to PWM signals to the rotors?
+Is that a MIMO system?
+
+A:
+
+Let's try to give a comprehensive answer and stay on topic!
+As you said in your question there is one PID per axis. This means 3 PIDs in total: roll, pitch, and yaw.
+Also the motors input is a PWM high-level time, typically in the 1000-2000us range. There are 4 motors input: front, back, left, and right. One subtlety of the motors is that there is a value under which the motors stop completely, for instance 1100ms.
+There is another variable not mentioned in the question: the throttle.
+The first step in my quadcopter project was to tune the throttle. My throttle values were between -100 and 100, so I applied the following formula to each motor: motor = 300 * throttle / 100 + 1550. The constant values are arbitrary and give us a motor value in the 1250-1850 range, other values of the same magnitude would work.
+Only then do we apply the PIDs using the motor mix formula. For instance for my +4 quadcopter the formula is:
+
+Front = Throttle + PitchPID - YawPID
+Back = Throttle - PitchPID - YawPID
+Left = Throttle + RollPID + YawPID
+Right = Throttle - RollPID + YawPID
+
+The PID output has no unit. Choosing the right P, I, and D constants shall give us values which can stabilise the quadcopter. One caveat is that depending on the PID values the motor input can exceed the bounds: it could go over 2000us or under 1100us (which is our example motor cut value). In order to avoid such a situation we can analyse the higher and the lower of our motors inputs and add a constant to get all the motors within bounds.
+For instance if the motor mix formula gave us:
+
+Front = 1900
+Back = 1800
+Left = 2100
+Right = 1700
+
+We would remove 100 from each motor and get:
+
+Front = 1800
+Back = 1700
+Left = 2000
+Right = 1600
+
+This would give us motors input values within bounds and maintain the difference between motors.
+As a side note you said in a comment that the thrust vs PWM input is not linear. This is true but PIDs can drive non-linear systems with more or less success. For quadcopters the consensus is that it works reasonably well :)
+If anything was unclear please let me know!
+Cheers,
+Marc.
+

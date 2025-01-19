@@ -1,0 +1,109 @@
+Q:
+
+Having trouble using CUDA enabled OpenCV with kinetic
+
+Hello everyone.
+I started a new install of ROS Kinetic, and I was hoping to use a few CUDA features from OpenCV. I have successfully compiled and tested CUDA and OpenCV (which is installed in /usr/local), but I am having trouble using my OpenCV instead of the ros-kinetic-opencv3 package.
+I have tried adding /usr/local to the front of my CMAKE_PREFIX_PATH, as well renaming the opencv pkgconfig file in /opt/ros/lib/pkconfig. However I still get the below error, indicating that I am building against the ROS OpenCv.
+OpenCV Error: No CUDA support (The library is compiled without CUDA support) in throw_no_cuda, file /tmp/binarydeb/ros-kinetic-opencv3-3.1.0/modules/core/include/opencv2/core/private.cuda.hpp, line 97
+terminate called after throwing an instance of 'cv::Exception'
+  what():  /tmp/binarydeb/ros-kinetic-opencv3-3.1.0/modules/core/include/opencv2/core/private.cuda.hpp:97: error: (-216) The library is compiled without CUDA support in function throw_no_cuda
+
+Any ideas?
+
+Originally posted by daniel_dsouza on ROS Answers with karma: 258 on 2016-08-24
+Post score: 2
+
+Original comments
+Comment by ahendrix on 2016-08-25:
+It looks like its loading the wrong library at runtime; this is usually controlled by the system library search paths (ldconfig) and LD_LIBRARY_PATH
+Comment by daniel_dsouza on 2016-08-25:
+LD_LIBRARY_PATH looks like /usr/local/lib:/home/user/catkin_ws/devel/lib:/opt/ros/kinetic/lib
+shouldn't it be pulling from /usr/local/lib where OpenCV is first if that was the case?
+Comment by daniel_dsouza on 2016-08-25:
+if I manually run the CMakeLists.txt file, then the code build and executes correctly. However using catkin_make give different results?
+Comment by ashwath1993 on 2017-06-15:
+@daniel_dsouza, how did you run it manually? Just CMake .. and make?
+Comment by daniel_dsouza on 2017-06-15:
+I believe so. Do you have a Github link to your code? I can try to compile it myself.
+Comment by ashwath1993 on 2017-06-15:
+https://github.com/ashnarayan13/stereo_works.git this is the code.
+Comment by daniel_dsouza on 2017-06-15:
+Could you please link your entire ros package? Until then, look at this (working) example https://github.com/daniel-dsouza/solid-succotash
+Comment by ashwath1993 on 2017-06-15:
+@daniel_dsouza I have added the entire projecct on git. I will look into your project as well! Thanks!
+Comment by ashwath1993 on 2017-06-19:
+my CMakeCache.txt points the opencv dir to /usr/local/share/OpenCV but the headers i require are in /usr/local/include/opencv2 . Even if set the cmake cache to that location, i get an error and then resets to share/opencv.
+I get undefined reference to `cv::cuda::createStereoBM(int, int)'
+
+A:
+
+Hello previous me,
+So you have the opencv3 package installed, which provides libraries in /opt/ros/kinetic/lib, and you also have OpenCV compiled from source, installed to usr/local. The trick is to tell catkin to use the libraries from usr/local.
+By default, catkin is hardwired to look for packages in your workspace, then in /opt/ros/kinetic. CMake by itself will use the libraries in /usr/local. I tried to prioritize /usr/local by modifying the CMAKE_PREFIX_PATH environment variable, as suggested in pre kinetic posts, but no luck.
+So if I cannot modify catkin itself, I should to explicitly tell CMake which OpenCV to use. I had to change my declaration from
+find_package(OpenCV REQUIRED)
+
+to
+find_package(OpenCV REQUIRED
+NO_MODULE # should be optional, tells CMake to use config mode
+PATHS /usr/local # look here
+NO_DEFAULT_PATH) # and don't look anywhere else
+
+So that will pull in the correct libraries. If another package is built that requires OpenCV, catkin will also pull in the wrong dependencies. Mixed dependencies is a bad thing. So you have to add the modified OpenCV configuration to any other packages that require OpenCV. This includes the vision_opencv package that provides cv_bridge.
+UPDATE 10/12/2017:
+Please see my fork of vision_opencv for the necessary changes and my cvTest example package. In the example, I demonstrate the use of my custom version of OpenCV 3.3 build with CUDA 8.
+
+Originally posted by daniel_dsouza with karma: 258 on 2016-09-01
+This answer was ACCEPTED on the original site
+Post score: 9
+
+Original comments
+Comment by ashwath1993 on 2017-05-27:
+I have a similar problem. I replaced the CMake file as you have, but I still get the same error.
+find_package(OpenCV REQUIRED
+NO_MODULE
+PATHS /usr/local
+NO_DEFAULT_PATH)
+I can compile the code and run it outside ROS.
+Comment by naveenT1010 on 2017-05-28:
+ashwath1993 did you recompile other packages dependent on opencv or not? I was also having a similar problem, but when I compiled the vision_opencv from source, it all worked.
+Comment by ashwath1993 on 2017-06-12:
+I am able to run the opencv samples from the same path. Doesn't work with ROS alone.
+Comment by ashwath1993 on 2017-06-15:
+what():  /tmp/binarydeb/ros-kinetic-opencv3-3.2.0/modules/core/include/opencv2/core/private.cuda.hpp:97: error: (-216) The library is compiled without CUDA support in function throw_no_cuda
+My CMakeLists.txt contain the same find_package as you have mentioned
+Comment by k_totoro on 2017-10-12:
+Hi. I have same trouble and got same error.
+In the sentence "So you have to add the modified OpenCV configuration to any other packages that require OpenCV.", do you mean I have to change all Cmakelist in my packages?
+Comment by daniel_dsouza on 2017-10-12:
+@k_totoro Hello. I had to download the vision_opencv metapackage , and make the above changes to the cv_bridge and image_geometry packages' CMakeLists.txt. You only need to make the changes in packages that use/are used by your node that uses your custom OpenCV.
+Comment by daniel_dsouza on 2017-10-12:
+@k_totoro, please see the update to my answer with the github repo
+Comment by k_totoro on 2017-10-13:
+Thank you daniel. I read your Github sample but still do not understand what you mean.
+So, I have to remove my "cv_bridge" or some package from apt-get and rebuild it for myself?
+Your test CMake file in CVTest looks the same with mine.
+Comment by k_totoro on 2017-10-13:
+Finally, I found I had to exclude opencvcore3.so in my catkin_libraries.
+Here is my issue and thank you for your help!
+https://answers.ros.org/question/272814/how-to-tell-catkin_make-to-use-opencv-with-gpu/
+My sample project:
+https://github.com/YoshiRi/ros_opencv_conflict/blob/master/CMakeLists.txt
+Comment by daniel_dsouza on 2017-10-14:
+Good for you! To answer your question, you would have to recompile the packages in vision_opencv to make sure the correct libs are used. You could use the fork I posted.
+Comment by surfertas on 2017-10-26:
+@daniel_dsouza @k_totoro
+In my case, I took the following steps after all the steps mentioned above.
+$ cd catkin_ws/src
+$ git clone https://github.com/daniel-dsouza/vision_opencv.git
+$ cd ..
+$ catkin clean
+$ catkin build
+
+Which seemed to do the job. I didnt have to remove any additional file
+Comment by Redhwan on 2019-10-11:
+@daniel_dsouza thank you so much, I just downloaded your  https://github.com/daniel-dsouza/vision_opencv  in my ~/catkin_ws/src/, then making ~/catkin_ws/catkin_make on my PC, It is very nice but tried to use the same steps in my Jetson TX2 with OpenCV4Tegra because I don't need to build OpenCV like on my PC but get this ERROR , you can see here   in  my question. I think that the issue in the path, please help me or any suggestions?
+Comment by j.clownz on 2021-02-17:
+@daniel_dsouza That saved my life. Thanks man!
+

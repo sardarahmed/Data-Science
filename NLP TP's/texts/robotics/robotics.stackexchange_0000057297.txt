@@ -1,0 +1,205 @@
+Q:
+
+trajectory saving problem
+
+when i do bellow tutorial to create hector_slam map with trajectory ,bellow error caused but i can see online map on rviz without any problem and with trajectory, but when i try to save map with hector_geotiff ,map saved without trajectory,
+what's problem?
+[ERROR] [1392637719.233332009]: Trajectory Server: Transform from /map to scanmatcher_frame failed: Frame id /map does not exist! Frames (1):  
+
+[ERROR] [1392637719.467775930]: Trajectory Server: Transform from /map to scanmatcher_frame failed: Frame id /map does not exist! Frames (3): Frame /laser exists with parent /base_link.
+Frame /base_link exists with parent NO_PARENT.
+
+slam.launch
+<launch>
+
+<param name="/use_sim_time" value="false"/>ros
+
+<node pkg="rviz" type="rviz" name="rviz" 
+args="-d $(find hector_slam_launch)/rviz_cfg/mapping_demo.vcg"/>
+
+<include file="$(find uprobotics)/launch/hector_mapping.launch"/>
+
+<include file="$(find uprobotics)/launch/geotiff_mapper.launch">
+<arg name="trajectory_source_frame_name" value="scanmatcher_frame"/> 
+</include>
+
+</launch>
+
+hector_mapping.launch
+<launch>
+
+<node pkg="hector_mapping" type="hector_mapping" name="hector_mapping"    output="screen">
+
+<param name="pub_map_odom_transform" value="true"/>
+<param name="map_frame" value="map" />
+<param name="base_frame" value="base_link" />
+<param name="odom_frame" value="base_link" />
+<!-- Map size / start point -->
+<param name="map_resolution" value="0.025"/>
+<param name="map_size" value="2048"/>
+<param name="map_start_x" value="0.5"/>
+<param name="map_start_y" value="0.5" />
+<param name="laser_z_min_value" value="-2.5" />
+<param name="laser_z_max_value" value="7.5" />
+
+<!-- Map update parameters -->
+<param name="update_factor_free" value="0.4"/>
+<param name="update_factor_occupied" value="0.7" />    
+<param name="map_update_distance_thresh" value="0.2"/>
+<param name="map_update_angle_thresh" value="0.06" />
+</node>
+
+<node pkg="tf" type="static_transform_publisher" name="base_to_laser_broadcaster"      args="0 0 0 0 0 0 /base_link /laser 100" />  
+
+</launch>
+
+geotiff_mapper.launch
+in this file was modified only thing is the path where you save the geotiff generated in this case / home / viki / Desktop / maps
+<launch>
+<arg name="trajectory_source_frame_name" default="/base_link"/>
+<arg name="trajectory_update_rate" default="4"/>
+<arg name="trajectory_publish_rate" default="0.25"/>
+
+<node pkg="hector_trajectory_server" type="hector_trajectory_server" name="hector_trajectory_server" output="screen">
+<param name="target_frame_name" type="string" value="/map" />
+<param name="source_frame_name" type="string" value="$(arg trajectory_source_frame_name)" />
+<param name="trajectory_update_rate" type="double" value="$(arg trajectory_update_rate)" />
+<param name="trajectory_publish_rate" type="double" value="$(arg trajectory_publish_rate)" />
+</node>
+
+<node pkg="hector_geotiff" type="geotiff_node" name="hector_geotiff_node" output="screen" launch-prefix="nice -n 15">
+<remap from="map" to="/dynamic_map" />
+<param name="map_file_path" type="string" value="/home/viki/Desktop/maps" />
+<param name="map_file_base_name" type="string" value="uprobotics" />
+<param name="geotiff_save_period" type="double" value="0" />
+<param name="draw_background_checkerboard" type="bool" value="true" />
+<param name="draw_free_space_grid" type="bool" value="true" />
+</node>
+
+</launch>
+
+and is run as follows
+$ roscore
+$ sudo chmod a+rw /dev/ttyACM0
+$ rosrun hokuyo_node hokuyo_node
+$ uprobotics slam.launch
+this is output of rosservice call trajectory:
+  header: 
+    seq: 0
+    stamp: 
+      secs: 1392735924
+      nsecs: 220875750
+    frame_id: /map
+  pose: 
+    position: 
+      x: 0.0281494148076
+      y: -0.153469845653
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: -0.124254979005
+      w: 0.992250321337
+
+and this is out put of rostopic echo trajectory:
+header: 
+        seq: 0
+        stamp: 
+          secs: 1392735923
+          nsecs: 969870750
+        frame_id: /map
+      pose: 
+        position: 
+          x: 0.0127319339663
+          y: -0.167738348246
+          z: 0.0
+        orientation: 
+          x: 0.0
+          y: 0.0
+          z: -0.123253038025
+          w: 0.992375276102
+
+Originally posted by programmer on ROS Answers with karma: 61 on 2014-02-18
+Post score: 1
+
+A:
+
+So you see the trajectory in rviz? That indicates that the trajectory server indeed runs and generates data correctly. hector_geotiff requests the robot trajectory from hector_trajectory_server via a service, so to see if this service provides reasonable data you can execute
+rosservice call trajectory
+
+Does this service call work? What is the output? If you post output, please add to your original question by editing it.
+/edit: Ok, it turns out that the trajectory is indeed not visible for the tutorial launch file, as we changed things so plugins are used for adding visualization to hector_geotiff. To get trajectory visualization make sure to set the "plugins" parameter where you launch the hector_geotiff node, for example:
+  <node pkg="hector_geotiff" type="geotiff_node" name="hector_geotiff_node" output="screen" launch-prefix="nice -n 15">
+    <param name="map_file_path" type="string" value="$(find hector_geotiff)/maps" />
+    <param name="map_file_base_name" type="string" value="" />
+    <param name="geotiff_save_period" type="double" value="45" />
+
+    <param name="plugins" type="string" value="hector_geotiff_plugins/TrajectoryMapWriter" />
+  </node>
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2014-02-18
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by programmer on 2014-02-18:
+yes, service call work and i added output of it in original question as you said.
+what's problem dear stefan?
+can i finally save *.tiff map file with trajectory?
+Comment by Stefan Kohlbrecher on 2014-02-18:
+Well it´s highly unusual that there is only a single pose stored by the trajectory server. Never seen that before. What´s the output of "rostopic echo trajectory"?
+Comment by programmer on 2014-02-18:
+No there was plenty of
+" header:
+seq: 0
+stamp:
+secs: 1392735924
+nsecs: 220875750
+frame_id: /map
+pose:
+position:
+x: 0.0281494148076
+y: -0.153469845653
+z: 0.0
+orientation:
+x: 0.0
+y: 0.0
+z: -0.124254979005
+w: 0.992250321337 "
+but i added one of them,
+i include output of "rostopic echo trajectory" in original question,
+what do you think Dear Stefan?
+Comment by Stefan Kohlbrecher on 2014-02-19:
+Ok, summing up:
+
+You see the trajectory in rviz.
+
+When rostopic echoing and rosservice calling the "trajectory" topic and service, respectively, you see an  array of poses getting printed.
+
+When looking at generated GeoTiffs you see the map as expected, but no path of the robot.
+
+To me this looks like the service call from hector_geotiff to hector_trajectory_server somehow does not work, but I don´t see a reason for that right now.
+Comment by programmer on 2014-02-19:
+Thanks Dear Stefan for your time,
+can i ask you to publish a launch file for me?,
+I have two dynamixel  motor to fix my laser with gyro.
+I want to create a savable map with trajectory...
+Thanks So much.
+Comment by Stefan Kohlbrecher on 2014-02-20:
+I don´t have time to spare to experiment with a system I have no access to. Things also seem to work for other people, so it looks like something is wrong with your setup. I´d suggest trying from scratch on another machine for example.
+Comment by programmer on 2014-02-21:
+Thanks Dear Stefan for your time.
+Comment by programmer on 2014-02-22:
+Dear Stefan, I think hector_geotiff package is something wrong, because i can see trajectory in rviz and just when i want to save tiff file by hector_geotiff, map saved without trajectory...
+what do you think Dear?
+Can you change hector_geotiff package to solve this problem?
+Comment by programmer on 2014-02-23:
+Dear Stefan, i do tutorial on this link http://wiki.ros.org/hector_slam/Tutorials/MappingUsingLoggedData to be sure my launch file is correct, but still i can see trajectory on rviz and i can't save map with trajectory.
+as you said i do these work on two pcs and both have same result.
+please Help me Stefan?
+and i tested on groovy and hydro ...
+Comment by Stefan Kohlbrecher on 2014-02-23:
+See updated answer. Apologies for the delay, should have tested earlier myself :)
+Comment by programmer on 2014-02-24:
+Thank you Dear Stefan, my problem solved by your useful help...
+

@@ -1,0 +1,70 @@
+Q:
+
+How to launch a node with a parameter in ROS2?
+
+Migrating ros1 package to ros2 and couldn't figure how to launch with a paramter in ros2.
+With ros1 I have a launch file that refers to a config file and from cpp code I use node.getParam
+launch file:
+<launch>
+    <arg name="node_name" default="collector" />
+    <arg name="config_file" default="" />
+    <node name="$(arg node_name)" pkg="collector" type="collector" respawn="true">
+      <rosparam if="$(eval config_file!='')" command="load" file="$(arg config_file)"/>
+    </node>
+</launch>
+
+config file:
+my_param: 5
+
+cpp code:
+double my_param = 0;
+n.getParam("my_param", my_param);
+
+My question is how would that translate to ROS2?
+
+Originally posted by ezra on ROS Answers with karma: 51 on 2018-12-24
+Post score: 2
+
+A:
+
+The way I do it:
+from launch import LaunchDescription
+from launch.substitutions import EnvironmentVariable
+import os
+import launch_ros.actions
+import pathlib
+
+parameters_file_name = 'default.yaml'
+
+def generate_launch_description():
+    parameters_file_path = str(pathlib.Path(__file__).parents[1]) # get current path and go one level up
+    parameters_file_path += '/config/' + parameters_file_name
+    print(parameters_file_path)
+    return LaunchDescription([
+        launch_ros.actions.Node(
+            package='example_pkg',
+            node_executable='example_node',
+            output='screen',
+            parameters=[
+                parameters_file_path
+            ],
+         ),
+    ])
+
+config file in the /config folder:
+ example_node:
+        ros__parameters:
+            some_int: 41
+            log_severity: 1 #0-debug, 1-info, 2-Warn, 3-Error, 4-Fatal
+            a_string: "Hello world"
+            some_lists:
+                some_integers: [1, 2, 3, 4]
+                some_doubles : [3.14, 2.718]
+
+in the cpp file:
+ExampleNode::get_parameter_or("log_severity", severity_level , 0); 
+
+Originally posted by vadbut with karma: 78 on 2019-04-24
+This answer was ACCEPTED on the original site
+Post score: 2
+

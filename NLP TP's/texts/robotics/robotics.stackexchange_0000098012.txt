@@ -1,0 +1,82 @@
+Q:
+
+Can we use MQTT in ROS2?
+
+It seems ROS1 had MQTT bridge but nothing specific was mentioned about ROS2 in it. Can we use MQTT bridge for ros2 or is their any other way to do it?
+
+Originally posted by Flash on ROS Answers with karma: 126 on 2021-01-11
+Post score: 2
+
+Original comments
+Comment by flash_27 on 2021-06-29:
+Hi, Have you solved this issue?
+Comment by 130s on 2021-06-29:
+@Flash For future readers, please add links to what you have found. My guess is you're referring to http://wiki.ros.org/mqtt_bridge as " MQTT bridge".
+
+A:
+
+I didn't use the MQTT bridge, I did some workaround to receive information from the webpage I used MQTT subscribe feature but to publish info to the webpage I used the MySQL database instead of MQTT. Might not be the best method
+from std_msgs.msg import String
+import time
+import rclpy
+from rclpy.node import Node
+from rclpy import qos
+from rclpy.qos import QoSProfile
+import paho.mqtt.client as mqtt
+
+class SubscribeMqtt(Node):
+
+    def __init__(self):
+        super().__init__('subscribe_mqtt')
+        State = QoSProfile(durability=qos.QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=qos.QoSReliabilityPolicy.RELIABLE, history=qos.QoSHistoryPolicy.KEEP_LAST, depth=20)
+        Streaming = QoSProfile(durability=qos.QoSDurabilityPolicy.VOLATILE,
+                           reliability=qos.QoSReliabilityPolicy.BEST_EFFORT, history=qos.QoSHistoryPolicy.KEEP_LAST, depth=1)
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('host', None),
+                ('port', None)])
+        self.ros2_publish = self.create_publisher(
+            String, 'ros2/topic', Streaming)
+
+        self.client = mqtt.Client()
+        self.client.on_message = self.topic_get
+        self.host = "hostname"
+        self.port = "port"
+        self.client.connect(self.host, self.port)
+        self.client.subscribe("mqtt/topic", qos=1) #to subscribe more than one topic add more subscribe lines
+        self.client.loop_forever()
+
+    def topic_get(self, client, userdata, msg):
+        send = String()
+        topic = msg.topic
+        message = msg.payload.decode("utf-8")
+
+        if topic == "mqtt_topic":
+            self.ros2_publish.publish(send)
+
+def main(args=None):
+    rclpy.init(args=args)
+    subscribe_mqtt = SubscribeMqtt()
+    rclpy.spin(subscribe_mqtt)
+
+    subscribe_mqtt.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by Flash with karma: 126 on 2021-06-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by abhishek47 on 2021-06-30:\
+
+but to publish info to the webpage I used the MySQL database instead of MQTT
+
+Just curious. Is it because you ran into issues with MQTT publishing, or because you already had SQL stuff set up and decided to go with that?
+Comment by Flash on 2021-06-30:
+I didn't try publishing using MQTT and also data transmitted to the webpage was too large and publishing continuously was not reliable with memory usage and also flickering behavior on the webpage. Using a database gave the frontend to freely work with incoming data and data sending to the backend was minimal and only specific calls for that only subscriber was required.
+

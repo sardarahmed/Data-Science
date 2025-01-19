@@ -1,0 +1,88 @@
+Q:
+
+PR2 + Hydro - Easiest way to close a gripper?
+
+Hi all,
+After interacting with some objects on a table, the grasp of the PR2 opens. I need to close it after each iteration, to be able to compare the changes in the scene before and after the interaction.
+I look for something fast. So I guess the solution must be very simple. Something as setting a number to a joint, but I am not able to find it by myself...
+I can close the gripper using Pr2GripperCommandAction but it is quite slow:
+#include <ros/ros.h>
+#include <pr2_controllers_msgs/Pr2GripperCommandAction.h>
+#include <actionlib/client/simple_action_client.h>
+#include <unistd.h>
+
+// Our Action interface type, provided as a typedef for convenience
+typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient;
+GripperClient* gripper_clientr_;   
+GripperClient* gripper_clientl_;   
+
+  //Open the gripper
+  void open(GripperClient* gripper_client_){
+    pr2_controllers_msgs::Pr2GripperCommandGoal open;
+    open.command.position = 0.10;
+    open.command.max_effort = -1.0;  // Do not limit effort (negative)
+    
+    ROS_INFO("Sending open goal");
+    gripper_client_->sendGoal(open);
+    gripper_client_->waitForResult();
+    if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ROS_INFO("The gripper opened!");
+    else
+      ROS_INFO("The gripper failed to open.");
+  }
+
+  //Close the gripper
+  void close(GripperClient* gripper_client_){
+    pr2_controllers_msgs::Pr2GripperCommandGoal squeeze;
+    squeeze.command.position = 0.0;
+//     squeeze.command.max_effort = 50.0;  // Close gently
+    squeeze.command.max_effort = -1.0;  // Close gently
+    
+    ROS_INFO("Sending squeeze goal");
+    gripper_client_->sendGoal(squeeze);
+    gripper_client_->waitForResult();
+    if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ROS_INFO("The gripper closed!");
+    else
+      ROS_INFO("The gripper failed to close.");
+    
+    gripper_client_->cancelAllGoals();
+    
+  }
+
+int main(int argc, char** argv){
+  ros::init(argc, argv, "simple_gripper");
+ 
+  gripper_clientr_ = new GripperClient("r_gripper_controller/gripper_action", true);
+  while(!gripper_clientr_->waitForServer(ros::Duration(5.0))){
+    ROS_INFO("Waiting for the r_gripper_controller/gripper_action action server to come up");
+  }  
+
+  open(gripper_clientr_);
+  close(gripper_clientr_);
+  
+  return 0;
+}
+
+Thanks
+Carlos
+
+Originally posted by Maestre on ROS Answers with karma: 11 on 2014-09-01
+Post score: 0
+
+A:
+
+How is it slow?
+
+If it starts quickly enough but moves too slowly, you can increase the max_effort.
+If it starts too slowly but closes quickly once it has started, it's waiting for the action client and server to synchronize. There isn't much you can do to speed up this process, but you can avoid it by keeping the action client around.
+
+Originally posted by ahendrix with karma: 47576 on 2014-09-01
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Maestre on 2014-09-02:
+Yes, it is the first case. I tried to increase the speed, setting max_effort to -1 or 200, but it still closes quite slow.
+I remember some time ago, making tests, I was able to open and close a gripper just setting a value to a joint. That worked really fast, but I don't remember the joint name.
+

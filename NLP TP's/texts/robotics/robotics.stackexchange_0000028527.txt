@@ -1,0 +1,86 @@
+Q:
+
+How to get msgs::LogicalCameraImage timestamp?
+
+Hi all,
+I wrote an urdf for a diff-drive robot with a logical camera sensor.
+To publish its messages over ROS I wrote a simple plugin:
+#include "logical_camera_plugin.h"
+
+using namespace gazebo;
+using namespace std;
+using namespace ros;
+
+GZ_REGISTER_SENSOR_PLUGIN(LogicalCameraPlugin);
+
+void LogicalCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf){
+  // Get the parent sensor.
+  this->parentSensor = std::dynamic_pointer_cast<sensors::LogicalCameraSensor>(_sensor);
+
+  // Make sure the parent sensor is valid.
+  if (!this->parentSensor){
+    gzerr << "LogicalCameraPlugin requires a LogicalCameraSensor.\n";
+    return;
+  }
+
+  // Connect to the sensor update event.
+  this->updateConnection = this->parentSensor->ConnectUpdated(std::bind(&LogicalCameraPlugin::OnUpdate, this));
+
+  // Make sure the parent sensor is active.
+  this->parentSensor->SetActive(true);
+
+  ...
+
+  nh = new ros::NodeHandle("~");
+  image_pub = nh->advertise<lucrezio_simulation_environments::LogicalImage>("logical_camera_image", 1, true);
+}
+
+void LogicalCameraPlugin::OnUpdate(){
+  msgs::LogicalCameraImage logical_image;
+  lucrezio_simulation_environments::LogicalImage msg;
+
+  logical_image = this->parentSensor->Image();
+  gazebo::rendering::ScenePtr scene = gazebo::rendering::get_scene();
+  if (!scene || !scene->Initialized())
+    return;
+
+  msg.header.stamp = ros::Time::now();
+  msg.header.frame_id = "logical_camera_link";
+  
+  ...
+      
+  this->image_pub.publish(msg);
+}
+
+My only concern was:
+Is it possible to get from the msgs::LogicalCameraImage a timestamp?
+Because, right now, I'm giving ros::Time::now() to the ROS message and I guess this is not the right solution.
+Thanks.
+
+Originally posted by federico.nardi on Gazebo Answers with karma: 23 on 2018-06-22
+Post score: 0
+
+A:
+
+That LogicalCameraImage message is not stamped (i.e. it doesn't have a header), so I think it's not possible to know the exact time from the message itself.
+I think you're doing the right thing by connecting to the ConnectUpdated event. From that callback, I think you'll get the correct time for when the last image message was generated with:
+auto lastUpdateTime = this->parentSensor->LastUpdateTime();
+
+Originally posted by chapulina with karma: 7504 on 2018-06-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by federico.nardi on 2018-06-22:
+the LogicalCameraPlugin is a SensorPlugin, I'm afraid I didn't get what you mean!
+Comment by chapulina on 2018-06-22:
+Ah sorry, you're right, I woke up too early to watch football. Updating the answer.
+Comment by federico.nardi on 2018-06-22:
+Thanks, I'll try! "Come on Iceland"!!!!!
+Comment by federico.nardi on 2018-06-22:
+It doesn't compile because lastUpdateTime is protected within that context
+Comment by federico.nardi on 2018-06-22:
+my fault, LastUpdateTime should be called!
+Comment by chapulina on 2018-06-22:
+Oh strange, it should be a public function: https://bitbucket.org/osrf/gazebo/src/cc5101392ae32616bf9bf39b6fc051104836aeb1/gazebo/sensors/Sensor.hh?fileviewer=file-view-default#Sensor.hh-129
+

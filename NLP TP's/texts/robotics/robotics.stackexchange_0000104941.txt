@@ -1,0 +1,176 @@
+Q:
+
+How to improve NodeHandle build and execution errors
+
+Raspberry Pi 4, Lubuntu20.04, ROS1-noetic
+Please help me because I am getting an error with NodeHandle
+My program is below
+(Some Japanese is mixed in)
+The publish node will be as follows
+https://github.com/rt-net/rt_usb_9axisimu_driver/tree/master
+#include <ros/ros.h>
+#include <sensor_msgs/Imu.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_datatypes.h>
+
+ros::NodeHandle nh;
+double gravity = 10.1347;  // 重力加速度
+
+void imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
+{
+    // IMUデータからクォータニオンを取得
+    tf::Quaternion orientation;
+    tf::quaternionMsgToTF(imu_msg->orientation, orientation);
+
+    // クォータニオンからオイラー角を取得
+    double roll, pitch, yaw;
+    tf::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
+
+    // 自己位置を計算（ここでは単純化）
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+
+    // 自己位置情報をPublish
+    geometry_msgs::PoseStamped pose_msg;
+    pose_msg.header = imu_msg->header;
+    pose_msg.pose.position.x = x;
+    pose_msg.pose.position.y = y;
+    pose_msg.pose.position.z = z;
+
+    // クォータニオンから姿勢情報をBroadcast
+    static tf::TransformBroadcaster broadcaster;
+    tf::Transform transform;
+    transform.setOrigin(tf::Vector3(x, y, z));
+    transform.setRotation(orientation);
+    broadcaster.sendTransform(tf::StampedTransform(transform, imu_msg->header.stamp, "imu_link", "base_link"));
+
+    // 自己位置情報をPublish
+    // 自己位置情報をPublish
+    static ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("estimated_pose", 10);
+    pose_pub.publish(pose_msg);
+}
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "self_localization_node");
+    ros::Subscriber imu_sub = nh.subscribe<sensor_msgs::Imu>("/imu/data_raw", 10, imuCallback);
+
+    ros::spin();
+
+    return 0;
+}
+
+When I run this code I get the following error
+[FATAL] [1698211644.979626372]: You must call ros::init() before creating the first NodeHandle
+[ERROR] [1698211645.036590112]: [registerPublisher] Failed to contact master at [:0].  Retrying...
+
+But when I put the NodeHandle inside the main function, I get the below error when building
+/home/ubuntu/catkin_ws/src/rt_usb_9axisimu_driver/src/rt_usb_9axisimu_odo_sub.cpp: In function ‘void imuCallback(const ConstPtr&)’:
+/home/ubuntu/catkin_ws/src/rt_usb_9axisimu_driver/src/rt_usb_9axisimu_odo_sub.cpp:40:38: error: ‘nh’ was not declared in this scope
+   40 |     static ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("estimated_pose", 10);
+      |                                      ^~
+/home/ubuntu/catkin_ws/src/rt_usb_9axisimu_driver/src/rt_usb_9axisimu_odo_sub.cpp:40:77: error: expected primary-expression before ‘>’ token
+   40 |     static ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("estimated_pose", 10);
+      |                                                                             ^
+make[2]: *** [CMakeFiles/imu_subscriber_odometory.dir/build.make:63: CMakeFiles/imu_subscriber_odometory.dir/src/rt_usb_9axisimu_odo_sub.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1848: CMakeFiles/imu_subscriber_odometory.dir/all] Error 2
+make: *** [Makefile:141: all] Error 2
+
+Please help me
+
+A:
+
+Welcome to Robotics Stack Exchange!
+Problems
+There are following issues with your code:
+
+NodeHandle is initilized before ros::init() which is unacceptable.
+tf::TransformBroadcaster is created inside a callback. Initilization should be done outside callback and callback must be used to repetitive tasks.
+Similarly, ros::Publisher is created inside a callback which should be avoided.
+
+Solution
+Simply define a class to encapsulate all the functionalities. The tf::TransformBroadcaster and ros::Publisher can be initilized as class members.
+Example
+I have create a demo code as an example. Please see below:
+#include <ros/ros.h>
+#include <std_msgs/String.h>
+#include <geometry_msgs/PoseStamped.h>
+
+class MyClass
+{
+private:
+    ros::NodeHandle nh_rel;
+    ros::Publisher pose_pub;
+    ros::Subscriber string_sub;
+    size_t counter;
+
+public:
+    MyClass();
+    void stringCallback(const std_msgs::String::ConstPtr &msg);
+};
+
+MyClass::MyClass()
+{
+    counter = 0;
+    nh_rel = ros::NodeHandle("~");
+    pose_pub = nh_rel.advertise<geometry_msgs::PoseStamped>("estimated_pose", 10);
+    string_sub = nh_rel.subscribe<std_msgs::String>("/string/data_raw", 10, &MyClass::stringCallback, this);
+}
+
+void MyClass::stringCallback(const std_msgs::String::ConstPtr &msg)
+{
+    ROS_INFO_STREAM("Received message:" << msg->data << " counter is:" << counter);
+    geometry_msgs::PoseStamped pose_msg;
+    pose_msg.pose.position.x = counter++;
+    pose_msg.pose.position.y = counter++;
+    pose_msg.pose.position.z = counter++;
+    pose_pub.publish(pose_msg);
+}
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "my_node");
+    MyClass my_class;
+    ros::spin();
+    return 0;
+}
+
+The NodeHandle is initilized after ros::init inside the class and then publishers, subscribers etc are created. Pay attention to how and where they are initilized. The callback is only publishing the data.
+How to run
+
+Start roscore by $ roscore
+
+Publish dummy string $ rostopic pub -r 10 /string/data_raw std_msgs/String hello
+
+Invoke above node:
+$ rosrun my_pkg my_node
+[ INFO] [1698214701.051547495]: Received message:hello counter is:0
+[ INFO] [1698214701.151819953]: Received message:hello counter is:3
+[ INFO] [1698214701.251777275]: Received message:hello counter is:6
+[ INFO] [1698214701.351677097]: Received message:hello counter is:9
+[ INFO] [1698214701.451825040]: Received message:hello counter is:12
+
+Verify that the data is published:
+$ rostopic echo /my_node/estimated_pose
+header: 
+  seq: 187
+  stamp: 
+    secs: 0
+    nsecs:         0
+  frame_id: ''
+pose: 
+  position: 
+    x: 561.0
+    y: 562.0
+    z: 563.0
+  orientation: 
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    w: 0.0
+---
+
+I hope you can modify the above code to meet your requirements.
+

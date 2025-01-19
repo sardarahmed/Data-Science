@@ -1,0 +1,74 @@
+Q:
+
+ekf_localization_node system model when fusing IMU and Odometry
+
+Hello,
+I have found this great tutorial about Extended Kalman filter which made me wonder how does ekf_localization_node in ROS work (I found a similar question asked before, however it was not answered).
+Firstly, Id like to understand model system of my robot (in this case, I am using Jackal robot which is originally a tank-like robot. However, with the help of teb_local_planner it was possible to limit the minimum turning radius and make it move more like a car. The purpose of ekf_localization_node in my case is just to fuse Odometry and IMU data, but how does it work? What is my system model in this case?
+One more question regarding ekf_localization_node. I have read that EKF (in general) is capable of adding bias of a sensor. I havent found a parameter in the wiki regarding it. How does one smoothen sensor measurement noise then?
+I have read couple of papers regarding model system, or in this case motion system (since its odometry?).
+
+Is this what I am using? Am I looking the right way?
+Clearly, I am a noobie here so any help is appreciated!
+EDIT One more question. So I know my current kinematic model, but what is my system's observation model then?
+When I look at the code, I am focusing at this area (lines 109-144) where it builds the measurement matrices but how? What does it use to build it?
+ for (size_t i = 0; i < updateSize; ++i)
+{
+  measurementSubset(i) = measurement.measurement_(updateIndices[i]);
+  stateSubset(i) = state_(updateIndices[i]);
+
+  for (size_t j = 0; j < updateSize; ++j)
+  {
+    measurementCovarianceSubset(i, j) = measurement.covariance_(updateIndices[i], updateIndices[j]);
+  }
+
+  // Handle negative (read: bad) covariances in the measurement. Rather
+  // than exclude the measurement or make up a covariance, just take
+  // the absolute value.
+  if (measurementCovarianceSubset(i, i) < 0)
+  {
+    FB_DEBUG("WARNING: Negative covariance for index " << i <<
+             " of measurement (value is" << measurementCovarianceSubset(i, i) <<
+             "). Using absolute value...\n");
+
+    measurementCovarianceSubset(i, i) = ::fabs(measurementCovarianceSubset(i, i));
+  }
+
+  // If the measurement variance for a given variable is very
+  // near 0 (as in e-50 or so) and the variance for that
+  // variable in the covariance matrix is also near zero, then
+  // the Kalman gain computation will blow up. Really, no
+  // measurement can be completely without error, so add a small
+  // amount in that case.
+  if (measurementCovarianceSubset(i, i) < 1e-9)
+  {
+    FB_DEBUG("WARNING: measurement had very small error covariance for index " << updateIndices[i] <<
+             ". Adding some noise to maintain filter stability.\n");
+
+    measurementCovarianceSubset(i, i) = 1e-9;
+  }
+}
+
+Originally posted by murdock on ROS Answers with karma: 75 on 2016-05-06
+Post score: 0
+
+A:
+
+Re: the kinematic model, see this answer:
+http://answers.ros.org/question/221837/robot_localization-ekf-internal-motion-model/
+The filter is pretty generic, which is by design. It's definitely on my list to move to a plugin-based architecture so that users can select from a number of different kinematic models. Also, yes, filters can estimate biases in sensor data, which is also something I plan to implement.
+EDIT: The measurement model in a Kalman filter is meant to project the state into measurement space. Many sensors don't directly measure the quantity you want (e.g., altitude), but instead measure some other quantity (e.g., pressure) from which you can derive what you want. The measurement model is there to "convert" the current vehicle state into a measurement so that you can directly compute the innovation (error) between the two.
+For the EKF in r_l, all of the measurements we receive are already in the same space as the state, i.e., we are directly measuring vehicle velocity, rather than some other quantity. So for us, the H matrix is just the identity matrix. However, we can use it for one other purpose, which is to limit which variables are affected in the state when we perform the Kalman gain computation and apply it. This is useful for one of the filter's key features: updating subsets of the state vector. Otherwise, every single measurement would have to have every variable in the state vector. Instead, we can take in different measurements from sensors that only measure some subset of the state variables.
+
+Originally posted by Tom Moore with karma: 13689 on 2016-05-08
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by murdock on 2016-05-09:
+Oh thanks! I definitely used ROS search but it didnt show me that one. Thanks for the edit! Much appreciated!
+Comment by murdock on 2016-05-15:
+@Tom Moore, what If I used ekf_localization_node (to fuse IMU + Odom) and then provide that fused data to amcl? It should technically provide better data rather than just using amcl. However, what does robot_pose_ekf do then?
+Comment by Tom Moore on 2016-05-30:
+r_l is a drop-in replacement for robot_pose_ekf, so you wouldn't use both. In any case, running ekf_localization_node and fusing IMU and wheel odometry to generate the odom->base_link transform, with amcl generating the map->odom transform, should work fine.
+

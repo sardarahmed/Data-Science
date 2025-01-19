@@ -1,0 +1,51 @@
+Q:
+
+map_server GetMap
+
+Goals:
+
+Robot 1 to save a partial map
+Robot 2 use Robot 1's saved map to build the rest of the entire map
+
+Assumptions:
+
+Robot 1 & 2 are using the same world, and everything is relative. Only difference is the start position of Robot 2.
+
+Currently I'm using slam_gmapping to generate the map, and using map_server to save the map.
+Using slam_gmapping, I want to call the service to retrieve the map instead of initializing it for Robot 2.
+Map_server provides the service 'static_map', but I'm still confused on how to use this service using cpp code. I've looked at the AddTwoInts cpp example but I'm confused on applying it to the map_server service.
+Any advice, or is there any tutorials or sample code's that I could look at?
+
+Originally posted by ktomas on ROS Answers with karma: 11 on 2011-09-11
+Post score: 1
+
+A:
+
+You first have to create a service client somewhere:
+    map_service_client_ = n_.serviceClient<nav_msgs::GetMap>("map");
+
+Then, you can use it like this:
+nav_msgs::GetMap srv_map;
+
+if (map_service_client_.call(srv_map))
+{
+  ROS_INFO("Map service called successfully");
+  const nav_msgs::OccupancyGrid& map (srv_map.response.map);
+  //do something with the map
+}
+else
+{
+  ROS_ERROR("Failed to call map service");
+  return;
+}
+
+This is the easy part. More difficult is initializing gmapping with an existing map. It keeps multiple map/pose hypotheses in memory, so initializing it would mean you have to initialize all those. This hasn't been done before AFAIK and will require that you change code inside the gmapping core, which internally uses a different map representation than ROS does. I'm sure it's doable, but it will require some work.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2011-09-11
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Brian Gerkey on 2011-09-12:
+Indeed, I don't know of anybody who's used gmapping (or another FastSLAM implementation) in that fashion.  I expect that it would be a LOT of work to figure out what internal state of the mapper to save and retrieve, and then I'd expect the resulting system to be pretty fragile.  To be able to stop and resume, you really want a different approach to mapping that designed to have that capability.
+

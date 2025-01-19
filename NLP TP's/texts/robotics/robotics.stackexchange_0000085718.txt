@@ -1,0 +1,96 @@
+Q:
+
+Setting parameters for mean filter
+
+I am trying to use the ROS filters to low-pass filter data from a joysitck using the mean filter. I have a node that accepts the commands from the joystick on the "/joy" topic, filters the data, and publishes on another topic. When I try to setup the filters, they always fail with the error :
+
+MultiChannelMeanFilter did not find param number_of_observations
+
+I tried to load the YAML file with the filter configurations (as shown here) in the global namespace, as well as in the namespace of the node using roslaunch, but neither seems to work.
+The code I am using to configure the filters:
+    class JoystickRelay{
+        public:
+                JoystickRelay();
+
+        private:
+                ros::NodeHandle nh_;
+                ros::NodeHandle pnh_;
+                ros::Publisher cmd_pub_;
+                ros::Subscriber vel_sub_;
+
+                bool enable_filter_;
+
+                void velCallback(const sensor_msgs::Joy::ConstPtr& joy);
+                filters::MultiChannelMeanFilter<double> filter_;
+};
+
+JoystickRelay::JoystickRelay(): pnh_(ros::NodeHandle("~")), enable_filter_(false) {
+
+        cmd_pub_ = nh_.advertise<std_msgs::Float64MultiArray>("command", 100);
+        vel_sub_ = nh_.subscribe("/joy", 1, &JoystickRelay::velCallback, this);
+
+        // Check if filtering is enabled        
+        if(pnh_.getParam("filter", enable_filter_)){
+                if(enable_filter_){
+                        filter_.configure(); // Configure the filter
+                }
+        }
+}
+
+Am I missing something while configuring the filters?
+
+Originally posted by aditya on ROS Answers with karma: 26 on 2018-03-08
+Post score: 0
+
+Original comments
+Comment by stevejp on 2018-03-08:
+If you post your launch file & .yaml file it might be easier to troubleshoot. You could also try running some of the test filters in this repo.
+Comment by aditya on 2018-03-08:
+Thanks stevejp for pointing me in the right direction. I was able to get this working. I have noted the details in the answer to this question.
+
+A:
+
+The code and other relevant details are being added here for anybody else who might be facing the same problem.
+joy_filter_node.cpp:
+#include "filters/mean.h"
+
+class JoystickRelay {
+    public:
+        JoystickRelay();
+
+    private:
+        ros::NodeHandle pnh_;
+
+        filters::MultiChannelFilterBase<double> filter_;
+}
+
+JoystickRelay::JoystickRelay() : pnh_(ros::NodeHandle("~")) {
+    
+        filter_ = new filters::MultiChannelMeanFilter<double>
+        int channels = 2;
+                
+        filter_->configure(channels, "FifthOrder", pnh_);
+
+        // Add the other initialization code
+}
+
+Notice that the object "filter_" is a pointer to the base class "filters::MultiChannelFilterBase". The private node handle "pnh_" is used for configuration as the parameters from the config file are loaded in the private namespace of the node.
+The configuration file -- filter.yaml :
+FifthOrder:
+  name : my_filter
+  type: MultiChannelMeanFilterDouble
+  params: 
+    number_of_observations : 5
+
+And the launch file:
+<launch>
+  <node name="joystick_relay" pkg="joystick_relay" type="joystick_relay_node"
+        output="screen" ns="/robot/position_controller/" >
+    <rosparam file="$(find joystick_relay)/config/filter.yaml" command="load" />
+  </node>
+</launch>
+
+Originally posted by aditya with karma: 26 on 2018-03-08
+This answer was ACCEPTED on the original site
+Post score: 1
+

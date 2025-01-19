@@ -1,0 +1,60 @@
+Q:
+
+Need some advice on how to use Hydro navigation in Groovy
+
+Hi again,
+I've tried figuring it out by myself but sadly to no avail. Could somebody explain in detail how I use the catkinized navigation stack from Hydro in Groovy? I was told that's how I can use the navigation stack in a catkin workspace. But I couldn't by the life of me figure out how to install, build and bind it to my workspace. Maybe there's some step-by-step guide that I haven't found yet. That would do.
+//update: I have cloned the whole navigation stack into my workspace. Now I am trying to compile it with catkin_make but fail at costmap_2d which complains about a missing pcl/conversions.h. ros-groovy-pcl-conversions is installed.
+//update2: I've found out that there seems to be no actual pcl/conversions.h in the path /opt/ros/groovy/include/pcl-1.6 but instead there's only a pcl/ros/conversions.h in that path. For Hydro however I've got a pcl/conversions.h and a pcl/ros/conversions.h. So why is pcl/conversions.h missing in my Groovy distro? ros-groovy-pcl-conversions and ros-hydro-pcl-conversions are both installed.
+//update3: There are several .h files missing in /opt/ros/groovy/include/pcl-1.6/pcl. Where do they usually come from? What package provides them?
+//update4: Still struggling with the same error and not getting a single little step forward. I've tried building PCL from sources, 1.6 as well as 1.7. But no luck. I've reinstalled all ros-...-pcl-... packages with apt-get (Groovy as well as Hydro). No luck. I've linked all /opt/ros/hydro/include/pcl-1.7/*.h to /opt/ros/groovy/include/pcl-1.6/... No luck... I'm going crazy. All I wanted in the first place was to be able to post goals to the navigation stack in a catkin workspace. That doesn't work (at least here) because I can't have move_base in find_package in Groovy.
+//update5: After migrating the workspace to Hydro, at least the basic parts are working again (catkin has finally been able to compile the workspace). Now I've got to smooth out some remaining creases...
+Thanks to all of you who helped me with this as far as possible!
+
+Any help would be greatly appreciated.
+Thanks a lot!
+Cheers
+
+Originally posted by Hendrik Wiese on ROS Answers with karma: 1145 on 2013-08-15
+Post score: 1
+
+Original comments
+Comment by William on 2013-08-19:
+So the pcl/conversions.h is new in pcl-1.7, if you are using pcl-1.6 you must change those include lines to pcl/ros/conversions.h. pcl_conversions provides this header: pcl_conversions/pcl_conversions.h, in both Groovy and Hydro.
+Comment by joq on 2013-08-19:
+It is hard to back-port large components with many dependencies, like navigation and PCL. That is why ROS has distros, to take that burden off of most users.
+Comment by Hendrik Wiese on 2013-08-19:
+Hm... shouldn't this be caught somehow for those who try to use a catkinized navigation stack in Groovy with pcl-1.6? I mean, this has got to be a relatively common issue. I conclude using Groovy with catkin is a rather bad idea if you intend to also use navigation, move_base and actionlib...
+
+A:
+
+You will need to resolve the dependencies for the navigation packages. rosdep can resolve them system dependencies (and the ROS dependencies if you are on Ubuntu) with this command:
+rosdep install --from-paths src --ignore-src --rosdistro groovy -y
+
+The above command will find all of the packages in the src folder, recursively find all dependencies, and try to install them. It also assumes that you are using groovy. You can add the --simulate option to see what it would install, I recommend checking that out before running it.
+If you are on Ubuntu, it will install ROS packages, like pcl_conversions from apt-get. If you are not using Ubuntu, or you are building everything from source, you can use the rosinstall_generator command line tool to get those dependencies. Install it if you don't already have it:
+# For ubuntu
+sudo apt-get install python-rosinstall-generator
+# For other systems
+sudo pip install -U rosinstall_generator
+
+I'll assume you have cloned the hydro version of navigation into a folder src/navigation. You can use the rosinstall_generator to create a rosinstall file which will get ALL of the dependencies for navigation like this:
+rosinstall_generator --wet-only --deps --deps-only --tar --rosdistro groovy `python -c "from catkin_pkg.packages import find_packages; print ' '.join([v.name for k, v in find_packages('src').items()])"` > all_navigation_deps.rosinstall
+
+If you only want the dependencies you are missing (you don't want to build things from source which you have installed from apt-get), you can exclude things you already have by adding --exclude RPP:
+rosinstall_generator --wet-only --deps --deps-only --tar --rosdistro --exclude RPP groovy `python -c "from catkin_pkg.packages import find_packages; print ' '.join([v.name for k, v in find_packages('src').items()])"` > all_navigation_deps.rosinstall
+
+This will exclude any packages found in your ROS_PACKAGE_PATH from the list. (make sure you sourced /opt/ros/groovy/setup.bash first).
+
+Originally posted by William with karma: 17335 on 2013-08-15
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Hendrik Wiese on 2013-08-15:
+Thanks, I've tried all that but still got the problem of costmap_2d complaining about a missing pcl/conversions.h. Here's what catkin_make_isolated keeps spitting out: http://pastebin.com/yyR1xct1 Do you need any further information? I'd really appreciate it if we could solve this problem together
+Comment by William on 2013-08-16:
+Well did you run rosdep on it? Did it report that you have all dependencies met? Does costmap_2d build depend on pcl_conversions? Do you have pcl_conversions in your workspace?
+Comment by Hendrik Wiese on 2013-08-16:
+I did run rosdep (with and without --simulate), didn't output anything so I guess all dependencies are met (no output = no error). costmap_2d has pcl_conversions in its build_... and run_depend fields in package.xml, also in its CMakeLists. pcl_conversions is in my wspc now, still no change.
+

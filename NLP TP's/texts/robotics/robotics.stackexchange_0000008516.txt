@@ -1,0 +1,22 @@
+Q:
+
+Getting pitch, yaw and roll from Rotation Matrix in DH Parameter
+
+I've calculated a DH Parameter matrix, and I know the top 3x3 matrix is the Rotation matrix. The DH Parameter matrix I'm using is as below, from https://en.wikipedia.org/wiki/Denavit%E2%80
+Above is what I'm using. From what I understand I'm just rotating around the Z-axis and then the X-axis, but most explanations from extracting Euler angles from Rotation matrixes only deal with all 3 rotations. Does anyone know the equations? I'd be very thankful for any help.
+
+A:
+
+In general, Euler angles (or specifically roll-pitch-yaw angles) can be extracted from any rotation matrix, regardless of how many rotations were used to generate it. For a typical x-y-z rotation sequence, you end up with this rotation matrix where $\phi$ is roll, $\theta$ is pitch, and $\psi$ is yaw:
+$R = \begin{bmatrix} c_\psi c_\theta & c_\psi s_\theta s_\phi - s_\psi c_\phi & c_\psi s_\theta c_\phi + s_\psi s_\phi \\ s_\psi c_\theta & s_\psi s_\theta s_\phi + c_\psi c_\phi & s_\psi s_\theta c_\phi - c_\psi s_\phi \\ -s_\theta & c_\theta s_\phi & c_\theta c_\phi \end{bmatrix}$
+Note that $c_x = \cos x$ and $s_x = \sin x$.
+To get roll-pitch-yaw angles out of any given numeric rotation matrix, you simply need to relate the matrix elements to extract the angles based on trigonometry. So re-writing the rotation matrix as:
+$R = \begin{bmatrix} R_{11} & R_{12} & R_{13} \\ R_{21} & R_{22} & R_{23} \\ R_{31} & R_{32} & R_{33} \end{bmatrix}$
+And then comparing this to the above definition, we can come up with these expressions to extract the angles:
+$\tan \phi = \frac{R_{32}}{R_{33}}$
+$\tan \theta = \frac{-R_{31}}{\sqrt{R_{32}^2 + R_{33}^2}}$
+$\tan \psi = \frac{R_{21}}{R_{11}}$
+When you actually solve for these angles you'll want to use an atan2(y,x) type of function so that quadrants are appropriately handled (also keeping the signs of the numerators and denominators as shown above).
+Note that this analysis breaks down when $\cos \theta = 0$, where there exists a singularity in the rotation -- there will be multiple solutions.
+Also note that your question is referring to the rotation transformation between two joints ($^{n-1}R_n$), which is indeed composed of an x-axis and z-axis rotation, but the actual rotation of that joint with respect to the base will be different ($^0R_n$) and composed of all the rotations for joints 1 to $n$. I point this out because $^{n-1}R_n$ can be decomposed back into the relevant x-axis ($\alpha$) rotation and z-axis ($\theta$) rotation, whereas $^0R_n$ is better suited to roll-pitch-yaw -- especially for the end-effector.
+

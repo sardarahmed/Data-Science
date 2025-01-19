@@ -1,0 +1,63 @@
+Q:
+
+Unable to publish PoseStamped message
+
+I am trying to publish a PoseStamped message via a node running in Python. I am listening for this message on another tab in my terminal.
+Python node:
+import rospy
+from geometry_msgs.msg import PoseStamped
+
+rospy.init_node("mynode")
+
+goal_publisher = rospy.Publisher("move_base_simple/goal", PoseStamped, queue_size=5)
+
+goal = PoseStamped()
+
+goal.header.seq = 1
+goal.header.stamp = rospy.Time.now()
+goal.header.frame_id = "map"
+
+goal.pose.position.x = 1.0
+goal.pose.position.y = 2.0
+goal.pose.position.z = 0.0
+
+goal.pose.orientation.x = 0.0
+goal.pose.orientation.y = 0.0
+goal.pose.orientation.z = 0.0
+goal.pose.orientation.w = 1.0
+
+goal_publisher.publish(goal)
+
+rospy.spin()
+
+So this my order of doing things:
+
+In the first tab of terminal run roscore
+In the second tab run rostopic echo /move_base_simple/goal
+In the third tab run the Python node which publishes a message
+
+However no message is printed in the 2nd tab. What am I doing wrong? I am not getting any error messages.
+EDIT: If I add a small delay before the goal_publisher.publish(goal) line then the message gets published.
+rospy.sleep(1)
+goal_publisher.publish(goal)
+
+Originally posted by Subodh Malgonde on ROS Answers with karma: 512 on 2018-10-24
+Post score: 0
+
+A:
+
+EDIT: If I add a small delay before the goal_publisher.publish(goal) line then the message gets published.
+
+This is something that has come up many times and that makes me wonder whether we should add this to the wiki about Publishers and Subscibers in some form.
+Setting up connections between publishers and subscibers takes time. Subscibers connect to publishers directly, not to the Master, nor does the Master buffer messages, so even if you start your subscriber before your publisher there is a non-zero amount of time needed for the two to connect.
+If there are no connections, any message you publish will be dropped and won't reach anyone.
+In your publisher program, you don't give any potentially interested subscribers any time to set up a connection, so it is most likely your PoseStamped message is dropped.
+You have two options:
+
+publish the message periodically (so that even if there are no subscribers now, they'll receive one of the later messages published to the topic). That may or may not be appropriate for what you're trying to do (ie: for some messages / interactions it doesn't make sense to duplicate the same message)
+wait for subscribers to connect. With your edit you've already done that, but you did it time based. It's always nicer to do things state based, which in this case means: look at the nr of subscribers and if there is at least one (or any other number) then publish your message. You can use Topic::get_num_connections for that in rospy.
+
+Originally posted by gvdhoorn with karma: 86574 on 2018-10-24
+This answer was ACCEPTED on the original site
+Post score: 3
+

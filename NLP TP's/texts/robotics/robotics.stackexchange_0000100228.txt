@@ -1,0 +1,66 @@
+Q:
+
+Independent ROS sessions on Linux machine with multiple users
+
+HI there!
+On an Ubuntu 20.04 with multiple users can each user use ROS Noetic without interfering with each other?
+At the moment if a topic is started, the others ca see its presence
+
+Originally posted by Ktysai on ROS Answers with karma: 112 on 2021-10-02
+Post score: 0
+
+A:
+
+Using Docker containers would be one way (as it is able to isolate processes and network traffic).
+If you don't want to / can't use that, you could use roslaunch's -p argument to tell it to start a separate roscore on a specific port. It will then use that specific roscore for all the nodes it starts. You'd assign each user a different port which would result in the node graphs tied to that roscore to be isolated from each other.
+The -p argument also automatically updates the port in the ROS_MASTER_URI for that roslaunch session. I'd probably still recommend setting ROS_MASTER_URI manually though, as the ROS_MASTER_URI in the environment of the current shell is not changed, only the value passed to processes started by roslaunch, so rosrun, rostopic et al. and directly run node binaries/scripts would still use the default value if you don't change it.
+Note: regardless of how you approach this (docker, separate roscore) there is no protection or authentication, nor access control. All it takes for one user to be able to access (and interfere with) the node graph of another is for them to set their ROS_MASTER_URI to point to another roscore instance and "they're in".
+If that's a concern (or the UX of Docker, or the UX of having to maintain separate roscores), perhaps virtual machines could offer a solution. Give each user their own VM. That would isolate them completely.
+
+Edit:
+
+For docker solution (very new in this): If I have 5 users, it means to pull  5 docker stations, and run them by users right?
+
+I'm not sure I understand what you mean by this. You'd create (at least) 5 containers, which might also be started from 5 different images, but that would depend on what your users want/need to run.
+Note that Docker will require some training, and is probably not suited for users with little experience with terminals or Linux process management.
+
+I've looked at docker stuff regarding ROS, and I've had a little trouble connecting two terminals (one for starting ROSCORE, the other one  for ROSRUN).
+
+I would probably suggest to start a container and then run ROS-related commands inside that session. You could either use screen or tmux to multiplex a single bash session, or use docker exec to start additional bash sessions. That would keep all network traffic inside the container.
+
+B This solution will allow building packages without making a mess is a user makes a mistake?
+
+Again, not sure what you mean by this.
+I assumed all users would be actual Linux users with their own $HOME and thus also their own Catkin workspace. I'm not sure how they would interfere with each other in that case.
+
+Which solution will use less resources from the server?
+
+There might be a slight overhead caused by Docker's networking infrastructure, but I'd be surprised if that influences performance very much. Unless you start pushing hundreds of MB/s over ROS topics. On the CPU side there should be almost zero overhead.
+VMs of course incur quite some performance overhead (so whether they're worth it would be a trade-off only you can make).
+
+Originally posted by gvdhoorn with karma: 86574 on 2021-10-03
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Ktysai on 2021-10-03:
+Thanks gvdhoorn for laying these solutions!
+**A.**For docker solution (very new in this):
+If I have 5 users, it means to pull  5 docker stations, and run them by users right? I've looked at docker stuff regarding ROS, and I've had a little trouble connecting two terminals (one for starting ROSCORE, the other one  for ROSRUN).
+B This solution will allow building packages without making a mess is a user makes a mistake?
+Which solution will use less resources from the server?
+Comment by Ktysai on 2021-10-03:
+Later edit: ( I cannot add to my response)
+Solution A
+For Docker I have to learn more about it :)
+Server with Ubuntu 20.04, Docker installed with a Noetic image
+Basically 5 containers from the same image (less space HDD space used).
+Then I have to make the container to be accessed through Windows workstations, using Mobaxterm (quite useful for X11 forwarding).
+Solution B:
+Server with Ubuntu 20.04, ROS Noetic. All users have their home and catkin _WS. They acces the server through Windows workstations, using Mobaxterm (quite useful for X11 forwarding).
+From what I've tested with ROSCORE -p customport and a turtlesim package is the ports are not identical the topics and so on do not interfere.
+For the moment seems to work at least with two users simultaneously.
+Bottom line:
+Solution B is easier to implement for me at least, but users are not that isolated.
+Docker has a better isolation, but will consume more resources from server CPU/GPU, correct?
+

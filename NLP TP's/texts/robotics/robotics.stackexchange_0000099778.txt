@@ -1,0 +1,76 @@
+Q:
+
+[ros2_control] Combined hw_interface for arm and gripper
+
+We have a robot that's a little unusual in that the manufacturer combined gripper control and arm joint control into a single, unified API. Thus, we can't really instantiate 2 objects to control gripper and arm separately. We aren't sure how to control the gripper and the arm in a combined fashion.
+Our first attempt has a controllers.yaml like this:
+joint_trajectory_controller:
+  type: joint_trajectory_controller/JointTrajectoryController
+
+# The gripper controller just relays position commands
+gripper_controller:
+  type: forward_command_controller/ForwardCommandController
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+      - joint_7
+
+gripper_controller:
+  ros__parameters:
+    joints:
+      - finger_joint
+    interface_name: position
+
+Our custom interface inherits like this:
+class OurMultInterfaceHardware : public hardware_interface::BaseInterface<hardware_interface::SystemInterface
+
+When launching on hardware, we can see from some print statements that OurMultiInterfaceHardware gets instantiated twice, which will not work with the manufacturer's API. It works fine in simulation.
+The important parts from the launch file:
+robot_controller_spawner = Node(
+    package="controller_manager",
+    executable="spawner.py",
+    arguments=[robot_controller, gripp, "-c", "/controller_manager"],
+)
+
+gripper_controller_spawner = Node(
+    package="controller_manager",
+    executable="spawner.py",
+    arguments=[gripper_controller, "-c", "/controller_manager"],
+)
+
+nodes_to_start = [
+    control_node,
+    robot_state_publisher_node,
+    rviz_node,
+    joint_state_broadcaster_spawner,
+    robot_controller_spawner,
+    gripper_controller_spawner,
+]
+
+I think the crux of the question is, does each controller that gets spawned require its own hardware interface?
+
+Originally posted by AndyZe on ROS Answers with karma: 2331 on 2021-08-04
+Post score: 0
+
+Original comments
+Comment by Humpelstilzchen on 2021-08-05:
+In ros 1 you could start multiple controllers with a single controller_manager. <node name="arm_controller_spawner" pkg="controller_manager" type="spawner" output="screen" args="arm_joint_state_controller arm_controller gripper_controller"/> but I don't know about ros2 here
+
+A:
+
+First of all, your configuration looks correct, and the launch file is also.
+Generally, controllers do not initialize hardware interfaces not they can instantiate it. Hardware is (at current Foxy version) instantiated automatically when controller manager is started. This can be tested by commenting out spawners.
+Spawning of controllers is happening independently from hardware. Corresponding interfaces of the controller and hardware must exist and match.
+The issue could be that you are “instantiating” ros2_control-macro in URDF twice. Can you check this?
+
+Originally posted by destogl with karma: 877 on 2021-08-05
+This answer was ACCEPTED on the original site
+Post score: 1
+

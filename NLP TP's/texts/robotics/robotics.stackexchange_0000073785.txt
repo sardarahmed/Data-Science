@@ -1,0 +1,56 @@
+Q:
+
+pointclouds2 tf from map frame to sensor frame for octomap
+
+I am simulating my robot with the kinect in a created world in Gazebo. I can visualize the point clouds and images from RGB and Depth cameras in RVIZ. I want to take those point clouds and create a map using octomap. In order to do it I have to do a tf from map frame to sensor frame. (Octomap Info, check slide 20). I don't know if I should create somehow a tf broadcaster for map frame or create a node that listens to the pointclouds topic and publish to ??? or how to do it. My tf tree starts from base_link and then goes to robot links and camera link.
+I have been checking the tf tutorials but don't really understand how to do this. The next step is to call the octomap_server node through the following launch file.
+<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+    <param name="resolution" value="0.05" />
+    
+    <!-- fixed map frame (set to 'map' if SLAM or localization running!) default 'odom_combined'-->
+    <param name="frame_id" type="string" value="odom_combined" />
+    
+    <!-- maximum range to integrate (speedup!) -->
+    <param name="sensor_model/max_range" value="5.0" />
+    
+    <!-- data source to integrate (PointCloud2) -->
+    <remap from="cloud_in" to="/depth_cam/openni/depth/points" />
+
+</node>
+
+many thanks.
+
+Originally posted by torkx on ROS Answers with karma: 36 on 2016-05-05
+Post score: 1
+
+A:
+
+Hi, I've got pretty much the same problem as you. But I think you need to transform from your sensor frame to the map frame, not in the other direction. Because /map is what is getting displayed in the end. Hope we get some help, I did not understand how to use the tutorials in my case too.
+Greets
+Edit:
+Yesterday I got my mapping to work.
+Here are the steps I took:
+I've created a transform publisher, which provides a tf.
+It describes how to transform from my_moving_frame to my_fixed_frame. As I have variable transformings (my robot is being localized externally) I use the variables for my arguments.
+        br.sendTransform((x, y, z), tf.transformations.quaternion_from_euler(0, 0, k),
+                 rospy.Time(0),
+                 "my_moving_frame",
+                 "my_fixed_frame")
+
+Then I provided a pointcloud2 with a corresponding node to the topic /narrow_stereo/points_filtered2 like it's configured in the octomap_mapping.launch file.
+In the providers for the transform and the pointcloud you need to pay attention to the timing. Use rospy time (0) instead of time.now...
+Then you fire up your tf-provider, then your pcl2 provider, then you launch octomap_mapping.launch, then rviz rviz and display your map with the octomap-plugins (in the menu of rviz in the top of the application).
+Hope this rough description gets you further.
+
+Originally posted by Che. with karma: 48 on 2016-05-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by torkx on 2016-05-09:
+Yeah, conceptually that should be it but I just took the same wording as found in the Octomap documentation. I'm still working on how to create or provide the /odom frame or map/ frame. If I manage to get it working I'll upload my findings.
+Comment by Wen Weisong on 2017-06-04:
+Hi, have you finished this issue?
+Comment by Raisintoe on 2019-01-18:
+I am also having trouble with a moving tf frame and octomap_server. I believe it is because pointcloud2 data and tf frame timing are not matching up. octomap_server is continually producing the error: "Could not generate key for origin". I have not found any documentation on this error . . .
+

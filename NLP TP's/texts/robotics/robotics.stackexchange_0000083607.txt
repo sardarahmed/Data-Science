@@ -1,0 +1,63 @@
+Q:
+
+robot_pose_ekf and AMCL
+
+Hi!
+I have my own robot that works on odometry and lidar using AMCL. Everything works perfectly.
+After that, I decided to use robot_pose_ekf to improve data. I use the MPU6050 sensor and odometry from wheels data for this. /robot_pose_ekf/odom_combined give me a data.
+But I encountered such a problem that I do not know how to connect the robot_pose_ekf package to my the ready system with the AMCL.
+I searched the Internet, and did not find the information.
+In which files do I need to make changes to connect robot_pose_ekf?
+In launch file I wrote.
+    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
+  <param name="output_frame" value="odom_combined"/>
+  <param name="base_footprint_frame" value="base_link"/>
+  <param name="freq" value="30.0"/>
+  <param name="sensor_timeout" value="1.0"/>  
+  <param name="odom_used" value="true"/>
+  <param name="imu_used" value="true"/>
+  <param name="vo_used" value="false"/>
+  <param name="publish_tf" value="true"/>
+  <remap from="odom" to="odom"/>
+  <remap from="imu_data" to="imu_data" />
+</node>
+
+But navigation does not work. The terminal gets out of error.
+Timed out waiting for transform from base_link to map to become available before running costmap, tf error: . canTransform returned after 0.100751 timeout was 0.1
+
+Here is fragment of my original tf tree of working system, without robot_pose_ekf.
+Without robot_pose_ekf
+With robot_pose_ekf graph is the same exept frame called not "odom" but "odom_combined" and published by robot_pose_ekf.
+
+Originally posted by Andrey on ROS Answers with karma: 43 on 2017-10-29
+Post score: 2
+
+A:
+
+Your problem might be that you now have two parents for "base_link" in your tf tree, "odom" and "odom_combined".
+robot_pose_ekf has two outputs, the published topic "odom_combined" and the tf transform:
+
+The tf transform looks misconfigured in your launch file, you have set output_frame to "odom_combined" which does not exist in your tf tree. Note: output_frame is not the name of the published odometry topic, but the name of your odometry frame, see rep 105. So you should set output_frame to "odom". Since you can have only one publisher for this transform, this implies that you disable your previous publisher of the odom->base_link transform which is "diff_tf" in your tf tree.
+
+Finally if you have any node that subscribes to /odom you might want it to subscribe to /robot_pose_ekf/odom_combined instead.
+
+Originally posted by Humpelstilzchen with karma: 1504 on 2017-10-30
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Andrey on 2017-10-31:
+Thank a lot. I'' try it.
+Can you tell me if I need only to change the odom_frame_id parameter to connect to the amcl and that's all?
+And is there a problem in that, initially, the robot_pose_ekf transfer tf in base_footprint instead of base_linkl? I have remaped it in launch, but is will this work?
+Comment by Humpelstilzchen on 2017-10-31:\
+
+You better not change the "odom_frame_id" param in amcl, just change it in robot_pose_ekf. 2. You have set "base_footprint_frame" param to "base_link", so I don't see any "base_footprint" frame.
+
+Comment by Andrey on 2017-10-31:
+Okay.How i can change "odom_frame_id" in robot_pose_ekf? I wrote param name="odom_frame_id" value="odom"/ in launching robot_pose_ekf but nothing happens. And if i did remap from="/robot_pose_ekf/odom_combined" to="odom" i have 2 topics with the same name with odom from diff_tf. How i can do this?
+Comment by Humpelstilzchen on 2017-11-01:
+"odom_frame_id" is amcl parameter, corresponding parameter in robot_pose_ekf is "output_frame".
+Comment by Andrey on 2017-11-02:
+Okay, thank you I'll try it.
+

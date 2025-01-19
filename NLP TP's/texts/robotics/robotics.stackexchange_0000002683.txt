@@ -1,0 +1,40 @@
+Q:
+
+Altitude hold for quadcopter with Accelerometer and Barometer
+
+I wonder currently how to implement an altitude control for a quadcopter. I have atm just a barometer/GPS and an accelerometer. 
+Barometer and GPS are relatively straight forward implemented, but not very precise and slow. For the accelerometer readout, I remove the constant 9.81 m/s² acceleration by a low pass filter. Then I take this data and calculate out of it the climb-rate(in cm per s). I know the speed approximation by this way is not so great. However I don't know a better approach so far.
+For the calculation of the motor speeds I use atm two PIDs (STAB and RATE). 
+I coded the example shown below, without much testing so far. I believe it will not work out in a smooth and nice way. E. g. instead of the speed calculated of the accelerometer I could use the climb-rate of the barometer. However for low altitudes and small changes I do need very likely the accelerometer. 
+ArduPilot seems to use somehow in a different way both with a third PID for the acceleration. I believe they calculate the height difference like me. Then they use maybe for STAB-Pid the barometer climb rate (not like me the accelerometer) and calculate with acceleration data another output. Unfortunately I don't know how exactly, or whether there are other methods.
+Does someone know the exact layout to implement with a barometer and accelerometer an altitude hold function. I mean I am really not sure whether my ideas would be correct. Maybe I can post some options later.
+My PIDs:
+m_rgPIDS[PID_THR_STAB].kP(1.25);  // For altitude hold
+
+m_rgPIDS[PID_THR_RATE].kP(0.35);  // For altitude hold
+m_rgPIDS[PID_THR_RATE].kI(0.15);  // For altitude hold
+m_rgPIDS[PID_THR_RATE].imax(100); // For altitude hold
+
+Code for altitude hold:
+// Stabilizing code done before
+
+float fCurAlti_cm       = _HAL_BOARD.get_alti_m() * 100.f;        // Barometer and GPS data
+float fAcclClimb_cms    = _HAL_BOARD.get_accel_mg_ms().z * 100;   // Accelerometer output in cm per s (gravitational const. corrected)
+
+// calculate the difference between current altitude and altitude wanted
+float fAltStabOut       = _HAL_BOARD.m_rgPIDS[PID_THR_STAB].get_pid(fCurAlti_cm - (float)(rcalt_m*100), 1);
+// Rate it with climb rate (here with accelerometer)
+int_fast16_t iAltOutput = _HAL_BOARD.m_rgPIDS[PID_THR_RATE].get_pid(fAltStabOut - fAcclClimb_cms, 1);
+
+// Modify the speed of the motors
+iFL += iAltOutput;
+iBL += iAltOutput;
+iFR += iAltOutput;
+iBR += iAltOutput;
+
+A:
+
+Sorry, I'm not sure exactly what your code is doing but generally speaking ... 
+Instead of trying to control using the accelerometer directly, it is usually better to estimate velocity and control using that (as the D part of your PID controller). 
+If you're willing to dig into the math, the most common way to do this is to combine the barometer and accelerometer measurements using a Kalman filter. This will give you a smooth estimate of the altitude and velocity which can then be used as the P and D of the attitude controller.
+

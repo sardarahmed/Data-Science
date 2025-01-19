@@ -1,0 +1,176 @@
+Q:
+
+rospy Subscriber callback threading test
+
+I try to use rospy Subscriber callback handler to manipulate some object but it doesn't work like i would like to.
+In,subscriber handler is look like this :
+import rospy from std_msgs.msg import String import time
+
+verboser = True
+
+def counter() :
+    counter = 0
+    while(verboser and counter < 20 ):
+        counter += 1
+        time.sleep(1)
+        print(counter)
+
+def callback(data):
+    print("data INcoming : ",data.data)
+    if int(data.data) == 1:
+        counter()
+    else :
+        global verboser
+        verboser = False
+
+def main():
+    rospy.init_node('listener')
+    sub = rospy.Subscriber('chatter', String,callback)
+
+if __name__ == '__main__':
+    main()
+    rospy.spin()
+
+if i try to command  counter() function with code like this :
+import rospy
+from std_msgs.msg import String
+import time
+
+def talker():
+    pub = rospy.Publisher('chatter', String, queue_size=10)
+    rospy.init_node('talker', anonymous=True)
+    hello_str = "1"
+    pub.publish(hello_str)
+    time.sleep(5)
+    hello_str = "0"
+    pub.publish(hello_str)
+
+if __name__ == '__main__':
+    try:
+        talker()
+    except rospy.ROSInterruptException:
+        pass
+
+it produce this output :
+data INcoming :  1
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+data INcoming :  0
+
+but if i change talker to publish only one and re-run it with change variable 'hello_str' it seem counter() function does stop after run the process
+import rospy
+from std_msgs.msg import String
+import time
+
+def talker():
+    pub = rospy.Publisher('chatter', String, queue_size=10)
+    rospy.init_node('talker', anonymous=True)
+    hello_str = "1"
+    pub.publish(hello_str)
+
+if __name__ == '__main__':
+    try:
+        talker()
+    except rospy.ROSInterruptException:
+        pass
+
+ouput :
+data INcoming :  1
+1
+2
+3
+4
+5
+6
+data INcoming :  0
+7
+
+and i try to check if publisher publish after sleep 5 second via 'rostopic echo /chatter' and it seem it does send.
+so i think the rospy.Subscriber() is refuse to new threading callback that have been publish from the same process until it finish.
+Is there anyway to config rospy to accept this ?
+
+Originally posted by Cry-A-Lot on ROS Answers with karma: 15 on 2020-07-14
+Post score: 0
+
+Original comments
+Comment by Weasfas on 2020-07-14:
+I think the main problem is that you are not giving the callback enough time to perform its task. The callback, counter funtion will take at least 20 sec to be executed, but if you are publishing again at max rate the callback will be executed again while the other one is still producing.
+So in your set up, 1 is published and callback start the loop until a 0 is again published. Then the flag verboser is set to False forcing the other thread loop to stop right after receiveng the 0.
+As a comment:
+Callbacks in rospy are not threadsafe. You should use locks in any rospy node where multiple callbacks of any kind might interact.
+Comment by Cry-A-Lot on 2020-07-16:
+the point in this test is  i try to start then stop it by using the same subscriber,but it doesn't work out when i  using the same node to publishing to a topic and it work when  i run it separately which run one node to publish 1 to start a counter() function and another node to publish 0 the set the verboser to stop it.
+
+A:
+
+Hi @Cry-A-Lot,
+The main problem here is that you want to use rospy beyond its limitations. I will explain myself:
+In rospy, for a particular topic, there is only one thread that all the subscribers share. Hence, when your node publish 1 and after 5 sec publish 0, it is the same connection/subscriber and the thread is blocked, thus not setting the verbose flag to False.
+Your other method works exactly for this reason, when you publish 1 and then exits the program and relaunch again publishing 0, the subscriber connection is new and the callback is called in another thread changing the value of the flag and stopping the other loop thread.
+For this reason why you want to do cannot be done if not using tricks to be able to not block your processing, and one of those tricks is unregistering the subscriber for each callback called. It will look something like:
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import String
+import time
+
+verboser = True
+sub = None
+
+def counter() :
+    counter = 0
+    while(verboser and counter < 20 ):
+        counter += 1
+        time.sleep(1)
+        print(str(counter) + ". Verbose is: " + str(verboser))
+
+def callback(data):
+    global sub
+    sub.unregister()
+    sub = rospy.Subscriber('chatter', String, callback)
+    print("data INcoming : ",data.data)
+    if int(data.data) == 1:
+        counter()
+    else:
+        global verboser
+        verboser = False
+
+def main():
+    global sub
+    rospy.init_node('listener')
+    sub = rospy.Subscriber('chatter', String, callback)
+
+if __name__ == '__main__':
+    main()
+    rospy.spin()
+
+If someone came up with a more elegant solution rather than this I would glad to discuss it here, however, and that is my opinion, if you want to have more control about threats and synchronization I will try to use roscpp. But as I said that is my personal preference to deal with this kind of things.
+Hope that helps you.
+Regards!
+
+Originally posted by Weasfas with karma: 1695 on 2020-07-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Cry-A-Lot on 2020-07-17:
+so, even though ros publisher is asynchronous, pyros still has it own limitation that  there is only one thread that all the subscribers share. then, if i want to call my callback function again i need to use unregister() function to unsubscribe/disconnect to the topic and do registering to new connection by re-implement() Subscriber() function again that will  wait for a  new publishing.
+Your answer helps a lot. THANK!
+

@@ -1,0 +1,65 @@
+Q:
+
+Wrong publishing rate using ros::Rate
+
+Hi, I was trying to use ros::Rate to control the publishing rate. However for some reason, the publishing rate obtained is not the one I expected.
+Here's my code:
+ros::Publisher pub1,pub2;
+ros::Rate *r1,*r2; 
+
+void callbackInt(const std_msgs::Int16ConstPtr& msg) {
+    pub1.publish(msg);
+    r1->sleep();
+} 
+
+void callbackString(const std_msgs::StringConstPtr& msg) {
+    pub2.publish(msg);
+    r2->sleep();
+} 
+
+int main (int argc, char** argv) {
+    
+    ros::init (argc, argv, "test");
+    ros::NodeHandle nh;
+
+    ros::Subscriber sub = nh.subscribe ("/int", 1, callbackInt );
+    pub1 = nh.advertise<std_msgs::Int16> ("/pubInt", 1);
+
+    ros::Subscriber sub2 = nh.subscribe ("/string", 1, callbackString );
+    pub2 = nh.advertise<std_msgs::String> ("/pubString", 1);
+
+    ros::Rate rate(5);
+    r1 = &rate;
+    ros::Rate rate2(5);
+    r2 = &rate2;
+
+    ros::spin();
+}
+
+The code should be pretty straightforward: basically I'm subscribing to two different topics (/int and /string) and re-publishing on different topics (/pubInt and /pubString) at different 5 hz (their original rate was different).
+However, if I try to check the actual rate with rostopic hz I get 5 hz for /pubInt but half the rate (2.5) for /pubString. Any suggestion? Am I doing something wrong?
+
+Originally posted by Saphrosit on ROS Answers with karma: 197 on 2012-11-20
+Post score: 0
+
+A:
+
+You should not sleep in subscriber callbacks. The sleeps will block all other callbacks if you have just one spin thread. And I guess that's exactly what's happening. What probably happens is the following:
+
+callbackInt is executed and sleeps for 5 secs.
+callbackString is executed and doesn't sleep at all (the 5 secs are over already).
+callbackString might be executed again depending on the implementation of spin, It publishes again and sleeps 5 seconds.
+
+That means withing 5 seconds, you get two messages re-published for the string which would explain the rate of 2.5Hz.
+Instead of sleeping in the callbacks, implement your re-publisher differently.  The simplest solution would be to re-publish in a main loop if enough time since the last publish call passed. Don't forget to call spinOnce in your main loop to execute the subscriber callbacks.
+
+Originally posted by Lorenz with karma: 22731 on 2012-11-20
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Saphrosit on 2012-11-20:
+Thanks, this was actually the issue! Actually I solved using a ros::MultiThreadedSpinner and calling spinner.spin() instead of ``ros::spin()` and it seems to work. Thanks for your help!
+Comment by ZiyangLI on 2015-01-22:
+Hi @Lorenz, I don't get your answer. Why callbackString is executed and doesn't sleep at all? Does that mean when r1 sleeps, r2 will also take r1's sleep time into account? And why callbackString might be executed again?
+

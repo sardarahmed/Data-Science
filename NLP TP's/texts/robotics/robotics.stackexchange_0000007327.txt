@@ -1,0 +1,203 @@
+Q:
+
+How to transfer signed integers with libusb?
+
+Folks at programmers stack exchange asked me ask here:
+I want to communicate with an arduino and sent integers it. I code this program in C++. I initialy used bulk_transfer(), but it sends only char data.
+This in the API reference for libusb:
+http://libusb.org/static/api-1.0/group__syncio.html
+Here is the prototype of bulk_transfer()
+int     libusb_bulk_transfer (struct libusb_device_handle *dev_handle, unsigned char endpoint, unsigned char *data, int length, int *transferred, unsigned int timeout)
+As you can see, data is an unsigned char pointer, that is, a pointer to a buffer containing length unsigned chars. I can successfully transcieve strings. How do I transfer integers with sign?
+Currently I am thinking about a system in which the arduino asks for the digit by sending a character and my program sends the number as reply followed by the sign, which is requested next. Is this solution viable? Or should I transfer the integer as a string? Is there a better way?
+
+A:
+
+What you are looking for is called serialization. Serialization is the process of creating a string (a serial stream of data) (not necessarily NUL-terminated) from arbitrary data.
+The issue serialization addresses is the fact that the same data are represented in different computers differently. For example, take this struct:
+struct A
+{
+    unsigned int x;
+    unsigned long y;
+};
+
+struct A a = { 0x12345678, 0x1020304050607080LLU };
+
+This would be laid out in memory in a 32-bit little-endian CPU like this:
+lowest address           highest address
+       +--+--+--+--+--+--+--+--+
+       |78|56|34|12|80|70|60|50|
+       +--+--+--+--+--+--+--+--+
+        \____ ____/ \____ ____/
+             V           V
+             x           y
+
+On a 32-bit big-endian CPU like this:
+lowest address           highest address
+       +--+--+--+--+--+--+--+--+
+       |12|34|56|78|50|60|70|80|
+       +--+--+--+--+--+--+--+--+
+        \____ ____/ \____ _____/
+             V           V
+             x           y
+
+On a 64-bit little-endian CPU like this:
+lowest address                    highest address
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|78|56|34|12|??|??|??|??|80|70|60|50|40|30|20|10|
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+ \____ ____/ \____ ____/ \__________ __________/
+      V           V                 V
+      x         padding             y
+
+On a 16-bit big-endian microcontroller like this:
+lowest address           highest address
+       +--+--+--+--+--+--+--+--+
+       |56|78|??|??|50|60|70|80|
+       +--+--+--+--+--+--+--+--+
+        \_ _/ \_ _/ \____ ____/
+          V     V        V
+          x  padding     y
+
+In the above, ?? means irrelevant values where the compiler has introduced padding to align long. The values given to a.x and a.y are intentionally too large to fit in some architectures just so that in this example you could identify what byte belongs to what.
+Now the issue is that if you simply give the byte-representation of this struct from one computer to another, for example by simply transmitting over the network, the other computer is not guaranteed to see the same data. Imagine if in the example above, the 64-bit computer sends the representation to the 16-bit microcontroller, the x value would have the wrong byte order, and y value would be garbage taken from the padding in the original struct. If the 16-bit microcontroller sends the representation to the 64-bit computer, the x value would be half garbage, and the y value would be read outside the actual buffer sent, which is anything that happens to be there, such as your password.
+Now that you understand the problem, you need to learn how to serialize your data.  If you are interfacing with a system where serialization is already in place, of course you need to follow its rules.  However, if you are designing your system, you are free to do it however you like!  First, it's a good idea to define a fixed size for your data.  For example, in the example above, we could have defined struct A like this:
+struct A
+{
+    uint32_t x;
+    uint64_t y;
+};
+
+Doing this, now you know that x for example is always going to need 4 bytes to transfer, and you should expect to extract 4 bytes on the other side to reconstruct x.  Note that, you still can't send the memory representation of this struct from one computer to another because both the paddings could be different and the byte order.
+Next, you need to think about in which order you want to send the bytes. Let's say you want to send them in big-endian. You may also need to think about floating point numbers. How are you going to represent them? One possibility is to send them as two numbers: what comes before the . and what comes after it. How would you handle sign? This all depends on your application.
+So, let's serialize struct A with the assumption that it is going to be presented in big-endian. The code is very simple, you simply put the bytes in the order you define in a string and send it:
+size_t serialize_struct_A(struct A *data, unsigned char *buf, size_t buf_len)
+{
+    size_t len = 0;
+
+    /* we need 12 bytes for struct A, so buffer should have enough size */
+    if (buf_len < 12)
+        return 0;
+
+    /* you can either be lazy and specify each byte */
+    buf[len++] = data->x >> 24 & 0xFF;
+    buf[len++] = data->x >> 16 & 0xFF;
+    buf[len++] = data->x >> 8 & 0xFF;
+    buf[len++] = data->x & 0xFF;
+
+    /* or calculate simple formulas to do it in a loop */
+    for (int i = 56; i >= 0; i -= 8)
+        buf[len++] = data->y >> i & 0xFF;
+
+    /* len should be 12 now! */
+    return len;
+}
+
+Now we know for sure that buf contains the following regardless of the CPU architecture:
+lowest address                    highest address
++--+--+--+--+--+--+--+--+--+--+--+--+
+|12|34|56|78|10|20|30|40|50|60|70|80|
++--+--+--+--+--+--+--+--+--+--+--+--+
+ \____ ____/ \__________ __________/
+      V                 V
+      x                 y
+
+We could transfer this, e.g., with libusb like this:
+unsigned char a_serialized[12];
+
+size_t len = serialize_struct_A(&a, a_serialized, sizeof a_serialized);
+if (len == 0)
+    { /* error, my buffer was too small */ }
+
+int ret = libusb_bulk_transfer(dev, endpoint, a_serialized, len, &transferred, timeout);
+if (ret != 0)
+    { /* error */ }
+
+On the other side, when you receive the buffer, you can deserialize it. Again, the code is simple:
+int deserialize_struct_A(struct A *result, unsigned char *buf, size_t buf_len)
+{
+    size_t cur = 0;
+
+    /* we need 12 bytes for struct A, so we should have received this much */
+    if (buf_len < 12)
+        return -1;
+
+    *result = (struct A){0};
+
+    /* again, either the lazy way */
+    result->x |= buf[cur++] << 24;
+    result->x |= buf[cur++] << 16;
+    result->x |= buf[cur++] << 8;
+    result->x |= buf[cur++];
+
+    /* or the compact way */
+    for (int i = 56; i >= 0; i -= 8)
+        result->y |= buf[cur++] << i;
+
+    return 0;
+}
+
+So far, we dealt with unsigned numbers. How would you handle signed numbers? 2's complement representation is quite ubiquitous, so one could think of sending the signed number as if it were unsigned, relying on the fact that the sender and the receiver both use 2's complement representation.  If you cannot rely on this, there are a variety of things one could do.  One simple way would be to use an extra byte for the sign:
+size_t serialize_int32_t(int32_t data, unsigned char *buf, size_t buf_len)
+{
+    size_t len = 0;
+
+    /* we need 5 bytes for int32_t, so buffer should have enough size */
+    if (buf_len < 5)
+        return 0;
+
+    if (data < 0)
+    {
+        buf[len++] = 1;
+        data = -data;
+    }
+    else
+        buf[len++] = 0;
+
+    buf[len++] = data >> 24 & 0xFF;
+    buf[len++] = data >> 16 & 0xFF;
+    buf[len++] = data >> 8 & 0xFF;
+    buf[len++] = data & 0xFF;
+
+    /* len should be 5 now! */
+    return len;
+}
+
+int deserialize_int32_t(int32_t *result, unsigned char *buf, size_t buf_len)
+{
+    size_t cur = 0;
+    int sign;
+
+    /* we need 5 bytes for int32_t, so we should have received this much */
+    if (buf_len < 5)
+        return -1;
+
+    *result = 0;
+
+    /* again, either the lazy way */
+    sign = buf[cur++];
+    *result |= buf[cur++] << 24;
+    *result |= buf[cur++] << 16;
+    *result |= buf[cur++] << 8;
+    *result |= buf[cur++];
+
+    if (sign)
+        *result = -*result;
+
+    return 0;
+}
+
+There are a variety of optimizations that are possible.  For example, if you are sure that the architectures on both end are big-endian and therefore the memory layout for integers are identical, you could just transfer the memory representation, for example:
+ /* serialize */
+ *(uint32_t *)(buf + len) = data->x;
+ len += 4;
+
+ /* deserialize */
+ data->x = *(uint32_t *)(buf + len);
+ len += 4;
+
+Another optimization could be the following.  If you have multiple signed integers that you want to send with the method above, you could use one bit for the sign instead of one byte, then pack all those sign bits together in one or more bytes that are not necessarily placed directly before the number.  Or, if you are sure that a 4-byte number is always between 0x7FFFFFFF and -0x7FFFFFFF, you can use the most significant bit to store the sign with the rest of the bits showing the absolute value of the integer (this is called a sign and value method of representation for signed integers).
+Bottom line is that you need to be able to lay out your numbers byte by byte and be able to recover them on the other side of the communication. How you do that entirely depends on yourself.
+
+Note: the code snippets above are not tested!
+

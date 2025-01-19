@@ -1,0 +1,150 @@
+Q:
+
+Friction insufficient in grasping simulation
+
+Update 2
+Following some advice below I changed the ROS controller from EffortJointInterface to PositionJointInterface and this seems to be a step in the right direction, the object moves vertically a little bit, but it still does not grasp properly.  I've varied the joint effort limit and proportional gain but it seems like sometimes the force is too high, causing instability as shown in the animation, or else it is too low and the object just slips out of the gripper.  Parameters I've varied are mu, mu2, kp, kd, min_depth, and max_vel, even restoring them to their default values; all to no good effect.
+
+Original question
+For an application where a manipulator picks up a cylinder I have created a primitive gripper with a ROS SimpleTransmission and EffortJointInterface.  The Gazebo model for the cylinder comes from an STL file.  This is using Gazebo 9 and ROS Kinetic.  In Gazebo the gripper can push the cylinder around but it does not pick it up; the cylinder just slides through the gripper as shown in the animation.
+
+I've changed the friction coefficients in both the gripper urdf and the cylinder sdf to 100.0 (this question used to say 99999.9 but following an answer below I made them 100.0 instead).  I also reduced the mass of the cylinder.  The effort limit on the joint I set to 999999.9, just to try to get it to grip really hard.  The integral gain is 1.0 and the robot pauses after gripping to give time for the error integral to grow (the cylinder keeps the gripper from closing all the way).
+Part of the gripper urdf and the entire cylinder sdf are pasted below the animation.  Can you tell me what I need to do to get a gripper to pick up this object?
+Update: Because I thought perhaps there was insufficient contact between the cylinder and flat gripper, I changed the object model to a block and made the gripper taller.  Like the cylinder, the block has mass of 0.1 and friction coefficients of 100.  This animation shows that the result is the same as before.
+
+Here is the result of View --> Contacts.
+
+Part of gripper urdf
+  <!-- Prismatic joint -->
+  <joint name="gripper_joint" type="prismatic">
+    <origin xyz="${2 * gripper_side_block_width + gripper_thickness} 0 0" rpy="0 0 0" />
+    <parent link="gripper_wide_block_p" />
+    <child link="gripper_wide_block_d" />
+    <limit effort="999999.9" lower="-100" upper="100" velocity="0.5"/>
+  </joint>
+
+  <transmission name="gripper_joint_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="gripper_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="gripper_joint_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <!-- High friction on gripper -->
+  <gazebo reference="gripper_wide_block_p">
+    <mu1>100.0</mu1>
+    <mu2>100.0</mu2>
+    <minDepth>0.003</minDepth>  
+    <maxVel>0</maxVel>  
+  </gazebo>
+  
+  <gazebo reference="gripper_wide_block_d">
+    <mu1>100.0</mu1>
+    <mu2>100.0</mu2>
+    <minDepth>0.003</minDepth>  
+    <maxVel>0</maxVel>  
+  </gazebo>    
+</robot>
+
+Cylinder sdf
+<sdf version='1.6'>
+  <model name='Cone100'>
+    <link name='Cone100'>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose frame=''>0 0 0.14605 0 -0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0161005</ixx>
+          <ixy>5.1652e-35</ixy>
+          <ixz>5.85205e-35</ixz>
+          <iyy>0.0161005</iyy>
+          <iyz>5.04266e-19</iyz>
+          <izz>0.0135779</izz>
+        </inertia>
+      </inertial>
+      <collision name='Cone100_collision'>
+    <surface>
+      <friction>
+        <ode>
+          <mu>100.0</mu>
+          <mu2>100.0</mu2>
+        </ode>
+      </friction>
+      <!-- Change max_vel and/or min_depth to keep cones from "bouncing" -->
+      <contact>
+        <ode>
+          <!--max_vel>0</max_vel-->
+          <min_depth>0.001</min_depth>
+        </ode>
+      </contact>
+    </surface>
+        <pose frame=''>0 0 0 1.5708 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://Cone100/meshes/Cone100.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='Cone100_visual'>
+        <pose frame=''>0 0 0 1.5708 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://Cone100/meshes/Cone100.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>
+
+Originally posted by raequin on Gazebo Answers with karma: 165 on 2018-05-09
+Post score: 0
+
+Original comments
+Comment by Raskkii on 2018-05-11:
+Have you set intertias for your gripper parts? Also if you look at this tutorial: http://gazebosim.org/tutorials?tut=simple_gripper - they have set no mu1 or mu2 at all. You could try that if everything else fails.
+Comment by raequin on 2018-05-14:
+Thanks for your input.  Yes, the gripper parts have inertial values.  I cleared all the collision properties I'd set (mu1, mu2, kp, kd, min_depth, and max_vel).  This made things a little better (the cone gets picked up at least) but the grasp is unstable as shown in the top animation.
+Comment by Raskkii on 2018-05-15:
+What happens when you have the cylinder roll off the block for example? Does it roll off naturally or jump all over the place? Trying to see if it's the gripper causing the problems or the cylinder.
+Comment by RobotBoy on 2020-04-09:
+The problem with my system was that: even though i have high friction on everything related in the grasping, and the contacts were being made properly (shown by gazebo gui). The grippers were still slipping. The fix turned out to be that i had to use effort controllers for everything related to picking up and moving the cube, and not just the grippers.
+
+A:
+
+The cause behind this unrealistic interaction (that is, this lack of friction) is the use of PositionJointInterface for the UR10 joints.  Here's a decent explanation of the phenomenon:
+
+... using 'set position' or 'set
+velocity' in gazebo forces the physics
+simulation to try and accomplish this,
+which results in strange behavior.
+It's actually preferable, according to
+the Gazebo team members I'm working
+with, to always use 'set force' in
+Gazebo because that allows a more
+normal interaction when the commanded
+force of an arm joint puts the arm in
+contact with the environment.
+
+Following an example, I made local changes to the universal_robot package to use EffortJointInterface instead.  Some gain values from ARIAC provide decent performance.  Thanks to everyone who contributed suggestions!
+
+Originally posted by raequin with karma: 165 on 2018-09-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Saad Ahmad on 2020-03-27:
+Hi,
+i was having the same problem, with Franka Panda in gazebo. Is it necessary to use effort joint in the whole arm? I tried using effortjointInterface only in the hand link (only for finger joints), because panda-hand-controller is a separate controller by-default in the franka_ros package, so i kept positionInterface for the arm-controller and effortinterface for the handController.
+Comment by Saad Ahmad on 2020-03-27:
+The effort controller works as expected i.e; the gripper seems better locked on to the target object and overshoots as it looses contact while trying to lift the object. but still the problem persists, their seems to be no friction at all to give the object even a slight jerk off of the ground for a while. I have tried everything else explained here as well regarding  values and other gazebo params
+Comment by RobotBoy on 2020-04-09:
+Yes, you have to use effort controllers on the entire arm. I was having the same issue, the fix was to just create a trajectory controller for the arm i was using (ur5), instead of using a gazebo service to give joint positions.
+

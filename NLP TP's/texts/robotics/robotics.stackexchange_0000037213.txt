@@ -1,0 +1,114 @@
+Q:
+
+Activating shading for a .stl based environment in gazebo
+
+I built a simple rolling landscape terrain using the sculpt tool in Blender and exported this as STL. Using the terrain in a launch file works ok, but I can't figure out how to activate proper shading so visualization looks nice. I tried many of the available gazebo materials (PR2/Grey1, Gazebo/PioneerBody, Gazebo/White, Gazebo/GrassFloor) but all those resulted in a monochromatic landscape.
+The relevant parts of the .world file are:
+  <rendering:ogre>
+    <ambient>0.5 0.5 0.5 0.5</ambient>
+    <sky>
+      <material>Gazebo/CloudySky</material>
+    </sky>
+    <grid>false</grid>
+    <maxUpdateRate>10.</maxUpdateRate>
+    <!--<shadowTechnique>none</shadowTechnique>-->
+    <shadows>true</shadows>
+  </rendering:ogre>
+  
+   <model:physical name="landscape">
+   <xyz>0 0 0</xyz> 
+   <rpy>0 0 0</rpy>
+   <static>true</static>
+   <body:trimesh name="landscape_body">
+     <geom:trimesh name="landscape_geom">
+       <scale>1.0 1.0 1.0</scale>
+       <mesh>rolling_landscape_120m.stl</mesh>
+       <visual>
+         <scale>1.0 1.0 1.0</scale>
+         <mesh>rolling_landscape_120m.stl</mesh>
+     <genTexCoord>true</genTexCoord>
+     <material>Gazebo/GrassFloor</material>
+       </visual>
+     </geom:trimesh>
+       </body:trimesh>
+  </model:physical>
+
+Screenshot (using PR2/Grey1 material, Gazebo/GrassFloor looks the same, only green)
+image description http://img713.imageshack.us/img713/6132/unshadedlandscapegazebo.png
+The monochromatic visualization obviously makes judging distances of terrain features impossible. Shadows for the quadrotor UAV work (but shading apparently does not work).
+The .stl, world and launch file are also available in the hector_gazebo_worlds package and can be started using
+roslaunch hector_gazebo_worlds rolling_landscape_120m.launch
+
+/edit: So I found out that terrain as well as quadrotor do not receive illumination at all, but if I spawn spheres or other objects via the gazebo toolbar, those receive proper illumination.
+Update: I tried playing around with materials and found that there is a difference like night and day (literally ;) ) between built-in primitives and mesh files.
+Consider this extract from a URDF file:
+  <link name="base_link">
+    <inertial>
+      <mass value="1.316" />
+      <origin xyz="0 0 0" />
+      <inertia ixx="0.0128" ixy="0.0" ixz="0.0"
+      iyy="0.0128" iyz="0.0" 
+        izz="0.0218" />
+      </inertial>
+      
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>        
+           <cylinder radius="0.4" length="0.2"/>
+        </geometry>
+        <material name="DarkGrey" >
+          <color rgba="0.3 0.3 0.3 1"/>
+        </material>
+      </visual>
+      
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://hector_quadrotor_urdf/meshes/quadrotor/quadrotor_base.stl"/>
+        </geometry>
+      </c![image description](http://img842.imageshack.us/img842/6112/gazebodisk.png)ollision>
+      
+    </link>
+    
+    <gazebo reference="base_link">
+      <material>Gazebo/White</material>
+      <turnGravityOff>false</turnGravityOff>
+    </gazebo>
+
+Looks like this in gazebo:
+
+The cylinder apparently receives correct illumination.
+If I now use the following line instead of the cylinder (everything else stays the same, most notably the material!)
+ <mesh filename="package://hector_quadrotor_urdf/meshes/quadrotor/quadrotor_base.stl"/>
+
+the same scene looks like this:
+
+Can someone explain this? The mesh looks perfectly fine in Blender, Meshlab etc., so I doubt the normals are wrong. It seems very wrong that materials show such differences between being used for built-in primitives and external meshes.
+
+Originally posted by Stefan Kohlbrecher on ROS Answers with karma: 24361 on 2012-01-20
+Post score: 2
+
+A:
+
+I define my own materials and set them to image files that are non-monochromatic. It helps a bit with this problem. Take a look at the Gazebo.material file in simulator_gazebo/gazebo/gazebo/share/gazebo/Media/materials/scripts for an example. In your package, you can set it up to export materials to Gazebo (because you don't want to modify the simulator_gazebo folder if you didn't install from source). You can find that tutorial here.
+
+Originally posted by DimitriProsser with karma: 11163 on 2012-01-20
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Stefan Kohlbrecher on 2012-01-20:
+Sure, but what's the material used by the spawnable objects? My guess from looking at them would be "Gazebo/White", but this doesn't work for my meshes.
+Comment by DimitriProsser on 2012-01-20:
+I gave you the link to the material files. That's where all materials are located.
+Comment by Stefan Kohlbrecher on 2012-01-20:
+Oh, and when I spawn shapes like spheres, those get illuminated correctly. So I'll have a look at their material. /edit: Of which I don't know where to find it.
+Comment by Stefan Kohlbrecher on 2012-01-20:
+Ok, when setting ambient really really low, everything is very dark as expected. Added light sources produce shadows for the UAV, but otherwise do not illuminate the scene. There has to be something stupid I'm doing wrong :)
+Comment by Stefan Kohlbrecher on 2012-01-20:
+Yes :) I'll try setting ambient lower and playing around with the light sources once more
+Comment by DimitriProsser on 2012-01-20:
+Have you tried increasing the intensity of your point light source?
+Comment by Stefan Kohlbrecher on 2012-01-20:
+The GrassFloor material actually is non-monochromatic and should work when setting genTexCoord to true, right? Doesn't work for me (in this scenario). While having a texture is better than nothing, I'd really like to have normal-based lighting, like when viewing the mesh in Blender, Meshlab etc.
+

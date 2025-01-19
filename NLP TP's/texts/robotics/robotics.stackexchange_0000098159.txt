@@ -1,0 +1,98 @@
+Q:
+
+[pointcloud_to_laserscan] publish rate higher than scan_time
+
+Hi,
+I'm having a bit of trouble understanding the "scan_time" parameter from poincloud_to_laserscan package.
+I was supposing that it was the publish rate of the output (laser_scan). However, I have it set at 0.333 seconds (so 3Hz), but the publishing frequency of the scan is nearly 10Hz (as the pointcloud topic).
+Do I misunderstand the meanning of this parameter?
+Thanks a lot in advance
+Felix
+The launchfile for the laser scan :
+<?xml version="1.0"?>
+<launch>
+
+    <arg name="camera_name"          default="zed2" />
+    
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="pointcloud_to_laserscan" >
+        <remap from="cloud_in" to="$(arg camera_name)/zed_node/point_cloud/cloud_registered" />
+        <remap from="scan" to="$(arg camera_name)/zed_node/scan" />
+        <rosparam>
+target_frame: base_link
+transform_tolerance: 0.01
+min_height: -0.7
+max_height: 0.3
+angle_min: -M_PI/2
+angle_max: M_PI/2
+angle_increment: M_PI/360/2
+scan_time: 0.333
+range_min: 0.2
+range_max: 40.0
+use_inf: true
+inf_epsilon: 1.0
+concurrency_level: 1
+</rosparam>
+        </node>
+</launch>
+
+Sample output of rostopic hz for the scan:
+$ rostopic hz /zed2/zed_node/scan 
+subscribed to [/zed2/zed_node/scan]
+average rate: 9.285
+    min: 0.097s max: 0.121s std dev: 0.00687s window: 9
+average rate: 9.358
+    min: 0.097s max: 0.121s std dev: 0.00480s window: 18
+average rate: 9.354
+    min: 0.097s max: 0.121s std dev: 0.00470s window: 27
+average rate: 9.360
+    min: 0.097s max: 0.121s std dev: 0.00401s window: 37
+average rate: 9.338
+    min: 0.096s max: 0.121s std dev: 0.00448s window: 46
+average rate: 9.330
+    min: 0.096s max: 0.121s std dev: 0.00413s window: 55
+
+and for the pointcloud
+$ rostopic hz /zed2/zed_node/point_cloud/cloud_registered 
+    subscribed to [/zed2/zed_node/point_cloud/cloud_registered]
+    average rate: 9.806
+        min: 0.065s max: 0.133s std dev: 0.01900s window: 8
+    average rate: 9.898
+        min: 0.065s max: 0.133s std dev: 0.01296s window: 18
+    average rate: 9.891
+        min: 0.065s max: 0.133s std dev: 0.01087s window: 28
+
+Originally posted by felixN on ROS Answers with karma: 108 on 2021-01-29
+Post score: 0
+
+A:
+
+According to the pointcloud_to_laserscan README on GitHub, the scan_time parameter in your launch file has no functional effect; it just adds that value to the outgoing scan message:
+
+scan_time (double, default: 1.0/30.0) - The scan rate in seconds. Used to populate the output laser scan.
+
+Indeed, the source code only uses the parameter once after declaring it--to populate the message field:
+scan_msg->scan_time = scan_time_;
+
+Originally posted by tryan with karma: 1421 on 2021-01-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by felixN on 2021-01-29:
+Thanks a lot.
+I was unederstanding "used to populate" in the sens that the message was populated (in the sens created and sent) at this frequency (and that this parameter could therefore be used for downsampling).
+But the source code seems to confirm your version.
+Did it seem clear to you at first reading that it was only used to populate that field?
+If not, it might be interresting to change the documentation, for exemple replacing it by :
+scan_time (double, default: 1.0/30.0) - The scan rate in seconds. Only used to populate the scan_time field of the output laser scan message.
+
+Comment by tryan on 2021-01-29:
+I can definitely see both ways of reading it.  I'd say more clarity is better, and it wouldn't take much effort to change the wording.  It's even less clear on the wiki:
+
+~scan_time (double, default: 1.0/30.0)
+The scan rate in seconds.
+
+Can't hurt to express your thoughts to the maintainer(s).
+Comment by felixN on 2021-01-29:
+Thanks, I just created an issue on git to propose the change
+

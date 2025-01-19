@@ -1,0 +1,101 @@
+Q:
+
+Bumper in the gmapping costmap (Turtlebot)
+
+Hello,
+I am trying to use the bumper scans to avoid small obstacles with gmapping, I added this bump scan in the costmap_common_params.yaml file in the turtlebot_navigation package.
+Below is what is happening :
+
+When the robot bumps in an obstacle, the obstacle is put in the costmap
+When the robot go backward, the bumper is not pressed anymore and the laser sensor is not seeing the obstacle so the obstacle is instantaneously removed from the costmap.
+I would like the obstacle to stay longer in the costmap so that the navigation stack would change the path to avoid it.
+Is it possible to modify this in the costmap ?
+
+Thanks,
+Caroline
+UPDATE : yaml file
+max_obstacle_height: 0.60 
+obstacle_range: 2.5
+raytrace_range: 3.0
+robot_radius: 0.18
+inflation_radius: 0.50
+observation_sources: 
+   scan
+   bump
+
+scan: {data_type: LaserScan, topic: /scan, marking: true, clearing: true}
+bump: {data_type: PointCloud2, topic: mobile_base/sensors/bumper_pointcloud, marking: true, clearing: false}
+
+Where would you add the min_height parameter ? I tried with "scan: {data_type: LaserScan, topic: /scan, marking: true, clearing: true, min_obstacle_height:0.30}" but the costmap is not existing anymore in rviz.
+
+Originally posted by CarolineQ on ROS Answers with karma: 395 on 2013-03-13
+Post score: 4
+
+A:
+
+Hello,
+Cheap fix is to set the "clearing" parameter for your laser to false, but probably you still want the laser to do both marking and clearing.
+So I would try to play with "min_obstacle_height" and "max_obstacle_height" parameters for both laser and bumper scan; I didn't try this, but I suppose that if bumper obstacles are below laser ones and do not overlap, laser will not clear bumper hits. Can you post your YAML file?
+Btw, if you are using Turtlebot 2, there'is a package to publish bumper events as a PointCloud so it can be fussed in a costmap: kobuki_bumper2pc
+Hope this helps.
+Yes, you can use different values for different sensors. Try this (I didn't!):
+max_obstacle_height: 0.60 
+obstacle_range: 2.5
+raytrace_range: 3.0
+robot_radius: 0.18
+inflation_radius: 0.50
+observation_sources: 
+   scan
+   bump
+
+scan: {data_type: LaserScan, topic: /scan, marking: true, clearing: true, min_obstacle_height: 0.25, max_obstacle_height: 0.35}
+bump: {data_type: PointCloud2, topic: mobile_base/sensors/bumper_pointcloud, marking: true, clearing: false, min_obstacle_height: 0.01, max_obstacle_height: 0.10}
+
+I set typical values for Turtlebot 2.
+Update:
+This works for me... surprisingly! I have read the wiki for costmap2d and min/max obstacle_height are just intended to filter out sensor data above the robot or low enough to be ignored. In fact, afaik, costmap2d keeps no track of which sensor marked/cleared an obstacle, nor at which height it was spotted; if so, my previous reasoning is simply stupid. So I suppose this because of another reason.
+Maybe what you need is to use a voxel map, who contains 3D information. I didn't use them by now (set map_type as "voxel")
+New update:
+I have being experimenting with voxel maps to fuse information from three different sensors and it works fine. But you must be careful when setting  min/max obstacle_height for any sensor so each one fits in its voxel, and so they don't interfere with each other. The default voxel map's z_resolution is 0.2, what means that every sensor must be separated by at least 20 cm. Here are my voxel maps and sensors configuration:
+...
+origin_z: 0.0
+z_resolution: 0.1
+z_voxels: 3
+...
+
+...
+kn_scan: {data_type: LaserScan, topic: scan, marking: true, clearing: true, min_obstacle_height: 0.2, max_obstacle_height: 0.3}
+ir_scan: {data_type: LaserScan, topic: ir_scan, marking: true, clearing: true, min_obstacle_height: 0.1, max_obstacle_height: 0.2}
+bumpers: {data_type: PointCloud2, topic: mobile_base/sensors/bumper_pointcloud, marking: true, clearing: false, min_obstacle_height: 0.0, max_obstacle_height: 0.1}
+
+This works as expected but, as I don't know the internals of costmap, I'm not sure whether my conclusions are right or I just have been lucky!
+
+Originally posted by jorge with karma: 2284 on 2013-03-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by CarolineQ on 2013-03-15:
+Thanks for help.
+Yes as you said I would like the laser to do both marking and clearing.
+I tried to add the min_obstacle_height and maximum_obstacle_height but I am not sure I can use different parameters for laser and bumpers... I added my yaml file in an update.
+Comment by jorge on 2013-03-29:
+Sorry for the huge lapse for responding; I hope you fix your problem. Check my update if not.
+Comment by CarolineQ on 2013-04-01:
+Hey, thanks for your update. I tried to do exactly the same thing than you but when I do that, I can not see the costmap anymore in rviz, the obstacles and inflated obstacles are not in rviz anymore...
+Comment by jorge on 2013-04-03:
+mmm....  there'is a missing comma in my configuration; I have fixed it. Apart from this, I have being playing a bit with costmap2d. I have updated my answer accordingly.
+Comment by CarolineQ on 2013-04-08:
+Hello, it doesn't seem to work with my robot. When I add the minimum height and maximum height (as you did) I can't see the costmap anymore for the laser. The costmap has only the points provided by the bumper...
+Comment by jorge on 2013-04-08:
+Note that if the laser scan height is not within the min and max values it will be filtered out. The values I put match for the TurtleBot2 Kinect position
+Comment by jorge on 2013-05-03:
+I updated my answer again. I think now I understand what was happening
+Comment by CarolineQ on 2013-06-03:
+Hi jorge,
+thanks for the update. I finally decided to use the bumpers only for safety controller, so the obstacles are not really stored in the costmap. I didn't test it but what you said about the voxel map seems to be a good solution.
+Comment by CarolineQ on 2013-06-03:
+I  am also thinking about using the Kinect data instead of the bumpers data to detect obstacles my Hokuyo laser cannot see.
+Comment by CarolineQ on 2013-06-14:
+Hi jorge, I just updated my algorithm to take into account the Kinect data to see obstacles that are above the laser range finder. I used a voxel map as you suggested and it works well. So I think voxel maps are a very good way for these kind of things.
+

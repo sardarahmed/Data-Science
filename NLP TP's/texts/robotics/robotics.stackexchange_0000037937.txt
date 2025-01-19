@@ -1,0 +1,56 @@
+Q:
+
+issue of default frame_id for velodyne_pointcloud/Transform2
+
+I am testing loading a pcap file and transform velodyne_msgs/VelodyneScan into /velodyne/pointcloud2, and that the converted pointcloud2 data looks not right. And I think that this is caused by the default frame_id setting.
+By default, the frame_id of velodyne_msgs/VelodyneScan is "velodyne" and the frame_id for /velodyne/pointcloud2 is "odom", and here is my launch file,
+
+<launch>
+  <node pkg="tf" type="static_transform_publisher" name="velodyne_broadcaster" 
+        args="0 0 2 0 0 0 base velodyne 10" />
+  <node pkg="tf" type="static_transform_publisher" name="base_broadcaster"
+        args="0 0 0 0 0 0 odom base 100" />
+  <node pkg="tf" type="static_transform_publisher" name="odom_broadcaster"
+        args="0 0 0 0 0 0 map odom 100" />
+
+  <node pkg="velodyne_common" type="read" name="read" 
+        args="-f $(find velodyne_common)/../velodyne_data_01/unit_46_Monterey_subset.pcap" >
+        <param name="frame_id" type="string" value="velodyne" />
+  </node>
+
+  <!-- start nodelet manager -->
+  <node pkg="nodelet" type="nodelet" name="velodyne_nodelet_manager" 
+        args="manager" />
+
+  <!--transform velodyne/packets into pointcloud2 via nodelet -->
+  <node pkg="nodelet" type="nodelet" name="transform2" 
+        args="load velodyne_pointcloud/Transform2 velodyne_nodelet_manager" > 
+  </node>
+
+  <node pkg="rviz" type="rviz" name="rviz" />
+
+</launch>
+
+The original data coordinates are relative to the velodyne frame, yet the converted pointcloud2 shifted down (2 meters, in this case) from the velodyne frame. Then I have to respecify the frame_id for pointcloud2 to "velodyne" in order to locate the resultant pointcloud2 correctly.
+So my feeling is that the above default frame_id looks not so reasonable, since typically there is a determinate tf tree in the scenario and the pointcloud2 should not be remapped arbitrarily to a frame other than the default value "velodyne". Correct me if I am wrong.
+clark
+
+Originally posted by clark on ROS Answers with karma: 393 on 2012-02-15
+Post score: 2
+
+A:
+
+The velodyne_pointcloud package is currently in active development. We hope to release a complete version soon, but until then you should only use it experimentally.
+As part of this redesign, the velodyne_common package will soon be deprecated. If you want to try the new, experimental packages, there is a driver nodelet that goes with velodyne_pointcloud (start the nodelet manager first):
+<node pkg="nodelet" type="nodelet" name="driver_nodelet"
+      args="load velodyne_driver/DriverNodelet velodyne_nodelet_manager" />
+
+There is currently an active design review for the velodyne stack. Please sign up and contribute your ideas and suggestions.
+EDIT:
+The main purpose of the transform nodelet is transforming data from a moving device into some stationary coordinate frame. The Velodyne turns at 10Hz, so the vehicle can move far enough to affect registration during a compete revolution. REP-0105 recommends the /odom frame for that purpose. Since your needs may vary, the frame_id parameter is provided.
+If you just want the data converted to sensor_msgs/PointCloud2 in the /velodyne frame, the velodyne_pointcloud/Cloud2Nodelet should suffice.
+
+Originally posted by joq with karma: 25443 on 2012-02-16
+This answer was ACCEPTED on the original site
+Post score: 1
+

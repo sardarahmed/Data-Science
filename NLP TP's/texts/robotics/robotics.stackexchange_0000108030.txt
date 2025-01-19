@@ -1,0 +1,163 @@
+Q:
+
+How to use MoveGroupInterface within a node?
+
+I am a ROS beginner trying to write an interface for a robot arm in c++ that uses moveit2 for inverse kinematics. What I want to do is have a node with a MoveGroupInterface handle that I can use to set pose goals for moveit whenever it receives a message from a subscribed topic. However, the moveit2 tutorials only explain how to use the MoveGroupInterface class within the main function of a program. A link to the tutorial I am referring to is below:
+https://moveit.picknik.ai/humble/doc/examples/move_group_interface/move_group_interface_tutorial.html
+The constructor for MoveGroupInterface requires a shared pointer to a node, and I don't know how I would create and spin a node within another node, or even that is good practice. The API for MoveGroupInterface is below: https://moveit.picknik.ai/humble/api/html/classmoveit_1_1planning__interface_1_1MoveGroupInterface.html#a1d1040090d7a0457384bacaef839237e
+I am just confused on the best way to send commands to moveit within an already created node. I have posted my current code, and would just like some help on how/where to implement MoveGroupInterface in it.
+class IKInterface : public rclcpp::Node{
+  public:
+    IKInterface() : Node("ik_interface"){
+      subscription_ = this->create_subscription<geometry_msgs::msg::Pose>(
+      "pose_goal", 10, std::bind(&IKInterface::topic_callback, this, _1));
+    }
+
+  private:
+
+    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr subscription_;
+    void topic_callback(const geometry_msgs::msg::Pose &goal_pose) const{
+      RCLCPP_INFO(this->get_logger(), "x val: %.5f\ny val: %.5f\nz val: %.5f", goal_pose.position.x, goal_pose.position.y, goal_pose.position.z);
+
+    }
+};
+
+int main(int argc, char * argv[]){
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<IKInterface>());
+  rclcpp::shutdown();
+  return 0;
+}
+
+A:
+
+The documentation examples are a very good starting point for beginners. Experimenting with the basics helps us understand the requirements to implement IK solving or other functionalities. We can build our own C++ ROS2/MoveIt2 classes to do such functionalities through inheritance or composition. The point you mentioned about having some of the objects requiring a shared pointer to a node passed at construction is the main challenge.
+I will share with you two working examples of solving Ik using a class as you want, which is a good practice when designing our code functionalities. The code examples below make a class IKInterface and implement a method sampleSolveIK for solving the IK problem. This method gets the arm's current pose and adds 5.0 cm to the Z coordinate to make a new pose. Then, it solves IK to check if this new pose is reachable.
+(1) Using inheritance of rclcpp::Node class:
+#include <rclcpp/rclcpp.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_state/robot_state.h>
+#include <geometry_msgs/msg/pose.hpp>
+
+class IKInterface : public rclcpp::Node
+{
+public:
+    IKInterface()
+        : Node("ik_interface_node"),
+          robot_model_loader_(std::make_shared<rclcpp::Node>(this->get_name()), "robot_description"),
+          robot_model_(robot_model_loader_.getModel()),
+          robot_state_(std::make_shared<moveit::core::RobotState>(robot_model_)),
+          planning_group_("panda_arm") // Change planning_group_ to match your robot
+    {   
+        joint_model_group_ = robot_model_->getJointModelGroup(planning_group_);
+    }
+
+    void sampleSolveIK()
+    {
+        moveit::planning_interface::MoveGroupInterface move_group_interface(std::make_shared<rclcpp::Node>(this->get_name()), planning_group_);
+        
+        // get current pose, increase its z coordinate by 5 cm and solve IK to see if the new pose is reachable
+        auto current_pose = move_group_interface.getCurrentPose();
+        geometry_msgs::msg::Pose target_pose;
+        target_pose.position.x = current_pose.pose.position.x;
+        target_pose.position.y = current_pose.pose.position.y;
+        target_pose.position.z = current_pose.pose.position.z + 0.05; // Fixed to directly modify the z coordinate
+        
+        bool found_ik = robot_state_->setFromIK(joint_model_group_, target_pose);
+        if (found_ik)
+        {
+            RCLCPP_INFO(this->get_logger(), "IK solution found.");
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "IK solution not found.");
+        }
+    }
+
+private:
+    robot_model_loader::RobotModelLoader robot_model_loader_;
+    moveit::core::RobotModelPtr robot_model_;
+    moveit::core::RobotStatePtr robot_state_;
+    std::string planning_group_;
+    const moveit::core::JointModelGroup* joint_model_group_;
+};
+
+int main(int argc, char** argv)
+{
+    rclcpp::init(argc, argv);
+    
+    auto ik_interface = std::make_shared<IKInterface>();
+    ik_interface->sampleSolveIK(); 
+
+    rclcpp::spin(ik_interface);
+    rclcpp::shutdown();
+    return 0;
+}
+
+(2) Using composition (our class has a shared ptr to rclcpp::Node as a member variable)
+#include <rclcpp/rclcpp.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_state/robot_state.h>
+#include <geometry_msgs/msg/pose.hpp>
+
+class IKInterface
+{
+public:
+    explicit IKInterface(rclcpp::Node::SharedPtr node)
+        : node_(node),
+          robot_model_loader_(node, "robot_description"),
+          robot_model_(robot_model_loader_.getModel()),
+          robot_state_(std::make_shared<moveit::core::RobotState>(robot_model_)),
+          planning_group_("panda_arm") // Change planning_group_ to match your robot
+    {
+        joint_model_group_ = robot_model_->getJointModelGroup(planning_group_);
+    }
+
+    void sampleSolveIK()
+    {
+        moveit::planning_interface::MoveGroupInterface move_group_interface(node_, planning_group_);
+        
+        // get current pose, increase its Z cordiate 5 cm and solve IK to see if the new pose is reachable
+        auto current_pose = move_group_interface.getCurrentPose();
+        geometry_msgs::msg::Pose target_pose;
+        target_pose.position.x = current_pose.pose.position.x;
+        target_pose.position.y = current_pose.pose.position.y;
+        target_pose.position.z += current_pose.pose.position.z + 0.05;
+
+        bool found_ik = robot_state_->setFromIK(joint_model_group_, target_pose);
+        if (found_ik)
+        {
+            RCLCPP_INFO(node_->get_logger(), "IK solution found.");
+        }
+        else
+        {
+            RCLCPP_INFO(node_->get_logger(), "IK solution not found.");
+        }
+    }
+
+private:
+    rclcpp::Node::SharedPtr node_;
+    robot_model_loader::RobotModelLoader robot_model_loader_;
+    moveit::core::RobotModelPtr robot_model_;
+    moveit::core::RobotStatePtr robot_state_;
+    std::string planning_group_;
+    const moveit::core::JointModelGroup *joint_model_group_;
+};
+
+int main(int argc, char **argv)
+{
+    rclcpp::init(argc, argv);
+    
+    auto node = std::make_shared<rclcpp::Node>("ik_interface_node");
+    IKInterface ik_interface(node);
+    ik_interface.sampleSolveIK();
+
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+
+I have tested both examples with the panda_arm used in MoveIt demos and they work well and give the same result. Please change the planning group name to your robot's planning group when using it. I hope this helps!
+

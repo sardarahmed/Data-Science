@@ -1,0 +1,116 @@
+Q:
+
+Service global name error
+
+I'm having a lot of troubles doing the following in ROS: I would like to subscribe to a fakeARpublisher and resend a pose information through a service. In short, I did a script that it is subscribed to a topic and at the same time acts like a server for a service called LocalizePart. The code is given below:
+#!/usr/bin/env python
+# license removed for brevity
+import rospy
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from myworkcell.msg import message1
+from myworkcell.srv import LocalizePart
+from fake_ar_publisher.msg import ARMarker
+import random
+received_pose=ARMarker()
+def callback(data):
+    #print "receiving data"
+    received_pose.pose=data.pose
+   # print "received_pose"
+   
+    
+
+def handle_service2(req):
+    print "in the response"
+    #req.base_frame=received_pose
+    rospy.loginfo(rospy.get_caller_id() + "I heard %s", received_pose.pose)
+    print "Im here"
+    return LocalizePartResponse(received_pose.pose)
+
+def vision_node_service_server_2():
+    
+    rospy.init_node('myworkcell_node', anonymous=True)
+    #ROS_INFO("ScanNPlan node has been initialized");
+    #print "about to subscribe"
+    rospy.Subscriber('ar_pose_marker',ARMarker, callback)
+    print "hereeeee"
+    #print "subscribed"
+    #ROS_INFO("I'm subscribed to fake_ar_publisher");
+    #s=rospy.Service('localize_part',LocalizePart,handle_service2)
+    s=rospy.Service('Localize_Part',LocalizePart,handle_service2)
+    #print"I'm here already"
+    rospy.spin()
+
+if __name__ == '__main__':
+    try:
+        vision_node_service_server_2()
+    except rospy.ROSInterruptException:
+        pass
+
+But when I send a request to this service, it shows the following error:
+Error processing request: global name 'LocalizePartResponse' is not defined
+
+Any advise would be greatly appreciated. Thank you in advance
+
+Originally posted by anibal on ROS Answers with karma: 3 on 2017-11-10
+Post score: 0
+
+A:
+
+Hello,
+I had formatted your code got something like this:
+#!/usr/bin/env python
+
+import rospy
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from myworkcell.msg import message1
+from myworkcell.srv import LocalizePart
+from fake_ar_publisher.msg import ARMarker
+import random
+
+received_pose=ARMarker()
+
+def callback(data):
+    #print "receiving data"
+    received_pose.pose=data.pose
+    # # print "received_pose"
+
+def handle_service2(req):
+    print "in the response"
+    #req.base_frame=received_pose
+    rospy.loginfo(rospy.get_caller_id() + "I heard %s", received_pose.pose)
+    print "Im here"
+    return LocalizePartResponse(received_pose.pose)
+
+def vision_node_service_server_2():
+    rospy.init_node('myworkcell_node', anonymous=True)
+    #ROS_INFO("ScanNPlan node has been initialized");
+    #print "about to subscribe"
+    rospy.Subscriber('ar_pose_marker',ARMarker, callback)
+    print "hereeeee"
+    #print "subscribed"
+    #ROS_INFO("I'm subscribed to fake_ar_publisher");
+    #s=rospy.Service('localize_part',LocalizePart,handle_service2)
+    s=rospy.Service('Localize_Part',LocalizePart,handle_service2)
+    #print"I'm here already"
+    rospy.spin()
+
+if __name__ == '__main__':
+    try:
+        vision_node_service_server_2()
+    except rospy.ROSInterruptException:
+        pass
+
+Finally, I've reproduced your problem (with some simplifications, because I don't have all your message definitions and the publisher) and concluded that to solve it you only have to import the server response library (you can check my steps in this video: https://youtu.be/A8cK3Ns0W4M).
+ROS creates 3 classes for each service message: Service definition, Request message and Response message. You should take a look here: http://wiki.ros.org/rospy/Overview/Services
+Following the code I've posted, I had just to replace this:
+from myworkcell.srv import LocalizePart
+with this:
+from myworkcell.srv import LocalizePart, LocalizePartResponse
+I hope it can help you!
+
+Originally posted by marcoarruda with karma: 541 on 2017-11-12
+This answer was ACCEPTED on the original site
+Post score: 3
+

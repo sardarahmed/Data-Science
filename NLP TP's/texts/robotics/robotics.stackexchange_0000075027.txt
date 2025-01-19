@@ -1,0 +1,66 @@
+Q:
+
+velodyne_points with timesync
+
+Hi,
+I have three point cloud topics and want to use time sync, i.e. message filter, to sync and read them.
+But I get a huge error. This is the part where I define the subscriber.
+ sub_HDL_1  = new message_filters::Subscriber<VPointCloud>(nh, "HDL_1/velodyne_points", 1);
+ sub_HDL_2  = new message_filters::Subscriber<VPointCloud>(nh, "HDL_2/velodyne_points", 1);
+ sub_VLP  = new message_filters::Subscriber<VPointCloud>(nh, "VLP/velodyne_points", 1);
+ timesync = new message_filters::TimeSynchronizer<VPointCloud, VPointCloud, VPointCloud>(*sub_HDL_1, *sub_HDL_2, *sub_VLP, 50);
+ timesync->registerCallback(boost::bind(&myclass::dataReceived, this, _1, _2, _3));
+
+>  error: could not convert ‘m.pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::header.pcl::PCLHeader::stamp’ from ‘const uint64_t {aka const long unsigned int}’ to ‘ros::Time’
+ static ros::Time value(const M& m) { return m.header.stamp; }
+
+Has someone done this before or have any idea how to solve it?
+Thanks in advance.
+
+Originally posted by b-sriram on ROS Answers with karma: 105 on 2016-07-06
+Post score: 1
+
+Original comments
+Comment by joq on 2016-07-06:
+The ROS message header has a ros::Time stamp, while PCL now has its own uint64_t stamp, a different type. The pcl_ros package provides some translation between the two. I don't see a message filter there, however.
+Comment by joq on 2016-07-06:
+Are you trying to combine complete rotational scans from all three devices? That probably won't work very well. Maybe it would help if you explain what you are trying to achieve.
+Comment by b-sriram on 2016-07-07:
+hi thanks. I have a seperate visualisation app and i want to pass the topics to this program to see all the point clouds from the velodynes. So if i can have a message filter then I can sync them in time.
+Comment by joq on 2016-07-11:
+It would probably work better to display each scan message when it arrives (separately), showing it for some reasonable duration, depending on rotational rate (100ms, or maybe 200ms for the default 10Hz spin rate). I believe that is how rviz does it.
+
+A:
+
+Try using sensor_msgs::PointCloud2 instead of VPointCloud.
+
+Originally posted by joq with karma: 25443 on 2016-07-07
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by b-sriram on 2016-07-07:
+ya i used the same to sync.. but I'm not able to read the unit8[] data i.ie the point cloud out of it.
+That's y i switched to VpointCloud as you had suggested in a previous question. http://answers.ros.org/question/132811/accessing-layers-in-velodyne-point-cloud/
+Comment by joq on 2016-07-07:
+I suppose you could try the PointCloud2 iterator in the sensor_msgs package: http://docs.ros.org/kinetic/api/sensor_msgs/html/point__cloud2__iterator_8h.html
+Comment by b-sriram on 2016-07-08:
+hi,
+I tried what you suggested but there is a complication. The timesync call back uses a const Ptr and the Pointcloud2 Iterator doesn't
+sensor_msgs::PointCloud2Iterator<float> iter_x(*points_msg, "x");
+
+Comment by joq on 2016-07-08:
+There is a const iterator, too: http://docs.ros.org/kinetic/api/sensor_msgs/html/classsensor__msgs_1_1PointCloud2ConstIterator.html
+Comment by b-sriram on 2016-07-11:
+thanks. So this is my subscriber here and when i run the node, theres nothing happening. The registered call back function doesn't get called at all (i see this as i cannot see any output 's')
+Comment by b-sriram on 2016-07-11:
+void myclass::cloudReceived(const sensor_msgs::PointCloud2ConstPtr& points1, const sensor_msgs::PointCloud2ConstPtr& points2) { std::cout <<"s"; sensor_msgs::PointCloud2ConstIterator<float> iter_x1(*points1, "x"); sensor_msgs::PointCloud2ConstIterator<float> iter_x2(*points2, "x"); }
+Comment by joq on 2016-07-11:
+Maybe the time synchronizer is not working for such widely-space messages?
+Comment by joq on 2016-07-11:
+Are all of the devices definitely providing data?
+Comment by b-sriram on 2016-07-19:
+ya they are. I'm sure as when I use three different subscriber callbacks with VPointCloud they work without any problem
+Comment by joq on 2016-07-19:
+Why not do it that way, then?
+

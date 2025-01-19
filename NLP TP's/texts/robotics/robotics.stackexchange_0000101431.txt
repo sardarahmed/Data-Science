@@ -1,0 +1,144 @@
+Q:
+
+ROS Service (client inside server node)
+
+Is it possible to put a client node inside a server node when making service?
+Iam trying to make a Service and as far as I know, all the functions are stored in the server node and inside the client node is where the parameters or arguments you want for the server.
+What Im trying to make is a service that will spawn turtle n times. The code compiles flawlessly also gives me the response when using rosservice command. Problem is I cant spawn any turtle, (turtlesim_spawn_client.call(srv)) always returns to false. Please help
+ #include "ros/ros.h"
+ #include "srv_turtlesim/spawn_turtle.h"
+ #include "turtlesim/Spawn.h"
+
+ ros::ServiceClient turtlesim_spawn_client;
+
+ class spawn_turtle_class
+{
+public:
+spawn_turtle_class(ros::NodeHandle& nh)
+{
+    turtlesim_spawn_client = nh.serviceClient<turtlesim::Spawn>("turtlesim_spawn");
+}
+
+bool spawn_callback(srv_turtlesim::spawn_turtle::Request &req,
+                    srv_turtlesim::spawn_turtle::Response &res)
+{
+    bool not_spawn=false;
+    turtlesim::Spawn srv;
+    ROS_INFO("request: n=%d", (int)req.num_turtle);
+
+/----------------------------------------------------------------------------------------/
+    for (int i = 0; req.num_turtle > i; i++)
+    {
+        srv.request.x = random() % 12;
+        srv.request.y = random() % 12;
+        srv.request.theta = random() % 360;
+
+        if (turtlesim_spawn_client.call(srv))
+        {
+            ROS_INFO("response: You got turt");
+        }
+        else
+        {
+            ROS_INFO("response: No turt :(");
+            not_spawn = true;
+        }        
+    }
+
+/----------------------------------------------------------------------------------------/
+    if (not_spawn)
+    {
+        res.status = "Incomplete";
+    }
+    else
+    {
+        res.status = "Done";
+    }
+    
+    return true;
+}
+
+};
+
+int main (int argc, char**argv)
+{
+ros::init(argc,argv, "spawn_node");
+ros::NodeHandle nh;
+spawn_turtle_class spawn2(nh);
+ros::ServiceServer service = nh.advertiseService("spawn_turtle_srv", &spawn_turtle_class::spawn_callback, &spawn2);
+ros::spin();
+return 0;
+}
+
+Originally posted by naihart on ROS Answers with karma: 30 on 2022-03-30
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2022-03-30:
+Can you prepare a MWE (Minimal Working Example) of your project with these node and service (or at least your attempts)? Then we can try to help easier :)
+Comment by naihart on 2022-03-31:
+#include "ros/ros.h"
+     #include "srv_turtlesim/spawn_turtle.h"
+    
+     #include "turtlesim/Spawn.h"
+    
+    bool spawn_turtle(srv_turtlesim::spawn_turtle::Request &req,
+             srv_turtlesim::spawn_turtle::Response &res)
+    {
+    
+        ROS_INFO("request: n=%d", (int)req.num_turtle);
+        for (int i = 0; req.num_turtle > i; i++){
+    
+      //Im trying to call turtlesim/Spawn service client here
+    
+         turtlesim::Spawn srv
+         srv.request.x = random() % 12;
+         srv.request.y = random() % 12;
+         srv.request.theta = random() % 360;
+            if (spawn_client.call(srv)) {
+               res.status= "You got turt";
+            }
+            else{
+               res.status= "No turt :(";
+            }
+        }
+        return true;
+    
+    }
+
+int main(int argc, char **argv)
+{
+
+    ros::init(argc, argv, "spawn_turtle_service");
+    ros::NodeHandle nh;
+    ros::ServiceServer service = nh.advertiseService("spawn_turtle2", spawn_turtle);
+    ros::ServiceClient spawn_client = nh.serviceClient<turtlesim::Spawn>("spawn");
+    ros::spin();
+
+}
+
+Comment by naihart on 2022-03-31:
+From that comment on my callback, I want to call the turtlesim/Spawn service client but the creation of the client is inside the main function  making my request for turtlesim/Spawn undefined
+Comment by ljaniec on 2022-03-31:
+Can you add this code in the question? Formatting will be better
+Comment by naihart on 2022-03-31:
+Im sorry for that, Im new with this ROS and with this forum.
+Comment by ljaniec on 2022-03-31:
+No problem, you will find out everything. BTW there is no ; after the turtlesim::Spawn srv, what kind of error does this show you? Can you copy & paste the entire compile errror from the terminal to the question?
+Comment by naihart on 2022-03-31:
+Hi I finally managed to make a decent code than the previous code. It compiles and gives me the response. One problem tho is that turtlesim_spawn_client.call(srv) is not working. it always returns to false. I edited the question already. the separated lines of code are where I got problem.
+
+A:
+
+This is stupid. The only problem with the code is the line
+   turtlesim_spawn_client = nh.serviceClient<turtlesim::Spawn>("turtlesim_spawn");
+
+I only need to change the name "turtlesim_spawn" to "spawn". Iam new at ROS and I thought that this name can be change for easy reading. Lesson learned
+
+Originally posted by naihart with karma: 30 on 2022-04-05
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by ljaniec on 2022-04-05:
+Well, it was right there in the mentioned example below (Listing 8.1, lines 12-16). It's good that you found it yourself.
+

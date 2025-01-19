@@ -1,0 +1,53 @@
+Q:
+
+Coordinates of a specific pixel in depthimage published by Kinect
+
+I am looking for an answer for hours and finally I am asking it here.
+I am using CMvision to find a specific color in Kinect's sight and I want to find the real world coordinates of the object with that color. I am planning to use CMvision to find the frame coordinates (as X and Y pixel values on the picture) and use these coordinates and the depth value of that pixel to calculate the real world coordinates.
+As I understand, /camera/depth_registered/points topic already gives the real world coordinate but I couldn't find how to retrieve the X,Y,Z values of a specific pixel that I've choosen on the depth (or RGB) image.
+Thanks in advance.
+
+Originally posted by Sekocan on ROS Answers with karma: 38 on 2014-10-15
+Post score: 1
+
+A:
+
+I was looking for the exact formula to calculate the real world X,Y,Z values by the depth image and finally I got it.
+First of all, it appears that the values in the depth image are not giving the distance between any point in the real world and the origin of the Kinect. It appears that it is the distance between the point and Kinect's XY plane (the plane which is parallel to the front surface of Kinect). So, if Kinect is looking at a wall, all the depth values give about the same value. It doesn't matter the real distance between a point on the wall and Kinect's origin.
+I found the calculations in the NuiSkeleton.h file:
+https://code.google.com/p/stevenhickson-code/source/browse/trunk/blepo/external/Microsoft/Kinect/NuiSkeleton.h?r=14
+For the Z axis, in line 625, it says:
+FLOAT fSkeletonZ = static_cast<FLOAT>(usDepthValue >> 3) / 1000.0f;
+
+You don't have to worry about the bitshift operation because in the description of the method it says:
+/// <param name="usDepthValue">
+/// The depth value (in millimeters) of the depth image pixel, shifted left by three bits. The left
+/// shift enables you to pass the value from the depth image directly into this function.
+/// </param>
+
+So, you can use the equation:
+FLOAT fSkeletonZ = static_cast<FLOAT>(usDepthValue) / 1000.0f;
+
+the unit is in meters (because of the division by 1000).
+For X and Y axes, line 633 and 634 gives:
+FLOAT fSkeletonX = (lDepthX - width/2.0f) * (320.0f/width) * NUI_CAMERA_DEPTH_IMAGE_TO_SKELETON_MULTIPLIER_320x240 * fSkeletonZ;
+
+FLOAT fSkeletonY = -(lDepthY - height/2.0f) * (240.0f/height) * NUI_CAMERA_DEPTH_IMAGE_TO_SKELETON_MULTIPLIER_320x240 * fSkeletonZ;
+
+The calculation of the Y axis starts with a minus sign because in a picture (like depth image) the Y value increases when you go down but in real world coordinates, conventionally, Y increases when you go up.
+For the NUI_CAMERA_DEPTH_IMAGE_TO_SKELETON_MULTIPLIER_320x240 constant, line 349 defines:
+#define NUI_CAMERA_DEPTH_IMAGE_TO_SKELETON_MULTIPLIER_320x240 (NUI_CAMERA_DEPTH_NOMINAL_INVERSE_FOCAL_LENGTH_IN_PIXELS)
+
+a short Googling gives this page:
+http://msdn.microsoft.com/en-us/library/hh855368.aspx
+where it says
+NUI_CAMERA_DEPTH_NOMINAL_INVERSE_FOCAL_LENGTH_IN_PIXELS (3.501e-3f)
+
+So, using these formulas gives you the real world coordinates within the coordinate frame given in the image:
+image description http://pille.iwr.uni-heidelberg.de/%7Ekinect01/img/pinhole-camera.png
+(ref: http://pille.iwr.uni-heidelberg.de/~kinect01/doc/reconstruction.html)
+
+Originally posted by Sekocan with karma: 38 on 2014-10-20
+This answer was ACCEPTED on the original site
+Post score: 1
+

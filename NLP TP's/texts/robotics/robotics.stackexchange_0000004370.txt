@@ -1,0 +1,53 @@
+Q:
+
+rock/syskit: How to add multiple instances of same component into a network
+
+I've been going through Syskit tutorials at rock-robotics.org. In the tutorials e.g. First composition, there are two different components declared with:
+ add Controldev::JoystickTask, :as => "cmd"
+ add RockTutorial::RockTutorialControl, :as => "rock"
+
+I was wondering how could I add an additional RockTutorialControl into the composition, so that the instantiation would then create two separate instances of the same component?
+I've tried something like
+add RockTutorial::RockTutorialControl, :as => "foo"
+
+but this apparently isn't the way to go. syskit instanciate command shows only one instance of RockTutorialControl, but gives two roles to it (rock and foo). What is the meaning of "role" in this context?
+I've noticed that the tutorial explains how to make multiple instances of the same component when we're declaring our components as Devices. But how to do this with components that should not be concerned as devices?
+BR,
+Mathias
+EDIT:
+This was my first question to StackExchange, and I don't know what's the policy for adding additional information to the original question, but here we go:
+It seems that both the deployment and configuration need to be different when there are two instances of the same component. I did a small scale testing with two components:
+using_task_library 'foobar_user'
+using_task_library 'foobar_proxy'
+
+module FooModule
+  class FooControl < Syskit::Composition
+
+  add FoobarUser::Task, :as => "producer" 
+  add FoobarProxy::Task, :as => "proxy"
+  add FoobarUser::Task, :as => "consumer" 
+
+  producer_child.connect_to proxy_child
+  proxy_child.connect_to consumer_child
+  end
+end
+
+where FoobarUser::Task has an input & output port of /std/string. FoobarProxy::Task has corresponding i&o ports. FoobarUser::Task has also two configurations called 'default' and 'other'. It also has two deployments 'foo_depl' and 'bar_depl'.
+In order to create a "pipeline" where data flows producer ==> proxy ==> consumer, I made define line:
+define 'conf_and_depl', FooModule::FooControl.use('producer' => FoobarUser::Task.use_conf('other').prefer_deployed_tasks(/foo_depl/), 'consumer' => FoobarUser::Task.use_conf('default').prefer_deployed_tasks(/bar_depl/))
+
+and then instanciated the network with 
+syskit instanciate scripts/03-nwtest.rb conf_and_depl_def!
+
+The component instanciation failed if either use_conf or prefer_deployed_tasks clause was left out. In both cases the produced error was "cannot deploy the following tasks... ...multiple possible deployments, choose one with #prefer_deployed_tasks". 
+
+A:
+
+This is what syskit should do,
+in the end syskit decides about the amount of modules.
+If you simply add the Requirement a second time syskit recognizes that they can be merged together and removes during instanciation the second one. (to be more precise it merges them together).
+You have to add different confiugations and/or build up connections that differ from the usage of the first one.
+Hope this clarifies.
+Best,
+Matthias
+

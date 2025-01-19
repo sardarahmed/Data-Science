@@ -1,0 +1,63 @@
+Q:
+
+rospack cannot find package made by cmake even after sourcing
+
+Hello all.
+I am trying to run some of rviz tutorials at ros-visualization. In particular I am interested in "visualization_marker_tutorials". What I did, since I am more comfortable with cmake, was to:
+cd visualization_marker_tutorials
+mkdir build
+cd build
+cmake ..
+make
+
+It compiled without any issue and now I have a devel directory in my build folder:
+$ tree devel
+devel/
+├── env.sh
+├── lib
+│   ├── pkgconfig
+│   │   └── visualization_marker_tutorials.pc
+│   └── visualization_marker_tutorials
+│       ├── basic_shapes
+│       └── points_and_lines
+├── setup.bash
+├── setup.sh
+├── _setup_util.py
+├── setup.zsh
+└── share
+    └── visualization_marker_tutorials
+        └── cmake
+            ├── visualization_marker_tutorialsConfig.cmake
+            └── visualization_marker_tutorialsConfig-version.cmake
+
+Here is the problem. I did source devel/setup.bash and it sets $ROS_PACKAGE_PATH to the root of build directory.
+Now when I do rosrun using_markers points_and_lines I have the error of rospack complaining it cannot find these packages. What is my mistake here? Is it due to the fact that I am not using catking build system? If so, is there a way to build generic ros packages with cmake?
+
+Originally posted by Pouya on ROS Answers with karma: 23 on 2017-01-02
+Post score: 0
+
+A:
+
+Here is the problem. I did source devel/setup.bash and it sets $ROS_PACKAGE_PATH to the root of build directory.
+Now when I do rosrun using_markers points_and_lines I have the error of rospack complaining it cannot find these packages. [..]
+
+This is only a partial answer, but the reason is most likely the fact that rospack will only consider directories 'packages' if there is a package.xml in them. In your tree output, I don't see a manifest anywhere.
+I'm not sure why this is. You could try and see whether a make install from your build directory results in something different (make sure to set DESTDIR to something valid).
+Perhaps @Dirk Thomas can chime in?
+
+Edit: just checked again and make install does result in the package manifests being copied over to the installation directory. After sourceing the setup.bash there, rospack find $pkg does resolve to the location in the installation directory, as expected.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-01-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Pouya on 2017-01-02:
+-DCMAKE_INSTALL_PRERFIX and make install did the job. This is rather curios... But thank you very much for the help
+Comment by gvdhoorn on 2017-01-02:
+I can try to speculate why make install is needed: a devel folder has no special meaning outside a Catkin workspace. Only because of Catkin can we do tricks by symlinking / overlaying build, devel and src folders, but make does not do that. make install is then needed to ..
+Comment by gvdhoorn on 2017-01-02:
+.. create a flattened representation of the various directories involved, and only then does a package.xml make sense / is needed.
+Comment by Dirk Thomas on 2017-01-02:
+Copying files from the source space to the devel space is being avoided (the main difference to a "normal" install). So the package.xml file stays were it is. After sourcing the setup file the ROS_PACKAGE_PATH should contain the source folder of the package (whatever build/.. is).
+

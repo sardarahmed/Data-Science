@@ -1,0 +1,63 @@
+Q:
+
+Ambiguous definition of Error-State (Indirect) Kalman Filter
+
+I am confused by what precisely the term "Indirect Kalman Filter" or "Error-State Kalman Filter" means.
+The most plausible definition I found is in Maybeck's book [1]:
+
+As the name indicates, in the total state space (direct) formulation, total states
+  such as vehicle position and velocity are among the state variables in the filter,
+  and the measurements are INS accelerometer outputs and external source
+  signals. In the error state space (indirect) formulation, the errors in the INS-
+  indicated position and velocity are among the estimated variables, and each
+  measurement presented to the filter is the difference between INS and external
+  source data.
+
+20 years later Roumeliotis et al. in [2] write:
+
+The cumbersome modeling of the specific vehicle and its interaction with a dynamic environment is avoided by selecting gyro modeling instead. The gyro signal appears in the system (instead of the measurement) equations and thus the formulation of the problem requires an Indirect (error-state) Kalman filter approach.
+
+I cannot understand the bold part, since Lefferts et al. in [3] write much earlier:
+
+For autonomous spacecraft the use of inertial reference units as a model
+  replacement permits the circumvention of these problems.
+
+And then proceed to show different variants of EKFs using gyro modeling that are clearly direct Kalman Filters according to Maybeck's definition: The state only consists of the attitude quaternion and gyro bias, not error states. In fact, there is no seperate INS whose error to estimate with an error-state Kalman filter. 
+So my questions are:
+
+Is there a different, maybe newer definition of indirect (error-state) Kalman Filters I am not aware of?
+How are gyro modeling as opposed to using a proper dynamic model on the one hand and the decision whether to use a direct or indirect Kalman filter on the other hand related? I was under the impression that both are independent decisions.
+
+[1] Maybeck, Peter S. Stochastic models, estimation, and control. Vol. 1. Academic press, 1979.
+[2] Roumeliotis, Stergios I., Gaurav S. Sukhatme, and George A. Bekey. "Circumventing dynamic modeling: Evaluation of the error-state kalman filter applied to mobile robot localization." Robotics and Automation, 1999. Proceedings. 1999 IEEE International Conference on. Vol. 2. IEEE, 1999.
+[3] Lefferts, Ern J., F. Landis Markley, and Malcolm D. Shuster. "Kalman filtering for spacecraft attitude estimation." Journal of Guidance, Control, and Dynamics 5.5 (1982): 417-429.
+
+A:
+
+Hi and welcome to the wide, ambiguous, sometimes confusing world of research. But seriously, looking at 20 years of papers will sometimes produce these confusions.
+Let's look at what's going on. In the first reference, what they are saying is:
+
+An INS/Gyro is nice, but has an error in it. That error changes (drifts) over time. Therefore, the error in the INS is really a part of the state of the system.
+
+The markov assumption used in the Kalman filter assumes that the current estiamte encapsulates all of the state of the system, and all of the previous states of the system. The update step of the EKF/FK assumes that the sensors measure the state of the system directly, and without bias. However, an INS has a bias (the error), and that bias changes. So our measurable state (the measurement from the INS / Gyro) is 
+$$z(t)=x^\star(t) + b^\star(t)+n$$ 
+for bias vector $b^\star$ and noise $n$. Vector $b^\star$, unfortunately, is unknown, time-varying, and not zero-mean. Vector $n$ is assumed to be zero-mean noise (e.g., unbiased). So if we knew $b^\star(t)$, we could subtract it from $z$ to get an unbiased measurement of the state. This is useful. So an estimate of $b^\star(t)$ is kept as part of the state.
+An error-state kalman filter makes a new state vector,
+$$ 
+\begin{bmatrix}
+x(t) \\
+b(t)
+\end{bmatrix}
+=
+\begin{bmatrix}
+x(t)^\star \\
+b(t)^\star
+\end{bmatrix}
++n
+$$
+where again $x^\star$ is the true state and $b^\star$ is the true bias.
+Ok, moving on to reference two, they seem to say that the gyro signal (which has measurements of the form $z(t)=x^\star + b(t) + n$ again) is used instead of assuming the gyro is measuring the state directly. That fits with what I know about Prof Roumeliotis' research as well as the definition of error-state KF and ref 1.
+Now ref 3 is worded slightly bad. I wasn't able to acquire a PDF to review quick. What I think it means is they are using the common assumption that a good model of the system dynamics are not available for a prediction (or propagation) step. Instead, they are assuming that the INS measurements are a decent estimate of the system's state, and then using other sensors to update the estimate of the state. 
+This is akin to using odometry instead of modelling how control inputs produce a change of state in a wheeled robot. Yes, the forward-propogated estimate will have the bias of the INS in it, but the measurements should correct it. In fact, the introduction to that paper states the same thing we've summarized here, that bias in gyro should be a part of the system to be estimated.
+This is sort of a high-level summary, which is the best I can do at this point. If there are specific concerns, I can edit as needed. 
+

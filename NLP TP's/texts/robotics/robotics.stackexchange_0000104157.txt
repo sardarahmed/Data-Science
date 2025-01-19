@@ -1,0 +1,29 @@
+Q:
+
+ROS2 Humble, 3D Lidar, LIO-SAM slam and nav2: how to make it work together with global map?
+
+This is my very first question in this community.
+So, I'm a bit stuck.
+Given data: I got akkerman mode robot with 3D Lidar, 9-Axis IMU + GNSS, ROS2 Humble, Nav2 stack. After a while, achieved LIO-SAM SLAM to work correctly, it scans and maintains localization well.
+A also got a global map pointcloud (cleaned), but till the moment used it only to generate the global costmap for nav2.
+Now, I don't understand how:
+
+relate the SLAM result from LIO-SAM to the global map ( I guess there must be some intermediate service to recognize the context)
+generate local costmap in realtime from LIO-SAM data
+push it all together to nav2 planners and controllers
+in general, how to make it work all together.
+
+My urdf does include all the elements together, but I don't see how to get 3D pointcloud to be transformed in 2D /scan for nav2 to work as expected.
+May be there is some tutorial which explains it all, but can't find it, unfortunately. I guess this is very common setup ?
+And yes, all the middleware layer transforming /cmd_vel to the actual robot movements is implemented correctly (tested with high-level transformations).
+
+A:
+
+Ok, so here is some investigation and test results I've got so far, resolving most doubts I've had:
+
+to match the current PointCloud2 scan and adjust SLAM position to global map, there is a ScanContext package and its integration to Lio-Sam, SC-LIO-SAM. What they do is to generate context descriptors for both pre-recorded pointcloud and real-time scan match. As alternative there is similar to AMCL (2D scans) nav2 system, which works with 3D scans: mcl_3dl, I'll give it a try as well, but it looks a bit more complicated though.
+For obstacle layer to be inflated on the fly from PointCloud, there is an embedded processor in costmap_2d, which needs to specify params for the PointCloud2 observable source. However, for me it doesn't work for some reason, and I tested with PointCloud to LaserScan converter. Works pretty straightforward, flattening the pointcloud to the classic laserscan. It is clear that with this approach some data might get lost in some scenarios, but works for me (for now).
+
+With this transformations the task is getting reduced to the standard nav2 scenarios, and standard planners (I'm using Smac Hybrid-A* Planner) and controllers (Regulated Pure Pursuit, in my case) start to behave correctly.
+Hope this will help somebody as well.
+

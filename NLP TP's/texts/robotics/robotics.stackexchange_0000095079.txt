@@ -1,0 +1,64 @@
+Q:
+
+ROS2 Python: Add arguments to callback
+
+Hi. I am using Python and ROS2 and I want to create two action clients: One for opening a gripper and one for closing it.
+The goal_response_callback is completely similar for both, and the result callback is very similar, it just changes what parameter to set to true/false. Instead of having two goal_callbacks and two result_callbacks, i was hoping to just give in an argument saying if the goal was to open or close the gripper, but i can't seem to find the correct way to use the callback together with an argument.
+I have tried to just give the argument as normal (self.goal_response_callback("open"), and as a partial function shown in the code below. Nothing seems to work.
+Anyone who can tell me the best way to do this?
+Thanks!
+ def send_close_gripper_goal(self):
+    goal_msg = CloseGripper.Goal()
+    self.closegripper_action_client.wait_for_server()
+    self._send_goal_future = self.closegripper_action_client.send_goal_async(goal_msg)
+    self._send_goal_future.add_done_callback(partial(self.goal_response_callback,"close"))
+
+def goal_response_callback(self, future,type):
+    goal_handle = future.result()
+    if not goal_handle.accepted:
+        self.get_logger().info('Goal rejected :(')
+        return
+
+    self.get_logger().info('Goal accepted :)')
+    self._get_result_future = goal_handle.get_result_async()
+    self._get_result_future.add_done_callback(self.get_result_callback(type))
+
+def get_result_callback(self,future,type):
+    result = future.result().result
+    if type == "open":
+        GripperOpen = result.success
+        GripperClose = not result.success
+    if type == "close":
+        GripperClose = result.success
+        GripperOpen = not result.success
+    print(GripperClose)
+    print(GripperOpen)
+
+Originally posted by ninamwa on ROS Answers with karma: 81 on 2020-03-16
+Post score: 0
+
+A:
+
+I think the problem is functools.partial is providing the first argument instead of the second. Use keyword arguments to disambiguate.
+>>> import functools
+>>> def my_func(result, type):
+...    print(f'Got {result} and {type}')
+... 
+>>> my_func('foo', 'bar')
+Got foo and bar
+>>> functools.partial(my_func, 'close')('foo')
+Got close and foo
+>>> functools.partial(my_func, type='close')('foo')
+Got foo and close
+
+More specifically, change the call to add_done_callback to:
+self._send_goal_future.add_done_callback(partial(self.goal_response_callback, type="close"))
+
+Originally posted by sloretz with karma: 3061 on 2020-03-16
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by ninamwa on 2020-03-17:
+Thank you, this worked exactly as I wanted! :-)
+

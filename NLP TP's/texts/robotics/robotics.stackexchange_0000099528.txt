@@ -1,0 +1,78 @@
+Q:
+
+Depend on package built in workspace
+
+I have a driver package_a and I want modify its dependency package_b for use in my project. I downloaded the package_b source into my catkin workspace, made the modifications, and successfully built the dependency. However package_a is unable to reference the new changes. I think is is because CMake found a different version of package_b somewhere else which does not have my modifications. How should I modify my CMakeLists.txt to use the locally build package_b in the catkin ws? I run rospack find package_b and the path is catkin_ws/src/package_b.
+/catkin_ws
+ - /src
+   - /package_a
+     - CMakeLists.txt
+     - package.xml
+   - /package_b       
+     - CMakeLists.txt
+     - package.xml
+  
+
+The dependencies listed in package_a/CMakeLists.txt is
+find_package(package_b REQUIRED)
+            
+find_package(catkin REQUIRED COMPONENTS ...)
+            
+catkin_package(
+    INCLUDE_DIRS include
+    CATKIN_DEPENDS
+        ...
+    DEPENDS package_b
+    )
+
+include_directories(
+  include
+  ${package_b_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
+   )
+    
+target_link_libraries(${PROJECT_NAME}
+  ${package_b_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+
+For reference, the package_b is libcreate and package_a is create_robot.
+
+Originally posted by bscout2011 on ROS Answers with karma: 1 on 2021-07-06
+Post score: 0
+
+Original comments
+Comment by prince on 2021-07-07:
+CMakeLists reads ok. Also 'rospack find  package_b' command is also outputing correct path. Are you installing the resultant library?
+Comment by mgruhler on 2021-07-07:
+Is package_b a ROS package? If yes, you should probably have it in the find_package(catkin...) command as a component, as well as in CATKIN_DEPENDS instead of DEPENDS. Also, how exactly do you add package_b to the include_Directories and target_link_libraries calls? Please edit your question with the relevant lines of your CMakeLIsts.txt.
+Comment by Mike Scheutzow on 2021-07-07:
+After running catkin_make at least once, have you sourced the setup.bash in catkin_ws/devel ?
+source ~/catkin_ws/devel/setup.bash
+
+You have to do this for catkin_make to "see" the packages in your home directory.
+Comment by bscout2011 on 2021-07-07:
+@prince I am not sure if I am creating an install for package_b.
+@mgruhler package_b is a ROS package and I have the package_b.so library in my /opt/ros/melodic/lib folder. I added the inlcude_directories and target_link_libraries to the posted question.
+@Mike Scheutzow  The build itself is failing, so sourcing the workspace would not solve the issue.
+Comment by mgruhler on 2021-07-08:
+@bscout2011 I'm assuming you followed the build instructions in libcreates Readme and used catkin_tools to build it? With a plain catkin_make the lib shouldn't compile. This is because libcreate is actually not a ROS package, but a plain CMake project (even though the package.xml exists), but the CMakeLIsts.txt does not find_package(catkin ...).
+If you used catkin_tools, you actually need to source the workspace once again for the package path to be picked up. This is because catkin_tools by default builds the packages in isolation (same holds for catkin_make_isolated).
+Comment by Mike Scheutzow on 2021-07-08:
+@mgruhler you should post your comment as the answer.
+
+A:
+
+The build instructions in libcreate's Readme define how catkin_tools builds the lib. With a plain catkin_make the lib shouldn't compile. This is because libcreate is actually not a ROS package, but a plain CMake project (even though the package.xml exists), but the CMakeLIsts.txt does not find_package(catkin ...).
+If you used catkin_tools, you actually need to source the workspace once again for the package path to be picked up. This is because catkin_tools by default builds the packages in isolation (same holds for catkin_make_isolated).
+
+Originally posted by bscout with karma: 16 on 2021-07-08
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by mgruhler on 2021-07-12:
+So did this solve your problem?
+Comment by bscout2011 on 2021-07-12:
+My solution just made the libcreate package a catkin package by editing CMakeLists.txt adding find_package(catkin REQUIRED) and catkin_package(). In general, I think your solution is better because it makes libcreate a system wide package, whereas my solution adds more dependencies to libcreate which may break other systems which do not use catkin.
+

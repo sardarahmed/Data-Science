@@ -1,0 +1,63 @@
+Q:
+
+Combine individually working cartesian coordinates
+
+I am trying to control a Dobot arm.  The arm moves with angles whereas I need to work with cartesian coordinates. From inverse kinematics equations and polar coordinates I have implemented x,y and z coordinates working very well on their own. But I can not combine the coordinates in order to work all together. When I add them up it is not going to the desired place. How can I combine these coordinates? I got some help from (https://github.com/maxosprojects/open-dobot) but could not manage to successfully move dobot. 
+Edit: I've written the codes in Qt and also I've added the triangles used for angle calculations.
+//foreArmLength=160mm rearArmLEngth=135mm
+float DobotInverseKinematics::gotoX(float x) //func for x-axis
+float h=qSqrt(qPow(lengthRearArm,2)-qPow(x,2)); //height from ground
+QList<float> zEffect=gotoZ(h); //trying to find the effect of x movement on z-axis
+float cosQ=h/lengthRearArm; //desired joint angle
+float joint2=qRadiansToDegrees(qAcos(cosQ));    
+//move in range control
+if(joint2 != joint2)
+{joint2=0;
+    qDebug()<< "joint2NAN";}
+return joint2;
+
+QList<float> DobotInverseKinematics::gotoY(float y) //func for y-axis
+QList<float> result ;
+float actualDist=lengthForeArm+distToTool; //distance to the end effector
+float x=(qSqrt(qPow(actualDist,2)+qPow(y,2)))-actualDist; //calculating x movement caused by y movement
+float joint1=qRadiansToDegrees(qAcos(actualDist/(actualDist+x))); //desired joint angle
+float joint2=gotoX(x);  //the angle calculation of y movement on x axis
+if(joint1 != joint1)
+{joint1=0;
+    qDebug()<< "joint1NAN";}
+result.append(joint1);
+result.append(joint2);
+return result;
+
+QList<float> DobotInverseKinematics::gotoZ(float z) //func. for z-axis
+QList<float> result ;
+float joint3=qSqrt(qPow(160,2.0)-qPow(z,2.0))/ 160; //desired joint angle
+float temp=160-qSqrt(qPow(160,2.0)-qPow(z,2.0));
+float joint2=qSqrt(qPow(lengthRearArm,2)-qPow(temp,2.0))/lengthRearArm; //desired joint angle
+if(joint3 != joint3)
+{joint3=0;
+    qDebug()<< "joint3NAN";}
+joint2=qAcos(joint2)*(180/M_PI);
+joint3=qAcos(joint3)*(180/M_PI);
+result.append(joint2);
+result.append(joint3);
+return result;
+
+A:
+
+$a_1, a_2$ : Link lengths
+$p_x,p_y$ : Target $x$ and $y$ coorditate
+$\theta_1=atan2(p_y,p_x)$
+$p_r=\sqrt{p_x^2+p_y^2}$ : Target radial distance
+$p_z$ : Target $z$ coorditate
+$\kappa=\frac{p_r^2+p_z^2-a_1^2-a_2^2}{2a_1a_2}$
+If $\kappa>1$ the position cannot be reached.
+$\theta_3=cos^{-1}(\kappa)$
+There are 2 solutions, elbow up or elbow down. Below use $\theta_3^*=\theta_3$ or $\theta_3^*=-\theta_3$ 
+$\Delta=a_1^2+a_2^2+2a_1a_2cos(\theta_3^*)$
+$c\theta_2=\frac{p_r(a_1+a_2cos(\theta_3^*))+p_za_2sin(\theta_3)}{\Delta}$
+$s\theta_2=\frac{p_z(a_1+a_2cos(\theta_3^*))-p_ra_2sin(\theta_3)}{\Delta}$
+$\theta_2=atan2(s\theta_2,c\theta_2)$
+These are joint angles. To get motor angles, you will have to adjust the angles based on how the motors are connected to the robot. $\theta$ is 0 when horizontal, $\theta_3$ is 0 when straight (in-line) with Link 2.
+A detailed explanation can be found in Robot Analysis by Tsai. ISBN 9780471325932 pp 71
+

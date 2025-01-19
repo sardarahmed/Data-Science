@@ -1,0 +1,78 @@
+Q:
+
+ROS2 - rclpy set parameter example?
+
+Is there an example of setting parameters on another node using rclpy? I can't find one.
+
+Originally posted by mkhansen on ROS Answers with karma: 156 on 2018-11-14
+Post score: 2
+
+A:
+
+There may be additional helper functions or an entire wrapper but in bouncy I go through the set_parameters service interface.
+class MinimalClientAsync(Node):
+
+    def __init__(self):
+        super().__init__('minimal_client_async')
+        self.cli = self.create_client(SetParameters, 'v4l2ucp/set_parameters')
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = None
+
+    def send_request(self):
+        self.req = SetParameters.Request()
+
+        param = Parameter()
+        param.name = "controls/Brightness"
+        param.value.type = ParameterType.PARAMETER_INTEGER
+        param.value.integer_value = 20
+        self.req.parameters.append(param)
+
+        param = Parameter()
+        param.name = "controls/Contrast"
+        param.value.type = ParameterType.PARAMETER_INTEGER
+        param.value.integer_value = 15
+        self.req.parameters.append(param)
+
+        self.future = self.cli.call_async(self.req)
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_client = MinimalClientAsync()
+    minimal_client.send_request()
+
+    while rclpy.ok():
+        rclpy.spin_once(minimal_client)
+        if minimal_client.future.done():
+            if minimal_client.future.result() is not None:
+                response = minimal_client.future.result()
+                minimal_client.get_logger().info(
+                    'Result of set parameters: for %s' %
+                    (str(response)))
+            else:
+                minimal_client.get_logger().info(
+                    'Service call failed %r' % (minimal_client.future.exception(),))
+            break
+
+    minimal_client.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+https://github.com/lucasw/v4l2ucp/blob/3449f89628c37f5558bf7b48fb255e56d1f475ca/v4l2ucp/scripts/set_param.py
+Adapted from https://github.com/ros2/examples/blob/bouncy/rclpy/services/minimal_client/client_async_member_function.py
+
+Originally posted by lucasw with karma: 8729 on 2018-11-15
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by mkhansen on 2018-11-27:
+@lucasw - thanks I will try this and post back later
+Comment by clyde on 2019-10-31:
+Works great in Dashing! Thx for the example.
+Comment by mkhansen on 2020-02-28:
+This worked, sorry I should have closed it before, closing now with accepted answer.
+

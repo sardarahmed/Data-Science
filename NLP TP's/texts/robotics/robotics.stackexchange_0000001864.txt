@@ -1,0 +1,140 @@
+Q:
+
+Razor IMU Arduino interfacing
+
+I was looking into the  Razor IMU from Sparkfun, and realized that the only example code on sparkfun's website was for it was meant for hooking it up to a computer (the AHRS head tracker used a serial to usb chip). I looked on google and saw nothing but stories about how it did not work. 
+Is there any good way to hook up the  Razor IMU to an arduino uno (or any arduino without hardware support for more than one serial port), and if so does example code exist?
+
+A:
+
+By searching for a different topic I found your post and I work with the Sparkfun Razor 9DOF IMU too. Actually it was a pain in the rear to get it all work.
+First of all you have to do the tutorial razor-9dof-ahrs form ptrbrtz. When this is working you can do the next steps. Btw: read it carefully and you should be able to do it on your own!
+First I tried to get it work with an Arduino Uno and a SoftwareSerial. Sadly I wasn’t able to get it work with a SoftwareSerial, I received with Text and Binary output only rubbish data. I worked a whole day on this topic and I wasn’t able to do it and I could say I have a lot experience with Arduino programming. If you are able to get it work with a SoftwareSerial please post an answer.
+With the Uno I was only able to receive data with this configuration: http://blog.mobileapes.com/2010/09/read-data-from-9dof-razor-imu-via.html.
+But be aware the TX should go to RX and the RX to TX! The description in the picture (Rx to Rx and Tx to Tx) is false.
+If you are able to use an Arduino MEGA, which has at least 4 UARTs, you could use the code I developed. Once I got it to work on an Uno but I searched for the code and I didn’t find it anymore, with a little try and fail you should be able to do it. But be aware, if you are sending data to the PC and receiving data from the IMU on only one UART, you could probably negatively influence the serial communication.
+/**************************** INFO ********************************/
+
+// This code expects a message in the format: H 12.00,-345.00,678.00
+ 
+/******************************************************************/
+
+#include <TextFinder.h>
+
+/*** Defines the frequency at which the data is requested ***/
+/*** frequency f=1/T, T=period; ie. 100ms --> f=10Hz, 200ms --> f=5Hz ***/
+#define PERIOD      100 // [ms]
+
+/*** Vars for IMU ***/
+TextFinder  finder(Serial3);  
+const int NUMBER_OF_FIELDS = 3; // how many comma separated fields we expect                                           
+float rpy[NUMBER_OF_FIELDS];    // array holding values for all the fields
+
+/************************************************************/
+/*** Setup
+/************************************************************/
+void setup()
+{
+  Serial.begin(57600);  // init the Serial port to print the data to PC
+  Serial3.begin(57600); // init the Serial3 port to get data from the IMU
+
+  delay(500);
+
+  initIMU();
+}
+
+/************************************************************/
+/*** Loop
+/************************************************************/
+void loop()
+{
+  // print manager timer
+  static unsigned long timer = 0;
+  static unsigned long currentTime = 0;
+
+  /************************************************************/
+  /*** Request after a specific period for the data
+  /************************************************************/
+  currentTime = millis();
+  if(currentTime - timer >= PERIOD)
+  {
+    // Request one output frame from the IMU
+    // #f only requests one reply, replies are still bound to the internal 20ms (50Hz) time raster.
+    // So worst case delay that #f can add is 19.99ms.
+    Serial3.write("#f");
+
+    /************************************************************/
+    /*** Get the IMU values
+    /************************************************************/
+
+    // the current field being received
+    int fieldIndex = 0;            
+
+    // search the Serial Buffer as long as the header character is found
+    boolean found_HeaderChar = finder.find("H");
+
+    if (found_HeaderChar)
+    {
+      // Get all 3 values (yaw, pitch, roll) from the Serial Buffer
+      while(fieldIndex < NUMBER_OF_FIELDS)
+      {
+        rpy[fieldIndex++] = finder.getFloat();
+      }
+    }
+
+    /************************************************************/
+    /*** Print out the values
+    /*** Format: yaw, pitch, roll, left_Encoder, right_Encoder
+    /************************************************************/
+    if (found_HeaderChar)
+    {
+      // print Interval
+      Serial.print(currentTime - timer);
+      Serial.print(",");
+      
+      // print IMU values
+      for(fieldIndex=0; fieldIndex < NUMBER_OF_FIELDS; fieldIndex++)
+      {
+        Serial.print(rpy[fieldIndex]);
+        Serial.print(",");
+      }
+      Serial.println("");
+    }
+
+    timer = millis();
+  }
+}
+
+/********************************/
+/*** Initialize Functions
+/********************************/
+
+void initIMU()
+{
+  // Output angles in TEXT format & Turn off continuous streaming output & Disable error message output
+  Serial3.write("#ot#o0#oe0");
+  Serial3.flush();
+}
+
+Edit: Oh I forgot to say that you must edit the Output.ino from the Razor AHRS firmware. Search for the function output_angles() and change it to:
+// Output angles: yaw, pitch, roll
+void output_angles()
+{
+  if (output_format == OUTPUT__FORMAT_BINARY)
+  {
+    float ypr[3];  
+    ypr[0] = TO_DEG(yaw);
+    ypr[1] = TO_DEG(pitch);
+    ypr[2] = TO_DEG(roll);
+    
+    Serial.write((byte*) ypr, 12);  // No new-line
+  }
+  else if (output_format == OUTPUT__FORMAT_TEXT)
+  {
+    Serial.print("H ");
+    Serial.print(TO_DEG(yaw)); Serial.print(",");
+    Serial.print(TO_DEG(pitch)); Serial.print(",");
+    Serial.print(TO_DEG(roll)); Serial.println();
+  }
+}
+

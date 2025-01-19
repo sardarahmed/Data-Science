@@ -1,0 +1,221 @@
+Q:
+
+ROS2 launch: subscriber not receiving data
+
+I'm using ROS2 humble under Windows. I have a very simple PyQt based publisher and subscriber:
+Publisher:
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+
+from sensor_msgs.msg import ChannelFloat32
+
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
+
+import threading
+
+import math
+import sys
+
+class Gui:
+
+    def __init__(self,publisher):
+        self.publisher = publisher
+
+        self.widget = QWidget()
+        self.layout = QVBoxLayout(self.widget)
+
+        self.pushButton = QPushButton(self.widget)
+        self.pushButton.setText("Press to reset publisher")
+        self.pushButton.clicked.connect(self.publisher.resetCounter)
+        self.layout.addWidget( self.pushButton )
+
+        self.widget.setGeometry(50,50,320,200)
+        
+        self.widget.show()
+
+        self.publisher.widget = self.widget
+
+class DummyPublisher(Node):
+
+    def __init__(self):
+        super().__init__('dummy_publisher')
+        self.publisher_ = self.create_publisher(ChannelFloat32, 'topic', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.resetCounter()
+
+        self.widget = None
+
+        self.t0 = self.get_clock().now().nanoseconds
+
+    def timer_callback(self):
+        msg = ChannelFloat32()
+        msg.values = [ float((self.get_clock().now().nanoseconds-self.t0)/1e9), float(self.i), float(math.sin(self.i)), float(self.i*4) ]
+        self.publisher_.publish(msg)
+        self.get_logger().info('Publishing: "%s"\n' % str(msg.values))
+        self.i += 1
+
+        if self.widget:
+            self.widget.setWindowTitle("Dummy publisher " + str(self.i))
+
+    def resetCounter(self):
+        self.i = 0
+
+def ros_node_thread(ros_node):
+    executor = MultiThreadedExecutor()
+    executor.add_node(ros_node)
+    executor.spin()
+
+def main(args=None):
+    
+    rclpy.init(args=args)
+
+    app = QApplication(sys.argv)
+
+    publisher = DummyPublisher()
+    gui = Gui( publisher )
+
+    ros_node_thread_instance = threading.Thread(target=ros_node_thread, args=(publisher,))
+    ros_node_thread_instance.start()
+
+    try:
+        sys.exit(app.exec_())
+    finally:
+        publisher.destroy_node()
+        rclpy.shutdown()
+        ros_node_thread_instance.join()
+
+if __name__ == '__main__':
+    main()
+
+Subscriber:
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+
+from sensor_msgs.msg import ChannelFloat32
+
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout
+from PyQt5.QtCore import pyqtSignal, QObject, QTimer
+import PyQt5.QtCore
+
+import threading
+import sys
+
+class Gui:
+
+    def __init__(self):
+        
+        self.widget = QWidget()
+        self.layout = QVBoxLayout(self.widget)
+
+        self.widget.setGeometry(50,50,320,200)
+        
+        self.widget.show()
+
+class DummyListener(Node):
+
+    def __init__(self,gui):
+        super().__init__('dummy_listener')
+        self.gui = gui
+        self.subscription = self.create_subscription(
+            ChannelFloat32,
+            'topic',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
+        self.gui = gui
+        self.count = 0
+
+    def listener_callback(self, msg):
+        self.get_logger().info('I heard: "%s"' % str(msg.values))
+
+        self.count += 1
+
+        self.gui.widget.setWindowTitle("Dummy listener " + str(self.count))
+
+def ros_node_thread(ros_node):
+    executor = MultiThreadedExecutor()
+    executor.add_node(ros_node)
+    executor.spin()
+
+def main(args=None):
+    
+    rclpy.init(args=args)
+
+    app = QApplication(sys.argv)
+
+    gui = Gui()
+    listener = DummyListener( gui )
+    
+    ros_node_thread_instance = threading.Thread(target=ros_node_thread, args=(listener,))
+    ros_node_thread_instance.start()
+
+    try:
+        sys.exit(app.exec_())
+    finally:
+        listener.destroy_node()
+        rclpy.shutdown()
+        ros_node_thread_instance.join()
+
+if __name__ == '__main__':
+    main()
+
+When I execute them from different consoles, running:
+ros2 run my_package talker
+ros2 run my_package listener
+
+It just works fine, I see the two widgets, one with Dummy publisher # title being incremented and one with Dummy listener # title being incremented.
+However, when I use a laucnh script:
+from launch import LaunchDescription
+import launch_ros.actions
+
+def generate_launch_description():
+    return LaunchDescription([
+        launch_ros.actions.Node(
+            namespace= "talker", package='my_package', executable='talker'),
+        launch_ros.actions.Node(
+            namespace= "listener", package='my_package', executable='listener'),
+    ])
+
+The, I see the first widget with Dummy publisher # title being incremented and the other one's title remains unchanged as "python". By looking deeper, I see listener_callback never gets called.
+Am I doing something wrong?
+
+A:
+
+The problem comes from namespace.
+With:
+from launch import LaunchDescription
+import launch_ros.actions
+
+def generate_launch_description():
+    return LaunchDescription([
+        launch_ros.actions.Node(
+            namespace= "talker", package='my_package', executable='talker'),
+        launch_ros.actions.Node(
+            namespace= "listener", package='my_package', executable='listener'),
+    ])
+
+Nodes end up in different namespaces. So subscriber should do:
+self.subscription = self.create_subscription(
+    ChannelFloat32,
+    '/talker/topic',  # Adjust the topic namespace
+    self.listener_callback,
+    10)
+
+Or, original posted subscriber code will work with no namespace used:
+from launch import LaunchDescription
+import launch_ros.actions
+
+def generate_launch_description():
+    return LaunchDescription([
+        launch_ros.actions.Node(
+            package='my_package', executable='talker'),
+        launch_ros.actions.Node(
+            package='my_package', executable='listener'),
+    ])
+
+Note: This solution was given to me by ChatGPT...
+

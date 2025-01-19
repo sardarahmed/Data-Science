@@ -1,0 +1,65 @@
+Q:
+
+Custom hardware interface type
+
+I would like to write a controller that needs all joint states to update a single joint.
+My idea was to create a class MyStateInterface which inherits from hardware_interface::StateInterface and stores all information for each joint. Then, I would like to export this class inside the hardware interface to pass the joint information to the controller.
+To make it clear, I modify this example:
+std::vector<double> hw_states_;
+
+CallbackReturn MyRobotHardware::on_init(const hardware_interface::HardwareInfo & info) {
+  // set some default values when starting the first time
+  hw_states_.resize(info_.joints.size(), 0.0);
+  return CallbackReturn::SUCCESS;
+}
+
+std::vector<hardware_interface::StateInterface>
+MyRobotHardware::export_state_interfaces()
+{
+  std::vector<hardware_interface::StateInterface> state_interfaces;
+
+  for (uint i = 0; i < info_.joints.size(); i++)
+  {
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      info_.joints[i].name,                  // joint name from controller.yaml
+      hardware_interface::HW_IF_POSITION,    // "position"
+      &hw_states_[i]                         // the joint value
+    ));
+  }
+
+  return state_interfaces;
+}
+
+To something like this:
+std::vector<MyStateHandle> hw_states_;
+
+CallbackReturn MyRobotHardware::on_init(const hardware_interface::HardwareInfo & info) {
+  // set some default object when starting the first time
+  hw_states_.resize(info_.joints.size(), MyStateHandle());
+  return CallbackReturn::SUCCESS;
+}
+
+std::vector<hardware_interface::StateInterface>
+MyRobotHardware::export_state_interfaces()
+{
+  std::vector<hardware_interface::StateInterface> state_interfaces;
+
+  for (uint i = 0; i < info_.joints.size(); i++)
+  {
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      info_.joints[i].name,      // joint name from controller.yaml
+      "my_state_handle",         // a made up name
+      &hw_states_[i]             // information for controlling the joint
+    ));
+  }
+
+  return states_interfaces;
+}
+
+This didn't work because there is no matching function for the call hardware_interface::StateInterface(const std::string &name, const std::string &interface_name, MyStateHandle *value_ptr=nullptr) because there is only the function hardware_interface::StateInterface(const std::string &name, const std::string &interface_name, double *value_ptr=nullptr)
+I want to know if there is a way to pass a class full of control data from the hardware interface to the controller, or am I on a completely wrong track?
+
+A:
+
+No this is not possible yet. But we are working on that feature, see this PR here. This feature might come with Jazzy.
+

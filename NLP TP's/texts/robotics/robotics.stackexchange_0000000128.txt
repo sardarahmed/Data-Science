@@ -1,0 +1,43 @@
+Q:
+
+How mature is real-time programming in robotics?
+
+Edit: I don't know why, but this question seems to be confusing many people. I am aware of when/where/why/how to use real-time. I am interested in knowing whether people who have a real-time task would actually care enough to implement it in real-time or not.
+There's no need to mention why real-time operations are important for a robot. My question is however, how much is it actually used in robotics?
+Take this question for example. Only one answer mentions any platform with real-time capabilities, and it is far from the top too. ROS apparently, being a very popular platform which is not real-time.
+In the real-time world however, RTAI1 seems to be the only workable free real-time platform of use. It is however, limited to Linux (no problem), badly documented and slowly developed.
+So, how much is real-time behavior sought after among robotics developers? The question is, how much are developers inclined to write real-time applications when real-time behavior is actually needed? If not much, why?
+For example, reflexive behavior based on tactile data, cannot go through ROS because it would lose its real-time property. But do people really come up with a real-time solution or use ROS anyway, ignoring the real-time property?
+1 or similarly Xenomai
+
+A:
+
+Remember that there's Real Time and there's Real Time.
+Hard Real time is difficult to achieve without hardware support or low level software support, but you often don't need everything to be Hard Real Time capable. Soft & Firm Real Time response is much easier to achieve and is often more than adequate for many applications.
+Also, different parts of a system can have very different real time requirements. If you are running software PID loops, they really should have a hard real time response (you really don't want to have to choose between soft tuning your PIDs or tuning them hard and having them occasionally go unstable, for instance). A vision system might have firm real time response requirements, performance will degrade if you can't process the image in time for the next decision but it need not prevent the system running, in this case if you can't process it in time you are better off throwing away the partial results and not loosing time starting analysis on the next frame. Finally your overall planning and coordination (probably the most complex part of your robotic system) can often remain firmly in the domain of soft real time.
+Even in the realm of Windows PCs you can get hard real time performance, you just need the right software with the right hooks into the kernel. Beckhoff's TwinCat soft PLC quite happily ran a high scan rate PLC by slicing half of a Pentium's machine cycles, giving the other half to Windows NT, and this was over a decade ago. Even modern control systems like some options in Aerotech's A3200 range do the grunt work on the host PC, with the low level kernel taking as much CPU time as it needs for the hard real time requirements and leaving the rest of the CPU cycles for Windows 7 to use!
+
+A:
+
+A real time system is not really required for many (most?) robotic control systems. As long as you have a control loop that runs fast enough, with low enough jitter, and doesn't miss too many cycles, then this is quite adequate for robotic control and servoing.
+As evidence of this, let me present the PR2 and the Shadow  Robot Hand:
+
+This robot has about 20 degrees of freedom, all of which are servoed through ROS's main loop. Or how about the Shadow Robot Hand, which also has 20 DOFs, plus an array of tactile and other sensors, and is also servoed through ROS's main loop.
+The ROS main loop suffers from a little jitter, sometimes as much as 100us, and even sometimes misses cycles altogether. But it doesn't matter if 99.9% of cycles are executed successfully. 
+The use of many cores within the host PCs means that one whole core is dedicated to running the main loop, and so it is very rarely delayed by other tasks.
+The main reason for using a really real-time OS for a robotic system is for safety. If the robot is working in a safety critical situation, then it is your responsibility to guarantee 100% control up-time, and part of this is guaranteeing the real time nature of it. 
+Whether you use a real-time OS or not, your servos should do something safe in the event that the control loop dies entirely. This safety system would also be helpful on the rare occasion your non-real-time OS skips more than a cycle. For example, on the Shadow Hand, the motors are halted if the control loop misses more than 20 cycles (20ms). I have never seen this happen though.
+
+Added
+Another way to think about it is this: What update rate does your servo system actually need? If it's a largish arm, and doesn't need super high performance, high speed positioning, then 500Hz might be sufficient. For driving around, 200Hz is probably sufficient. In both of these cases, if your loop is actually running at 1000Hz, then a late or missing cycle really is no problem at all, as long as your control algorithm takes into account the actual elapsed time between loops.
+
+A:
+
+The purpose of the software determines whether it needs to be strictly real-time.
+Where the purpose is path planning or localization, often a low frequency is sufficent, for example, 10Hz. In these cases, a player/stage setup running on Linux is fine. We can see that there are few problems if one time step is a bit longer or shorter.
+Strictly real-time behaviour is required if the robot dynamics are fast. For example, moving a robotic arm to track a position, or to handle/grip objects, and move them. If a time step is missed, the position may overshoot undesirably, and we may want more predictable behaviour. In this case, we may have a frequency up to 1kHz or more. If an operating system is used, we want a real-time operating system.
+Real-time behaviour can be accomplished in embedded applications, by using timers and interrupts (compiled C code on a microcontroller). In this case, we must ensure that the processing load is not too high so that a regular sampling frequency can be maintained.
+Robots using computers/microprocessors (because more processing power is required), will need to use a real-time operating system to guarantee high sampling rates.
+
+Therefore, whether real-time behaviour is required depends on what the developer intends to use it for.
+

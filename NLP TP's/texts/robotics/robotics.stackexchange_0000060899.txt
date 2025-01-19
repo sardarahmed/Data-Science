@@ -1,0 +1,85 @@
+Q:
+
+Frame Conventions for Interactive Markers
+
+You can attach Markers to the controls in InteractiveMarkers. The InteractiveMarker has its own Header/frame_id as does the Marker attached to the InteractiveMarkerControl.
+If you publish two InteractiveMarkers that are completely identical except for the InteractiveMarker's frame_id, you get two different behaviors.
+Let's say there's a moving frame called "up" and a stationary frame called "world."  We want to put a marker at the up frame, so we create a simple box Marker with the frame_id "up". To make an interactive marker of this is easy, but you have the choice of whether to have the InteractiveMarker's frame_id be up or world.
+If its up, then the marker will move with the frame up. However, if the IM's frame is "world", then the marker will NOT move with the frame.
+This phenomenon is illustrated by this video and the following code.
+Question: Is there some hidden semantics that I'm missing here, or is this just a bug?
+#!/usr/bin/env python
+
+import roslib; roslib.load_manifest("interactive_markers")
+import rospy
+from visualization_msgs.msg import *
+from interactive_markers.interactive_marker_server import *
+from tf import TransformBroadcaster
+import tf.transformations
+
+def make_marker(frame, color):
+    int_marker = InteractiveMarker()
+    int_marker.header.frame_id = frame
+    int_marker.name = frame
+
+    box_marker = Marker()
+    box_marker.type = Marker.CUBE
+    box_marker.scale.x = 0.5
+    box_marker.scale.y = 0.05
+    box_marker.scale.z = 0.05
+    box_marker.color.r = color[0]
+    box_marker.color.g = color[1]
+    box_marker.color.b = color[2]
+    box_marker.color.a = 1.0
+    box_marker.header.frame_id = '/up'
+
+    box_control = InteractiveMarkerControl()
+    box_control.always_visible = True
+    box_control.markers.append( box_marker )
+    int_marker.controls.append( box_control )
+    return int_marker
+
+if __name__=="__main__":
+    rospy.init_node("simple_marker")
+    server = InteractiveMarkerServer("r2_teleop")
+    
+    server.insert(make_marker('/up', (0,0,1)))
+    server.insert(make_marker('/world', (0,1,0)))
+    server.applyChanges()
+    
+    tfx = TransformBroadcaster()
+    start = rospy.Time.now()
+    while not rospy.is_shutdown():
+        x = (rospy.Time.now()-start).to_sec()
+        yaw = (x % 10.0)*3.14*2/10.0
+        tfx.sendTransform((0, 0, 0.5),
+                     tf.transformations.quaternion_from_euler(0, 0, yaw),
+                     rospy.Time.now(),
+                     'up',
+                     "world")
+
+Originally posted by David Lu on ROS Answers with karma: 10932 on 2014-07-16
+Post score: 0
+
+Original comments
+Comment by Martin Peris on 2014-07-16:
+ROS has no bugs, only "undocumented features"!. LOL sorry for the useless comment, just had to say it :P Probably we just need to be careful to set the Marker frame_id and the InteractiveMarker frame_id to the same value. But don't take my word, I have no authority on the matter whatsoever
+
+A:
+
+This is descibed in the InteractiveMarkerControl mesage definition:
+http://docs.ros.org/api/visualization_msgs/html/msg/InteractiveMarkerControl.html
+# Markers to be displayed as custom visual representation.
+# Leave this empty to use the default control handles.
+#
+# Note: 
+# - The markers can be defined in an arbitrary coordinate frame,
+#   but will be transformed into the local frame of the interactive marker.
+# - If the header of a marker is empty, its pose will be interpreted as 
+#   relative to the pose of the parent interactive marker.
+Marker[] markers
+
+Originally posted by dgossow with karma: 1444 on 2014-07-18
+This answer was ACCEPTED on the original site
+Post score: 2
+

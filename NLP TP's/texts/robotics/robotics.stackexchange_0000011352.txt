@@ -1,0 +1,28 @@
+Q:
+
+How do I determine the required encoder resolution for a control system?
+
+I'm designing a joint which will have to move with a velocity of ~60RPM and I have to come up with resolution requirement for the encoders within this joint. I notice however that this is easier said than done.
+A 1m beam will be connected to the joint, I figured I would need to know the position of the tip of the beam with a resolution of approximately 1mm. with some simple calculations I found that for this a 12-bit encoder will be sufficient.
+However, I was wondering whether this would be sufficient to actually control the joint in a smooth manner. I found some information about how the resolution influences the joint behavior but didn't find anything about how to use this to find resolution requirements. For example I found:
+
+"When you tune the constants right, you should be able to run your arm
+  at a constant speed. However, this is dependent that you have a fairly
+  high-resolution encoder,"
+
+I have no idea what a "fairly high-resolution encoder" is. I was wondering if any of you have any experience with this or know any methods to determine the required resolution.
+
+A:
+
+First I would question your math that got you to the 12b sensor. 
+If you have a $dy$ of 1 mm over an arm that is $r = 1$ m long, then $\sin(\theta) = dy/r \rightarrow \theta = \mbox{asin}(dy/r)$. If you make the small angle approximation $\sin{\theta} \approx \theta$, then $\theta \approx dy/r$.
+This is $\theta$ in radians, so you're looking at a full circle (complete revolution) of 2$\pi$. In order to resolve $\theta$, you need a "segment" of the circle to be at most the size of $\theta$. 
+If $\theta \approx dy/r$, then $\theta \approx 0.001/1 = 0.001$. For a full revolution of $2\pi \approx 6.283$, you're going to need there to be $(6.283/0.001)$ "segments" in the revolution, or 6,283. 
+A 12 bit sensor has a range of [0,(2^12)-1], or [0,4095]. This means that you only get 4096 segments of the revolution, and each segment spans an arc of 0.0015 radians. This corresponds to about (again, small angle approximation) a $dy \approx 1.5$mm.
+So you need to bump the sensor resolution by at least double, to a 13b sensor. This gets you 2^13 segments, 8,192, putting your smallest measurable $dy$ around 0.77 mm. 
+If you're looking to control to that degree of precision, you need to be sure that your signal doesn't get lost in the noise. Typically a datasheet will give a specification to accuracy and/or noise in terms of the least significant bit. Generally this would be something like +/- 3 LSB or +/- 5 LSB, etc. 
+So, in this case, with a 13b sensor, the least significant bit represents 0.77 mm in your system, so you're trying to control to +/- 1mm but your noise, at +/- 3 LSB, is actually +/- 2.3 mm, so that's not possible. 
+Increase the resolution to 14b to half the LSB, and then your +/- 3 LSB becomes half of the +/- 2.3 mm, or about +/- 1.15 mm. So, maybe then that's still not reasonable for you. I don't recall seeing 15b sensors even though 13b seems to be relatively common. That means you'd probably go on up to a 16b sensor. This puts the LSB at one fourth the value of the 14b sensor, or one fourth of +/- 1.15 mm. Now you're looking at noise of just under +/- 0.3mm. This is probably the sensor you would want to use.
+Now you'll also see why industrial controls, unlike academic controls, generally don't use a derivative (D) term in the PID controller. Industrial controls are generally just PI controllers because the derivative term is so sensitive to noise. In the example above, you could very realistically get a swing from -3 LSB to +3 LSB, or -0.3mm to +0.3mm, in one sample period, and that's IF the system being measured doesn't move. At a relatively low sample rate of 25Hz, 0.6 mm/0.04 s = 15 mm/s, or a "phantom" speed of over half an inch per second. This signal goes up the faster your sample time is, leading to very large incorrect readings. 
+So, tl;dr - pick a sensor that gets the signal on par with what you're trying to control. Sensors all have noise and choosing the sensor that barely meets your requirements is not the right way to do it. 
+

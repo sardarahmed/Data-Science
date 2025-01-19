@@ -1,0 +1,194 @@
+Q:
+
+VFH (Vector Field Histogram+): Obtaining the Primary Polar Histogram
+
+Good day
+Note: I have found out that my code works. I have placed a minor explanation to be further expounded.
+I have been having trouble obtaining the right directional output from my implementation. I noticed that every time I put an obstacle at the right, it gives left, it gives the right steering direction, the problem is with the presence of a left obstacle where it still tends to steer itself towards that obstacle. I have checked the occupancy map generated using matlab and was found to be correct. I couldn't pinpoint what is exactly wrong with my code for I have been debugging this for almost a week now and was hoping if someone can see the error I cannot.
+Here is my code implementation:
+//1st:: Create Occupancy Grid from Data-------------------------------------------------
+// > Cell Size/Grid Resolution  = 5meters/33 cells = 0.15meters each = 15cm each
+// > Grid Dimension = 5meters by 5meters / 33x33 cells //Field of view of robot is 54 degrees
+//or 31 meters horizontal if subject is 5 meters away
+// > Robot Width = 1meter 100cm
+// > Because the focal length of the lens is roughly the same as the width of the sensor,
+// it is easy to remember the field of view: at x meters away, you can see about x meters horizontally,
+// assuming 4x3 stills mode. Horizontal field of view in 1080p video mode is 75%
+// of that (75% H x 55% V sensor crop for 1:1 pixels at 1920x1080).
+
+//Converting the Position into an Angle--------------------------------------------
+//from:
+//  A. https://decibel.ni.com/content/docs/DOC-17771
+//  B. "USING THE SENSOR KINECT FOR LANDMARK" by ANDRES FELIPE ECHEVERRI GUEVARA
+//1. Get angle
+// > Each pixel from the image represents an angle
+// > angle = ith pixel in row * (field of view in degrees/number of pixels in row)
+// > field of view of Pi camera is 54 degrees horizontal
+//2. Convert Polar to Cartesian
+// > x = z*cos(angle)
+// > y = z*sin(angle)
+
+int arrOccupancyGrid[33][33];
+float matDepthZ[33][33];
+int robotPosX = 0;
+int robotPosY = 0;
+int xCoor=0; //Coordinates of Occupancy Map
+int yCoor=0;
+int xPosRobot=0; //Present cordinates of robot
+int yPosRobot=0;
+float fov = 54; // 54 degrees field of view in degrees must be converted to radians
+float nop = 320; //number of pixels in row
+int mapDimension = 33; // 33by33 array or 33*15cm = 5mby5m grid
+int mapResolution = 15; //cm
+
+//Limit max distance measured
+/*
+for(i=0; i< nop ;i++){
+    if(arrDepthZ.at(i)>500){
+        arrDepthZ.at(i) = 500;
+    }
+}
+*/
+
+for (i=0 ; i < nop; i++){
+    //Process data/Get coordinates for mapping
+        //Get Angle
+        int angle = ((float)(i-160.0f) * ((float)fov/(float)nop)); //if robot is centered at zero add -160 to i
+        //cout << "arrDepthZ " << arrDepthZ.at(i) << endl;
+            //cout << "i " << i << endl;
+            //cout << "fov " << fov << endl;
+            //cout << "nop " << nop << endl;
+            //cout << "angle " << i * (fov/nop) << endl;
+        arrAngle.push_back(angle);
+        //Get position X and Y use floor() to output nearest integer
+        //Get X --------
+        xCoor = (arrDepthZ.at(i) / mapResolution) * cos(angle*PI/180.0f); //angle must be in radians because cpp
+        //cout << "xCoor " << xCoor << endl;
+        arrCoorX.push_back(xCoor);
+        //Get Y --------
+        yCoor = (arrDepthZ.at(i) / mapResolution) * sin(angle*PI/180.0f); //angle must be in radians because cpp
+                //cout << "yCoor " << yCoor << endl;
+        arrCoorY.push_back(yCoor);
+    //Populate Occupancy Map / Cartesian Histogram Grid
+
+        if((xCoor <= 33) && (yCoor <= 33)){ //Condition Check if obtained X and Y coordinates are within the dimesion of the grid
+            arrOccupancyGrid[xCoor][yCoor] = 1; //[increment] equate obstacle certainty value of cell by 1
+            matDepthZ[xCoor][yCoor] = arrDepthZ.at(i);
+        }
+
+        //cout << "arrCoorX.size()" << arrCoorX.size() << endl;
+        //cout << "arrCoorY.size()" << arrCoorY.size() << endl;
+
+}
+
+for (i=0 ; i < arrCoorX.size(); i++){
+  file43 << arrCoorX.at(i) << endl;
+}
+
+for (i=0 ; i < arrCoorY.size(); i++){
+  file44 << arrCoorY.at(i) << endl;
+}
+
+for (i=0 ; i < arrDepthZ.size(); i++){
+  file45 << arrDepthZ.at(i) << endl;
+}
+
+//------------------------- End Create Occupancy Grid -------------------------
+
+//2nd:: Create 1st/Primary Polar Histogram ------------------------------------------------------
+//1. Define angular resolution alpha
+// > n = 360degrees/alpha;
+// > set alpha to 5 degrees resulting in 72 sectors from 360/5 = 72 ///// change 180/5 = 35
+//2. Define number of sectors (k is the sector index for sector array eg kth sector)
+// > k=INT(beta/alpha), where beta is the direction from the active cell
+//to the Vehicle Center Point (VCP(xPosRobot, yPosRobot)). Note INT asserts k to be an integer
+
+cout << "2nd:: Create 1st/Primary Polar Histogram" << endl;
+
+//Put this at the start of the code away from the while loop ----------------
+int j=0;
+int sectorResolution = 5; //degrees 72 sectors, alpha
+int sectorTotal = 36; // 360/5 = 72 //// change 180/5 = 36
+int k=0; //sector index (kth)
+int maxDistance = 500; //max distance limit in cm
+//vector<int>arrAlpha; //already initiated
+
+float matMagnitude[33][33]; //m(i,j)
+float matDirection[33][33]; //beta(i,j)
+float matAngleEnlarge[33][33]; //gamma(i,j)
+int matHconst[33][33]; //h(i,j) either = 1 or 0
+
+float robotRadius = 100; //cm
+float robotSafeDist = 50; //cm
+float robotSize4Sector = robotRadius + robotSafeDist;
+
+for (i=0; i<sectorTotal; i++){
+    arrAlpha.push_back(i*sectorResolution);
+}
+//---------end initiating sectors----------
+
+//Determine magnitude (m or matMagnitude) and direction (beta or matDirection) of each obstacle vector
+//Modify m(i,j) = c(i,j)*(a-bd(i,j)) to m(i,j) = c(i,j)*(dmax-d(i,j)) from sir Lounell Gueta's work (RAL MS)
+//Compute beta as is, beta(i,j) = arctan((yi-yo)/(xi-xo))
+//Enlarge robot and compute the enlargment angle (gamma or matAngleEnlarge)
+int wew =0;
+int firstfillPrimaryH = 0; //flag for arrayPrimaryH storage
+for (k=0; k<sectorTotal; k++){
+    for (i=0; i<mapDimension; i++){
+        for (j=0; j<mapDimension; j++){
+            //cout << "i" << i << "j" << j << "k" << k << endl;
+            //cout << "mapDimension" << mapDimension << endl;
+            //cout << "sectorTotal" << sectorTotal << endl;
+            //Compute magnitude m, direction beta, and enlargment angle gamma
+            matMagnitude[i][j] = (arrOccupancyGrid[i][j])*( maxDistance-matDepthZ[i][j]); //m(i,j)
+            //cout << "matMagnitude[i][j]" <<  (arrOccupancyGrid[i][j])*( maxDistance-matDepthZ[i][j]) << endl;
+            matDirection[i][j] = ((float)atan2f( (float)(i-yPosRobot), (float)(j-xPosRobot))*180.0f/PI); //beta(i,j)
+            //cout << "matDirection[i][j]" << ((float)atan2f( (float)(i-yPosRobot), (float)(j-xPosRobot))*180.000/PI) << endl;
+            //cout << "matDepthZ[i][j]" << matDepthZ[i][j] << endl;
+            if(matDepthZ[i][j] == 0){ //if matDepthZ[i][j] == 0; obstable is very far thus path is free, no enlargement angle
+                matAngleEnlarge[i][j] = 0; //gamma(i,j)
+                //cout << "matAngleEnlarge[i][j]" << 0 << endl;
+            }
+            else{ //if matDepthZ[i][j] > 0 there is an obstacle so compute enlargement angle
+                matAngleEnlarge[i][j] = asin( robotSize4Sector / matDepthZ[i][j])*180/PI; //gamma(i,j)
+                //cout << "matAngleEnlarge[i][j]" << asin( robotSize4Sector / matDepthZ[i][j])*180.0f/PI << endl;
+            }
+
+            wew = k*sectorResolution; //k*alpha
+            //cout << "wew" << k*sectorResolution << endl;
+            //Check if magnitude is a part of the sector
+            if ( ((matDirection[i][j]-matAngleEnlarge[i][j]) <= wew) && (wew <= (matDirection[i][j]+matAngleEnlarge[i][j])) ){
+                matHconst[i][j]=1; //Part of the sector
+                //cout << "Part of the sector ---------------------------------------------------------------" << endl;
+                //cout << "matHconst[i][j]=1" << matHconst[i][j] << endl;
+            }
+            else{
+                matHconst[i][j]=0; //Not Part of the sector
+                //cout << "Not Part of the sector" << endl;
+                //cout << "matHconst[i][j]=0" << matHconst[i][j] << endl;
+            }
+            //Compute primary polar histogram Hp(k)
+            //cout << "firstfillPrimaryH" << firstfillPrimaryH << endl;
+            if (firstfillPrimaryH==0){ //If first fill at sector
+                //cout << "matMagnitude[i][j]" << matMagnitude[i][j] << endl;
+                //cout << "matHconst[i][j]" << matHconst[i][j] << endl;
+                float temp = matMagnitude[i][j]*matHconst[i][j];
+                //cout << "matMagnitude[i][j]*matHconst[i][j]" << temp << endl;
+                arrPrimaryH.push_back(temp);
+                firstfillPrimaryH=1; //Trigger flag
+                //cout << "arrPrimaryH kth" << arrPrimaryH.at(k) << endl;
+            }
+            else{ //If sector filled previously
+                arrPrimaryH.at(k) = arrPrimaryH.at(k)+(matMagnitude[i][j]*matHconst[i][j]);
+                //cout << "arrPrimaryH kth" << arrPrimaryH.at(k) << endl;
+            }
+
+        }
+    }
+    firstfillPrimaryH=0; //Reset flag
+}
+
+A:
+
+I have found out that my code works. It is just that most of the literature I have read uses Lidar or Sonar sensors for histogram updates. I had assumed that in the case of a stereo vision set-up, all sectors are updated simultaneously. However only the sectors in the field of view of the camera is update unlike in the lidar implementation that samples a complete 360 degree sweep of its surroundings. Another thing I have found out that when deriving the X and Y coordinates from the depthmap, the resulting map is a mirror image of the actual surrounding thus the sectors must be labeled counter clockwise. I used the formula from NI' s paper linked at the code. The same case is also true when using the camera matrix with open cv to obtain the real world X,Y coordinates from the depth map. I shall edit this question to a clearer one soon :)
+

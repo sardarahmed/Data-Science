@@ -1,0 +1,76 @@
+Q:
+
+how to subscribe to bumper topic on move_base
+
+I am a beginner at ROS and ROS navigation stack.
+I have been using roomba_500_series and navigation stack (including move_base module). I would like to subscribe to /bumper topic in move_base. The topic type of /bumper is roomba_500_series/Bumper. I can already use bumper topic by using kobuki_bumper2pc. However I want to use the topic in move_base one way or another.
+First of all, I would like to try to turn rommba left when the right bumper is true after publishing /cmd_vel. I modified move_base.cpp like below.
+move_base.cpp (line: 902~) link text
+//make sure that we send the velocity command to the base                             
+ vel_pub_.publish(cmd_vel);      　     
+//***modified part
+ bump_sensor_sub_ = nh.subscribe("/bumper", 1000, &MoveBase::BumperSensorCB, this);  
+ if (right_bumper==1){            
+    publishZeroVelocity();
+    while(right_bumper==1){
+       cmd_vel.linear.x = 0.0;
+       cmd_vel.linear.y = 0.0;
+       cmd_vel.angular.z = 0.78;
+       vel_pub_.publish(cmd_vel);
+
+       bump_sensor_sub_ = nh.subscribe("/bumper", 1000, &MoveBase::BumperSensorCB, this);
+    }
+ }  //***
+
+function MoveBase::BumperSensorCB which I made
+void MoveBase::BumperSensorCB(const roomba_500_series::Bumper::ConstPtr& msg) 
+  {
+    left_bumper = msg->left.state;
+    right_bumper = msg->right.state;
+  }
+
+right_bumper & left_bumper are boolean data type
+bool right_bumper, left_bumper;
+
+I modified move_base.cpp as noted above. However roomba doesn't work as I thought. It seems like MoveBase can't subscribe to /bumper topic now. Although, the cause might be CMakeLists.txt , I have no idea how to modify it to use /bumper topic from roomba_500_series.
+Sorry that was such a long post and my poor English.
+I would appreciate it if you could answer my question.
+Thank you.
+
+Originally posted by rostaro on ROS Answers with karma: 17 on 2017-12-11
+Post score: 0
+
+Original comments
+Comment by jayess on 2017-12-20:
+Why did you modify move_base.cpp? Modifying source code as you did is generally not a good idea. If/when you update this package your modification will be gone.
+Comment by rostaro on 2017-12-21:
+I am trying to create new state_ link text in MoveBase::executeCycle.
+When /bumper's state is unavoidably true, I'd like to control roomba in new state_.
+Comment by rostaro on 2017-12-21:
+The modifying code above is to confirm whether it works or not on an experimental basis.
+I am not a engineer, so I have no idea, it is good or not.
+
+A:
+
+You are subscribing to the same topic in a while.
+You have to subscribe only once.
+Since you are already subscribing to the node before the while, try to remove the  bump_sensor_sub_ = nh.subscribe("/bumper", 1000, &MoveBase::BumperSensorCB, this); that is inside the while(right_bumper==1){} and see if it works.
+
+Originally posted by Ruben Alves with karma: 1038 on 2017-12-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by rostaro on 2017-12-20:
+Thank you for answering my question and I`m sorry for the delay in my reply.
+Actually, I am subscribing the same topic in a while.
+My intention is to exit the while by updating bumper data.
+Therefor, I am doing it.
+Please excuse my lack of explanation.
+Comment by rostaro on 2017-12-20:
+In terms of this question that I have posted, I have already solved the problem.
+The cause might be CmakeLists.txt.
+I appreciate your understanding and cooperation.
+Please excuse any mistakes in this letter.
+Thank you.
+

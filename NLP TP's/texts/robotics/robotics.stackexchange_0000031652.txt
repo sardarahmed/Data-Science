@@ -1,0 +1,41 @@
+Q:
+
+SimpleActionState doesn't abort on timeout
+
+Hi,
+I am trying to use SMACH with a SimpleActionState for a Fibonacci action (presented in this tutorial.
+Everything worked fine until I tried to set the server_wait_timeout, to abort the action if the server is not running :
+action_state = SimpleActionState('fibonacci', FibonacciAction, goal=FibonacciGoal(order=10), server_wait_timeout=rospy.Duration(10.0))
+If the server is not running, the state doesn't abort and keeps waiting :
+[WARN] 1305722502.537441: Still waiting for action server 'fibonacci' to start... is it running?
+Edit: I have a similar problem when trying to use the exec and preempt timeouts :
+action_state = SimpleActionState('fibonacci', FibonacciAction, goal=FibonacciGoal(order=10), exec_timeout=rospy.Duration(10.0), preempt_timeout=rospy.Duration(10.0))
+If the action has not finished after 10s I have the following output :
+[WARN] 1306926844.598188: Action fibonacci timed out after 10 seconds.
+A preempt request should have been send, but if no result is received the action doesn't abort as expected, and the same output keeps printed.
+Once again, am I missing something or is there a problem with the SimpleActionState implementation ?
+
+Originally posted by ju on ROS Answers with karma: 71 on 2011-05-18
+Post score: 4
+
+A:
+
+server_wait_timeout:
+You're right, looking at the source code it appears that the 'server_wait_timeout' parameter is simply ignored. This is a bug in smach_ros. Could you file a ticket? There's a  link on the bottom of the smach page.
+
+exec_timeout:
+This timeout specifies when the simple action client will send a preempt request to the action server. But it is up to the action server to respond to this preempt request. Some action server implementations do not support preemption. This might be accidental or simply because the type of activity that is associated with the action is not something that can be stopped at any point in time. So the exec_timeout works as it should: it tells the action server that it would like it to stop.
+
+preempt_timeout:
+This timeout does not seem to be used in the code at all. I added this to the ticket below.
+
+Originally posted by Wim with karma: 2915 on 2011-05-25
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by mmwise on 2011-05-25:
+created ticket here: https://code.ros.org/trac/ros-pkg/ticket/4969
+Comment by phil0stine on 2012-07-30:
+don't know if there was any resolution to this, but i put a patch up just in case here. should be better at interrupt handling as well as using server_wait_timeout
+

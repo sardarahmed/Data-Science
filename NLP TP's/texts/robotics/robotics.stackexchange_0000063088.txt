@@ -1,0 +1,52 @@
+Q:
+
+publishing "0" points in a point cloud
+
+hi all. basically my problem is with clearing a costmap when using a point cloud to add obstacles to it.
+http://youtu.be/VNzrfEc2JYk?t=29s
+the video above pretty much shows what's going on. i just put a couple of points in a straight line (ultimately the point cloud will come from a camera, but this indicates the problem i am having).
+it's not clearing. i think i've set the clearing distance fine. i'll post it once i boot up ubuntu.
+i'm thinking it may be because i need to publish "0" points to clear the line i'm making. otherwise there's really nothing to clear the costmap. i'm not too sure what value i should use for these "0" points -- i tried 0 and they actually came up as obstacles too when put into the costmap.
+if anyone can help with this i'll be extremely grateful...
+thank you for your time.
+
+Originally posted by Garrick on ROS Answers with karma: 96 on 2014-10-05
+Post score: 1
+
+Original comments
+Comment by AReimann on 2014-10-12:
+So I guess you are using a voxel map as costmap?
+What do you mean exactly by camera?
+Comment by Garrick on 2014-10-12:
+i think i was using a voxel layer instead of an obstacle layer. do you think this will make a difference with the clearing? the camera will ultimately generate the poincloud. but in the video i just put a line of points. this is solved using the cloud->laser but i will now try with an obstacle layer
+Comment by AReimann on 2014-10-12:
+Shouldn't make a difference. By camera I was more thinking about if it is a depth camera or something else which can only output "valid" points, so not out of measurement range etc. See answer,
+
+A:
+
+I'm not entirely sure what you mean by
+
+i just put a couple of points in a straight line
+
+but I think I understand where the confusion is coming from. When the costmap receives the cloud, each point in your pointcloud will be processed as an observation. If marking is enabled, the costmap will then mark an obstacle at the point. If clearing is enabled, it will raytrace clear space inbetween the robot and the point. So if you send an empty pointcloud, nothing at all will happen, because you have no observations. Similarly, a lack of points along a direction does not automatically clear the space either. This may not be obvious from the documentation, so it helps to dig into the source when something isn't clear.
+You may think 'no points means no obstacles', however the pointcloud doesn't actually contain any information about how much space it contains, only the points that are present. An empty cloud may also represent a sensor malfuntion, or a blind spot in the sensor's FOV, so the costmap can't assume clear space and clear the obstacles.
+The way I got around this issue is to convert the pointcloud into a laserscan, with max_sensor_range along rays where no point is detected. This is essentially you doing your own raytracing. Sadly, the pointcloud_to_laserscan package that used to do this doesn't exist anymore (used to be in the original turtlebot repo), but I've added it back to perception_pcl. These changes aren't released into ROS yet, so you can clone and compile the pointcloud_to_laserscan package yourself.
+
+Originally posted by paulbovbel with karma: 4518 on 2014-10-05
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Garrick on 2014-10-05:
+ah. thanks Paul. that makes sense now.
+Comment by Garrick on 2014-10-08:
+Paul. Have you tested that code? the node starts up fine but when I echo the laser scan topic it dies with this error:
+process[pointcloud_to_laserscan-1]: started with pid [8313]
+pointcloud_to_laserscan: /usr/include/boost/smart_ptr/shared_ptr.hpp:653: typename boost::detail::sp_member_access::t
+Comment by Garrick on 2014-10-08:
+ype boost::shared_ptr::operator->() const [with T = const pcl::PointCloudpcl::PointXYZ; typename boost::detail::sp_member_access::type = const pcl::PointCloudpcl::PointXYZ*]: Assertion `px != 0' failed.
+Comment by paulbovbel on 2014-10-08:
+Thanks, think I found the problem, fixed. If you have any issues, please open a ticket on github.
+Comment by Garrick on 2014-10-09:
+thanks heaps Paul. I'll test it tomorrow.
+

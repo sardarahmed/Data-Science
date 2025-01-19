@@ -1,0 +1,74 @@
+Q:
+
+Waiting for callback before control loop
+
+Hello, I have a node where I'm using lidar data to control a turtlebot. I'm subscribed to the /scan topic, and storing the distance and angle from the lidar callback inside class variables, and these are updated with every callback. These class variables are initialized to 0. Sometimes the first callback happens before the control loop, and then everything runs fine. But sometimes the callback does not happen before the control loop and this causes the values to keep their initial value on the first control loop iteration, which can cause issues.
+Here is a simplified version of the code:
+    class move:
+        def __init__(self):
+            self.pub = rospy.Publisher("tb3_1/cmd_vel",Twist,queue_size=100)
+            self.sub2 = rospy.Subscriber("tb3_1/scan",LaserScan,self.lidar_callback)
+    
+            self.lidar_dist = 0
+            self.lidar_angle = 0
+    
+      def control(self):
+            move = Twist()
+            --- Computation of control equations---
+
+      def lidar_callback(self,msg):
+           ---calculate distance and angle---
+            self.lidar_dist = distance
+            self.lidar_angle = angle
+
+if __name__ == '__main__':
+    rospy.init_node("lidar_follower",disable_signals=True)
+    rate = rospy.Rate(100) 
+    obj = move()
+
+    while not rospy.is_shutdown():
+            obj.control()
+            rate.sleep()
+
+Thanks in advance
+
+Originally posted by Roshan on ROS Answers with karma: 51 on 2021-11-19
+Post score: 0
+
+A:
+
+I think you can wait for the first LaserScan message before setting up your publisher in the class constructor...something like this:
+    def __init__(self):
+        self.sub2 = rospy.Subscriber("tb3_1/scan",LaserScan,self.lidar_callback)
+        rospy.wait_for_message("tb3_1/scan",LaserScan)
+        self.pub = rospy.Publisher("tb3_1/cmd_vel",Twist,queue_size=100)
+
+That returns the first message but you can just ignore it if you want.
+
+Originally posted by Airuno2L with karma: 3460 on 2021-11-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Roshan on 2021-11-19:
+Thank you for your answer, tried that but it just makes the class variables 0 on the first iteration all the time instead of just sometimes.
+Comment by Airuno2L on 2021-11-19:
+umm, I'm not sure why it would do that. Maybe do the wait_for_message before you even create the class object like this
+if __name__ == '__main__':
+    rospy.init_node("lidar_follower",disable_signals=True)
+    rospy.wait_for_message("tb3_1/scan",LaserScan)
+    rate = rospy.Rate(100) 
+    obj = move()
+
+Comment by Airuno2L on 2021-11-19:
+Also, are you sure you want disable_signals=True in your init_node?
+Comment by Roshan on 2021-11-19:
+The disable_signals were just there for testing, I don't think they're doing anything at the moment. But doing
+if __name__ == '__main__':
+    rospy.init_node("lidar_follower",disable_signals=True)
+    rospy.wait_for_message("tb3_1/scan",LaserScan)
+    rate = rospy.Rate(100) 
+    obj = move()
+
+Seems to be doing the same as when it was in the class
+

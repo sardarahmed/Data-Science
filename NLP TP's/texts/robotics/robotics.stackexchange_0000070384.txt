@@ -1,0 +1,39 @@
+Q:
+
+ctrl-c shutdown of nodelet manager versus calling shutdown inside of nodelet manager
+
+I have written a camera manager node that produces a combined/tiled image from two single camera nodes being loaded as nodelet into my camera manager.  The camera manager is being launched as a node (and has a Nodelet::Loader as a member var) from a launch file, and the two camera nodelets are being loaded into that camera manager using the load arg in a launch file (args="load camera_nodelet camera_manager").  This works great.
+For various reasons, the cameras can stop working properly from time to time and need to be restarted.  Using Ctrl-C to exit the camera manager produces relatively nice messages about "Unloading nodelet .... from manager ..." and then shutting down processing monitor.  Relaunching the camera manager launch file brings the whole system back up, and everything is happy.
+I want to automate this process (exiting and restarting). When the system detects it needs a restart, I call exit() from within the camera manager and rely on roslaunch to respawn the camera manager.  This is technically exiting and respawning, but it does not do it nearly as gracefully as when I Ctrl-C exit, instead immediately exiting with a "process has died" message and respawning the system into a state where the camera nodelets don't come back up properly.  Similarly I have tried calling ros::shutdown(), ros::requestShutdown(), and even raise(SIGINT) - all behave just like exit().
+So my question is how can I internally make my node exit in the same manner that roslaunch is causing my node to exit?
+
+Originally posted by barryjobrien on ROS Answers with karma: 21 on 2015-11-13
+Post score: 2
+
+Original comments
+Comment by emrainey on 2016-03-11:
+Great Question. I'm curious to know the answer too! None of the above seem to work as well as I would like.
+
+A:
+
+I did find something that works! You have to configure your node launch XML to indicate that the nodelet which will call exit(x) is required. Then when it detects a failure, it will kill the entire launch file.
+<node pkg.... required="true">
+...
+</node>
+
+then inside nodelet you can call "exit(err);" with some error in err. Well I did the following incase there's some other path:
+ros::shutdown();
+raise(SIGINT);
+raise(SIGABRT);
+exit(-1);
+
+I really want it to exit.
+
+Originally posted by emrainey with karma: 26 on 2016-03-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by HappySamuel on 2021-11-24:
+But using required="true" will affect others (launch files / nodes) as well when this launch file is integrated into the main launch file.
+

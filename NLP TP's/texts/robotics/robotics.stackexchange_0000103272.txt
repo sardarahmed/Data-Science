@@ -1,0 +1,104 @@
+Q:
+
+Code Execution cannot proceed because ext_lib.dll not found
+
+Hi all,
+I am trying to build a ROS wrapper on a Windows 11 install of ROS2-foxy for some laser profilometry sensors from Wenglor. These sensors come with an array of libraries linked here for both linux and windows.
+The key library files are:
+
+EthernetScanner.dll
+EthernetScanner.lib
+EthernetScannerSDK.h
+EthernetScannerSDKDefine.h
+
+My sensor pkg contains the library files in a lib/ folder and the sensor_node.cpp in a src/ folder. The CMakeList and package are naturally in the root of the sensor folder.
+The package.xml is as follows:
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sensor</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="XYZ.com">XYZ</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>gaf_msgs</depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+
+And the CMakeList is as follows:
+cmake_minimum_required(VERSION 3.5)
+project(sensor)
+
+# Default to C99
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(gaf_msgs REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+add_executable(sensor_node src/sensor_node.cpp)
+ament_target_dependencies(sensor_node rclcpp gaf_msgs)
+
+target_include_directories(sensor_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib>)
+
+FIND_LIBRARY(ETHERNET NAMES EthernetScanner.dll PATHS ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+
+target_link_libraries(sensor_node ${ETHERNET})
+
+install(TARGETS sensor_node
+  DESTINATION lib/${PROJECT_NAME})
+    
+ament_package()
+
+The package builds fine. However, after running the install.bat, when running the ros2 run sensor sensor_node I get the following error.
+
+The code execution cannot proced because EthernetScanner.dll was not found. Reinstalling the program may fix the problem.
+
+Naturally I tried reinstalling the package but the same error occurs. I'm suspect it's to do with how I am linking the library to the node file but I am not sure how to make sure the library can be found after building.
+Any help would be greatly appreciated.
+Lawsey
+
+Originally posted by Lawsey on ROS Answers with karma: 26 on 2023-05-16
+Post score: 0
+
+A:
+
+Hi all,
+As an update I managed to solve the problem. I've added a custom command in the CMake to copy the dll to the correct location after building and this seems to have corrected the process. The modified section of the CMake is updated below.
+FIND_LIBRARY(ETHERNET_LIBRARY NAMES EthernetScanner PATHS ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+
+add_custom_command(TARGET sensoor_node POST_BUILD 
+               COMMAND ${CMAKE_COMMAND} -E copy
+               ${CMAKE_CURRENT_SOURCE_DIR}/lib/EthernetScanner.dll          
+               ${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/EthernetScanner.dll)
+               
+
+target_link_libraries(sensor_node ${ETHERNET_LIBRARY})
+
+Originally posted by Lawsey with karma: 26 on 2023-05-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

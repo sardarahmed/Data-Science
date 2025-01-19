@@ -1,0 +1,50 @@
+Q:
+
+Object recognition during slam
+
+Can objects be recognized on the map during SLAM?
+The method I came up with is to recognize the created map using methods such as template matching using opencv.
+I'm curious whether real-time map data is passed to opencv for processing or if there is another way.
+
+In this type of map
+
+I want to find objects with these same patterns. (same size and shape)
+
+A:
+
+I think your idea to send the map to openCV sounds reasonable. Of course the mapping algo won't see a square against the wall. It will see the wall with square shapes areas sticking out and will see that only after you've steered the robot around the sqaure so it can get line-of-site on all three exposed sides.
+With gmapping running, the developing map is updated/published once or twice a minute and you could use that published data.
+The code below works on ros-kinetic (ubuntu 16) to receive the /map topic, convert to an appropriate 8bit unsigned with pixel values manipulated so colors match default RVIZ colors, and show the image via cv2.imshow.  Because I did not test this code with gmapping running I did not confirm that openCV is in a good state to allow another entry into openCV on the next map update. As a test case though to show how to get the map into openCV, this should be enough.
+#!/usr/bin/python
+import rospy
+from nav_msgs.msg import OccupancyGrid
+import cv2
+import numpy as np
+
+def map_callback(msg):
+    # Assuming msg.data contains the occupancy grid values
+    occupancy_data = np.array(msg.data, dtype=np.uint8)
+    # change pixel values so the image looks similar to default rviz colors
+    occupancy_data[occupancy_data == 255] = 128
+    occupancy_data[occupancy_data == 0] = 255
+    occupancy_data[occupancy_data == 100] = 0
+
+    occupancy_image = np.reshape(occupancy_data, (msg.info.height, msg.info.width))
+
+    # in my case, crop since the image is 4000 x 4000 but full map fits in 500 x 500.
+    cropped = occupancy_image[1750:2250, 1750:2250]
+
+    #flip image to get coordiantes straight
+    flipped = cv2.flip(cropped,0)
+   
+    cv2.imshow("Occupancy Grid Image", flipped)
+    cv2.waitKey(0)
+    print ("Done with map as image")
+
+rospy.init_node('map_image_converter')
+rospy.Subscriber('/map', OccupancyGrid, map_callback)
+rospy.spin()
+
+Full disclosure: This code was started by Chat-GPT. I had to debug it to get it working.
+I saw online there may also be solutions on github but did not investigate.
+

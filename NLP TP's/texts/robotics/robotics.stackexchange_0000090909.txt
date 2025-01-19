@@ -1,0 +1,55 @@
+Q:
+
+Retrieve list of lists from yaml file / parameter server
+
+I have a yaml file with a list of 3D points:
+bb1:   corners: [[-0.009000421,
+-32.9505, 3.071861], [-0.009000659, -34.8755, 3.071861], [-0.009000659, -34.8755, 1.134362], [-0.009000421, -32.9505, 1.134362]]   bound: [2.5, 2.5, 5.0]
+
+I've got it in the launch file and can can successfully test for the param:
+ if(n.hasParam("path/bb1/corners"))
+
+however I can't figure out how to actually read the values. I've looked here:
+http://wiki.ros.org/roscpp/Overview/Parameter%20Server
+however the most it gives an example is how to retrieve a list of primitive types.
+I tried XmlRpc::XmlRpcValue as well but if I
+    XmlRpc::XmlRpcValue cornerlist;
+    n.getParam("path/bb1/corners", cornerlist);
+    std::cout << "corner type: " << cornerlist.getType() << std::endl;
+
+actually appears to work (was previously getting an error here, but had a typo in the param name).  Is that the best way? How do I get the list of lists?
+
+Originally posted by strike_eagle_iii on ROS Answers with karma: 35 on 2019-03-14
+Post score: 1
+
+A:
+
+Yep, you're on the right track. I had to do this for one of my projects a while back ( https://github.com/trainman419/dagny_robomagellan/blob/master/goal_list/src/goal_list.cpp#L143-L167 ):
+ // load goal list from parameter server
+ XmlRpc::XmlRpcValue xml_goals;
+ n.getParam("goals", xml_goals);
+ if( xml_goals.getType() != XmlRpc::XmlRpcValue::TypeArray ) {
+    ROS_ERROR("param 'goals' is not a list");
+ } else {
+    for( int i=0; i<xml_goals.size(); ++i ) {
+       if( xml_goals[i].getType() != XmlRpc::XmlRpcValue::TypeArray ) {
+          ROS_ERROR("goals[%d] is not a list", i);
+       } else {
+          if( xml_goals[i].size() != 2 ) {
+             ROS_ERROR("goals[%d] is not a pair", i);
+          } else if( 
+           xml_goals[i][0].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+           xml_goals[i][1].getType() != XmlRpc::XmlRpcValue::TypeDouble ) {
+             ROS_ERROR("goals[%d] is not a pair of doubles", i);
+          } else {
+             double a = xml_goals[i][0];
+             double b = xml_goals[i][1];
+          }
+       }
+    }
+ }
+
+Originally posted by ahendrix with karma: 47576 on 2019-03-14
+This answer was ACCEPTED on the original site
+Post score: 1
+

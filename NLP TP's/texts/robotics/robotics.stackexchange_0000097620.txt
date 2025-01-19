@@ -1,0 +1,130 @@
+Q:
+
+unable to increase speed of the bot using dwa_local_parameter
+
+I am trying to increase the speed of skid steering bot using dwa local planner but the speed doesn't increase above 0.5.
+I have tried manipulating acceleration, velocity and translational limit in the parameter file but the result is still the same.
+I don't get what is limiting the bot to not increase the speed above 0.5 m/s.
+
+Update-
+I checked the situation using rqt_reconfigure and the bot is able to react to any value in max_vel_x throughout the slider. But when I mention the same values in the yaml file, the bot sticks to 0.5 m/s for vel > 0.5.
+
+Below is the content of my dwa_local_planner_params.yaml file-
+DWAPlannerROS:
+
+  max_vel_x: 1.5  
+  min_vel_x: 0.0 
+
+  max_vel_y: 0.0  
+  min_vel_y: 0.0  
+
+  max_trans_vel: 1.5
+  min_trans_vel: 0.0  
+  trans_stopped_vel: 0.1
+
+  max_rot_vel: 5.0  
+  min_rot_vel: 0.4  
+  rot_stopped_vel: 0.4
+  
+  acc_lim_x: 2.5
+  acc_lim_theta: 2.0
+  acc_lim_y: 2.5
+
+  yaw_goal_tolerance: 0.3  
+  xy_goal_tolerance: 0.5 
+
+  sim_time: 1.0       
+  vx_samples: 6        
+  vy_samples: 1      
+  vtheta_samples: 20  
+
+  path_distance_bias: 90.0      
+  goal_distance_bias: 24.0      
+  occdist_scale: 0.50           
+  forward_point_distance: 0.325 
+  stop_time_buffer: 0.2         
+  scaling_speed: 0.25           
+  max_scaling_factor: 0.2      
+
+  oscillation_reset_dist: 0.05  
+
+  publish_traj_pc : true
+  publish_cost_grid_pc: true
+  global_frame_id: odom
+
+Launch File-
+<node pkg="agv_navigation" name="controller" type="goal_sequence.py"></node>
+
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/> 
+<param name ="publish_frequency" type=" double" value="50.0"/>
+
+<arg name="map_file" value="$(find agv_navigation)/map/world.yaml"/>
+
+<node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)" output = "screen" />
+
+<include file="$(find agv_navigation)/launch/amcl.launch" />
+<include file="$(find agv_description)/launch/agv_visualize.launch"/>
+
+<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+  <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+
+<rosparam file="$(find agv_navigation)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
+<rosparam file="$(find agv_navigation)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
+<rosparam file="$(find agv_navigation)/config/local_costmap_params.yaml" command="load" />
+<rosparam file="$(find agv_navigation)/config/global_costmap_params.yaml" command="load" />
+<rosparam file="$(find agv_navigation)/config/base_local_planner_params.yaml" command="load" />
+<rosparam file="$(find agv_navigation)/config/move_base_params.yaml" command="load"/>
+<rosparam file="$(find agv_navigation)/config/dwa_local_planner_params.yaml" command="load"/>
+<rosparam file="$(find agv_navigation)/config/global_planner.yaml" command="load"/>
+<remap from="cmd_vel" to="/cmd_vel"/>
+<remap from="odom" to="odom"/>
+
+</node>
+
+Originally posted by arjunchatterg on ROS Answers with karma: 36 on 2020-11-17
+Post score: 0
+
+Original comments
+Comment by mgruhler on 2020-11-18:
+Please use proper tags. gmapping and djikstra have nothing to do with your question. Thanks.
+Did you observe move_base actually publishing only a maximum velocity of 0.5m/s? Might be something else is limiting the robots velocity as well.
+Also, please check that the parameters are actually used, i.e. they are loaded in the correct namespace.
+Comment by arjunchatterg on 2020-11-18:\
+
+/cmd_vel topic echoes the mentioned speed.
+What parameter could limit the speed ? Local planner should only be responsible for robot's speed right ?
+How do I check if they are correctly loaded ? rqt_graph seems fine to me.
+
+Comment by mgruhler on 2020-11-18:
+max_vel_x and max_vel_trans should be the relevant ones.
+Does changing any parmeter have any effect on the robot? Try setting it to 0.1m/s and see if it is observing this limit. If not, you probably have loaded the parameters in the wrong namespace.
+Edit your question and show the launch file with which you upload the parameters.
+Comment by arjunchatterg on 2020-11-18:
+Bot is reacting to speed less than 0.5 m/s. But it stays at 0.5-0.55 even if I provide 1.0 m/s.
+Comment by mgruhler on 2020-11-18:
+is this stuff on a repo that we can check? I don't see anything wrong with the configuration, but there are so many things to check that having this on a repo would really help...
+Comment by arjunchatterg on 2020-11-18:\
+
+Config files are slight modifications of this repo
+Python script contains a simple addition of a loop of waypoints in this code
+
+A:
+
+I figured out the solution.
+The parameter is actually max_vel_trans instead of max_trans_vel.
+Thanks for your concern.
+
+Originally posted by arjunchatterg with karma: 36 on 2020-11-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mgruhler on 2020-11-19:
+great you figured it out. Actually, the parameter name has been changed in melodic. Also, the planner outputs a warning (see also this) which you should have seen.
+But I also missed the name change :-D
+Comment by miura on 2020-11-19:
+Congratulations.
+Comment by arjunchatterg on 2020-11-19:
+Yes, I figured out after I looked at the warning.
+Thank you so much for your time and concern @mgruhler and @miura
+

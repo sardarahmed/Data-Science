@@ -1,0 +1,89 @@
+Q:
+
+SLERP velocity and acceleration (3d Orientation interpolation)
+
+Hey guys I am quite new to quaternions and I am a bit unsure as to how to use them. How are the velocities and accelerations trajectories determined using quaternions?
+I have been using slerp to interpolate the orientations.
+$$
+\begin{align}
+Slerp(Q_0, Q_1,t) = Q_0(Q_0^{-1}Q_1)^t
+\end{align}
+$$
+Where $t$ is the interpolation parameter from $[0;1]$. I read on wikipedia that:
+
+*The derivative of $Slerp(q_0, q_1; t)$ with respect to t, assuming the ends are fixed, is $log(q_1 q_0^{−1})$ times the function value, where the quaternion natural logarithm in this case yields half the 3D angular velocity vector.*
+
+This is further supported by a document I found on the topic of quaternion interpolation in animation (Dam, E. B., Koch, M., & Lillholm, M., (1998)), where in equation: (6.12), they show the first and second derivative (using their notation):
+$$
+\begin{align}
+\frac{d}{dt}Slerp(p,q,h) &= \frac{d}{dt} p (p^* q)^h \\
+&= p(p^* q)^h log(p^* q)\\
+&= Slerp(p,q,h) log(p^*q)\\\\
+\frac{d^2}{dh^2}Slerp(p,q,h) &= p(p^* q)^h log(p^*q)^2\\
+&= Slerp(p,q,h) log(p^* q)^2
+\end{align} 
+$$
+In other words, to get the second derivative of $Slerp$ you need to times the function value with $log(Q_1, Q_0^{-1})^2$.
+Is this legitimate? And can I use these resulting quaternions for:
+$$
+\begin{align}
+X_d = \begin{bmatrix}p_d\\ Q_d \end{bmatrix}, \quad \dot{X}_d = \begin{bmatrix}\dot{p}_d\\ \dot{Q}_d \end{bmatrix} \quad \ddot{X}_d = \begin{bmatrix}\ddot{p}_d\\ \ddot{Q}_d \end{bmatrix}
+\end{align}
+$$
+where $p = [x,y,z]^\intercal$ and $Q = \{\eta, \epsilon \}$, and the dots $\dot{X}$ and $\ddot{X}$ are the respective velocities and accelerations.
+Because I am not sure what to make of the results. Maybe because I don't really understand quaternions. For context here's an example:
+Python:
+import numpy as np
+import quaternion
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.style.use('seaborn')
+plt.rcParams['figure.figsize'] = [10, 15]
+
+t = np.linspace(0,1,100)
+Q = np.zeros((4,100))
+Qd = np.zeros((4,100))
+Qdd = np.zeros((4,100))
+
+rot0 = np.array([[ 1.0,  0.0,  0.0],
+                 [ 0.0, -1.0,  0.0],
+                 [ 0.0,  0.0, -1.0]])
+
+rotf = np.array([[ 0.0, -1.0,  0.0],
+                 [-1.0,  0.0,  0.0],
+                 [ 0.0,  0.0, -1.0]])
+
+q0 = quaternion.from_rotation_matrix(rot0)
+qf = quaternion.from_rotation_matrix(rotf)
+
+for i in range(100):
+    slerp = q0 * (q0.inverse() * qf)**t[i]
+    slerp_d = slerp * np.log(qf * q0.inverse())
+    slerp_dd = slerp * np.log(qf * q0.inverse())**2
+
+    Q[:,i] = quaternion.as_float_array(slerp)
+    Qd[:,i] = quaternion.as_float_array(slerp_d)
+    Qdd[:,i] = quaternion.as_float_array(slerp_dd)
+
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+ax1.plot(Q.T)
+ax1.set_title("Slerp")
+ax1.legend(['w','i','j','k'])
+ax2.plot(Qd.T)
+ax2.set_title("Slerp_d")
+ax2.legend(['w','i','j','k'])
+ax3.plot(Qdd.T)
+ax3.set_title("Slerp_dd")
+ax3.legend(['w','i','j','k'])
+plt.show()
+
+A:
+
+Derivative of $\sin$ is $\cos$, and the derivative of $\cos$ is $-sin$.
+Given a quaternion definition of:
+
+$q = \cos{a} + \mathbf{r}\sin{a}$
+$\mathbf{r}^2 = -1$
+
+I would expect to see what is effectively a phase shift at every derivative level, and that's what I'm seeing in your curves. I noticed your magnitude seems to be growing, but that may be because you need to normalize at every step.
+

@@ -1,0 +1,32 @@
+Q:
+
+How to create a vector of message_filters::Subscriber?
+
+When I try to create a vector of message_filters::Subscriber like so:
+#include <message_filters/subscriber.h>
+#include "sensor_msgs/msg/point_cloud2.hpp"
+
+int main(int argc, char * argv[]) {
+    std::vector<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>> pc_subscribers_;
+    message_filters::Subscriber<sensor_msgs::msg::PointCloud2> sub;
+    pc_subscribers_.push_back(sub);
+    return 0;
+}
+
+I get the following error:
+...
+/home/sam/work/radar_ws/src/radar_velocity_cpp/src/publisher_radar_ego_comp.cpp:56:31:   required from here
+/usr/include/c++/9/ext/new_allocator.h:146:4: error: use of deleted function ‘message_filters::Subscriber<sensor_msgs::msg::PointCloud2_<std::allocator<void> > >::Subscriber(const message_filters::Subscriber<sensor_msgs::msg::PointCloud2_<std::allocator<void> > >&)’
+  146 |  { ::new((void *)__p) _Up(std::forward<_Args>(__args)...); }
+      |    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/sam/work/radar_ws/src/radar_velocity_cpp/src/publisher_radar_ego_comp.cpp:3:
+/opt/ros/foxy/include/message_filters/subscriber.h:102:7: note: ‘message_filters::Subscriber<sensor_msgs::msg::PointCloud2_<std::allocator<void> > >::Subscriber(const message_filters::Subscriber<sensor_msgs::msg::PointCloud2_<std::allocator<void> > >&)’ is implicitly deleted because the default definition would be ill-formed:
+  102 | class Subscriber : public SubscriberBase, public SimpleFilter<M>
+...
+
+A:
+
+The way that you're invoking this you would be creating a copy of the Subscription object. You don't want to do this as Subscriptions are stateful. Two copies of the subscription would mean that you'd get two invocations of each incoming message. Instead you should use a SharedPtr and store it in your vector instead of copying the subscription object into your vector.
+The message_filter::Subscription contains a rclcpp::Subscription internally, so I'm talking more about the internal capability but the higher level one displays the same traits because of the internal storage.
+In general we recommend storing and using SharedPtrs instead of the raw datatype to avoid this sort of issue. For example how to subscribe
+

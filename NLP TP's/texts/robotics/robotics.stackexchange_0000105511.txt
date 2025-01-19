@@ -1,0 +1,110 @@
+Q:
+
+FastDDS: demo_nodes_cpp between WSL2 and Raspberry Pi
+
+I want to use WSL2 on my development PC to send control signals to nodes running on a  Raspberry Pi.
+To get there I have a three step plan:
+
+get connectivity
+get ros2 humble communications to work
+get it to work with my software
+
+Step 1)
+Seems to work:
+I've setup a subnet 192.168.177.0/24 for the WSL2 with Wireguard.
+WSL2 has the address 192.168.177.133.
+On the other end is the server.wg0 adapter with address 192.168.177.132.
+The Raspberry Pi is in the 192.168.178.0/24 subnet provided by my fritzbox with address 192.168.178.21.
+I've set up routing on the fritzbox to use my development machine 192.168.178.51 as the gateway to the 192.168.177.0/24 subnet.
+Pinging between all of the participants works, so I guess the basic network architecture is ok.
+An example traceroute:
+traceroute to 192.168.177.133 (192.168.177.133), 30 hops max, 60 byte packets
+
+ 1  DESKTOP-XXXXXX.fritz.box (192.168.178.51)  2.225 ms * *
+ 2  192.168.177.133 (192.168.177.133)  3.682 ms  3.902 ms  3.985 ms
+
+Step 2)
+To test if I can get ros2 humble / FastDDS right, I am using ros2 run demo_nodes_cpp talker on the WSL2 Ubuntu 22.04 and ros2 run demo_nodes_cpp listener on the Raspberry Pi Ubuntu 22.04.
+I am currently not getting them to talk to each other.
+I've read a bit in the documentation and ended up with the following configurations for FastDDS:
+on WSL2:
+<?xml version="1.0" encoding="UTF-8" ?>
+<dds>
+    
+    <log>
+        <use_default>false</use_default>
+        <consumer>
+            <class>StdoutErrConsumer</class>
+            <property>
+                <name>stderr_threshold</name>
+                <value>Log::Kind::Info</value>
+            </property>
+        </consumer>
+    </log>
+
+    <profiles  xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+        
+        <!-- Configuration for the control computer -->
+        <participant profile_name="control_computer_profile">
+            <domainId>0</domainId>
+            <rtps>
+                <participantID>0</participantID>
+
+                <builtin>
+                    <!-- initial peer list -->
+                    <initialPeersList>
+                        <locator>
+                            <udpv4>
+                                <address>192.168.178.21</address>
+                                <port>7412</port>
+                            </udpv4>
+                        </locator>
+                    </initialPeersList>
+                    <!-- discovery config -->
+                    <discovery_config>
+                        <initialAnnouncements>
+                            <count>500</count>
+                            <period>
+                                <nanosec>100000000</nanosec>
+                            </period>
+                        </initialAnnouncements>
+                    </discovery_config>
+                </builtin>
+            </rtps>
+        </participant>
+    </profiles>
+</dds>
+
+On the RasPi the differences are the IP address and port number
+<address>192.168.177.133</address>
+<port>7410</port>
+
+as well as the <participantID>1</participantID>.
+I have confirmed that the config.xmls get read, since when using an invalid value for the log level I get errors.
+However, even with log level Log::Kind::Info I get no output on my CLI which I would assume is the StdoutErrConsumer.
+I have also opened the firewalls on both Ubuntu systems with
+sudo iptables -A INPUT -p udp --dport 7410 -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 7411 -j ACCEPT
+
+on WSL2 and
+sudo iptables -A INPUT -p udp --dport 7412 -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 7413 -j ACCEPT
+
+on the RasPi.
+My Questions:
+
+How do I get the talker / listener example to work?
+How can I get more information of what is happening on startup? I.e. if FastDDS tries to connect to the peers on the initial peer list.
+Are there similar questions on this site or tutorials online around this issue?
+Can you give me an explanation of the PDP for dummies especially what the parameters do and if and when discovery ends? What happens say if another ros2 system wants to join five minutes after start up?
+Any other troubleshooting ideas? As in what to do and how to make it easier to spot mistakes?
+
+Step 3)
+Not there yet.
+
+A:
+
+ROS 2 uses multicast packets for discovery unless you set it up differently. The multicast packets may not be routed across your subnet, which is something you can check in your router configuration.
+You can also use the ros2 multicast receive and ros2 multicast send utilities to assist in debugging the network.
+If you cannot make changes to the router, you may be able to get the nodes to communicate through a discovery server: https://docs.ros.org/en/humble/Tutorials/Advanced/Discovery-Server/Discovery-Server.html
+

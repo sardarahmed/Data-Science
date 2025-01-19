@@ -1,0 +1,82 @@
+Q:
+
+What is adding -std=gnu++11 to my compiler options in ROS Melodic using catkin_tools?
+
+Hi! I am running loam_velodyne package which needs c++14 language level.  For this, the package adds add_compile_options(-std=c++14) in CMakeLists.txt.
+On my Ubuntu 16.04 and Ros Kinetic with catkin_make, all works fine and the package is compiled with c++14 support. But on Ubuntu 18.04, something interferes and adds additional compiler option -std=gnu++11 when using catkin_tools command catkin build loam_velodyne. So, as a result, in 16.04 and Kinetic my flags.make file in build directory has a line:
+CXX_FLAGS =   -O3 -DNDEBUG -fPIC   -march=native -std=c++14 -fPIC
+
+but in 18.04 and Melodic, there is additional compiler option -std=gnu++11 that overrides the setting in CMakeLists.txt:
+CXX_FLAGS =   -O3 -DNDEBUG -fPIC   -march=native -std=c++14 -std=gnu++11
+
+Hence on Melodic the compilation fails as gnu++11 language level is used.
+The loam_velodyne package is identical on both computers. I cannot figure out if this -std=gnu++11 option is added by the ROS, catkin tools, Ubuntu version, compiler version or something else. I have grepped the /src folder for gnu++11 and CXX_FLAGS modifications, but nothing there. In 16.04 I am using gcc version 5.4.0 and cmake 3.5.1, in 18.04 I am using gcc 7.3.0 as default compiler (but I also have clang installed in the system) and cmake 3.10.2. I already tried to build the package with catkin_make in separate workspace on Melodic, but got the same result. Any hints on how to debug this would be greatly appreciated!
+My catkin config output looks like this:
+-----------------------------------------------------------
+Profile:                     default
+Extending:        [explicit] /opt/ros/melodic
+Workspace:                   /home/username/catkin_ws
+-----------------------------------------------------------
+Source Space:       [exists] /home/username/catkin_ws/src
+Log Space:          [exists] /home/username/catkin_ws/logs
+Build Space:        [exists] /home/username/catkin_ws/build
+Devel Space:        [exists] /home/username/catkin_ws/devel
+Install Space:      [unused] /home/username/catkin_ws/install
+DESTDIR:            [unused] None
+-----------------------------------------------------------
+Devel Space Layout:          linked
+Install Space Layout:        None
+-----------------------------------------------------------
+Additional CMake Args:       -DCMAKE_BUILD_TYPE=Release
+Additional Make Args:        None
+Additional catkin Make Args: None
+Internal Make Job Server:    True
+Cache Job Environments:      False
+-----------------------------------------------------------
+Whitelisted Packages:        None
+Blacklisted Packages:        None
+-----------------------------------------------------------
+Workspace configuration appears valid.
+-----------------------------------------------------------
+
+Originally posted by MRWRWK on ROS Answers with karma: 31 on 2018-10-08
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2018-10-08:
+It is likely some package in /opt/ros is adding that flag. Grepping your src space wouldn't help in that case.
+Comment by MRWRWK on 2018-10-08:
+Thanks! Indeed, this is an option. Is there something to do about it? It seems strange that it happens even if I only build this single package at a time.
+Comment by gvdhoorn on 2018-10-09:
+I would grep /opt/ros/melodic.
+Comment by MRWRWK on 2018-10-09:
+Thanks, I tried this one. The odd thing is that I only compile one package using catkin build packagename. Also, system libraries are not ought to force options in user-defined space, as I understand. So it might be a bug, but I do not know how to detect the source to file it.
+Comment by gvdhoorn on 2018-10-09:
+re: system libraries: what is the difference exactly between a package in your workspace -- created for you by other users -- from a package build by the ROS buildfarm -- that was created for you by other users?
+Comment by MRWRWK on 2018-10-09:
+If the package is for extension or for inclusion, it should not enforce compiler flags in user space. My best guess is that something similar is happening here. Not certain though. Automake used to explain this well: https://www.gnu.org/software/automake/manual/html_node/Flag-Variables-Ordering.html
+
+A:
+
+OK, I finally solved the problem. These were the solutions that had no effect in CMakeLists.txt as they got overridden:
+
+add_compile_options(-std=c++14)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+target_compile_options(targetName PRIVATE -std=c++14)
+
+I also tried to set compile options in catkin environment and configuration, but still no effect. What finally worked, after reading about CMAKE_CXX_STANDARD, was to force CMAKE C++ standard at the beginning of CMakeLists.txt:
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+My guess is that some other library managed to set it to version 11 somehow (although I did not find any evidence). CMAKE_CXX_STANDARD obviously overwrites the options set in any other way, even those that are set later in the file.
+
+Originally posted by MRWRWK with karma: 31 on 2018-10-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by jarvisschultz on 2018-10-09:
+Just for fun, I tried to compile the loam_velodyne package on 18.04, but with a ROS Kinetic that I built from source. I ended up with the same behavior that we are seeing on 18.04 and Melodic. This doesn't necessarily tell us much, but it likely means that the change in behavior is not caused...
+Comment by jarvisschultz on 2018-10-09:
+... by a change in a dependent ROS package, but rather by a change in a library bundled with 18.04. Maybe the different CMake version is what's causing it? Or maybe there a whole other issue that I haven't thought of?
+

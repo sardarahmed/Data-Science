@@ -1,0 +1,102 @@
+Q:
+
+How to control Maxon Motor by using ROS_CANopen
+
+Hi all,
+I am a newbie to ROS, I would like to use ROS_CANopen package to connect with my robot, I want to set different modes of operation for position and current control.  After that, I would like to use MoveIt to control my robot. However, I checked from previous ROSAnswer about ROS_CANopen can not find more detail tutorials on how use it.
+Here is my hardware configuration:
+
+A USB-to-CAN compact made by IXXAT is used to communicate between my laptop and the robot. The Linux driver called IXXAT socketcan driver.
+The robot uses Maxon EPOS2 with CANopen. eds file is generated from EPOS studio.
+
+OS: Ubunutu 14.04 with indigo installed.
+I already tested with socketcan driver by using can-utils i.e. cansend can0 xxx.
+Therefore, I can just use CANopen protocol-301 and 402 with command-line to control Maxon motor, in the meantime, use sockketcan_dump to verify command and status.
+How to use Ros_CANopen? could someone give me a hint to do next steps or some examples I could refer to? or any package to run roslaunch to control ROS_CANopen?
+Many thanks,
+
+Originally posted by CJ.Nilson on ROS Answers with karma: 25 on 2016-12-16
+Post score: 2
+
+Original comments
+Comment by FAN on 2019-08-16:
+Excuse me, I now have a USB-to-CAN device (kvaser leaf light v2), a motor! I want to know how to use ROS_CANopen and socketcan_driver to control motor rotation? Can you tell me what to do? This problem has been bothering me for a long time, please!
+
+A:
+
+It should be more or less straightforward:
+
+Setup SocketCAN (you already have this running): http://wiki.ros.org/socketcan_interface#Initialize_NIC
+Prepare URDF with sane limits (this is required for now, will be optional in the future): http://wiki.ros.org/urdf/Tutorials/Create%20your%20own%20urdf%20file
+Prepare EDS/DCF, take special care for the PDO mapping (http://wiki.ros.org/canopen_402), use transmission type 1 (every sync)
+Prepare driver config
+
+prepare chain config (http://wiki.ros.org/canopen_chain_node#Configuration)
+configure motor-specific settings, especially unit conversions (http://wiki.ros.org/canopen_motor_node)
+
+Prepare controller config
+
+list of controllers (documentation varies, http://wiki.ros.org/ros_controllers)
+add a required_drive_mode to each motion controller, it takes the number of the mode to be used (http://wiki.ros.org/canopen_402#Drive_operation_modes)
+
+Prepare a launchfile for canopen_motor_node
+
+upload driver config as private parameters
+upload controller config into namespace
+upload robot description
+
+rosservice call [/namespace]/driver/init (http://wiki.ros.org/canopen_chain_node#Services)
+start/switch the controllers (rqt_controller_manager, ontroller_manager, spawner etc.)
+
+The EDS file parser is not really bullet proof (and EDS file format is rather flexibel) and might fail with some error indication.
+In addition ros_canopen enforces strict typing, some EDS files list non-standard types for some objects (e.g. signed instead of unsigned). This must be fixed as well in the EDS.
+A basic driver config looks like:
+bus:
+  device: can0
+sync:
+  interval_ms: 10  # 100Hz
+  overflow: 0
+defaults:
+  eds_pkg: my_package
+  eds_file: "config/MyDescription.dcf" # the parser reads EDS and DCF
+nodes:
+  my_joint:
+    id: 1 
+
+controller config example: https://github.com/ipa320/canopen_test_utils/blob/indigo-devel/config/rig1_controller.yaml
+Fairly complex examples: https://github.com/ipa320/schunk_robots/
+It would be great if you could turn this into a tutorial on ROS Wiki based on your experiences :)
+
+Originally posted by Mathias Lüdtke with karma: 1596 on 2016-12-16
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by CJ.Nilson on 2016-12-19:
+Thank you for the replies. I still have some questions regarding your replies.
+
+item 2:  I have created URDF to describe elements fo my robot, but why need URDF in ros_canopen
+item 5:  Why ros_canopen package need ros_control? Could you briefly introduce the main idea for using ros_control
+
+Comment by CJ.Nilson on 2016-12-19:
+I'm trying to refer "schunk_robots and canopen_test_utils" as a model for item 4, 5 and 6.  Which packages do you recommend for my case? Thanks you very much.
+Comment by Mathias Lüdtke on 2016-12-19:
+The URDF is used for getting the joint limits and to verify the names of the joints.
+More information on ros_control can be found in the wiki: http://wiki.ros.org/ros_control
+And schunk_robots contains full-fledged examples..
+If in doubt have a look at both.
+Comment by CJ.Nilson on 2016-12-23:
+When I tried to do item 7 you listed, I met the failure during initializing the lwa4d,  have you ever meet this before ? Thanks for your reply
+Comment by jdeleon on 2018-06-01:
+Hello CJ and Mathias, please, could you help me with a similar problem in this question: #q292882
+Many thanks,
+Jorge
+Comment by Cyril Jourdan on 2018-12-06:
+@Mathias Lüdtke , When you say use transmission type 1, that is for both RxPDO and TxPDO ?
+Comment by Mathias Lüdtke on 2018-12-10:
+Yes, for both. This is how we run it with Care-O-bot. It is not mandatory, but it enforces a deterministic data flow. Otherwise the timing would be arbitrary and might result in (small) jumps.
+Comment by martinlucan on 2021-07-06:
+hi @Mathias Lüdtke , following your steps to successfully control the motor, is user supposed to write and implement some additional hardware interface for Maxon motor, or it is yet included in ros_canopen packages?
+Comment by Mathias Lüdtke on 2021-07-06:
+It is possible to implement a dedicated motor implementation (example), but it should not be necessary in general. However, I have never tested the default implementation with Maxon motors.
+

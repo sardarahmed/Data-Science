@@ -1,0 +1,157 @@
+Q:
+
+robot_localization (fake) IMU + gps setup Error
+
+Hello,
+I am working on getting the robot_localization package up and running to estimate pose using an IMU and a gps, but I'm having a bit of trouble. I've read through the whole docs and I'm still getting an error:
+[ERROR] [1613686575.266536469]: Could not obtain transform from odom->base_link
+[ WARN] [1613686575.592023869]: Could not obtain map->base_link transform. Will not remove offset of navsat device from robots origin.
+[ WARN] [1613686576.692104170]: Could not obtain transform from base_link to map. Error was "map" passed to lookupTransform argument target_frame does not exist. 
+
+Currently I'm generating fake gps and imu data over /gps/fix and /imu/data with with the following code (simplified):
+def main(args=None):
+    rospy.init_node('gps_imu_node', anonymous=True)
+
+    gps_pub = rospy.Publisher('gps/fix', NavSatFix, queue_size=10)
+    imu_pub = rospy.Publisher('imu/data', Imu, queue_size=10)
+    
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        # GPS
+        msg = NavSatFix()
+        msg.header = Header()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = "base_link"
+
+        # Position in degrees.
+        msg.latitude = 57.047218
+        msg.longitude = 9.920100
+
+        gps_pub.publish(msg)
+
+        # IMU
+        msg = Imu()
+        msg.header = Header()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = "base_link"
+
+        imu_pub.publish(msg)
+        rate.sleep()
+
+I'm filling it with data, but for example's sake I've taken that out, as that's not related to my error (I don't think).
+Additionally, I'm running the navsat_transform_node with the following paramaters:
+<launch>
+ <!-- -->
+  <node pkg="robot_localization" type="navsat_transform_node" name="navsat_transform_node" respawn="true">
+
+    <param name="magnetic_declination_radians" value="0"/>
+    <param name="yaw_offset" value="0"/>
+    <param name="zero_altitude" value="true"/>
+
+    <param name="broadcast_cartesian_transform" value="false"/>
+    <param name="publish_filtered_gps" value="true"/>
+
+    <param name="use_odometry_yaw" value="false"/>
+    <param name="wait_for_datum" value="false"/>
+
+    <remap from="/imu/data" to="/imu/data" />
+    <remap from="/gps/fix" to="/gps/fix" />
+    <remap from="/odometry/filtered" to="/odometry/filtered" />
+
+  </node>
+
+</launch>
+
+And I'm running ekf_localization_node with the following yaml config file:
+frequency: 50
+
+two_d_mode: true
+
+publish_tf: true
+
+odom_frame: odom
+base_link_frame: base_link
+world_frame: map
+map_frame: map
+
+imu0: /imu/data
+imu0_config: [false, false, false,
+              false, false, true,
+              false, false, false,
+              false, false, true,
+              true, false, false]
+imu0_differential: false
+
+odom0: /odometry/gps
+odom0_config: [false, false, false,
+               false, false, false,
+               true, true, false,
+               false, false, true,
+               false, false, false]
+odom0_differential: false
+
+process_noise_covariance: [0.05, 0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0.05, 0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0.06, 0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0.03, 0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0.03, 0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0.06, 0,     0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0.025, 0,     0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0.025, 0,    0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0.04, 0,    0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0.01, 0,    0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0.01, 0,    0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0.02, 0,    0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0.01, 0,    0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
+                                              0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015]
+
+initial_estimate_covariance: [1e-9, 0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    1e-9, 0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    1e-9, 0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    1e-9, 0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    1e-9, 0,    0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    1e-9, 0,    0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    1e-9, 0,    0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    1e-9, 0,    0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    1e-9, 0,     0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-9,  0,     0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     1e-9,  0,     0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     1e-9,  0,    0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     1e-9, 0,    0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    1e-9, 0,
+                                                      0,    0,    0,    0,    0,    0,    0,    0,    0,    0,     0,     0,     0,    0,    1e-9]
+
+I feel like I have set everything up properly, but something is obviously breaking when I'm trying to link my tf frames together. There's no output on the /tf topic either, which makes me suspicious that something is setup wrong. I have confirmed my fake imu & gps topics are publishing, but nothing else seems to be.
+If someone could point me in the right direction, I would be super appreciative. I've been crawling forum posts all day and can't seem to find someone with my same issue.
+
+Originally posted by tdoe321 on ROS Answers with karma: 3 on 2021-02-18
+Post score: 0
+
+A:
+
+Moving all the comments to a complete answer:
+1.Change world_frame: odom so the EKF publishes the odom→base_link transform. If world frame is set to map it will publish map→odom transform and you will need something else generating the odom->base_link transform
+2.Publish a static tf between map->odom such as a null rotation RPY(0,0,0):
+<node pkg="tf2_ros" type="static_transform_publisher" name="map_odom" args="0 0 0 0 0 0 map odom" />
+
+3.Make sure you fill up the covariance diagonal values of the sensor messages. The covariances indicates the confidence of a measurement and the filter weights the covariances to integrate those measurements. If there are no covariances the filter will not perform as expected.
+4.Fill up your IMU message at least with the orientation. If it its for testing purposes set the orientation to (0,0,0), which in quaternions is:
+imu_msg.orientation.x = 0
+imu_msg.orientation.y = 0
+imu_msg.orientation.z = 0
+imu_msg.orientation.w = 1
+
+5.Change odom0_config to (in case you do not measure height and or two_d_mode=true):
+odom0_config: [true, true, false,
+                     false, false, false,
+                     false false, false,
+                     false, false, false,
+                     false, false, false]
+
+6.If you are not populating the IMU msg with angular rate and linear accelerations, I would suggest you set imu0_config lines 4 and 5 to false.
+
+Originally posted by xaru8145 with karma: 105 on 2021-02-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

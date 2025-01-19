@@ -1,0 +1,69 @@
+Q:
+
+ICP(Iterative Closest Point) with Partially Overlapping Conditions & Changing Point Numbers
+
+I am currently working on fixing vehicle odometry data using lidar contour points. Since I am receiving lidar data in the form of countour points, I thought I'd use ICP to correct the odometry error calculated from bicycle model.
+Here is my question.
+The code I am referencing from https://github.com/kissb2/PyICP-SLAM/blob/master/utils/ICP.py requires that number of points at time t = x must equal number of points at time t = x+k, or at least be in the array of same size. (SHOWN by assert statement "assert A.shape == B.shape" ) However, I do get fluctuating number of contour points per every time frame, thus this algorithm is not applicable to my problem.
+Has anyone ever came across an ICP with differing array size of 'source frame' and 'target frame'? If so, how should I address the issue? If you just append the points into the arrays A & B of same size M with empty spots being zeros, would the ICP algorithm autonomously sort itself out despite receiving different number of data points? (For example, if A had 30 points and B had 60 points, append A with empty matrix of size 30 to make it into size 60.)
+Thank you!
+def icp(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
+    '''
+    The Iterative Closest Point method: finds best-fit transform that maps points A on to points B
+    Input:
+        A: Nxm numpy array of source mD points
+        B: Nxm numpy array of destination mD point
+        init_pose: (m+1)x(m+1) homogeneous transformation
+        max_iterations: exit algorithm after max_iterations
+        tolerance: convergence criteria
+    Output:
+        T: final homogeneous transformation that maps A on to B
+        distances: Euclidean distances (errors) of the nearest neighbor
+        i: number of iterations to converge
+    '''
+
+    assert A.shape == B.shape
+
+    # get number of dimensions
+    m = A.shape[1]
+
+    # make points homogeneous, copy them to maintain the originals
+    src = np.ones((m+1,A.shape[0]))
+    dst = np.ones((m+1,B.shape[0]))
+    src[:m,:] = np.copy(A.T)
+    dst[:m,:] = np.copy(B.T)
+
+    # apply the initial pose estimation
+    if init_pose is not None:
+        src = np.dot(init_pose, src)
+
+    prev_error = 0
+
+    for i in range(max_iterations):
+        # find the nearest neighbors between the current source and destination points
+        distances, indices = nearest_neighbor(src[:m,:].T, dst[:m,:].T)
+
+        # compute the transformation between the current source and nearest destination points
+        T,_,_ = best_fit_transform(src[:m,:].T, dst[:m,indices].T)
+
+        # update the current source
+        src = np.dot(T, src)
+
+        # check error
+        mean_error = np.mean(distances)
+        if np.abs(prev_error - mean_error) < tolerance:
+            break
+        prev_error = mean_error
+
+    # calculate final transformation
+    T,_,_ = best_fit_transform(A, src[:m,:].T)
+
+    return T, distances, i
+```
+
+A:
+
+ICP does not require that the number of points match. It can automatically take care of different sized inputs due to using the closest pair. An example of this can be found here, but in 2D.
+In the PyICP-SLAM example you give you should notice that they randomly downsample the pointcloud to a fixed number(default 5000). That is how they are able to assert that the pointclouds are the same size. They mostly do this to increase the speed, but it can also give some better convergence properties.
+So it is up to you to choose which method you want to implement. Randomly sample the point sets to being the same size, or let the algorithm run with different sized inputs.
+

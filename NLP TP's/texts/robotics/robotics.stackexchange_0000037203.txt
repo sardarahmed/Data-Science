@@ -1,0 +1,80 @@
+Q:
+
+Modeling URDF files using Blender and exporting to COLLADA format
+
+I'm currently trying to get a nicer looking robot model by adding color to the geometry of a robot body in blender (2.61) and exporting to .dae (COLLADA) instead of plain .stl mesh. My first try was to do this not by adding textures, but setting the material of different parts of the model to be colored differently. I'm talking about the model for a single link only, and everything works fine if exporting to stl (but there's no color then, obviously).
+Now, if I add the colors and export to collada using blender I get the following:
+
+ Reimport to Blender: Looks fine, exactly as exported
+ Open with Meshlab: Parts of the geometry are scaled by a factor of ~30. Some vertex coordinates are very wrong.
+ Open with g3viewer: The rotations between different parts of the model are off
+ Use in URDF/gazebo: Model is not recognizable at all, there are a few polygon here and there
+ Use in URDF/rviz: Geometry is fine, material seems be interpreted not quite correctly (too bright), but the color settings seem to work (a red part is a little bit red)
+
+ROS version used is electric from .debs on Natty/64bit.
+Any tips on how to improve the results are greatly appreciated.
+/edit:
+Image of gazebo and rviz side by side (for gazebo on the left, the bounding box is on, which is based on the .stl mesh). Obviously, in gazebo only a small fraction of faces is visualized, while geometry in rviz is fine.
+
+/edit2:
+The above was done by selecting all different needed parts of the model in Blender and then exporting to .dae. If I instead first join all different parts inside Blender by selecting them and pressing CTRL+J and then export, the model looks much better. It works in Meshlab and g3viewer, only gazebo still gives severe problems as can be seen here (even if it looks better than before):
+
+This actually looks kind of similar to the Pelican model posted in this question.
+/edit: Update with latest insights:
+So far it looks like Blender 2.61 Collada export is somewhat broken, at least for me on my 64 bit Natty system (I stated oneiric above before, was wrong due to working on too many different machines :) ).
+/edit: As it turned out, this is related to gazebo not coping well with quad based polygons that get exported into COLLADA files by Blender 2.61. See my answer below for details.
+By opening .stl or .dae generated from Blender and re-saving as .dae using meshlab one can also get get .dae files that look non-broken in gazebo. Unfortunately, the vertex materials defined in Blender seem to get lost in the process. Another example:
+.dae exported from Blender: gazebo result
+.dae by opening Blender export and resaving in meshlab: gazebo result
+DimitriProsser confirmed that the Blender export does not work for versions > 2.49 here
+/edit: Comparison:
+Blender 2.61 export, gazebo on the left, rviz on the right
+
+Blender 2.49b export, gazebo on the left, rviz on the right
+
+Unfortunately, lighting affects exactly the opposite side of the model (away from the light source), which looks like a problem with normals.
+This is how it looks in rviz, gazebo and meshlab (note that in meshlab, normals appear to be correct and lighting there works). As can be seen, in both rviz and meshlab the back-facing polygons are drawn, while the front-facing ones are translucent for some reason:
+
+If I flip the normals on the model and export, the normals are facing into the wrong direction in meshlab, but in rviz and gazebo the front facing polygons are now drawn. Unfortunately, the lighting is wrong, as polys facing away from the light are now lit (In the gazebo screenshot, the light is below the quadrotor and the top is clearly lit up):
+
+I'm at a loss as to what else beside flipping normals I can do, any help is greatly appreciated.
+/edit: I remodeled the quadrotor model and the "backfacing" error is gone now. It appears that gazebo sometimes still is a bit picky with regards to COLLADA files for no immediately recognizable reason.
+/edit: The correct meshes and blender model are available here in svn as part of the hector_quadrotor_urdf package.
+
+Originally posted by Stefan Kohlbrecher on ROS Answers with karma: 24361 on 2012-01-19
+Post score: 6
+
+Original comments
+Comment by sam on 2012-02-09:
+You have 6 pictures for me,and the first and second are disappeared. It says domain unregistered.
+Comment by Stefan Kohlbrecher on 2012-02-09:
+For me, all images are visible. Which ones are missing for you?
+Comment by sam on 2012-02-09:
+Are some pictures couldn't be seen in your post?
+Comment by Stefan Kohlbrecher on 2012-01-20:
+Hi John, the mesh (.stl and .dae versions) are available here: http://code.google.com/p/tu-darmstadt-ros-pkg/source/browse/#svn%2Ftrunk%2Fhector_quadrotor%2Fhector_quadrotor_urdf%2Fmeshes%2Fquadrotor I'll also update the original post. [Note: The meshes are corrected now and no more erroneous]
+Comment by hsu on 2012-01-20:
+can you please post or provide a link for the mesh? I have some ideas why this might be happening in gazebo and would like to test it out.  Thanks.
+Comment by Stefan Kohlbrecher on 2012-02-13:
+I reuploaded both, they should appear now.
+
+A:
+
+As noted here, .dae export does not work correctly for use of .dae meshes in gazebo since Blender versions > 2.49 . So everyone having problems like those described in my original posting should probably first check their Blender versions.
+After playing around some more, it turns out that you have to convert your mesh data to triangles first for the Blender 2.61 .dae export (Select all, then CTRL+T). Apparently, quads will be saved to the COLLADA file otherwise, which gazebo cannot interpret correctly, leading to the polygon mess in the images I posted. The model occassionally still has it's backfacing polygons rendered for me though, as described with pictures in the original post.
+Update: In this case, a export to .stl, opening that file in meshlab, saving to stl again, and re-importing to blender usually fixes the issue. This doesn't hurt too much if one first models geometry, then checks it in gazebo, and only afterwards applies material and textures. OTOH, doing the materials and textures and finding out something with rendering is wrong afterwards can be pretty annoying.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2012-01-23
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Stefan Kohlbrecher on 2012-01-28:
+Recreated on the Gazebo KForge trac here: https://kforge.ros.org/gazebo/trac/ticket/40 Closed the one on code.ros.org as a duplicate.
+Comment by Stefan Kohlbrecher on 2012-01-28:
+Oops, just noted I'm on the wrong trac(k) ;) Should I recreate the ticket on kforge?
+Comment by Stefan Kohlbrecher on 2012-01-27:
+@John: Done, see https://code.ros.org/trac/ros-pkg/ticket/5360 Thanks for looking into it.
+Comment by hsu on 2012-01-27:
+good to know.  Can you file a ticket for quads support on trac (https://kforge.ros.org/gazebo/trac)?  Thanks!
+

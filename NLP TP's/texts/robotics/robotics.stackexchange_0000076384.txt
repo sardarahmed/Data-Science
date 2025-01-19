@@ -1,0 +1,108 @@
+Q:
+
+roslaunch SSH known_host errors - cannot launch remote nodes
+
+I am starting to use roslaunch across two systems (badmonkey and raspberrypi) running Indigo.  I cannot seem to launch remote nodes and it appears to have something to do with SSH.  I could use some help understanding how to isolate this issue.  I currently have SSH public/private key authentication working in both directions (I can ssh user@system from either system with and without -p 22 to get to the other system with no password and it works great - I assume my respective user known_hosts file have been automatically updated per the ssh documentation).  Is there something else I need to do with the system or user known_hosts file?
+Here is the launch file:
+<launch>
+    <machine name="main-raspberry-pi" address="raspberrypi" default="true" user="pi"/>
+    <machine name="badmonkey-machine" address="badmonkey" default="never" user="mike"/>
+   
+    <node pkg="inmoov" type="HandActionServer.py" name="inmoov_hand" machine="main-raspberry-pi" respawn="true" />
+    <node pkg="inmoov" name="leap_motion_publisher" type="LeapPublisher.py" machine="badmonkey-machine" respawn="true" />
+    <node pkg="inmoov" name="leap_motion_subscriber" type="LeapSubscriber.py" machine="main-raspberry-pi" respawn="true" />
+</launch>
+
+I use the this command:
+roslaunch inmoov inmoov-rpi.launch --screen
+
+When launching from the default system (raspberrypi) the remote node on badmonkey cannot be started:
+... logging to /home/pi/.ros/log/abe119b2-7eb8-11e6-bc9a-b827eb200e86/roslaunch-raspberrypi-5384.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+started roslaunch server http://raspberrypi:49070/
+remote[badmonkey-0] starting roslaunch
+remote[badmonkey-0]: creating ssh connection to badmonkey:22, user[mike]
+remote[badmonkey-0]: failed to launch on badmonkey-machine:
+
+Unable to establish ssh connection to [mike@badmonkey:22]: Server u'badmonkey' not found in known_hosts
+
+[badmonkey-0] killing on exit
+unable to start remote roslaunch child: badmonkey-0
+The traceback for the exception was written to the log file
+
+When launching from the non-default system (badmonkey) the remote node cannot be started:
+... logging to /home/mike/.ros/log/525f5a1e-7eba-11e6-a2da-08002709c777/roslaunch-badmonkey-4440.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+started roslaunch server http://badmonkey:40520/
+remote[raspberrypi-0] starting roslaunch
+remote[raspberrypi-0]: creating ssh connection to raspberrypi:22, user[pi]
+remote[raspberrypi-0]: failed to launch on main-raspberry-pi:
+
+raspberrypi is not in your SSH known_hosts file.
+
+Please manually:
+  ssh pi@raspberrypi
+
+then try roslaunching again.
+
+If you wish to configure roslaunch to automatically recognize unknown
+hosts, please set the environment variable ROSLAUNCH_SSH_UNKNOWN=1
+
+[raspberrypi-0] killing on exit
+unable to start remote roslaunch child: raspberrypi-0
+The traceback for the exception was written to the log file
+
+When launching from the non-default system (badmonkey) with ROSLAUNCH_SSH_UNKNOWN=1 the remote node on raspberrypi cannot be started:
+... logging to /home/mike/.ros/log/21bcad34-7eb6-11e6-9cb9-08002709c777/roslaunch-badmonkey-3649.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+
+started roslaunch server http://badmonkey:43150/
+remote[raspberrypi-0] starting roslaunch
+remote[raspberrypi-0]: creating ssh connection to raspberrypi:22, user[pi]
+remote[raspberrypi-0]: failed to launch on main-raspberry-pi:
+
+Unable to establish ssh connection to [pi@raspberrypi:22]: Incompatible ssh peer (no acceptable kex algorithm)
+
+[raspberrypi-0] killing on exit
+unable to start remote roslaunch child: raspberrypi-0
+The traceback for the exception was written to the log file
+
+The version of SSH for the raspberrypi is:
+pi@raspberrypi:~ $ ssh -V
+OpenSSH_6.7p1 Raspbian-5+deb8u2, OpenSSL 1.0.1k 8 Jan 2015
+
+And the version SSH for the badmonkey running Ubuntu 14.04 is:
+mike@badmonkey:~$ ssh -V
+OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.8, OpenSSL 1.0.1f 6 Jan 2014
+
+Originally posted by anonymous27962 on ROS Answers with karma: 76 on 2016-09-19
+Post score: 6
+
+A:
+
+ROS has a flaw (feature?) in that it uses a library to so SSH, rather than the usual SSH client. This library does not support the default key algorithm used by the typical SSH client. This means that even though you can SSH to the remote machine, ROS cannot, because the key algorithm isn't supported.
+The fix is to remove the stored key in ~/.ssh/known_hosts, then SSH again to the remote machine, specifying the -oHostKeyAlgorithms='ssh-rsa' command-line option to force the use of the the RSA algorithm. Once this is done ROS can connect to the remote machine.
+See http://answers.ros.org/question/41446/a-is-not-in-your-ssh-known_hosts-file/ for details.
+
+Originally posted by Mark Rose with karma: 1563 on 2016-09-19
+This answer was ACCEPTED on the original site
+Post score: 12
+
+Original comments
+Comment by gvdhoorn on 2016-09-20:
+If it has not already been done, it would be nice to report this to the appropriate issue tracker, so this issue (which is becoming more and more a problem) is on the radar / tracked.
+Comment by Mark Rose on 2016-09-20:
+I agree that it would help it if were fixed. I'm not sure how to enter an issue, because I don't know which of the various ROS GitHub repositories it belongs in (or if it belongs with python-paramiko, the underlying library that has the limitation, I believe). Any suggestions?
+Comment by gvdhoorn on 2016-09-20:
+I would say the roslaunch issue tracker makes the most sense, as that is where it is actually used. A quick search did not show me any already open issues about this. Suggestion: include links to revelant ROS Answers questions in your issue.
+Comment by zkytony on 2022-01-11:
+Has there been progress fixing this issue in later ROS versions?
+

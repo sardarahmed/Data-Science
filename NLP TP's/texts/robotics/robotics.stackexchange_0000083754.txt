@@ -1,0 +1,61 @@
+Q:
+
+ubuntu 16.04 boot from launch file
+
+I have a robot to install Ubuntu 16.04 now, want to boot a launch file, but tried a lot of methods effect is not ideal, used to start in the /etc/rc.local file, Su firefly -c "/etc/init.d/start_ros.sh" after the start, without any operation of the nodes, and the use of robot_upstart, URI and hostname cannot be specified for master, if you can provide effective the method, thank you very much
+
+Originally posted by owen.yang on ROS Answers with karma: 11 on 2017-11-06
+Post score: 1
+
+A:
+
+Another option is to use systemd. A simple example:
+Contents of /lib/systemd/system/robot.service:
+[Unit]
+Description=My Robot
+
+[Service]
+User=root
+ExecStart=/home/me/catkin_ws/src/robot/scripts/start_robot.sh
+
+[Install]
+WantedBy=multi-user.target
+
+Contents of /home/myaccount/catkin_ws/src/robot/scripts/start_robot.sh:
+bash -c "source /home/me/catkin_ws/devel/setup.bash && roslaunch robot robot.launch"
+
+Then use systemctl to control it:
+sudo systemctl start robot.service # start
+sudo systemctl stop robot.service # stop
+sudo systemctl enable robot.service # start on boot
+sudo systemctl disable robot.service # disable start on boot
+
+(Edit to add some debugging notes.)
+Note that you can set "User=." Debugging will be easier if you can use your typical login. Of course, you should never use root unless you absolutely have to.
+Debugging a boot-time launch can be annoying, since you need to rely on logging. I typically use roslaunch --screen from the command line to develop and debug, then move to manual start/stop to do system tests, then only when when I'm ready to do a full end-to-end test do I enable start at boot.
+A few tricks for debugging:
+Set output="log" on all nodes. (The default is output to log, so you can just remove the output="screen" option as well.) This will send all ROS_INFO messages to log files so that they don't clutter up the systemd logs.
+Add stdbuf -oL to your command line invocations:
+bash -c "source /home/myaccount/catkin_ws/devel/setup.bash && stdbuf -oL roslaunch robot robot.launch"
+
+This will flush the output buffers after every line so that you see log messages quickly.
+To see errors, run systemctl status robot.service. To see ROS_INFO messages, run tail -f ~/.ros/log/latest/mynode-*-stdout.log".
+
+Originally posted by clyde with karma: 1247 on 2017-11-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by owen.yang on 2017-11-12:
+Thank you for your advice, I follow the tutorial to try, but still failed, my ros system, installed under the non-root user, do not know what effect this.
+Comment by clyde on 2017-11-13:
+I added a few notes on debugging. If you provide more info it'll be easier to diagnose the problem.
+Comment by owen.yang on 2017-11-13:
+sudo systemctl status robot.service,this is output.
+enter code here● robot.service - My Robot
+Loaded: loaded (/lib/systemd/system/robot.service; enabled; vendor preset: en
+Active: failed (Result: exit-code) since 二 2017-11-14 09:30:10 CST; 54s ago
+Main PID: 828 (code=exited, status=203/EXEC)
+Comment by owen.yang on 2017-11-13:
+I see ~/.ros/log/latest/mynode-*-stdout.log,there is not log file.So I can not provide more information, if I can, I can send you an email describing my complete operation
+

@@ -1,0 +1,61 @@
+Q:
+
+move_base action topics exist but client stuck on waitForServer
+
+When I run rostopic list, I see the following (among others)
+/move_base/cancel
+/move_base/current_goal
+/move_base/feedback
+/move_base/goal
+/move_base/result
+/move_base/status
+/move_base_simple/goal
+
+However, my action client is still permanently stuck waiting for /move_base
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+
+MoveBaseClient move_base_client("/move_base", true);
+while(!move_base_client.waitForServer(ros::Duration(5.0)))
+{
+    ROS_INFO("Waiting for the move_base action server to come up");
+}
+
+Everything is running on the same PC.
+What am I doing wrong??
+
+Originally posted by Rufus on ROS Answers with karma: 1083 on 2020-02-25
+Post score: 0
+
+Original comments
+Comment by Choco93 on 2020-02-25:
+Are you providing odom topic? If I remember correctly it waits for odom to appear.
+Comment by pavel92 on 2020-02-26:
+can you please update your question with the full output of rostopic list. Also what is the name of the node where you are creating the action client?
+Comment by Rufus on 2020-02-27:
+@pavel92 thx for the response, but I believe I've found the root cause of the problem.
+
+A:
+
+Turns out move_base is not "fully" up until a map is published.  It's strange how the topics show up but the action server only becomes available after the map is published.
+Notice that move_base action server is the first thing created when move_base constructor is called, but is only started near the end.
+My problem is that somewhere along the way in move_base's constructor, the plugin static_layer is loaded which spins until a map is received.
+Somehow I wasn't smart enough to correlate the message
+
+Requesting the map...
+
+With move_base not being fully constructed, hence hanging on waitForServer
+I also wouldn't be surprised if there are other things that need to happen before move_base can be fully constructed and the action server started. e.g. as Choco93 suggests, odom needs to be published (I have not verified this)
+I may not be seeing the full picture, but I would have placed the creation of the action server "nearer" to the starting of the server.  I believe this would improve debuggability in a sense that I won't be seeing the topics while the server is in fact inoperable.
+
+Originally posted by Rufus with karma: 1083 on 2020-02-26
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pavel92 on 2020-02-26:
+Actually, odom is not needed for the action server to show up correctly. You can check that if dig through the documentation of waitForServer call and the other methods that are called within (waitForActionServerToStart and isServerConnected ) . The only check that is done afaik is waiting for topics based on defined timeout.
+Comment by pavel92 on 2020-02-26:
+So I still think that it is a namespace issue. You client is trying to connect to a server that does not exist
+Comment by Rufus on 2020-02-26:
+Hmm that's strange, as I did not fix it by changing any topic names, but by publishing to /map
+

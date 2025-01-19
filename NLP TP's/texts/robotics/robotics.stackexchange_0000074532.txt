@@ -1,0 +1,97 @@
+Q:
+
+Reusing nodes by renaming them
+
+I'm currently working on a small project that involves the mux from the topic_tools package. The question isn't directly related to the topic mutex. The mutex was just a scenario that revealed the problem I'm having namely properly renaming nodes and reusing code by modifying only a launch file.
+In order to illustrated what I'm talking about here is the Python code for a talker node:
+talker.py
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import String
+import sys
+
+def talker():
+    rospy.init_node('talker')
+    msg = 'default message'
+    if rospy.has_param('msg'):                         # Never works due to missing namespace
+      msg = rospy.get_param('msg', msg)
+      rospy.loginfo('Found "msg" parameter with value "%s"' % msg)
+    else:
+      rospy.loginfo('No "msg" parameter found. Fallback to default "%s"' % msg)
+
+    pub = rospy.Publisher('chatter', String, queue_size=1)      
+    while not rospy.is_shutdown():
+        str = "%s %s" % (msg, rospy.get_time())
+        rospy.loginfo(str)
+        pub.publish(String(str))
+        rospy.sleep(1.0)
+
+if __name__ == '__main__':
+    try:
+    talker()
+    except rospy.ROSInterruptException:
+        pass
+
+Nodes have to have unique names otherwise naming conflicts occur. Same applies to topics. So for my mutex I decieded to reuse the talker node but with a different name and a different message:
+talker_mux.launch
+<launch>
+  <remap from="chatter" to="chatter1"/>
+  <node name="talker1" pkg="beginner_tutorials" type="talker.py" output="screen">
+    <param name="msg" type="str" value="message1" />
+  </node>
+  
+  <remap from="chatter" to="chatter2"/>
+  <node name="talker2" pkg="beginner_tutorials" type="talker.py" output="screen">
+    <param name="msg" type="str" value="message2" />
+  </node>
+  
+  <remap from="chatter" to="chatter3"/>
+  <node name="talker3" pkg="beginner_tutorials" type="talker.py" output="screen">
+    <param name="msg" type="str" value="message3" />
+  </node>
+  
+  <node name="talkerMux" pkg="topic_tools" type="mux" args="chatterMUX chatter1 chatter2 chatter3 mux:=talkerMux" />
+</launch>
+
+As you can see I start three instances of talker.py and give these accordingly the names talker1, talker2 and talker3 along with a different msg parameter containing some string.
+The issue appeared when I ran the launch file and got three times:
+No "msg" parameter found. Fallback to default "default message"
+
+Upon calling rosparam list I discovered that the namespaces are the problem since instead of getting msg I get
+/talker1/msg
+/talker2/msg
+/talker3/msg
+
+Of course this is how it's supposed to be due to the fact that parameters have to be unique hence adding the namespace is required when running multiple nodes that have the same parameters.
+Every once in a while when I have to deal with namespaces in ROS things get messy. This case is no different. That's why I would like to ask for a tip how to solve my problem - use the same node multiple times with different name and message WITHOUT creating multiple versions of that node by writing code. I thought about a way to retrieve the name of the node from the launch file but have no idea how to that without writing a huge blob of code...Is it even possible?
+I can easily copy-paste my talker.py and create talker1.py, talker2.py etc. with rospy.init_node('talker1'), rospy.init_node('talker2') and so on but there has to be a better way of doing this.
+
+Originally posted by rbaleksandar on ROS Answers with karma: 299 on 2016-06-14
+Post score: 0
+
+A:
+
+Got it! There is the rospy.get_name() which returns the current name (even when renamed with <node name="..." />). I can use this to get my msg parameter:
+def talker():
+    rospy.init_node('talker')
+    name = rospy.get_name()
+    msg = 'default message'
+    if rospy.has_param('/' + name + '/msg'):
+      msg = rospy.get_param('/' + name + '/msg', msg)
+    
+   ...
+
+Originally posted by rbaleksandar with karma: 299 on 2016-06-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2016-06-14:
+Please look at the private parameter concept. That solves your problem and is really how you should approach this.
+Comment by rbaleksandar on 2016-06-14:
+With private you mean inside the node tag right? If so, I've just changed that since its more readable. Will check how it affects the namespaces. Thanks!
+Comment by gvdhoorn on 2016-06-14:
+No, that's just part of it. See wiki/roscpp/Overview/NodeHandles - Namespaces, http://wiki.ros.org/rospy_tutorials/Tutorials/Parameters and http://wiki.ros.org/rospy/Overview/Parameter%20Server.
+Comment by rbaleksandar on 2016-06-15:
+Thanks, will take a look.
+

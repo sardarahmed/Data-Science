@@ -1,0 +1,104 @@
+Q:
+
+Using utm_odometry_node to convert GPS mesurement to obtain x y coordinates
+
+I'm Jurica, student at Faculty of Electrical Engineering and Computing (FER). I use ROS CTurtle (instaled in VirtualBox) and I wish to use utm_odometry_node(in gps_common package) to
+convert GPS latitude and longitude in (x y) coordinates.
+I need convert these measurement because I will use them with odometry in EKF for robot localization in outdoor environment.
+Except latitude and longitude (which i want to convert) I would use Direction(from north) and HDOP factor.(i use old msgs:gps_common/GPSStatus and gps_common/GPSFix)
+So i read problem in gpsd_client tutorials(http://answers.ros.org/question/82/problem-in-gpsd_client-tutorials)and I was modified code explained there:
+#include"ros/ros.h"
+#include<iostream>
+#include<gps_common/GPSFix.h>
+#include<gps_common/GPSStatus.h>
+using namespace gps_common; // in original ansewr namespace is missing so code don't work
+
+void callback(const gps_common::GPSFix::ConstPtr &msg){ // instead &msg there can be &fix
+//  if(msg->status.status == GPSStatus::STATUS_NO_FIX){
+//    std::cout <<"Unable to get a fix on the location." << std::endl;
+//    return;
+//  }
+     std::cout << "Current Latutide:" << msg->latitude << std::endl;
+     std::cout << "Current Longitude:" << msg->longitude << std::endl;
+     std::cout << "Current Altitude:" << msg->altitude << std::endl;
+     std::cout << "Direction(from north):" << msg->track << std::endl;
+     std::cout << "HDOP:" << msg->hdop << std::endl;
+     //std::cout << "Status:" << msg->status.status << std::endl;
+     //std::cout << "Service:" << msg->status.service << std::endl;
+}
+
+int main(int argc, char **argv) {
+  ros::init(argc,argv,"gps_subscriber");
+  ros::NodeHandle nh;
+  ros::Subscriber gps_sub=nh.subscribe("fix",1,callback);
+  ros::spin();
+  return 0;
+
+}
+
+So i ask if i can change utm_odometry_node somehow to use instead sensor_msgs/NavSatStatus and sensor_msgs/NavSatFix old msg tpye: gps_common/GPSStatus and gps_common/GPSFix.
+Old msg type have HDOP and Direction information and new don't have.
+(I use LS20030(USB interface) MTK Smart Antenna GPS reciever(http://www.locosystech.com/product.php?zln=en&id=20)).
+Well if someone have some useful information i would be greatfull.
+
+Originally posted by Jurica on ROS Answers with karma: 97 on 2011-03-21
+Post score: 1
+
+Original comments
+Comment by Jurica on 2011-03-24:
+I will answer to my question and ask a new question! Thanks for your comment!
+Comment by Eric Perko on 2011-03-24:
+Weird... it always cuts me off... at the character limit...
+Comment by Jurica on 2011-03-24:
+Yes i see that a comment is 300 character long. I just started typing and didn't worry about size of comment.
+Comment by Eric Perko on 2011-03-24:
+Also... just wondering but... how did you post a comment that is over 1000 characters long? I thought the comment limit was around 250-300 characters...
+Comment by Eric Perko on 2011-03-24:
+If you found an "answer" to your original question, please post it as an answer so that it is easier to find if someone has this question in the future. As for your new question, please ask a new question for that so that there is only one question per question.
+Comment by Jurica on 2011-03-24:
+Ok i looked the code of utm_odometry_node in gps_common package and in C Turle this node is subscribing at gps_common/GPSFix(subscribing at fix topic) and gps_common/GPSStatus (subscribing at status topic)messages instead sensor_msgs/NavSatFix and sensor_msgs/NavSatStatus (which are msgs  only for Diamondback valid),and publishing at topic odom(nav_msgs/Odometry).(For Diamond back subscribing topic is fix (sensor_msgs/NavSatFix), and publishing is odom (nav_msgs/Odometry))
+(http://www.ros.org/wiki/gps_common)
+So my orginal question is unnecesary, but now i have another question.
+Yesterday i wrote node for subscribing the odom topic(nav_msgs/Odometry) at which utm_odometry_node publish results of conversion from (latitude, longitude)(degres)to (x,y)(meters).
+So my question is is that conversion to (x,y) valid?
+Example:
+That gives gpsd_client:
+(coordinates in Croatia)
+latitude: 46.3954
+longitude: 16.448
+That gives utm_odometry_node:
+x:611320
+y:5.139e+06
+I think that in x coordinate one digit is missing.
+Well if someone is working with utm_odometry_node and know something about  conversion(accuracy, problems, etc.),please let write answer. Thanks.
+Comment by Eric Perko on 2011-03-23:
+See http://www.ros.org/wiki/sensor_msgs/Reviews/2010-05-31%20GPS%20Proposal_API_Review for a detailed discussion on why certain fields were included in NavSat* .
+
+A:
+
+Here is simple code for node who is extracting X  Y data form odom topic:
+#include"ros/ros.h"
+#include<iostream>
+#include<nav_msgs/Odometry.h>
+using namespace nav_msgs;
+
+void callback(const OdometryConstPtr &odom){
+
+std::cout << "X_gps[m]:" << odom->pose.pose.position.x << std::endl;
+std::cout << "Y_gps[m]:" << odom->pose.pose.position.y << std::endl;
+}
+
+int main(int argc, char **argv){
+ros::init(argc,argv,"gps_xy");
+ros::NodeHandle nh;
+
+ros::Subscriber sub = nh.subscribe("odom",1,callback);
+
+ros::spin();
+return 0;
+}
+
+Originally posted by Jurica with karma: 97 on 2011-03-24
+This answer was ACCEPTED on the original site
+Post score: 2
+

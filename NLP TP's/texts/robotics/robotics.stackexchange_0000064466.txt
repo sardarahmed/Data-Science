@@ -1,0 +1,77 @@
+Q:
+
+Problem converting simple urdf file in collada
+
+Hi all,
+I have a problem converting a very simple urdf file in collada (.dae) to use ikfast. I have a more complicated robot but I started to have this error even with a very simple urdf file:
+I/O error : No such file or directory
+I/O error : No such file or directory
+error : xmlNewTextWriterFilename : cannot open uri
+
+Document successfully written to prova.dae
+
+but the prova.dae file does not exist.
+The prova.urdf file that I am trying to convert is:
+<robot name="prova">
+
+<link name="base_link" />
+<link name="link1"/>
+
+<joint name="j1" type="revolute">
+  <parent link="base_link"/>
+  <child link="link1"/>
+  <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+  <axis xyz="1 0 0"/>
+  <limit effort="40" lower="-0.785" upper="0.785" velocity="3.1415"/>
+</joint>
+
+</robot>
+
+so just pure kinematics.
+I am using ros indigo with openrave compiled from source (latest_stable branch). I am using the command:
+rosrun collada_urdf urdf_to_collada prova.urdf prova.dae
+
+in the same folder of the urdf file. My machine is running Ubuntu 14.04.
+thanks for your help!
+
+Originally posted by Enrico on ROS Answers with karma: 41 on 2014-12-05
+Post score: 2
+
+Original comments
+Comment by salsaman on 2015-04-07:
+Same problem here. Any solution ?
+
+A:
+
+I have the same problem. Here comes my "workaround" (it is quite a bit of work ...)
+Define a new robot in openRAVE XML Format:
+http://openrave.programmingvision.com/wiki/index.php/Format:XML
+( <source xml> in the Wiki is not part of the code!)
+Install openrave (from source) and start an interactive terminal
+openrave.py -i
+
+here you can use
+env.Reset(); env.Load('rv4fl.xml')
+
+to load/reload your model. Do so until it looks fine. Press ESC to go into Manipulation Mode. Try selecting a link by pressing CTRL and clicking it. Now check if it moves as expected when you move the mouse.
+Now convert to COLLADA:
+openrave -save test.dae rv4fl.xml
+
+you can check that as well
+openrave test.dae
+
+Now you need the ids of base and end effector
+openrave-robot.py test.dae --info links
+
+create the ik-fast solution:
+python `openrave-config --python-dir`/openravepy/_openravepy_/ikfast.py --robot=test.dae --iktype=transform6d --baselink=0 --eelink=6 --savefile=test.cpp
+
+install moveit_ikfast from git and create a moveit_package
+rosrun moveit_ikfast create_ikfast_moveit_plugin.py mitsubishi_rv4fl manipulator mitsubishi_rv4fl_moveit_plugins  test.cpp
+
+This will also automatically set up ik_fast in your moveit_config package
+
+Originally posted by Simon Schmeisser with karma: 229 on 2015-04-08
+This answer was ACCEPTED on the original site
+Post score: 1
+

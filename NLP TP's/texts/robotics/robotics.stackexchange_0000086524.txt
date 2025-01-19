@@ -1,0 +1,109 @@
+Q:
+
+Generate deb from dependent ros package locally
+
+This is related to the question #280235 where there's a dependency problem using bloom to generate a .deb file locally.
+I've added the key to rosdep in order to solve that problem but now I've other problem.
+After using bloom generate to create the debian files, I try to run fakeroot to create the binary .deb file and it fails as you can see in the bash file: fakeroot bash
+$ fakeroot  debian/rules binary 
+ ...
+Project 'qt_ros_interface' tried to find library 'robis_math_utilities'.
+The library is neither a target nor built/installed properly.  Did you
+compile project 'robis_math_utilities'? Did you find_package() it before
+the subdirectory containing its code is included?
+...
+
+This library is one of the dependencies of my package that I've previously installed in opt/ros/kinetic (also available in catkin)
+EDIT 1
+Using dpkg-buildpackage as suggested by @nuclearsandwich gave me a similar problem:
+$ dpkg-buildpackage -b -uc
+dpkg-buildpackage: source package ros-kinetic-qt-ros-interface
+dpkg-buildpackage: source version 0.0.0-0xenial
+dpkg-buildpackage: source distribution xenial
+dpkg-buildpackage: source changed by user <user@user.com>
+dpkg-buildpackage: host architecture amd64
+dpkg-source --before-build qt_ros_interface
+dpkg-source: info: using options from qt_ros_interface/debian/source/options: --auto-commit 
+dpkg-source: warning: can't parse dependency ros-kinetic-robis_math_utilities
+dpkg-source: error: error occurred while parsing Build-Depends
+dpkg-buildpackage: error: dpkg-source --before-build qt_ros_interface gave error exit status 255
+
+This package also depends on another package that was installed in using the same method, but only this library is giving me troubles..
+EDIT 2
+The issue with dpkg-buildpackage is solved, my rosdep file had ros-kinetic-robis_math_utilities instead of  ros-kinetic-robis-math-utilities but the original issue is not solved yet..
+
+Originally posted by billyDong on ROS Answers with karma: 48 on 2018-04-12
+Post score: 1
+
+Original comments
+Comment by nuclearsandwich on 2018-04-13:
+The linked fakeroot bash file appears to be a mix of commands run and their output. If that's a separate bash script that you're using in your release process can you provide a link that is just the bash source?
+Comment by billyDong on 2018-04-13:
+Maybe I gave it the wrong name, that is just what appears in the terminal when I run the fakeroot
+Comment by nuclearsandwich on 2018-04-13:
+I see, thanks for clarifying. I'd suggest trying to build the package using the command in my answer below. I think it's the most expedient way to do so.
+Comment by nuclearsandwich on 2018-04-13:
+dpkg-source: warning: can't parse dependency ros-kinetic-robis_math_utilities
+Debian package names do not contain underscores. I expect your rosdep.yaml file might have some mistakes, can you post it please?
+Comment by billyDong on 2018-04-13:
+You're right, it was an error on rosdep that I corrected.   But now I've the exact same error I had when I used fakeroot,, heres the log file
+Comment by nuclearsandwich on 2018-04-13:
+Have you created the package for robis_math_utilities and installed it on your system? Since bloom sources only your /opt/ros/kinetic installation packages in the local workspace are not used.
+Comment by billyDong on 2018-04-13:
+Yes I've done that. I wrote it on the question
+Comment by nuclearsandwich on 2018-04-13:
+Sorry I missed it! Are you able to build qt_ros_interface in a workspace by itself with only /opt/ros/kinetic/setup.bash sourced?
+Comment by billyDong on 2018-04-13:
+I can't.. this error appears, but the package is there..
+$roscd robis_math_utilities/
+/opt/ros/kinetic/share/robis_math_utilities$
+
+Comment by nuclearsandwich on 2018-04-13:
+That error suggests to me that robis_math_utilities is either not installed or there's something wrong with the package. What are the outputs of apt list --installed ros-kinetic-robis-math-utilties and dpkg -L ros-kinetic-robis-math-utilities?
+Comment by billyDong on 2018-04-13:
+You can see the outputs here
+Comment by nuclearsandwich on 2018-04-13:
+Looking at that output, I do not see any header or compiled library files in the robis-math-utilities package contents. Based on the CMakeLists.txt you posted below I would expect a library file and some headers.
+Comment by billyDong on 2018-04-13:
+I see that for this package there's no headers files in opt/ros/kinetic/include ... But that should have been created..
+Comment by nuclearsandwich on 2018-04-13:
+There's quite a few things that could be going on. I would suggest trying to build your robis_math_utilities package with the dpkg-buildpackage command then check it with dpkg -c path/to/ros-kinetic-robis-math-utilities*.debto see if the new package contains the expected files.
+Comment by billyDong on 2018-04-13:
+I've built it with dpkg-buildpackage already..  i will do the check command later
+Comment by billyDong on 2018-04-16:
+@nuclearsandwich  i've done the dpkg -c commando and here is the result :
+Comment by nuclearsandwich on 2018-04-16:
+Again the library and header files are definitely missing. Someone with more catkin experience than myself might be able to tell why.
+I'd propose editing the question (or creating a new one) to ask why your other package is missing files.
+Comment by seanarm on 2019-01-23:
+@billyDong did you ever resolve this?
+
+A:
+
+It might be possible to build the package by invoking commands from the debian rules file directly, but it is probably easier to use dpkg-buildpackage to build a package locally as long as your local system matches your target system.
+If your package depends on any other custom packages, you will need to make sure that you build and install those packages first.
+After running bloom you can create a local clone of the release repository to build your package.
+The release repository has branches of the form ${packagetype}/${rosdistro}/${suite}/${package}. For example, debian/kinetic/xenial/qt_ros_interface From a local checkout of this branch you can run the command dpkg-buildpackage -b -uc. This will build the binary package only (-b), and will not attempt to sign the changes file (-uc). This probably isn't what you want to be doing for your official release packages but it is suitable for quickly building debs.
+
+Originally posted by nuclearsandwich with karma: 906 on 2018-04-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by billyDong on 2018-04-13:
+Thank's for your answer but I didn't understand the local check out part.. my package is on ~/catkin_ws/src/qt_ros_interface. And I have'nt mentioned but I'm using ubuntu 16.04
+Comment by nuclearsandwich on 2018-04-13:
+If you ran bloom-release, it would have a created a release repository. Usually  with a name like package_name-release. If you used git bloom-release instead you may have created the repository manually before doing so.
+Comment by nuclearsandwich on 2018-04-13:
+The release repository is the repository created in Step 3 of http://wiki.ros.org/bloom/Tutorials/FirstTimeRelease/#Creating_a_Release_Repository
+That's the repository which contains your source along with the generated debian info from bloom.
+Comment by billyDong on 2018-04-13:
+I'm sorry, I still  don't understand.. I ran bloom-generate and not bloom-release. By running bllom-generate, do I have to make the code available on git hub (I already have a  git repository but I want to keep it private for now)?
+Comment by nuclearsandwich on 2018-04-13:
+Ah, that was my misunderstanding! Since you ran bloom generate, your current workspace should have a debian folder in it and you can run the dpkg-buildpackage command above from the package directory in your workspace.
+Comment by nuclearsandwich on 2018-04-13:
+bloom-generate does not require a separate repository.
+Release repositories do not need to be public, bloom's easy path expects that you're contributing packages upstream but it is not a requirement.
+Comment by billyDong on 2018-04-13:
+@nuclearsandwich could you please see the edit on the question. I've a similar problem with your approach.
+

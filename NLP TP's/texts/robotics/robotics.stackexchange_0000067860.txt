@@ -1,0 +1,51 @@
+Q:
+
+Dynamic reconfigure and parameter namespaces in octomap_server
+
+Hi, I'm improving the reconfigure server of the octomap_server package. However, I am facing the problem that some of the parameters have a name space: sensor_model/max_range for instance. In the reconfigure callback, this is not a huge problem as I added the following line to the .cfg file:
+gen.add("max_range", double_t, 0, "Sensor maximum range", -1.0, -1.0, 100)
+
+And in the reconfigure callback:
+m_maxRange = config.max_range;
+
+Therefore I can work with the reconfigure server as usual. However, if I load any parameter with rosparam or through a launch file, the loaded value will not match with the dynamic reconfigure value. Is there any way to properly link  the max_range parameter of the .cfg to the corresponding name in the parameter server, sensor_model/max_range?
+Thank you.
+
+Originally posted by Javier V. Gómez on ROS Answers with karma: 1305 on 2015-06-02
+Post score: 1
+
+A:
+
+The answer to http://answers.ros.org/question/57498/notify-changes-to-dynamic_reconfigure/ has a line (and the context is useful also, but this is the key thing I assume causes the values as seen in rqt_dynamic_configure or elsewhere to be changed):
+    dynamic_reconfigure_server.updateConfig(config);
+
+Update
+This is something I just tried in python that didn't require the node hosting the server to call its own set_parameters service (and thus requiring multiple threads and mutex protection)
+    x = rospy.get_param("z", 0.0)
+    y = rospy.get_param("z", 0.0)
+    self.srv.update_configuration({\
+            "x":x,
+            "y":y,
+            })
+
+This is sort of shown in one tutorial, but the client is using it rather than going direct on the server.
+I'd like to figure out how to do this in C++ now.
+
+Originally posted by lucasw with karma: 8729 on 2015-06-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Javier V. Gómez on 2015-06-19:
+Thank you for the info. I will take a look at this. However, it is a bit disappointing that dynamic reconfigure cannot take into account such parameter names.
+Comment by Javier V. Gómez on 2015-06-19:
+So it is working now, but interestingly I did not add the suggested line. It just worked, now the initial values match the configuration. Thank you anyway!
+Comment by lucasw on 2015-07-09:
+Recently I wanted to have params override the dynamic reconfigure .cfg defaults, I had to make my node multi-threaded with AsyncSpinner (can't call a service provided by the same single thread node, the call methods block instead of calling back).  If you have a better way I'd like to know about it.
+Comment by Javier V. Gómez on 2015-07-10:
+I just loaded the param file with rosparam and it overrode the .cfg defaults. It wasn't working at the beginning but then it worked, with no important changes I would say.
+Comment by lucasw on 2015-07-16:
+I tried using regular params in the launch file for my node, but they didn't override the cfg values, so I'm using the above (ugly) method now.
+Comment by lucasw on 2015-07-20:
+I've since gotten updateConfig working and I run that after getting the params in my constructor, it doesn't require multiple threads.
+

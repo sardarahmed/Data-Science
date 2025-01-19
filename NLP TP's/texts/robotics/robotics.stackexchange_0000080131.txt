@@ -1,0 +1,63 @@
+Q:
+
+roscpp service calls - multithreading
+
+I have a service created in C++ that only handles one request at a time. Normally this would not be a problem, but my service is computing a Descartes trajectory, which takes somewhere between 3-8 seconds. Is there a way to thread the service requests such that they are taking place at the same time instead of one after the other?
+Here is the current implementation of my service.
+int main(int argc, char **argv)
+{
+  // Initialize node
+  ros::init(argc, argv, "compute_descartes_traj_server");
+  ros::NodeHandle node_handle;  
+
+  // Create subscriber to /joint_states topic
+  Listener listener;
+  ros::Subscriber sub = node_handle.subscribe("joint_states", 10, &Listener::jointStatesCallback, &listener);
+
+  // Create ComputeDescartesTraj service
+  ros::ServiceServer service = node_handle.advertiseService("compute_descartes_traj", &Listener::ComputeDescartesTraj, &listener);
+  ROS_INFO("-----------------------------------------------");
+  ROS_INFO("Ready to compute Descartes trajectory.");  
+  ROS_INFO("-----------------------------------------------");
+
+  // Keep ROS service running until it is shutdown
+  ros::spin();
+
+  return 0;
+ }
+
+Originally posted by JoshMarino on ROS Answers with karma: 592 on 2017-04-10
+Post score: 0
+
+A:
+
+It seems this question is about multithreading in ROS. There are a few ways to do this. You can take a look at:  http://wiki.ros.org/roscpp/Overview/Callbacks%20and%20Spinning#Multi-threaded_Spinning
+Below is a minimal example with AsyncSpinner:
+int main(int argc, char **argv) {
+   ros::init(argc, argv, "your_node");
+
+   //Any init here
+
+   ros::Rate loop_rate(10.0); //Choose the loop rate
+   ros::AsyncSpinner spinner(10); //Choose how many threads
+   spinner.start();
+
+   while (ros::ok()) {
+     //Do any periodical work here
+     ros::spinOnce();
+     loop_rate.sleep();
+   }
+
+   ros::waitForShutdown();
+
+   return 0;
+}
+
+Originally posted by DavidN with karma: 544 on 2017-04-10
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2017-04-11:
+This will work, but make sure that your service handlers are either idempotent or use proper locking of resources if you run them in parallel.
+

@@ -1,0 +1,98 @@
+Q:
+
+How to use GetModelState service from Gazebo in python
+
+Hi, I'm actually working on Baxter robot with gazebo and I wanted to get the model state of cubes I create, so I made this method :
+    def show_gazebo_models(self):
+    try:
+        model_coordinates = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+        for block in self._blockListDict.itervalues():
+            blockName = "block_" + str(block._name)
+            resp_coordinates = model_coordinates(blockName, "model")
+            print(blockName)
+            print("Cube " + str(block._name))
+            print("Valeur de X : " + str(resp_coordinates.pose.position.x))
+            print("Quaternion X : " + str(resp_coordinates.pose.orientation.x))
+
+    except rospy.ServiceException as e:
+        rospy.loginfo("Get Model State service call failed:  {0}".format(e))
+
+But this returns 0.00 for each print I made.
+In documentation GetModelState needs two arguments : model_name and relative_entity_name and I don't know what I need to use for the second argument. (For model_name it's block_a for the first one, block_b for the second, etc)
+
+Originally posted by FirmYn on ROS Answers with karma: 11 on 2017-05-15
+Post score: 1
+
+Original comments
+Comment by NickVot on 2017-10-25:
+If the model's name is "unit_sphere" and it has a link name "link", then try this.
+rosservice call gazebo/get_model_state '{model_name: unit_sphere, relative_entity_name: "unit_sphere::link"}'
+
+A:
+
+Hi @FirmYn ,
+as you said,
+
+In documentation GetModelState needs
+two arguments : model_name and
+relative_entity_name
+
+the model_name is the name of a model that exists on the scene and the relative_entity_name is a link that is part of the model.
+If in your scene you have a model named mobile_base with a link named wheel_left_link and another model named brick_box_3x1x3 with a link named chassis, for example,  the following code would show you the right position and orientation:
+#! /usr/bin/env python
+
+from gazebo_msgs.srv import GetModelState
+import rospy
+
+class Block:
+    def __init__(self, name, relative_entity_name):
+        self._name = name
+        self._relative_entity_name = relative_entity_name
+
+class Tutorial:
+    
+    _blockListDict = {
+        'block_a': Block('mobile_base', 'wheel_left_link'),
+        'block_b': Block('brick_box_3x1x3', 'chassis'),
+        
+    }
+
+    def show_gazebo_models(self):
+        try:
+            model_coordinates = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+            for block in self._blockListDict.itervalues():
+                blockName = str(block._name)
+                resp_coordinates = model_coordinates(blockName, block._relative_entity_name)
+                print '\n'
+                print 'Status.success = ', resp_coordinates.success
+                print(blockName)
+                print("Cube " + str(block._name))
+                print("Valeur de X : " + str(resp_coordinates.pose.position.x))
+                print("Quaternion X : " + str(resp_coordinates.pose.orientation.x))
+    
+        except rospy.ServiceException as e:
+            rospy.loginfo("Get Model State service call failed:  {0}".format(e))
+        
+
+if __name__ == '__main__':
+    tuto = Tutorial()
+    tuto.show_gazebo_models()
+    
+
+Your code is not working because you are trying to get the model state of a link named model of the objects block_a and block_b.
+You have to make sure on your scene there are objects with the name you are trying to retrieve (block_a and block_b), and make sure the model has a link with the name you are passing as second argument to the model_coordinates function (in the example code).
+To help you on this, you can call the following three services:
+
+/gazebo/get_world_properties - to get the name of the objects on the scene
+
+/gazebo/get_model_properties to see the name of the links (body_names) of a specific model on the scene
+
+/gazebo/get_model_state to do what you asked on this question.
+
+If you still didn't understand very well, I have created a video (https://youtu.be/WqK2IY5_9OQ) that will help you understand it.
+Hope it helps.
+
+Originally posted by Ruben Alves with karma: 1038 on 2017-11-08
+This answer was ACCEPTED on the original site
+Post score: 7
+

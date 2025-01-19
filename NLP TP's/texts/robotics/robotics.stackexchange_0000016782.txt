@@ -1,0 +1,74 @@
+Q:
+
+ROS CMakeLists.txt confusion
+
+I am using Ubuntu 16.04 LTS with ROS Kinetic distro.
+I have a custom package called gps_msgs in my catkin_ws directory. I have other two packages that utilize the message by including it into source.
+Now, one of the packages doesn't build without having "gps_msgs" inside the find_package() macro in CMakeLists.txt whereas the other one does.
+The packages are nearly identical apart from the fact that one of them utilizes a 3rd party library. Here's the CMakeLists (package.xml files are almost identical, none of them include gps_msgs, I would like to know why that works too..):
+Package #1:
+cmake_minimum_required(VERSION 2.8.3)
+project(can_control_node)
+
+add_compile_options(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+
+include_directories(
+# include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(can_control_node src/control_node.cpp)
+target_link_libraries(can_control_node ${catkin_LIBRARIES})
+
+Package #2:
+cmake_minimum_required(VERSION 2.8.3)
+project(gps)
+
+add_compile_options(-std=c++11)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+
+catkin_package(
+  #CATKIN_DEPENDS std_msgs roscpp
+  #INCLUDE_DIRS include
+)
+
+set(SOURCES
+  src/an_packet_protocol.c
+  src/spatial_packets.c
+  src/rs232.c
+)
+
+include_directories(include/${PROJECT_NAME} ${catkin_INCLUDE_DIRS})
+
+add_executable(gps_node 
+  src/gps_node.cpp
+  ${SOURCES}
+)
+
+target_link_libraries(gps_node ${catkin_LIBRARIES})
+
+Again, both packages have #include <gps_msgs/Navigation.h> in their source files. The gps_msgs/Navigation isn't mentioned AT ALL in either of the package.xml files. Package #1 builds, package #2 complains that gps_msgs/Navigation doesn't exist. All 3 packages are in separate directories in my catkin_ws, what's going on?
+
+A:
+
+I have managed to fix the issue.
+I am still uncertain as to why it happens, catkin can be very unpredictable and what builds on one system doesn't builds on another one (experienced that yesterday).
+This is an actual convention and has to be followed to achieve proper building sequence whenever you're trying to include a c:
+
+Add your message in package.xml in the <depend>your_msg</depend> tag.
+Add your message in CMakeLists.txt in the find_packages(catkin REQUIRED COMPONENTS roscpp your_msg) macro.
+Add include_directories(include ${catkin_INCLUDE_DIRS}) macro in CMakeLists.txt to get the message headers.
+Use add_dependencies(your_node ${catkin_EXPORTED_TARGETS}) macro in CMakeLists.txt to ensure that your messages are built first before building your target (most important step).
+
+Hope this helps someone who is getting (message no found error during catkin_make).
+Reference: catkin docs
+

@@ -1,0 +1,140 @@
+Q:
+
+rosserial deserialization error
+
+I am trying to publish an odometry message from an arduino using rosserial.  I have it publishing a tf message fine.  But the odom message first required increasing the buffer_size and now gives this error:
+[INFO] [WallTime: 1376950638.665497] ROS Serial Python Node
+[INFO] [WallTime: 1376950638.671086] Connecting to /dev/ttyACM0 at 57600 baud
+[INFO] [WallTime: 1376950641.232339] Note: publish buffer size is 1024 bytes
+[INFO] [WallTime: 1376950641.232938] Setup publisher on tf [tf/tfMessage]
+[INFO] [WallTime: 1376950641.242256] Setup publisher on odom [nav_msgs/Odometry]
+Traceback (most recent call last):
+  File ".../catkin_ws/src/rosserial/rosserial_python/nodes/serial_node.py", line 82, in <module>
+    client.run()
+  File ".../catkin_ws/install/lib/python2.7/dist-packages/rosserial_python/SerialClient.py", line 425, in run
+    self.callbacks[topic_id](msg)
+  File ".../catkin_ws/install/lib/python2.7/dist-packages/rosserial_python/SerialClient.py", line 99, in handlePacket
+    m.deserialize(data)
+  File "/opt/ros/groovy/lib/python2.7/dist-packages/nav_msgs/msg/_Odometry.py", line 220, in deserialize
+    raise genpy.DeserializationError(e) #most likely buffer underfill
+genpy.message.DeserializationError: unpack requires a string argument of length 288
+
+Sometimes, about one in three, there is also this error right after the INFO messages shown above.  I suspect it is just some sort of lost sync, since I just installed the latest version of rosserial on a new build of Groovy.
+[ERROR] [WallTime: 1376951210.467803] Mismatched protocol version in packet: lost sync or rosserial_python is from different ros release than the rosserial client
+[INFO] [WallTime: 1376951210.468270] Protocol version of client is Rev 0 (rosserial 0.4 and earlier), expected Rev 1 (rosserial 0.5+)
+
+Here is the code:
+/* 
+ * rosserial Planar Odometry Example
+ */
+
+#include <ros.h>
+#include <ros/time.h>
+#include <tf/tf.h>
+#include <tf/transform_broadcaster.h>
+#include <nav_msgs/Odometry.h>
+
+ros::NodeHandle  nh;
+
+geometry_msgs::TransformStamped t;
+tf::TransformBroadcaster broadcaster;
+nav_msgs::Odometry myOdom;
+ros::Publisher odom_pub("odom", &myOdom);
+
+double x = 1.0;
+double y = 0.0;
+double theta = 1.57;
+
+char base_link[] = "/base_link";
+char odom[] = "/odom";
+
+void setup()
+{
+  nh.initNode();
+  broadcaster.init(nh);
+  nh.advertise(odom_pub);
+  myOdom.pose.covariance = {0.001, 0, 0, 0, 0, 0, // covariance on x
+                        0, 0.001, 0, 0, 0, 0,  // covariance on y
+                        0, 0, 0.001, 0, 0, 0,  // covariance on z
+                        0, 0, 0, 99999, 0, 0,  // large covariance on rot x
+                        0, 0, 0, 0, 99999, 0,  // large covariance on rot y
+                        0, 0, 0, 0, 0, 0.001};  //covariance on rot z
+                        
+}
+
+void loop()
+{  
+  // drive in a circle
+  double vx = 0.2, vy = 0.2;
+  double vtheta = 0.18;
+  x += cos(theta)*vx*0.1;
+  y += sin(theta)*vy*0.1;
+  theta += vtheta*0.1;
+  if(theta > 3.14)
+    theta=-3.14;
+    
+  /* 
+  Serial.print("x , y, theta = ");
+  Serial.print(x);
+  Serial.print(", ");
+  Serial.print(y);
+  Serial.print(", ");
+  Serial.println(theta);
+  */
+    
+  // tf odom->base_link
+  t.header.frame_id = odom;
+  t.child_frame_id = base_link;
+  
+  t.transform.translation.x = x;
+  t.transform.translation.y = y;
+  
+  t.transform.rotation = tf::createQuaternionFromYaw(theta);
+  t.header.stamp = nh.now();
+  
+  broadcaster.sendTransform(t);
+  nh.spinOnce();
+  
+  myOdom.header.stamp = nh.now();
+  myOdom.header.frame_id = "odom";
+
+  //set the position
+  myOdom.pose.pose.position.x = x;
+  myOdom.pose.pose.position.y = y;
+  myOdom.pose.pose.position.z = 0.0;
+  myOdom.pose.pose.orientation = tf::createQuaternionFromYaw(theta);
+
+  //set the velocity
+  myOdom.child_frame_id = "base_link";
+  myOdom.twist.twist.linear.x = vx;
+  myOdom.twist.twist.linear.y = vy;
+  myOdom.twist.twist.angular.z = vtheta;
+    
+  //publish the message
+  odom_pub.publish(&myOdom);
+  nh.spinOnce();
+  delay(10);
+}
+
+Originally posted by dan on ROS Answers with karma: 875 on 2013-08-19
+Post score: 0
+
+Original comments
+Comment by linvinus on 2014-03-11:
+problem resolved in this pull request https://github.com/ros-drivers/rosserial/pull/106
+
+A:
+
+The Odometry message is huge (700+ bytes if I remember properly). This is WAY too big to publish from an arduino.
+I suggest you either look at the alternative http://ros.org/wiki/ros_arduino_bridge or look into publishing a simpler message and writing a separate node to convert it into a full Odometry message.
+
+Originally posted by ahendrix with karma: 47576 on 2013-08-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by dan on 2013-08-20:
+Why is < 1000 bytes too big?    I increased the buffer_size to 1024 and am using a mega 2560.
+Comment by demi on 2017-08-21:
+I have the same problem.Do you solve it now?
+

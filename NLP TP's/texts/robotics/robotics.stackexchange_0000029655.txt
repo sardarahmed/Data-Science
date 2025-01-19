@@ -1,0 +1,35 @@
+Q:
+
+Navigation stack in 3D
+
+Is the ff. possible on the navigation stack:
+
+Instead of going left or right when an obstacle in front is detected, it just stops and uses the vertical(z) space to move. Is it possible to modify it like this?
+The robot is not wheeled(thrusters instead), but moves by differential drive.
+Is it also possible to replace the laser with a stereo camera instead?
+
+If it is not possible, what are alternatives?
+
+Originally posted by Homer Manalo on ROS Answers with karma: 475 on 2011-02-17
+Post score: 2
+
+A:
+
+I'll address each of your points individually:
+Instead of going left or right when an obstacle in front is detected, it just stops and uses the vertical(z) space to move. Is it possible to modify it like this?
+In order to do that, you would have to write at least two new chunks of code. One of them would have to implement the [BaseLocalPlanner](http://www.ros.org/wiki/nav_core#BaseLocalPlanner) API and would replace base_local_planner. The second would implement the [BaseGlobalPlanner](http://www.ros.org/wiki/nav_core#BaseGlobalPlanner) API and replace navfn. Navfn and base_local_planner are the two parts of the navigation stack responsible for creating and executing path plans, so they are the chunks you would need to replace (or extend) first in order to realize motion in the z coordinate. Perhaps one of the more experimental algorithms such as sbpl_lattice_planner or ompl_planner_base could help you out with this (or at least serve as a better starting point). However, I'm not sure that the costmaps currently expose anyway to query free space in the z coordinate.
+The robot is not wheeled(thrusters instead), but moves by differential drive.
+As long as it still behaves like a differential drive robot, navigation should be able to move it. In the current form, the nav stack would only be able to move it in the x-y plane as it has no concept of moving up or down. You ought to be able to test the 2D case just by following the [setup tutorial](http://www.ros.org/wiki/navigation/Tutorials/RobotSetup).
+Is it also possible to replace the laser with a stereo camera instead?
+Yes, if your stereo camera pipeline eventually outputs a PointCloud where each point should be inserted as either an obstacle or raytraced to to clear out obstacles between the sensor origin and that point. See the [costmap_2d](http://www.ros.org/wiki/costmap_2d#Sensor_management_parameters) docs for more details on what sorts of sensors you can use with it. As @fergs pointed out, you will need to have a new global localization source or you will need to operate the navigation stack in a frame equivalent to the "odom" frame used on ground robots. AMCL cannot currently function with a sensor such as a stereo camera, unless you turn the PointCloud messages into LaserScans.
+
+Originally posted by Eric Perko with karma: 8406 on 2011-02-17
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by evanmj on 2011-02-27:
+My response to this question turned into a question of its own instead.  Maybe it will help in the short term: http://answers.ros.org/question/189/navigation-planning-based-on-kinect-data-in-25d
+Comment by fergs on 2011-02-18:
+One additional requirement -- you will probably need to find a localization replacement for AMCL, as it assumes planar scans from a laser.
+

@@ -1,0 +1,147 @@
+Q:
+
+Why isn't gdb working for me
+
+Background
+I am currently trying to build an autonomous drone using ROS on my Rapsberry Pi which is running an Ubuntu MATE 16.04 LTS. Solving the Computer Vision problem of recognising red circles as of now.
+Specific Problem
+I am constantly getting the error I get in this question. To help me solve this, I have decided to use gdb. However, the command rosrun --prefix 'gdb run --args' zlab_drone vdstab does not seem to be working for me. zlab_drone is the name of the package and vdstab is the name of the executable I am trying to run. Since this is inside a ROS environment, I have grabbed the syntax from here, and used the suggestions in #q222530.
+When I invoke this command, even with tui, I get a SIGSEGV and when I invoke list inside gdb itself, the program does not stay at a particular point and keeps listing a different line till it is out of range. This is quite a weird issue.
+I managed to make it work without this issue earlier by using a different command, I reckon. I just cannot remember how I made it work last time.
+UPDATES
+So, I try to run my program with the command:
+rosrun --prefix 'gdb run --args' zlab_drone vdstab
+
+and I get:
+GNU gdb (Ubuntu 7.11-0ubuntu1) 7.11
+Copyright (C) 2016 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "arm-linux-gnueabihf".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<http://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+<http://www.gnu.org/software/gdb/documentation/>.
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from /home/sharan/catkin_ws/devel/lib/zlab_drone/vdstab...done.
+(gdb) 
+
+Which is all okay till now. Now I run start, at which point I get:
+(gdb) start 
+Temporary breakpoint 1 at 0x1e436: file /home/sharan/catkin_ws/src/zlab_drone/src/vidStab.cpp, line 136.
+Starting program: /home/sharan/catkin_ws/devel/lib/zlab_drone/vdstab 
+
+Program received signal SIGSEGV, Segmentation fault.
+0x76fd9822 in ?? () from /lib/ld-linux-armhf.so.3
+(gdb) 
+
+Which is a bit weird. To see where the segmentation fault is, I try to list. The first time I get this:
+(gdb) list 
+122 //  warpAffine(cv_ptr->image, orig_warped, invTrans.rowRange(0,2), 
+123 //          Size());
+124     
+125     // Publishing (Only uncomment, if you're sure nothing is broken
+126     // in this section)
+127     /*
+128     cv_ptr->image = orig_warped; 
+129     image_pub_.publish(cv_ptr->toImageMsg());   
+130     */
+131     }
+(gdb) 
+
+The second time, I get this:
+(gdb) list 
+132 
+133 };
+134 
+135 int main(int argc, char** argv)
+136 {
+137   ros::init(argc, argv, "video_stabilizer");
+138   Tracker tr;
+139   ros::spin();
+140   return 0;
+141 }
+(gdb) 
+
+Third:
+(gdb) 
+142 
+143 
+(gdb) 
+
+Fourth:
+(gdb) 
+Line number 144 out of range; /home/sharan/catkin_ws/src/zlab_drone/src/vidStab.cpp has 143 lines.
+(gdb) 
+
+and finally fifth, and so on and so forth:
+(gdb) 
+Line number 144 out of range; /home/sharan/catkin_ws/src/zlab_drone/src/vidStab.cpp has 143 lines.
+(gdb) 
+
+When I use Backtrace
+Reading symbols from /home/sharan/catkin_ws/devel/lib/zlab_drone/vdstab...done.
+(gdb) start
+Temporary breakpoint 1 at 0x1e436: file /home/sharan/catkin_ws/src/zlab_drone/src/vidStab.cpp, line 136.
+Starting program: /home/sharan/catkin_ws/devel/lib/zlab_drone/vdstab 
+
+Program received signal SIGSEGV, Segmentation fault.
+0x76fd9822 in ?? () from /lib/ld-linux-armhf.so.3
+(gdb) backtrace
+#0  0x76fd9822 in ?? () from /lib/ld-linux-armhf.so.3
+#1  0x76fd983a in ?? () from /lib/ld-linux-armhf.so.3
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(gdb) 
+
+What exactly is the problem here?
+
+Originally posted by sharan100 on ROS Answers with karma: 83 on 2017-02-14
+Post score: 0
+
+Original comments
+Comment by ahendrix on 2017-02-15:
+Seems like your terminal state might be funky. Try running stty sane to reset it before you start your node.
+Comment by sharan100 on 2017-02-15:
+@ahendrix nope, invoked stty sane and restarted the program but I still get the error:
+Program received signal SIGSEGV, Segmentation fault.
+0x76fd9822 in ?? () from /lib/ld-linux-armhf.so.3
+
+I even restarted the Raspberry Pi.
+Comment by gvdhoorn on 2017-02-15:
+I don't think @ahendrix' comment was meant as a solution to your SEGFAULT, but it could've been a way to get gdb to behave again.
+Comment by sharan100 on 2017-02-15:
+@gvdhoorn Yeah, I got that, but I was just expanding on the fault that I am getting
+Comment by ahendrix on 2017-02-15:
+To clarify: running stty sane should fix the issue where running list in gdb produces unending output, but it won't fix your segfault. The segfault is almost certainly a bug in your code.
+Comment by sharan100 on 2017-02-15:
+Yes of course, I get that. But it is obviously buggy, as it should manually go to the start of main and then approach the segfault through step or next.
+Comment by ahendrix on 2017-02-15:
+It sounds like you're expecting things from gdb that it doesn't do by default. Can you edit your question to include the full text of your debugging session?
+Comment by sharan100 on 2017-02-16:
+yeah, I've posted exactly what I get when I open up gdb. The thing is, I didn't get this, last time I ran gdb, where I used specific syntax.
+
+A:
+
+It looks like your program is crashing on startup. There is code that runs before main, and it looks like something in there is crashing.
+gdb's list command is not my preferred choice for debugging; looking at the backtrace (gdb's backtrace command) will show the series of function calls and the final line where your program crashed.
+
+Originally posted by ahendrix with karma: 47576 on 2017-02-16
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by sharan100 on 2017-02-17:
+I have just added what happens when I use backtrace instead of list.
+Comment by ahendrix on 2017-02-17:
+This looks a lot like https://bugs.launchpad.net/gdb/+bug/1576432 ; which suggests that you can get around the issue by connecting gdb to your process after it starts: https://bugs.launchpad.net/gdb/+bug/1576432/comments/4
+Comment by sharan100 on 2017-02-17:
+yeah that workaround is the solution to this, it seems like. Either ways, for convenience's sake, I shall use valgrind.
+Comment by sharan100 on 2017-02-17:
+okay, it seems like I get a similar error with valgrind. Should I take this up somewhere?
+Comment by ahendrix on 2017-02-18:
+It seems like this is a bug in gdb or Ubuntu's version of gdb, so I recommend that you follow up on the launchpad bug that I linked to.
+

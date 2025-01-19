@@ -1,0 +1,145 @@
+Q:
+
+How can I publish a opecv Mat as a topic and subscribe by rviz
+
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/image_encodings.h>
+
+namespace enc = sensor_msgs::image_encodings;
+
+int main(int argc, char **argv)
+{
+    int trajectory[3] = {512,612,712};
+    cv::Mat image(1024,1024,CV_8UC3);
+
+    for(int i = 0;i<3;i++)
+    {
+        cv::circle(image, cv::Point(trajectory[i],trajectory[i]), 100, CV_RGB(255,0,0));
+    }
+
+#if 0
+    cv::namedWindow("image", CV_WINDOW_NORMAL);
+    cv::resizeWindow("image", 1024,1024);
+    cv::imshow("image", image);   
+    cv::waitKey(0);   
+    cv::destroyWindow("image"); 
+#endif
+
+#if 1
+    ros::init(argc, argv, "draw_circle");
+    ros::NodeHandle n;
+    image_transport::ImageTransport it_(n);
+    image_transport::Publisher image_pub_ = it_.advertise("/traj_output", 1);
+
+    cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
+
+#if 1
+    ros::Time time = ros::Time::now();
+cv_ptr->encoding = "bgr8";
+    cv_ptr->header.stamp = time;
+    cv_ptr->header.frame_id = "/traj_output";
+#endif
+
+    cv_ptr->image = image;
+    image_pub_.publish(cv_ptr->toImageMsg());
+
+    ROS_INFO("ImageMsg Send.");
+#endif
+    ros::spin();
+    return 0;
+
+}
+
+this is a pseudo code for learning cv_bridge written by myself.
+i have create a new image with several circles drew on it
+and transform into a image msgs and publish as a topic
+however, the image cannot be shown by rviz
+anyone have any ideas?
+
+Originally posted by Ronald Chen on ROS Answers with karma: 1 on 2013-11-21
+Post score: 0
+
+A:
+
+Hi Ronald!
+I think the problem happens because when you run your node, the image is published only once and then you start RViz, but when you start RViz, your node is not publishing anymore.
+In order to see it on RViz, your node should keep publishing at least until RViz is subscribed.
+You can see if RViz is subscribed by checking how many nodes are subscribed to the topic. You can achieve this with image_pub_.getNumSubscribers().
+Or you can also keep publishing "forever" no matter how many subscribers are there.
+I have modified your code, so now you can see the image on RViz or rqt_image_view without any problem. You can see it working on a video if you want.
+The modified code is:
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/image_encodings.h>
+
+namespace enc = sensor_msgs::image_encodings;
+
+int main(int argc, char **argv)
+{
+    int trajectory[3] = {512,612,712};
+    cv::Mat image(1024,1024,CV_8UC3);
+
+    for(int i = 0;i<3;i++)
+    {
+        cv::circle(image, cv::Point(trajectory[i],trajectory[i]), 100, CV_RGB(255,0,0));
+    }
+
+#if 0
+    cv::namedWindow("image", CV_WINDOW_NORMAL);
+    cv::resizeWindow("image", 1024,1024);
+    cv::imshow("image", image);   
+    cv::waitKey(0);   
+    cv::destroyWindow("image"); 
+#endif
+
+#if 1
+    ros::init(argc, argv, "draw_circle");
+    ros::NodeHandle n;
+    image_transport::ImageTransport it_(n);
+    image_transport::Publisher image_pub_ = it_.advertise("/traj_output", 1);
+        
+    cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
+            
+
+    ros::Rate loop_rate(10); //10 hz
+    while(ros::ok()){
+        
+        
+        #if 1
+            ros::Time time = ros::Time::now();
+            cv_ptr->encoding = "bgr8";
+            cv_ptr->header.stamp = time;
+            cv_ptr->header.frame_id = "/traj_output";
+        #endif
+        
+            cv_ptr->image = image;
+            image_pub_.publish(cv_ptr->toImageMsg());
+        
+            ROS_INFO("ImageMsg Sent.");
+            ROS_INFO("Subscribers: %d", image_pub_.getNumSubscribers());
+        
+        
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
+#endif
+    
+    ros::spin();
+    return 0;
+
+}
+
+Now you can run rosrun rviz rviz or rosrun rqt_image_view rqt_image_view and select the desired /traj_output topic to see the image.
+Cheers.
+
+Originally posted by Ruben Alves with karma: 1038 on 2018-01-02
+This answer was ACCEPTED on the original site
+Post score: 0
+

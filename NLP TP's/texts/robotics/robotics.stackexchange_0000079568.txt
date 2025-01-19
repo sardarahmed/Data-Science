@@ -1,0 +1,118 @@
+Q:
+
+How to Synchronize two topics?
+
+Hi I am new to ROS, I am trying to synchronize two subscribed topics from last few days. I have tried almost all solutions mentioned in this forum but still struggling to get it synchronized. The callback function is never called.
+Below is my code as well CMakeLists.txt.
+Can anyone plz suggest where I am going wrong or what changes I should make.
+Here is my code:
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/Image.h>
+#include <boost/bind.hpp>
+using namespace sensor_msgs;
+using namespace message_filters;
+
+void callback(const ImageConstPtr& image1, const ImageConstPtr& image2)
+{
+  ROS_INFO_STREAM("Hi I am in callback");
+}
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "test_messge_filter");
+  ros::NodeHandle nh;
+  message_filters::Subscriber<Image> image1_sub(nh, "image1", 1);
+  message_filters::Subscriber<Image> image2_sub(nh, "image2", 1);
+  typedef sync_policies::ApproximateTime<Image, Image> MySyncPolicy;
+// ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
+  Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image1_sub, image2_sub);
+  sync.registerCallback(boost::bind(&callback, _1, _2));
+  ros::spin();
+  return 0;
+}
+
+CMakeLists.txt:
+find_package(catkin REQUIRED COMPONENTS
+pcl_ros  
+roscpp
+sensor_msgs 
+image_transport  
+message_filters  
+std_msgs
+message_generation 
+cv_bridge
+)
+find_package(OpenCV REQUIRED)
+find_package(Boost REQUIRED COMPONENTS 
+signals
+) 
+
+catkin_package()
+include_directories(
+${catkin_INCLUDE_DIRS} 
+${OpenCV_INCLUDE_DIRS} 
+${Boost_INCLUDE_DIRS}
+)
+
+add_executable(pub_sub_image_pointcloud src/pub_sub_image_pointcloud.cpp)
+target_link_libraries(pub_sub_image_pointcloud
+  
+${catkin_LIBRARIES}  
+${OpenCV_LIBRARIES}
+${Boost_LIBRARIES}
+ )
+
+Originally posted by shashankbhat on ROS Answers with karma: 3 on 2017-03-14
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-03-14:
+Please use the Preformatted Text button (the one with 101010 on it) to properly format code and console copy-pastes in your question text.
+Comment by shashankbhat on 2017-03-14:
+Sorry for inconvenience, I guess it is in correct format now
+Comment by TTDM on 2017-03-14:
+Can you try to put a larger queue size for both your subscribers ? I believe that 1 can be a little problematic for the algorithm wich is trying to match the timestamps.
+I never tried but it appears that there 3 optionals parameters to approx time
+http://wiki.ros.org/message_filters/ApproximateTime
+Comment by shashankbhat on 2017-03-15:
+@TTDM I tried giving larger values it doesn't work
+Comment by TTDM on 2017-03-15:
+So i tested your code here and it works. Can you check that both your topics exists and that they have a time stamp ? ( rostopic echo image1 --noarr )
+Btw, I believe every topic name has to start with /
+Comment by shashankbhat on 2017-03-16:
+Initially I was trying to run only this code, so it was not calling callback. But when I wrote a Publisher file separately & tried to subscribe it, It worked. So now  I have merged both the files & this is what I found when I first wrote publisher & then subscribe it dint work, but vice-versa worked
+Comment by shashankbhat on 2017-03-16:
+Is it necessary to subscribe first & then publish?? May actual intension is to call a callback & publish from the callback function. Is this possible using Approximate Time policy??
+
+A:
+
+It seems ( see the comments of the question ) that your real issue is about managing messages.
+I will answer each of your points :
+
+Initially I was trying to run only this code, so it was not calling callback. But when I wrote a Publisher file separately & tried to subscribe it, It worked. So now I have merged both the files & this is what I found when I first wrote publisher & then subscribe it dint work, but vice-versa worked
+
+I must say that i didn't really understood this.
+
+Is it necessary to subscribe first ??
+
+Yes, this is the way "messages_filter" works :
+1/ You subscribe to existing topics
+2/ You sync them with your desired policy
+3/ You can write a callback with your multiple message as arguments. Callback in which you do whatever you want.
+
+My actual intension is to call a callback & publish from the callback function. Is this possible using Approximate Time policy??
+
+I just want to say that this question (and the previous one) show that you have some trouble understanding how ROS globally works, we have all been there but you may want to read once more the tutorials ;)
+So yes you can publish from the callback function, you can do nearly everything from the callbacl function. One classic ROS node architecture is to have a very small main in which you just create a class element and then you ros::spin. In the class there will be the creation of one or multiples subscriber(s) and everything the node is doing is computed in the callbacks. This way of doing things link an action to a message reception. For exemple, each time you have an image you lanuch your image processing treatment. Or each time you receive your odometry, you update your robot position in your node .....
+
+Originally posted by TTDM with karma: 267 on 2017-03-16
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by shashankbhat on 2017-03-16:
+@TTDM Thanks a lot for suggestion. Obviously I need to go through the tutorials. This was something I wanted in a short span of time so couldn't go through it completely.
+

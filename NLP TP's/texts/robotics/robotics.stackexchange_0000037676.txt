@@ -1,0 +1,72 @@
+Q:
+
+Dropped sensor messages in Navigation Stack
+
+Hi,
+I'm trying to run the navigation stack on my own robot. I have run through the RobotSetup Tutorial and have made sure I am publishing everything I am required to.
+I have published the tfs such that I have a tree that looks like map-->odom-->base_link-->base_sonarA (which is the sonar sensor I am using - data being published as a LaserScan message). However I am getting this error:
+[ WARN] [1328706898.660733327]: MessageFilter [target=/map /base_sonarA ]: Dropped 100.00% of messages so far. Please turn the [ros.costmap_2d.message_notifier] rosconsole logger to DEBUG for more information.
+[ WARN] [1328706899.306808499]: MessageFilter [target=/odom /base_sonarA ]: Dropped 100.00% of messages so far. Please turn the [ros.costmap_2d.message_notifier] rosconsole logger to DEBUG for more information.
+
+Then when I turn on DEBUG as suggested, I get this:
+[DEBUG] [1328707633.947505776]: MessageFilter [target=/map /base_sonarA ]: Removed oldest message because buffer is full, count now 50 (frame_id=base_sonarA, stamp=0.000000)
+[DEBUG] [1328707633.956223854]: MessageFilter [target=/map /base_sonarA ]: Added message in frame base_sonarA at time 0.000, count now 50
+[DEBUG] [1328707633.964573867]: MessageFilter [target=/odom /base_sonarA ]: Removed oldest message because buffer is full, count now 50 (frame_id=base_sonarA, stamp=0.000000)
+[DEBUG] [1328707633.984351031]: MessageFilter [target=/odom /base_sonarA ]: Added message in frame base_sonarA at time 0.000, count now 50`
+
+When I run rosrun tf tf_echo map base_sonarA I get:
+At time 1328707774.058
+- Translation: [2.283, 0.489, -0.035]
+- Rotation: in Quaternion [0.000, 0.000, 0.829, 0.560]
+        in RPY [0.000, -0.000, 1.953]
+
+So the transform exists, but from what other threads have told me, this means the transform on the data is not happening.
+As a result of this, I can't use the sensor data and hence the stack doesn't work.
+Does anyone know what the problem could be?
+Thanks!
+EDIT 1:
+Sample message from sonar sensor (LaserScan message) using rostopic echo sonar_dataA )
+---
+header: 
+  seq: 821
+  stamp: 
+    secs: 0
+    nsecs: 0
+  frame_id: base_sonarA
+angle_min: 0.0
+angle_max: 10.0
+angle_increment: 0.10000000149
+time_increment: 1.0
+scan_time: 0.10000000149
+range_min: 0.00999999977648
+range_max: 1.45000004768
+ranges: [1.4827419519424438]
+intensities: []
+---
+
+Originally posted by rohan_k on ROS Answers with karma: 33 on 2012-02-08
+Post score: 2
+
+A:
+
+There are a couple of possibilities here:
+
+Something is wrong with your tf tree, and it isn't possible to transform sonar data into the base frame
+Your sonar data is being published with the wrong frame in the header
+Your sonar data is being published with the wrong timestamp in the header
+
+I suspect one of the latter two problems; if you can capture and post a sample sonar message, that should narrow things down.
+EDIT:
+After looking at your sample message, this is definitely due to improper timestamps in your sonar messages. It should be relatively simple to set header.stamp to the current time for every message.
+This is a problem because tf works in both space and time; since some frames move with time, it buffers a short history so that it can transform scan data taken a few seconds ago between moving frames. The buffer is relatively short, so it doesn't have enough information to transform data that's more than a few seconds old, much less all the way back to unix time 0 (Dec 31, 1969!).
+
+Originally posted by ahendrix with karma: 47576 on 2012-02-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by rohan_k on 2012-02-08:
+FIXED! the error was that I had the timestamp in making the LaserScan message = ros::Time(); when it needed to be ros::Time::now(); for some reason. 100 more errors to deal with, but that one done! Thanks very much for the help!
+Comment by rohan_k on 2012-02-08:
+I've posted a rostopic echo of the LaserScan message and as you say there looks to be an issue with the timestamp on each message. I'll have a look at where I populate the message and repost.
+

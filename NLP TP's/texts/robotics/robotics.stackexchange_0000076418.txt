@@ -1,0 +1,86 @@
+Q:
+
+Problem with Approximatetime policy
+
+Hi,
+I'm having a little trouble figuring out how to use the Approximate time policy. I'm able to run the code provide as a tutorial here. (http://wiki.ros.org/message_filters) But when I use classes I'm getting a lot of error.
+typedef sync_policies::ApproximateTime<sensor_msgs::NavSatFix, sensor_msgs::Imu, sensor_msgs::LaserScan> MySyncPolicy;
+
+class myclass
+{
+public:            
+myclass();   
+ros::NodeHandle nh;
+void callback(const sensor_msgs::NavSatFixConstPtr& , const sensor_msgs::ImuConstPtr& , const sensor_msgs::LaserScanConstPtr& );
+
+private:
+  message_filters::Subscriber<sensor_msgs::NavSatFix> *sub_fix;
+  message_filters::Subscriber<sensor_msgs::Imu> *sub_imu;
+  message_filters::Subscriber<sensor_msgs::LaserScan> *sub_laserscan;
+  Synchronizer<MySyncPolicy> *sync;
+};
+
+myclass::myclass()
+{
+
+sub_fix = new message_filters::Subscriber<sensor_msgs::NavSatFix>(nh, "kitti_player/oxts/gps", 100);
+sub_imu = new message_filters::Subscriber<sensor_msgs::Imu>(nh, "kitti_player/oxts/imu", 100);
+sub_laserscan = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh, "scan", 100);
+ 
+   sync = new message_filters::sync::ApproximateTime<MySyncPolicy> (*sub_fix, *sub_imu, *sub_laserscan,1000);
+   sync->registerCallback(boost::bind(&myclass::callback, _1, _2, _3));
+}
+
+void myclass::callback(const sensor_msgs::NavSatFixConstPtr& gps, const sensor_msgs::ImuConstPtr& imu, const sensor_msgs::LaserScanConstPtr& scan)
+{
+ std::cout<<" "<< gps->header.stamp <<"   " << scan->header.stamp << "\n" ;
+} 
+
+Can someone please suggest a way to write this properly.
+Thanks & Regards
+Sriram
+PS:: some of the errors
+/home/student/students/sriram/test_ws/src/test_sub/src/test_sub.cpp: In constructor ‘myclass::myclass()’:
+/home/student/students/sriram/test_ws/src/test_sub/src/test_sub.cpp:47:15: error: expected type-specifier
+    sync = new message_filters::sync::ApproximateTime<MySyncPolicy> (*sub_fix, *sub_imu, *sub_laserscan,1000);
+               ^
+/home/student/students/sriram/test_ws/src/test_sub/src/test_sub.cpp:47:15: error: expected ‘;’
+In file included from /usr/include/boost/bind.hpp:22:0,
+                 from /opt/ros/indigo/include/ros/publisher.h:35,
+                 from /opt/ros/indigo/include/ros/node_handle.h:32,
+                 from /opt/ros/indigo/include/ros/ros.h:45,
+                 from /home/student/students/sriram/test_ws/src/test_sub/src/test_sub.cpp:1:
+/usr/include/boost/bind/bind.hpp: In instantiation of ‘struct boost::_bi::result_traits<boost::_bi::unspecified, void (myclass::*)(const boost::shared_ptr<const sensor_msgs::NavSatFix_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::Imu_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::LaserScan_<std::allocator<void> > >&)>’:
+/usr/include/boost/bind/bind_template.hpp:15:48:   required from ‘class boost::_bi::bind_t<boost::_bi::unspecified, void (myclass::*)(const boost::shared_ptr<const sensor_msgs::NavSatFix_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::Imu_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::LaserScan_<std::allocator<void> > >&), boost::_bi::list3<boost::arg<1>, boost::arg<2>, boost::arg<3> > >’
+/home/student/students/sriram/test_ws/src/test_sub/src/test_sub.cpp:48:69:   required from here
+/usr/include/boost/bind/bind.hpp:69:37: error: ‘void (myclass::*)(const boost::shared_ptr<const sensor_msgs::NavSatFix_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::Imu_<std::allocator<void> > >&, const boost::shared_ptr<const sensor_msgs::LaserScan_<std::allocator<void> > >&)’ is not a class, struct, or union type
+     typedef typename F::result_type type;
+
+Originally posted by b-sriram on ROS Answers with karma: 105 on 2016-09-21
+Post score: 1
+
+A:
+
+When passing a class to boost::bind, it needs an instance too. Try this.
+sync->registerCallback(boost::bind(&myclass::callback, this, _1, _2, _3));
+
+Originally posted by kmhallen with karma: 1416 on 2016-09-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by b-sriram on 2016-09-22:
+hi,
+thanks. i tried what you suggested and it think the previous error is solved. Now I have a diiferent one.
+In constructor ‘myclass::myclass()’:
+sub.cpp:45:15:error: expected type-specifier sync = new message_filters::sync::ApproximateTime<MySyncPolicy> (*sub_fix, *sub_imu, *sub_laserscan, 1000);
+
+Comment by b-sriram on 2016-09-22:
+I think my mistake is the way I'm using this line
+sync = new message_filters::sync::ApproximateTime<MySyncPolicy> (*sub_fix, *sub_imu, *sub_laserscan,1000);
+
+I used the example provided here link text and i works
+Comment by b-sriram on 2016-09-22:
+And changing it to this made it work
+ sync = new Synchronizer<MySyncPolicy> (MySyncPolicy(10), *sub_fix, *sub_imu, *sub_laserscan);
+

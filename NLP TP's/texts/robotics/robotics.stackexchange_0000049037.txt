@@ -1,0 +1,78 @@
+Q:
+
+Camera calibration crashes
+
+While trying to use camera calibration with the command
+rosrun camera_calibration cameracalibrator.py --size 8x6
+--square 0.03 image:=/camera/image camera:=/camera
+
+the utility crashes, sometimes during start, sometimes when the checkboard is moving in the frame. If the checkboard is in the middle of the frame when the utility starts, then sometimes I can see the checkboard from the GUI and the utility gets the first calibration data, but the utility crashes as soon as I try to move the board. The error messages are always:
+OpenCV Error: Assertion failed (blockSize % 2 == 1 && blockSize > 1) in adaptiveThreshold, file /tmp/buildd/ros-groovy-opencv2-2.4.4-1precise-20130301-2025/modules/imgproc/src/thresh.cpp, line 797
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/threading.py", line 551, in __bootstrap_inner
+    self.run()
+  File "/opt/ros/groovy/lib/camera_calibration/cameracalibrator.py", line 68, in run
+    self.function(m)
+  File "/opt/ros/groovy/lib/camera_calibration/cameracalibrator.py", line 134, in handle_monocular
+    drawable = self.c.handle_msg(msg)
+  File "/opt/ros/groovy/lib/python2.7/dist-packages/camera_calibration/calibrator.py", line 729, in handle_msg
+    scrib_mono, corners, downsampled_corners, board, (x_scale, y_scale) = self.downsample_and_detect(gray)
+  File "/opt/ros/groovy/lib/python2.7/dist-packages/camera_calibration/calibrator.py", line 399, in downsample_and_detect
+    (ok, downsampled_corners, board) = self.get_corners(scrib, refine = True)
+  File "/opt/ros/groovy/lib/python2.7/dist-packages/camera_calibration/calibrator.py", line 367, in get_corners
+    (ok, corners) = _get_corners(img, b, refine)
+  File "/opt/ros/groovy/lib/python2.7/dist-packages/camera_calibration/calibrator.py", line 156, in _get_corners
+    (ok, corners) = cv.FindChessboardCorners(mono, (board.n_cols, board.n_rows), cv.CV_CALIB_CB_ADAPTIVE_THRESH | cv.CV_CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK)
+error: blockSize % 2 == 1 && blockSize > 1
+
+Any ideas what could be wrong and how to fix this?
+
+Originally posted by r0nald on ROS Answers with karma: 268 on 2013-03-05
+Post score: 8
+
+Original comments
+Comment by TommyP on 2013-03-11:
+We are just trying to calibrate a camera and see exactly the same thing.
+Comment by kamek on 2013-03-14:
+I'm getting the exact same problem as well using Groovy on Ubuntu 11.10.
+Comment by Vincent Rabaud on 2013-04-16:
+Any other case, can you please state your g++ version and whether you are 32 bits or not ? Thx
+Comment by Crusty on 2013-06-03:
+same issue here. g++ --version
+g++ (Ubuntu/Linaro 4.6.3-1ubuntu5) 4.6.3
+Linux xxx 3.2.0-43-generic-pae #68-Ubuntu SMP Wed May 15 03:55:10 UTC 2013 i686 i686 i386 GNU/Linux
+
+A:
+
+Try this: download OpenCV source, compile it and replace the opencv libraries(make a backup!) of ROS with the compiled libraries. It helped me with 32bit Ubuntu 12.04 and ROS Groovy.
+In some other code, I had a problem that cv::findCirclesGrid was corrupting fpu stack and causing other parts of my code to fail. This happenned only when using OpenCV libraries of ROS. After replacing the OpenCV libraries, findCirclesGrid() worked and also calibration started to work! Colleagues with 32bit Ubuntu 12.10 or 64bit systems did not experience the same issues.
+
+Originally posted by r0nald with karma: 268 on 2013-03-20
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by destogl on 2013-03-28:
+I thought that work but unfortunately it doesn't
+Comment by Vincent Rabaud on 2013-04-16:
+Hi, I am the maintainer of OpenCV on ROS. This is very grave and we heard around 2.3.2 but could not pinpoint it then. But gcc 32 bit on Precise seems to be the culprit (or OpenCV of course :) ). Can you please send me the flags ASAP ? Thx (my email is in the ROS package)
+Comment by mortonjt on 2013-04-17:
+I just upgraded to Ubuntu 12.10 64-bit, and that pretty much resolved all of my problems
+Comment by ZoltanS on 2013-04-24:
+Is there a solution for Ubuntu 12.04 and ROS Groovy?
+Comment by ZoltanS on 2013-04-30:
+I downloaded the OpenCV source v.2.4.5, compiled it, then I made "sudo checkinstall" not to mess up my system, but still have the same problem with the camera calibration. Do I need to recompile the camera calibration and eventuell the usb_cam sources too?
+Comment by ZoltanS on 2013-05-01:
+It turned out, that it still uses the old version (2.4.4) no matter I installed the new OpenCV. How should I replace the old with the new version?
+Comment by r0nald on 2013-05-02:
+ROS uses OpenCV libraries that are installed under /opt/ros, even if you have other installs of OpenCV in your system. Compile the same version of OpenCV that ROS has and replace the .so files of ROS OpenCV with the ones you compiled. This MIGHT help.
+Comment by ZoltanS on 2013-05-02:
+thanks r0nald! I overwrote the opencv related files in /opt/ros/groovy/lib but it didn't work. I get a lot of error: (process:26659): GLib-GObject-CRITICAL **: /build/buildd/glib2.0-2.32.3/./gobject/gtype.c:2722: You forgot to call g_type_init()
+Comment by r0nald on 2013-05-02:
+Sorry but can't help you with that. What I described is an ugly hack that just happened to work for me, but it should not be a surprise if it does not work for everyone. The best approach would be to upgrade to Ubuntu 12.10.
+Comment by ZoltanS on 2013-05-03:
+Finally, I tested the packages on a 64 bit Ubuntu 12.04 with ROS Groovy, and it is working with this config.
+Comment by Lorenzo Riano on 2013-05-14:
+Any update on getting it to work with 32 bits?
+

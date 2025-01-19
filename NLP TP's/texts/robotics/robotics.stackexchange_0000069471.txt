@@ -1,0 +1,112 @@
+Q:
+
+Robot_localization + IMU + Camera Pose
+
+Hi all,
+I'm trying to use this package with this two sensor, an IMU and a Camera that gives back the pose with respect to a marker, using the ar_sys package.
+In my opinion, the first problem is with the frame.
+I have map_frame(fixed) -> marker_frame (fixed) and than the camera_frame-->imu_frame
+It is right that the map_frame is my map_frame, the odom_frame is my marker_frame and the base_link is my imu_frame (which is in the centre of the robot)?
+If I understand right, the frame between marker and camera is provided by robot_localization. But if I don't create odom(marker)->base_link(imu) transform the EKF return an error (Could not obtain transform from marker1->imu )
+The solution probably is in this sentence:
+MAKE SURE something else is generating the odom->base_link transform. Note that this can even be another instance of robot_localization! However, that instance should not fuse the global data.
+But how is possible that base_link has two parents?
+Here the launch file: (fcu is my imu frame)
+<launch>
+<node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" clear_params="true">
+  <param name="frequency" value="25"/>
+  <param name="sensor_timeout" value="0.1"/>
+  <param name="two_d_mode" value="false"/>
+
+  <param name="map_frame" value="map"/>
+  <param name="odom_frame" value="marker"/>
+  <param name="base_link_frame" value="fcu"/>
+  <param name="world_frame" value="map"/>
+
+  <param name="transform_time_offset" value="0.0"/>
+  <param name="pose0" value="/poseCov"/>
+  <param name="imu0" value="/mavros/imu/data"/>
+
+  <rosparam param="pose0_config">[true,  true,  true,
+                                  false, false, true,
+                                  false, false, false,
+                                  false, false, false,
+                                  false, false, false]</rosparam>
+  <rosparam param="imu0_config">[false, false, false,
+                                 true,  true,  true,
+                                 false, false, false,
+                                 true,  true,  true,
+                                 true,  true,  true]</rosparam>
+  <param name="pose0_differential" value="false"/>
+  <param name="imu0_differential" value="true"/>
+  <param name="pose0_relative" value="false"/>
+  <param name="imu0_relative" value="true"/>
+  <param name="imu0_remove_gravitational_acceleration" value="true"/>
+  <param name="print_diagnostics" value="true"/>
+</node>
+
+Thx
+
+Originally posted by Juliuss on ROS Answers with karma: 11 on 2015-09-03
+Post score: 1
+
+Original comments
+Comment by l0g1x on 2015-09-03:
++1 for this as im trying to setup the same configuration. FYI, youll need to change the source to publish a PoseWithCovarianceStamped, and not a PoseStamped as a input for robot_localization. Im not too sure what the covariances should be, but in the process of trying to model the values dynamicaly.
+Comment by Juliuss on 2015-09-04:
+Hi, I use a node that converts PoseStamped into PoseWithCovarianceStamped, I'm trying to estimate the covariance and then I will keep that matrix constant.
+Comment by Tom Moore on 2015-09-04:
+I'll look into this soon. I don't know anything about ar_sys, so I'll have to investigate. Looking at the configuration, I'd say you need something generating a marker->fcu transform.
+Comment by Juliuss on 2015-09-04:
+Without using Kalman i can create the transform between camera and marker using the PoseStamped from ar_sys. So I have Map->marker->camera->fcu. (fcu is my imu frame, i forgot to say it). But if I create the transform, how can robot_localization overwrite it?
+Comment by l0g1x on 2015-09-09:
+any update on this? Ive tried a different solution where i just use the ar_sys pose as a pose input into robot_localization but the pose data shows Z increasing when my robot gets farther away along the world x-axis. im not sure what to do at this point.
+Comment by l0g1x on 2015-09-11:
+Just going to slip this reference in here incase you or someone decides to go with ekf_localization_node in @tmoore 's suggestion for Node 1, where you'll probably have imu as the only input to the ekf_node
+
+A:
+
+MAKE SURE something else is generating
+the odom->base_link transform. Note
+that this can even be another instance
+of robot_localization! However, that
+instance should not fuse the global
+data.
+But how is possible that base_link has
+two parents?
+
+It doesn't have two parents in the tf tree. Read this and this (read the section called "Frame Authorities"). Here's how it works:
+
+Node 1 (can be ekf_localization_node or something else, e.g. your robot's controller): produces odom->base_link transform, and publishes it to tf.
+Node 2 (can be ekf_localization_node or something else, e.g., amcl): produces map->base_link transform, but does not publish it. Instead, it uses the inverse of the odom->base_link transform, along with its own map->base_link transform, to compute the map->odom transform, and then it publishes that.
+
+In this way, you get map->odom->base_link.
+Note, however, that you (a) don't have to use these frame_ids, and (b) you can define and publish all sorts of transforms from any of these, so long as you avoid re-parenting. For your IMU, you want to use static_transform_publisher (I'd use the tf2_ros version) and publish a transform from base_link->IMU. That transform should define how your IMU is mounted on your robot.
+For ar_sys, it really depends on the coordinate frame in which the pose data is reported. As long as it adheres to ROS standards and is reported in a world-fixed frame (not attached to the robot), you can either (a) make the your world_frame in ekf_localization_node the same as the frame_id in the ar_sys pose message, or (b) create a static transform from the world_frame in your ekf_localization_node config to the frame_id in your ar_sys message.
+
+Originally posted by Tom Moore with karma: 13689 on 2015-09-10
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by l0g1x on 2015-09-10:
+thanks ill try these suggestions out later tonight or tomorrow and get back to you with the results i got
+Comment by l0g1x on 2015-09-11:
+looks like ar_sys publishes the /pose msg with same frame_id as the image its analyzing on callback. Will this be a problem when trying to create a static transform from the ekf world_frame to this ar_sys frame_id if the camera publishing the image is a child of base_link?
+Comment by l0g1x on 2015-09-11:
+Maybe this line from the ar_sys is something wrong mentioning: listens to the /camera_info and /image topics and detects the markers board set by its parameters, and then publishes the from-the-camera transform of the board detect so i believe it assume the marker moves, not the camera.
+Comment by Tom Moore on 2015-09-11:
+If the pose message is in the camera's frame_id, and that frame_id is a child of base_link, yes, that's a problem. You'll need to write a node that takes the transform from base_link to camera, applies it to the pose, and then re-issues the pose data with the world_frame as its frame_id.
+Comment by l0g1x on 2015-09-11:
+okay will try this now
+Comment by l0g1x on 2015-09-12:
+I think this works! I so far only applied the translational components offset to the ar_pose msg, but am stuck on converting between types of/applying the rotational part of the tf. Ill post a answer of my setup later today. My map frame (marker) does discretely jump a bit though FYI.
+Comment by Tom Moore on 2015-09-13:
+Sorry, what do you mean by the frame jumps? Does the pose produced by ar_sys jump? Does the transformed pose jump?
+Comment by l0g1x on 2015-09-13:
+Sorry for the vagueness, the pose produced by ar_sys is subject to discrete jumps. I applied the base_link -> camera static transform to the [new] pose msg like you told me to (only translation). I dont publish any transforms, and let Node 2 take care of that lookup. Ill try to post a bag later tn.
+Comment by Juliuss on 2015-09-14:
+@l0g1x can you attach also your ekf launch file please?
+Comment by Guglie on 2021-04-22:
+Sorry for the late comment, but this answer seems the only source where I could find that pose messages must report pose in a world fixed frame. Can you have a look at this question? https://answers.ros.org/question/376545/fusing-2-localization-sources/
+

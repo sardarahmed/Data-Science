@@ -1,0 +1,380 @@
+Q:
+
+ros2 ackermann robot not moving forward, left and right
+
+I am working on a ros2 ackermann steering robot with 4 wheels.
+Issue: The robot is not moving forward, left and right. Although its wheels are turning left and right. The robot is moving in reverse direction properly.
+There are 4 wheels. Out of it, 2 rear wheels are of type continuous and 2 front wheels are of type revolute.
+Distro: ros2-humble
+Full code with steps to reproduce error is available at: https://github.com/nice-user1/ros2_acker/tree/master
+Edit: The issue is resolved and the updated working code is pushed to the same branch.
+Directory Structure
+race_it_ws
+    /src
+        /race_it
+            /description
+                /race_car.xacro
+                /ros2_ack.xacro
+                /inertial.xacro
+            /config
+                /controller
+                    /my_controllers.yaml
+            /launch
+                /rsp.launch.py
+
+Code
+Description
+race_car.xacro (main urdf file)
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="simple_car">
+
+<xacro:include filename="inertial.xacro"/>
+<!-- <xacro:include filename="gazebo_control_dd.xacro"/> -->
+<!-- <xacro:include filename="gazebo_control_steer.xacro"/> -->
+
+    
+    <xacro:property name="wheel_width" value="0.04"/>
+    <xacro:property name="wheel_radius" value="0.1"/>
+    
+    <!-- Wheel macro -->
+    <xacro:macro name="wheel" params="name"> 
+        <link name="${name}">
+        <visual>
+            <geometry>
+                <cylinder length="${wheel_width}" radius="${wheel_radius}" />
+            </geometry>
+            <material name="blue"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="${wheel_width}" radius="${wheel_radius}" />
+            </geometry>
+        </collision>
+         <xacro:inertial_cylinder mass="0.1" length="${wheel_width}" radius="${wheel_radius}"/>    
+        </link>
+        
+        <gazebo reference="${name}">
+            <material>Gazebo/Blue</material>
+        </gazebo>   
+
+    </xacro:macro>
+
+  <!-- Base Link -->
+  
+  <link name="base_link">
+  </link>
+
+  <!-- Chassis Link -->
+  <link name="chassis_link">
+    <visual>
+      <geometry>
+        <box size="0.5 1.0 0.2"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <material name="blue">
+        <color rgba="0 0 1 1"/>
+      </material>
+    </visual>
+
+    <xacro:inertial_box mass="0.5" x="0.5" y="1.0" z="0.15"/>
+
+  </link>
+    
+  <gazebo reference="chassis_link">
+        <material>Gazebo/Orange</material>
+  </gazebo>   
+
+  
+ <!-- Base Chassis Joint -->
+  <joint name="base_chassis_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="chassis_link"/>
+      <origin xyz="0 0 0.2" rpy="0 0 0 "/>
+  </joint>    
+    
+  
+  <!-- Front Left Wheel -->
+  <xacro:wheel name="front_left_link"/>
+  
+  <joint name="front_left_joint" type="revolute">
+        <parent link="chassis_link"/>
+        <child link="front_left_link"/>
+        <origin xyz="-0.25 0.5 -0.1" rpy="0 ${-pi/2} 0"/>
+        <limit upper="0.5236" lower="-0.5236" velocity="20" effort="1"/>
+        <axis xyz="1 0 0"/>
+  </joint>
+  
+   <gazebo reference="front_left_link">
+       <material>Gazebo/Red</material>   
+       <!--
+       <mu1 value="0.001"/>
+       <mu2 value="0.001"/>
+       -->
+   </gazebo>
+  
+  
+  <!-- Front Right Wheel -->
+  <xacro:wheel name="front_right_link"/>
+  
+  <joint name="front_right_joint" type="revolute">
+        <parent link="chassis_link"/>
+        <child link="front_right_link"/>
+        <origin xyz="0.25 0.5 -0.1" rpy="0 ${-pi/2} 0"/>
+        <limit upper="0.5236" lower="-0.5236" velocity="20" effort="1"/>
+        <axis xyz="1 0 0"/>
+  </joint>
+  
+  <gazebo reference="front_right_link">   
+       <material>Gazebo/Red</material>
+       <!--
+       <mu1 value="0.001"/>
+       <mu2 value="0.001"/>
+       -->
+  </gazebo>
+  
+  
+  <!-- Rear Left Wheel -->
+  <xacro:wheel name="rear_left_link"/>
+  
+  <joint name="rear_left_joint" type="continuous">
+        <parent link="chassis_link"/>
+        <child link="rear_left_link"/>
+        <origin xyz="-0.25 -0.5 -0.1" rpy="0 ${-pi/2} 0"/>
+        <limit upper="0.5236" lower="-0.5236" velocity="20" effort="1"/>
+        <axis xyz="0 0 1"/>
+  </joint>
+    
+  <!-- Rear Right Wheel -->  
+  <xacro:wheel name="rear_right_link" />
+  
+  <joint name="rear_right_joint" type="continuous">
+        <parent link="chassis_link"/>
+        <child link="rear_right_link"/>
+        <origin xyz="0.25 -0.5 -0.1" rpy="0 ${-pi/2} 0"/> <!-- Default value for x is "0.27" -->
+        <axis xyz="0 0 1"/>
+  </joint>
+  
+  <xacro:include filename="ros2_ack.xacro"/>
+      
+</robot>
+
+inertial.xacro (for inertia)
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
+
+    <!-- Specify some standard inertial calculations https://en.wikipedia.org/wiki/List_of_moments_of_inertia -->
+    <!-- These make use of xacro's mathematical functionality -->
+
+    <xacro:macro name="inertial_box" params="mass x y z">
+        <inertial>
+            <mass value="${mass}" />
+        <inertia ixx="${(1/12) * mass * (y*y+z*z)}" ixy="0.0" ixz="0.0"
+                    iyy="${(1/12) * mass * (x*x+z*z)}" iyz="0.0"
+                izz="${(1/12) * mass * (x*x+y*y)}" />
+        </inertial>
+    </xacro:macro>
+
+    <xacro:macro name="inertial_cylinder" params="mass length radius">
+        <inertial>
+            <mass value="${mass}" />
+        <inertia ixx="${(1/12) * mass * (3*radius*radius + length*length)}" ixy="0.0" ixz="0.0"
+                    iyy="${(1/12) * mass * (3*radius*radius + length*length)}" iyz="0.0"
+                izz="${(1/2) * mass * (radius*radius)}" />
+        </inertial>
+    </xacro:macro>
+
+</robot>
+
+ros2_ack.xacro
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="simple_car">
+    <ros2_control name="carbot" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+                        
+            <!-- 
+            <plugin>ros2_control_demo_example_11/CarlikeBotSystemHardware</plugin>
+            <param name="example_param_hw_start_duration_sec">0</param>
+            <param name="example_param_hw_stop_duration_sec">3.0</param>
+            <param name="is_simulation">1</param>
+            -->       
+        </hardware>
+        
+        <!-- Front Left Wheel -->        
+        <joint name="front_left_joint">
+            <command_interface name="position"/>
+            <state_interface name="position" />
+        </joint>     
+      
+          <!-- Front Right Wheel -->         
+          <joint name="front_right_joint">
+            <command_interface name="position"/>
+            <state_interface name="position" />
+          </joint>       
+          
+          <!-- Rear Left Wheel -->          
+          <joint name="rear_left_joint">
+              <command_interface name="velocity"/>
+              <state_interface name="velocity" />
+          </joint>
+            
+          <!-- Rear Right Wheel -->            
+          <joint name="rear_right_joint">
+              <command_interface name="velocity"/>
+              <state_interface name="velocity" />
+          </joint>      
+    </ros2_control>
+    
+    <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+            <parameters>$(find race_it)/config/controller/my_controllers.yaml</parameters>
+        </plugin>
+    </gazebo>
+    
+</robot>
+
+config (controller)
+my_controllers.xacro
+controller_manager:
+  ros__parameters:
+    update_rate: 30
+    
+    use_sim_time: true
+    
+    asc:
+        type: ackermann_steering_controller/AckermannSteeringController       
+    
+    jsc:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    
+asc:
+  ros__parameters:
+
+    reference_timeout: 2.0
+    front_steering: true
+    open_loop: false
+    velocity_rolling_window_size: 10
+    position_feedback: false
+    use_stamped_vel: true
+
+    rear_wheels_names: [rear_right_joint, rear_left_joint]
+    front_wheels_names: [front_right_joint, front_left_joint]
+
+    wheelbase: 1.0
+    front_wheel_track: 0.5
+    rear_wheel_track: 0.5
+    front_wheels_radius: 0.1
+    rear_wheels_radius: 0.1
+    
+    
+#jsc:
+#  ros__parameters:
+#    type: joint_state_controller/JointStateController
+
+launch
+rsp.launch.py
+import os
+
+from ament_index_python.packages import get_package_share_directory
+
+from launch import LaunchDescription
+from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch_ros.actions import Node
+import launch_ros
+
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+import xacro
+
+def generate_launch_description():
+
+    # Check if we're told to use sim time
+    use_sim_time = LaunchConfiguration('use_sim_time')
+
+    # Process the URDF file
+    pkg_path = os.path.join(get_package_share_directory('race_it'))
+    
+    #xacro_file = os.path.join(pkg_path,'description','robot.urdf.xacro')
+    xacro_file = os.path.join(pkg_path,'description', 'race_car.xacro')
+    
+    robot_description_config = xacro.process_file(xacro_file)
+    
+    default_rviz_config_path = os.path.join(pkg_path, 'config/rviz/urdf_config.rviz')
+    
+    # Create a robot_state_publisher node
+    params = {'robot_description': robot_description_config.toxml(), 'use_sim_time': use_sim_time}
+    node_robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[params]
+    )
+    
+    
+        
+    joint_state_publisher_node = launch_ros.actions.Node(
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher'
+    )
+    
+
+    rviz_node = launch_ros.actions.Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        output='screen',
+        arguments=['-d', default_rviz_config_path],
+    )
+
+    
+    gazebo = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([os.path.join(
+            get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')])#,
+    #        launch_arguments={'world': "my_bot/worlds/obstacles.world"}.items()
+    )
+    
+    
+    spawn_entity = launch_ros.actions.Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=['-entity', '', '-topic', 'robot_description'],
+        output='screen'
+    )
+
+    # Launch!
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='true',
+            description='Use sim time if true'),
+
+        node_robot_state_publisher,
+        joint_state_publisher_node,
+        rviz_node,
+        gazebo,
+        spawn_entity
+    ])
+
+To Execute:
+
+ros2 launch race_it rsp.launch.py
+ros2 run controller_manager spawner asc
+
+NOTE: I feel there are some issues with the robot_description due to which i am experiencing this weird behavior although I haven't been able to figure it out.
+Thanks
+
+A:
+
+The issue was in the design of the robot. The front 2 wheels were connected to the main chassi using "revolute joint" and not using "continous joint". Because of the friction of the front wheels, the robot was not able to move forward, left and right although its wheels moved left and right.
+A quick fix for this issue is to remove the friction of the front wheels by adding the following code in the  tag of the front 2 wheels:
+   <mu1 value="0.001"/>
+   <mu2 value="0.001"/>
+   
+
+The other permanent fix was to add 2 additional link to the front 2 wheels as "revolute" joint and connect the wheels to this link as continuous joint.
+
+I have added the additional links and the updated code can be found at https://github.com/nice-user1/ros2_acker/tree/master.
+

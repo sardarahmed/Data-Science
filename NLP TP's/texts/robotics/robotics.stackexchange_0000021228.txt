@@ -1,0 +1,324 @@
+Q:
+
+My Pick and Place Program Not Working
+
+hope you are all well.
+I am trying to finish a capstone project on Coursera. It asks me to carry a cube object from an initial position to goal. This video shows the movement.
+Project website: http://hades.mech.northwestern.edu/index.php/Mobile_Manipulation_Capstone
+On the simulation software, simulation commands are sent as 13 element row vectors. The vector information looks like this:
+chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
+
+J1 to J5 are robot arm joints and the W1 to W4 are mobile wheel angels. Gripper state is 0 if the gripper is open and 1 if the gripper is closed.
+In the project page, it tells me to create 3 separate functions.
+First function (NextState) takes 3 inputs:
+
+A twelve-vector containing robot configuration (without gripper state)
+A 9 vector containing joint and wheel speeds (1 to 5 for joint speeds and 6 to 9 are wheel speeds)
+A timestep t
+A maximum value for the arm joints and wheels (can be set as a very high number if desired)
+
+It produces 1 input:
+
+12 vector containing the robot configuration after timestep t.
+
+Second function (TrajectoryGenerator) takes 6 inputs:
+
+Initial end-effector configuration, Tse
+Initial cube configuration, Tsc_initial
+Desired cube configuration, Tsc_final
+End effector related to cube configuration while grasping, Tce_grasp
+End effector related to cube configuration before and after grasping, Tce_standoff
+Trajectory reference configurations per second, k.
+
+Second function produces 1 output:
+1 13 by m matrix containing reference robot configurations in each row (13 th row contains gripper state).
+Third function takes 5 inputs:
+
+Actual end effector configuration, X or Tse
+Reference end effector configuration, Xd or Tse_d
+Next reference end effector configuration, Xd_next or Tse_d_next
+PI gain Kp and Ki
+Timestep t
+Actual joint configuration, thetaList
+
+Third function produces 4 outputs:
+
+Feed-forward reference twist, Vd
+End-effector twist, in end-effector frame, V.
+Je to calculate controls vector
+controls vector, u or u_theta_dot
+Xerr to inspect the reference error.
+
+Here are my function implementations:
+function newConfiguration = NextState(currentConfiguration, controls, delta_t, limit)
+
+%% Assigning the properties of the robot:
+l = 0.47/2;
+w = 0.30/2;
+r = 0.0475;
+
+%% Assigning current and new configurations and speeds:
+currentJoints = currentConfiguration(4:8)';
+currentWheels = currentConfiguration(9:12)';
+armJointSpeeds = controls(1:5)';
+wheelSpeeds = controls(6:9)';
+newJoints = currentJoints + (armJointSpeeds .* delta_t);
+newWheels = currentWheels + (wheelSpeeds .* delta_t);
+Tsbk = [cos(currentConfiguration(1)), -sin(currentConfiguration(1)), 0, currentConfiguration(2); sin(currentConfiguration(1)), cos(currentConfiguration(1)), 0, currentConfiguration(3); 0, 0, 1, 0.0963; 0, 0, 0, 1];
+
+%% Calculating deltaTheta to initiate the odometry process:
+deltaTheta = newWheels - currentWheels;
+thetaDot = deltaTheta/delta_t;
+
+Vb = (r/4) * [-1 / (l + w), 1 / (l + w), 1 / (l + w), -1 / (l + w); 1, 1, 1, 1; -1, 1, -1, 1] * thetaDot;
+Vb6 = [0; 0; Vb; 0];
+newChassisRelative = expm(VecTose3(Vb6));
+Tsbk1 = Tsbk * newChassisRelative;
+
+phi = acos(Tsbk1(1,1));
+x = Tsbk1(1, 4);
+y = Tsbk1(2, 4);
+
+chass = [phi x y];
+
+newConfiguration = [chass'; newJoints; newWheels]';
+
+end
+
+................
+function movement = TrajectoryGenerator(Tse_initial, Tsc_initial, Tsc_final, Tce_grasp, Tce_standoff, k)
+
+%% Sequence:
+%  1. Arm moves above the cube.
+%  2. Arm reaches the cube.
+%  3. Arm grasps the cube.
+%  4. Arm returns to the position 1
+%  5. Arm goes to final position.
+
+Tse_standoff = Tsc_initial * Tce_standoff;
+
+Tse_grasp = Tsc_initial * Tce_grasp;
+
+Tse_final = Tsc_final * [cosd(135), 0, sind(135) 0; 0, 1, 0  0; -sind(135), 0, cosd(135), 0; 0 0 0 1];
+
+% Standing on top of the cube tracejtory:
+traj1 = CartesianTrajectory(Tse_initial, Tse_standoff, 8, (8*k) / 0.01, 5)
+
+traj2 = CartesianTrajectory(Tse_standoff, Tse_grasp, 8, (8*k) / 0.01, 5);
+
+traj3 = CartesianTrajectory(Tse_grasp, Tse_standoff, 8, (8*k) / 0.01, 5);
+
+traj4 = CartesianTrajectory(Tse_standoff, Tse_final, 8, (8*k) / 0.01, 5);
+
+for i = 1 : length(traj1)
+    trajectory1(i, :) = [traj1{i}(1,1) traj1{i}(1,2) traj1{i}(1,3) traj1{i}(2,1) traj1{i}(2,2) traj1{i}(2,3) traj1{i}(3,1) traj1{i}(3,2) traj1{i}(3,3) traj1{i}(1, 4) traj1{i}(2, 4) traj1{i}(3, 4) 0];
+end
+
+for i = 1 : length(traj2)
+    trajectory2(i, :) = [traj2{i}(1,1) traj2{i}(1,2) traj2{i}(1,3) traj2{i}(2,1) traj2{i}(2,2) traj2{i}(2,3) traj2{i}(3,1) traj2{i}(3,2) traj2{i}(3,3) traj2{i}(1, 4) traj2{i}(2, 4) traj2{i}(3, 4) 0];
+end
+
+index = size(trajectory2);
+
+for i = 1 : 15
+    trajectory3(i, :) = [traj3{i}(1,1) traj3{i}(1,2) traj3{i}(1,3) traj3{i}(2,1) traj3{i}(2,2) traj3{i}(2,3) traj3{i}(3,1) traj3{i}(3,2) traj3{i}(3,3) traj3{i}(1, 4) traj3{i}(2, 4) traj3{i}(3, 4) 1];
+end 
+
+for i = 16 : length(traj3)
+    trajectory3(i, :) = [traj3{i}(1,1) traj3{i}(1,2) traj3{i}(1,3) traj3{i}(2,1) traj3{i}(2,2) traj3{i}(2,3) traj3{i}(3,1) traj3{i}(3,2) traj3{i}(3,3) traj3{i}(1, 4) traj3{i}(2, 4) traj3{i}(3, 4) 1];
+end 
+
+trajectory2(:, 13) = 0; 
+trajectory2(1:35, 13) = 0;
+
+for i = 1 : length(traj4)
+    trajectory4(i, :) = [traj4{i}(1,1) traj4{i}(1,2) traj4{i}(1,3) traj4{i}(2,1) traj4{i}(2,2) traj4{i}(2,3) traj4{i}(3,1) traj4{i}(3,2) traj4{i}(3,3) traj4{i}(1, 4) traj4{i}(2, 4) traj4{i}(3, 4) 1];
+end
+index = size(trajectory4);
+trajectory4(index(1)-20:index(1), 13) = 0; 
+
+%% traj2_5 is used for the arm to wait for few seconds before grasping.
+for i = 1 : 10
+traj2_5{i} = traj2{length(traj2)};
+end
+
+%% traj4_5 is used for the arm to wait for few seconds before releasing the cube.
+for i = 1 : 50
+traj4_5{i} = traj4{length(traj4)};
+end
+
+for i = 1 : length(traj4_5)
+trajectory4_5(i, :) = [traj4_5{i}(1,1) traj4_5{i}(1,2) traj4_5{i}(1,3) traj4_5{i}(2,1) traj4_5{i}(2,2) traj4_5{i}(2,3) traj4_5{i}(3,1) traj4_5{i}(3,2) traj4_5{i}(3,3) traj4_5{i}(1, 4) traj4_5{i}(2, 4) traj4_5{i}(3, 4) 0];
+end
+
+for i = 1 : length(traj2_5)
+trajectory2_5(i, :) = [traj2_5{i}(1,1) traj2_5{i}(1,2) traj2_5{i}(1,3) traj2_5{i}(2,1) traj2_5{i}(2,2) traj2_5{i}(2,3) traj2_5{i}(3,1) traj2_5{i}(3,2) traj2_5{i}(3,3) traj2_5{i}(1, 4) traj2_5{i}(2, 4) traj2_5{i}(3, 4) 1];
+end
+
+movement = [trajectory1; trajectory2; trajectory2_5; trajectory3; trajectory4; trajectory4_5];  
+
+.........
+function [Vd, V, Je, u_theta_dot, Xerr] = FeedbackControl(X, Xd, Xd_next, Kp, Ki, delta_t, thetaList)
+
+%% Arm properties.
+Blist = [0 0 1 0 0.033 0; 0 -1 0 -0.5076 0 0; 0 -1 0 -0.3526 0 0; 0 -1 0 -0.2176 0 0; 0 0 1 0 0 0]';
+l = 0.47/2;
+w = 0.30/2;
+r = 0.0475;
+F = (r/4) * [-1/(l + w), 1/(l + w), 1/(l + w), -1/(l + w); 1 1 1 1; -1 1 -1 1];
+sizee = size(F);
+m = sizee(2);
+zeross = zeros(1, m);
+F6 = [zeross; zeross; F; zeross];
+
+Tb0 = [1 0 0 0.1662; 0 1 0 0; 0 0 1 0.0026; 0 0 0 1];
+M0e = [1 0 0 0.033; 0 1 0 0; 0 0 1 0.6546; 0 0 0 1];
+T0e = FKinBody(M0e, Blist, thetaList);
+Tbe = Tb0 * T0e;
+Teb = inv(Tbe);
+Jbase = Adjoint(Teb) * F6;
+Jarm = JacobianBody(Blist, thetaList);
+Je = [Jbase, Jarm];
+
+psInv = pinv(Je, 1e-02);
+
+Xerr_bracket = MatrixLog6(inv(X) * Xd);
+Xerr = se3ToVec(Xerr_bracket);
+Vd_bracket = (1/delta_t) * MatrixLog6(inv(Xd) * Xd_next);
+Vd = se3ToVec(Vd_bracket);
+
+V = (Adjoint(inv(X) * Xd) * Vd) + (Kp * Xerr) + (Ki*(Xerr + Xerr * delta_t));
+
+u_theta_dot = psInv * V;
+
+end
+.....
+I tested my 3 functions in order to check for any possible errors; however function outputs were exactly like the expected ones on the project website. However, I wrote a final program to put together everything, but the results are nowhere close to the solution. I believe that I did something wrong in the program.
+This was my approach:
+1. Cube's final and initial configurations are given.
+2. End effector initial reference configuration is given.
+3. I created a reference trajectory with Trajectory Generator function
+4. I chose a 12 vector robot configuration at random.
+5. I calculated the 4x4 Tse_actual with that 12 vector
+6. I choose the kth and k+1th steps as the Xd and Xd_next
+7. I calculated the Feed-forward twist V and controls with Kp and Ki = 0 with FeedbackControl function
+8. I calculated the new robot configuration with the current actual robot configuration(12 vector) and controls with NextState function.
+9. Went to step 4
+10. Loop as many times number of trajectory points.
+And this is my program to find the robot configurations to accomplish the goal:
+    clc
+clear
+
+Blist = [0 0 1 0 0.033 0; 0 -1 0 -0.5076 0 0; 0 -1 0 -0.3526 0 0; 0 -1 0 -0.2176 0 0; 0 0 1 0 0 0]';
+Tb0 = [1 0 0 0.1662; 0 1 0 0; 0 0 1 0.0026; 0 0 0 1];
+M0e = [1 0 0 0.033; 0 1 0 0; 0 0 1 0.6546; 0 0 0 1];
+
+l = 0.47/2;
+w = 0.30/2;
+r = 0.0475;
+F = (r/4) * [-1/(l + w), 1/(l + w), 1/(l + w), -1/(l + w); 1 1 1 1; -1 1 -1 1];
+
+sizee = size(F);
+m = sizee(2);
+zeross = zeros(1, m);
+F6 = [zeross; zeross; F; zeross];
+
+Kp = 0.005;
+Ki = 0.005 * 0.1;
+delta_t = 0.1;
+
+%%
+Tse_initial = [0 0 1 0; 0 1 0 0; -1 0 0 0.25; 0 0 0 1];
+Tsc_initial = [1 0 0 1; 0 1 0 0; 0 0 1 0.025; 0 0 0 1];
+Tsc_final = [0 1 0 0; -1 0 0 -1; 0 0 1 0.025; 0 0 0 1];
+Tce_standoff = [1 0 0 0; 0 1 0 0; 0 0 1 0.1; 0 0 0 1] * [cosd(135), 0, sind(135) 0; 0, 1, 0  0; -sind(135), 0, cosd(135), 0; 0 0 0 1];
+Tce_grasp = [1 0 0 0; 0 1 0 0; 0 0 1 0; 0 0 0 1] * [cosd(135), 0, sind(135) 0; 0, 1, 0  0; -sind(135), 0, cosd(135), 0; 0 0 0 1];
+
+movement = TrajectoryGenerator(Tse_initial, Tsc_initial, Tsc_final, Tce_grasp, Tce_standoff, 1);
+
+conf1(1, :) = [0.5, -0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+o = conf1(1);
+x = conf1(2);
+y = conf1(3);
+z = 0.0963;
+Tsb = [cos(o), -sin(o), 0 x; sin(o), cos(o), 0, y; 0, 0, 1, z; 0, 0, 0, 1];
+Tb0 = [1, 0, 0, 0.1662; 0, 1, 0, 0; 0, 0, 1, 0.0026; 0, 0, 0, 1];
+thetalist = conf1(4 : 8);
+T0e = FKinBody(M0e, Blist, thetalist);
+%%
+X = Tsb * Tb0 * T0e;
+%%
+refconf1 = movement(1,:);
+refconf2 = movement(1,:);
+
+oconf1 = refconf1(1);
+xconf1 = refconf1(2);
+yconf1 = refconf1(3);
+
+oconf2 = refconf2(1);
+xconf2 = refconf2(2);
+yconf2 = refconf2(3);
+
+Tsb1 = [cos(oconf1), -sin(oconf1), 0 xconf1; sin(oconf1), cos(oconf1), 0, yconf1; 0, 0, 1, z; 0, 0, 0, 1];
+thetalist1 = refconf1(4 : 8);
+T0e1 = FKinBody(M0e, Blist, thetalist1);
+Xd1 = Tsb1 * Tb0 * T0e1;
+
+Tsb2 = [cos(oconf2), -sin(oconf2), 0 xconf2; sin(oconf2), cos(oconf2), 0, yconf2; 0, 0, 1, z; 0, 0, 0, 1];
+thetalist2 = refconf2(4 : 8);
+T0e2 = FKinBody(M0e, Blist, thetalist2);
+Xd2 = Tsb2 * Tb0 * T0e2;
+[Vd, V, Je, controls, Xerr] = FeedbackControl(X, Xd1, Xd2, Kp, Ki, delta_t, thetalist);
+
+%%
+for i = 2 : length(movement) -1
+conf1(i, :) = NextState(conf1(i-1, :), controls', delta_t, 5000);
+o = conf1(1);
+x = conf1(2);
+y = conf1(3);
+z = 0.0963;
+Tsb = [cos(o), -sin(o), 0 x; sin(o), cos(o), 0, y; 0, 0, 1, z; 0, 0, 0, 1];
+Tb0 = [1, 0, 0, 0.1662; 0, 1, 0, 0; 0, 0, 1, 0.0026; 0, 0, 0, 1];
+thetalist = conf1(4 : 8);
+T0e = FKinBody(M0e, Blist, thetalist);
+X = Tsb * Tb0 * T0e;
+%
+refconf1 = movement(i,:);
+refconf2 = movement(i+1,:);
+
+oconf1 = refconf1(1);
+xconf1 = refconf1(2);
+yconf1 = refconf1(3);
+
+oconf2 = refconf2(1);
+xconf2 = refconf2(2);
+yconf2 = refconf2(3);
+
+Tsb1 = [cos(oconf1), -sin(oconf1), 0 xconf1; sin(oconf1), cos(oconf1), 0, yconf1; 0, 0, 1, z; 0, 0, 0, 1];
+thetalist1 = refconf1(4 : 8);
+T0e1 = FKinBody(M0e, Blist, thetalist1);
+Xd1 = Tsb1 * Tb0 * T0e1;
+
+Tsb2 = [cos(oconf2), -sin(oconf2), 0 xconf2; sin(oconf2), cos(oconf2), 0, yconf2; 0, 0, 1, z; 0, 0, 0, 1];
+thetalist2 = refconf2(4 : 8);
+T0e2 = FKinBody(M0e, Blist, thetalist2);
+Xd2 = Tsb2 * Tb0 * T0e2;
+[Vd, V, Je, controls, Xerr] = FeedbackControl(X, Xd1, Xd2, Kp, Ki, delta_t, thetalist);
+%
+end
+sizee = size(conf1);
+
+for i = 1 : sizee(1)
+    conf1(i, 13) = movement(i, 13);
+end
+
+I know that this is a lot to look for; however I am trying for almost 2 days and I could never figure my mistake out. Can you help me?
+
+A:
+
+The best way to debug geometry related applications is by using plots.
+First of all, plot the initial configuration, with robot TCP, cube initial position, cube final position. As these are all input values all should be ok.
+After this, plot the generated trajectory. Is this what you are expecting it to be? does it link the start end end points exactly? You can use small arrows (quiver plot) to add orientations to each point to make sure that those are also as expected. Visually it is easy to judge if something goes wrong.
+After this, you can better identify where the problem is, before trajectory generation, during or after. This is the goal of debugging (a kind of meta divide et impera) to slowly close in on the problematic part by dividing and subdividing the code and checking if it works ok.
+For each timestep after trajectory generation you can plot the robot itself. You can check if it follows the trajectory or not, or where does it go off track.
+

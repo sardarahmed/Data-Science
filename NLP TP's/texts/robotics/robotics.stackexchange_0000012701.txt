@@ -1,0 +1,70 @@
+Q:
+
+Multicopter: What are Euler angles used for?
+
+I hope you can help me and this is the right forum to ask.
+In the process of building and programming my own Quadcopter, I encountered the term Euler angles. I took some time to understand them and then wondered why they are used in multicopter systems.
+In my understanding Euler angles are used to rotate a point or vector in a coordinate system/ to express that rotation. I now wonder why i should use Euler angles to compute the orientation of the quadcopter as I could easily(at least i think so) compute the angles by themself, like
+$$
+\theta = arctan(y/z)
+$$
+$$
+\phi = arctan(x/z)
+$$
+(just using accelerometer, where $x, y, z$ are axis accelerations and $\theta, \phi$ are pitch and roll, respectively. In the actual implementation I do not only use the accelerometer, this is just simplified to make the point clear).
+Where exactly are Euler angles used?
+Are they only used to convert desired trajectory in the earth frame to desired trajectory in the Body frame?
+I would be very glad if anyone could point this out and explain the concept/ why and where they are used further.
+To clarify: I do know that Euler angles encounter gimbal lock, that they are three rotations about $x, y, z$ axis and 
+how they generally work(I think). @Christo gave a very good explanation.
+My question now is, why are they used? Isn't it counterproductive to apply the yaw rotation, then pitch, and then roll?
+-Earth frame X,Y,Z
+rotation about Z(psi)
+->Frame 1 x', y', z'
+rotation about y'(theta)
+->Frame 2 x'', y'', z''
+rotation about x''(phi)
+->Body frame x, y, z
+
+and vice versa.
+Why? I would just have said:
+pitch = angles between X and x
+roll = angle between Y and y
+yaw = angle between x-y-projection of the magnetic field-vector and the starting vector(yaw is kinda different).
+
+(Notice the difference between uppercase and lowercase, look at the Earth-to-Body-Frame for notation).
+Tied with this i wonder why the correct formula for pitch($\theta)$ should be $$\theta = \tan^{-1}\left(-f_x/\sqrt{f_y^2+f_z^2}\right)$$
+I would have thought $$\theta = \tan^{-1}\left(-f_x/f_z\right)$$ suffices.
+Maybe I have some flaw in my knowledge or a piece of the puzzle is still missing.
+I hope this is understandable, if not feel free to ask. If this gets too crowded, I can always ask another question, just make me aware of it.
+If anyone could explain how to use quaternions to express orientation I would be very thankful, but I can also just ask another time. I get the concept of Quaternions, just not how to use them to express orientation not rotation.
+
+A:
+
+Euler angle can be used to describe the orientation of the quadcopter relative to the local level surface and relative to a azimuth reference (typically true north). The roll ($\phi$) and pitch ($\theta$) angles describe the tilt of the quadrotor relative to the local vertical; i.e., relative to the gravity vector.  The yaw angle ($\psi$) describes the amount of rotation around the local vertical direction. 
+Typically, the roll and pitch angles are used to control the direction of the quadcopter's total thrust vector.  If they are zero, the thrust vector will point directly upwards, opposite to the direction of the gravity vector. Non-zero values of roll and pitch can be used to tilt the thrust vector so that the resultant horizontal component of the thrust vector can be used for translational motion. 
+It is generally not a good idea to use accelerometer measurements to calculate roll and pitch angles:
+Accelerometers measure the specific force vector in body axes.  Three accelerometers aligned along the body axes will measure
+\begin{eqnarray}
+f_x &=& a_x-g\sin\theta \\
+f_y &=& a_y+g\cos\theta\sin\phi \\
+f_z &=& a_z+g\cos\theta\cos\phi
+\end{eqnarray}
+where $a_x$, $a_y$, and $a_z$ are components of the kinematic acceleration in body axes, and $g$ is the acceleration due to gravity.  If your Quadcopter is not accelerating, such as when it is stationary, the $a_x$, $a_y$, and $a_z$ components become zero. And only then can you use the accelerometer measurements to calculate the roll and pitch angles:
+\begin{eqnarray}
+\phi &=& \tan^{-1}\left(f_y/f_z\right) \\
+\theta &=& \tan^{-1}\left(-f_x/\sqrt{f_y^2+f_z^2}\right)
+\end{eqnarray}
+This is a common method used to initialize the roll and pitch angles in a stationary IMU.  In flight, the accelerometers will also measure the components of its kinematic acceleration and the equations given above cannot be used to measure the roll and pitch angles. 
+Euler angles is one of three methods commonly used to describe the orientation of the quadcopter relative to the earth.  The other two are quaternions, and  direction cosines.  Each of these methods have advantages and disadvantages, and we can easily convert from one representation to another.  But, this a probably a topic for a next question.
+Edit: Description of Conventional Euler Angles
+First, we need to define two Cartesian frames with their origins located at the centre of mass of the quadrotor.  The body frame is fixed to the vehicle, with its $x$-axis parallel to the plane of the rotors pointing "forward", its $y$-axis is parallel to the plane of the rotors and perpendicular to the $x$-axis pointing to the right, and its $z$-axis perpendicular to the $xy$-plane pointing down. The origin of the local-level local north (LLLN) frame translates with the body frame, but always remain level with its $N$-axis pointing north, its $E$-axis pointing east, and its $D$-axis pointing down. The orientation of the quadrotor relative to the Earth is then described by the orientation of the body frame relative to the LLLN frame.  Euler angles are a set of three rotations taken about a single axis at a time in a specified order to generate the orientation of the body frame relative to the LLLN frame.  The so-called "conventional" Euler angles used in the aerospace industry are yaw ($\psi$), pitch ($\theta$), and roll ($\phi$) obtained from a particular sequence of rotations.
+With the body frame initially aligned with the LLLN frame so that the $x,y,z$ axes are aligned with the $N,E,D$ axes and $\psi=\theta=\phi=0$, or stated differently, that the plane of the rotors is horizontal and the quadrotor's nose is pointing north, perform the following three rotations:
+
+First, the body frame is rotated through the yaw angle in a positive sense around its $z$-axis. 
+Then the displaced body frame is rotated through the pitch angle in a positive sense around the displaced $y$-axis.
+Finally, the displaced body frame is rotated through the roll angle in a positive sense around the displaced $x$-axis to obtain its final arbitrary orientation relative to the LLLN frame.
+
+(Use a little model to visualize these three rotations.)
+Note that these three rotations are not commutative (angle are not vectors) so that a different sequence of rotations will result in a different final orientation.
+

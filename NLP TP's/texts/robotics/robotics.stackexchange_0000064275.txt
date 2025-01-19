@@ -1,0 +1,227 @@
+Q:
+
+confused about robot_localization usage
+
+Dear all,
+I am trying to use the robot_localization package (ekf_localization) to fuse odometry and IMU data to get an initial guess for a pose estimator. I have read the robot_localization documentation, but I am still confused about:
+
+the REP-105 says that we should have a tf chain /map -> /odom -> /base_projected, I have a robot node that is publishing /odom->/base_projected transformation, so I should set ekf to publish to a /odom_imu->/odom transformation and then pass /odom_imu to the pose estimator?
+to achieve this, I set:
+
+      <param name="map_frame" value="odom_imu"/>
+      <param name="odom_frame" value="odom"/>
+      <param name="base_link_frame" value="base_projected"/>
+      <param name="world_frame" value="odom_imu"/>
+
+I am not sure how to setup the ekf localizer, since it is jumping and losing the right position (i.e., it is worse than the odometry alone): in the _config parameters, I use only the x, y, z velocities of the odometry and the roll pitch and yaw position and velocities; both odom and imu are set to retrieve the differential data
+
+looking at the system with rviz, I see the odom_imu very near (and following) to the base_projected, while I expected it to be near the /odom frame, am I wrong?
+EDIT: this is the entire launch file, as requested:
+
+<launch>
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" clear_params="true">
+      <param name="frequency" value="30"/>  
+      <param name="sensor_timeout" value="0.1"/>  
+      <param name="two_d_mode" value="false"/>
+
+      <param name="map_frame" value="odom_imu"/>
+      <param name="odom_frame" value="odom"/>
+      <param name="base_link_frame" value="base_projected"/>
+      <param name="world_frame" value="odom_imu"/>
+
+      <param name="odom0" value="/odom"/>
+      <param name="imu0" value="/imu/data"/> 
+
+      <rosparam param="odom0_config">[true, true, true, 
+                                      false, false, true, 
+                                      false,  false,  false, 
+                                      false, false, false]</rosparam>
+
+      <rosparam param="imu0_config">[false, false, false, 
+                                     true,  true,  true, 
+                                     false, false, false, 
+                                     false, false, false]</rosparam>
+
+      <param name="odom0_differential" value="true"/>
+      <param name="imu0_differential" value="true"/>
+
+      <param name="remove_gravitational_acceleration" value="true"/>
+
+      <param name="debug"           value="false"/>
+      <param name="debug_out_file"  value="debug_ekf_localization.txt"/>
+
+      <rosparam param="process_noise_covariance">[0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.025, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.002, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.002, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.004]</rosparam>
+
+    </node>
+     
+</launch>
+
+A sample message from /imu/data:
+
+header: 
+  seq: 5419
+  stamp: 
+    secs: 1412075316
+    nsecs: 994982004
+  frame_id: /imu
+orientation: 
+  x: 0.00372221274301
+  y: 0.0182479545474
+  z: 0.388708502054
+  w: 0.921172618866
+orientation_covariance: [0.017453292519943295, 0.0, 0.0, 0.0, 0.017453292519943295, 0.0, 0.0, 0.0, 0.15707963267948966]
+angular_velocity: 
+  x: 0.0
+  y: 0.0
+  z: 0.0
+angular_velocity_covariance: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+linear_acceleration: 
+  x: 0.0
+  y: 0.0
+  z: 0.0
+linear_acceleration_covariance: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+
+a sample message from /odom:
+
+header: 
+  seq: 599
+  stamp: 
+    secs: 1412075413
+    nsecs: 222353935
+  frame_id: /odom
+child_frame_id: /base_projected
+pose: 
+  pose: 
+    position: 
+      x: 3.32841950036
+      y: 13.6871357794
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: -0.0254152928876
+      w: -0.999676979273
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist: 
+  twist: 
+    linear: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+Originally posted by madmage on ROS Answers with karma: 293 on 2014-11-26
+Post score: 0
+
+Original comments
+Comment by Tom Moore on 2014-11-27:
+I don't see anything immediately wrong. so I'd have to see what you're seeing in rviz to better diagnose this. I apologize if this is a pain, but could you make a bag file of your whole system running (and please drive it around a bit), but WITHOUT ekf_localization_node running?
+Comment by Tom Moore on 2014-11-27:
+Feel free to e-mail me if you can't post it. Use tmoore at cra dot com. Thanks.
+Comment by Tom Moore on 2014-11-27:
+Oh, and one more thing: what version are you using?
+Comment by madmage on 2014-11-27:
+ROS indigo is the version.
+Actually I am running a rosbag WITHOUT the localization node and run it with rosrun, so well yes, I can send it to you, I think I can put it somewhere for you to download, maybe I better reduce it since it is very big
+Comment by madmage on 2014-11-27:
+You can download the (reduced) bag here: https://dl.dropboxusercontent.com/u/26812667/algo-office-reduced.bag and, just to be sure we are using the same ekf options, you can download the launchfile here: https://dl.dropboxusercontent.com/u/26812667/ekf.launch
+Comment by Tom Moore on 2014-11-28:
+Great, thanks, I'll take a look.
+Comment by madmage on 2014-11-28:
+Sorry, Tom, I sent the wrong bag to you: in this bag the IMU has been mounted in the wrong way (rotated 90° to the left). Please use this other bag: https://www.dropbox.com/s/dcq23wn5ooe750i/priscilla-reduced.bag?dl=0
+
+A:
+
+Would you mind posting your entire launch file and a sample message from each input that you have? Feel free to remove comments from the launch file to make it less cluttered. It sounds like there may be some issues with frame IDs.
+EDIT: OK, I've got this sorted. First, I'll give you an updated launch file:
+<launch>
+
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" clear_params="true">
+
+      <param name="frequency" value="30"/>  
+
+      <param name="sensor_timeout" value="0.1"/>  
+
+      <param name="two_d_mode" value="false"/>
+
+      <param name="map_frame" value="odom_imu"/>
+      <param name="odom_frame" value="odom"/>
+      <param name="base_link_frame" value="base_projected"/>
+      <param name="world_frame" value="odom_imu"/>
+
+      <param name="odom0" value="/odom"/>
+      <param name="imu0" value="/imu/data"/> 
+
+      <rosparam param="odom0_config">[true,  true,  false, 
+                                      false, false, true, 
+                                      false, true, true, 
+                                      false, false, false,
+                                      false, false, false]</rosparam>
+
+      <rosparam param="imu0_config">[false, false, false, 
+                                     true,  true,  true,
+                                     false, false, false, 
+                                     false, false, false,
+                                     false, false, false]</rosparam>
+
+      <param name="odom0_differential" value="true"/>
+      <param name="imu0_differential" value="true"/>
+
+      <param name="imu0_remove_gravitational_acceleration" value="true"/>
+
+      <param name="debug"           value="true"/>
+      <param name="debug_out_file"  value="debug_ekf.txt"/>
+
+      <rosparam param="process_noise_covariance">[0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.04, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+                                                  0.0, 0.0, 0.0, 0.0, 0.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.015]</rosparam>
+
+    </node>
+
+</launch>
+
+Now some notes:
+
+First, you helped me uncover a bug, so thanks! I've fixed it now, and it's checked into the repo. You'll have to pull down the source until I can push a release through. The bug would have only affected users who are trying to use ekf_localization_node or ukf_localization_node for generating the map->odom transform AND were using differential integration of absolute measurements. I'm surprised you were getting position estimates that jumped around (perhaps that's not what you meant), but they were inaccurate.
+However, I did see a couple things worth tweaking in your launch file. First, in your odom0_config, I enabled fusing Y and Z velocity, as your robot appears to be ground-based an nonholonomic. See this page.
+Your odometry covariances are all 0. The values on the diagonals for X, Y, and yaw should be non-zero. Give the covariances for Y velocity and Z velocity very small values.
+Strangely, in one of your bag files, the IMU data has angular velocity and linear acceleration, and they both have reasonable covariances. In the other, those values aren't filled out, and the covariance matrices are set to -1 for those values (even the off-diagonal ones). Not sure what is responsible for the switch, but be careful not to accidentally fuse a measurement with a bunch of -1 covariance values. The filter will explode.
+Did you start on or move up/down an incline during the latest bag file run? EDIT: OK, it looks like you started on a downward incline, or at least your IMU says you did. You then leveled out. Important note: if you use differential integration, this will appear to the filter as if you started on level ground and then started going up an incline. If it's an issue, you can turn off the differential setting for your IMU data.
+For your odometry data, I noticed its refresh rate is low, and towards the end of the bag file, it stops altogether for quite a long time.
+You're likely aware of this, but for the benefit of future readers, keep in mind that if you visualize both the raw odometry (odom) and the filtered output (odometry/filtered), they will appear right on top of one another no matter what. This indicates that the odom_imu->odom transform is being computed correctly, and rviz is just carrying out the transform before drawing the odometry.
+
+Originally posted by Tom Moore with karma: 13689 on 2014-11-26
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by madmage on 2014-11-27:
+I hope I have understood what you needed, I added this information in the initial question.
+

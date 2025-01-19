@@ -1,0 +1,102 @@
+Q:
+
+TF updating very slowly
+
+Hey everyone,
+I am trying to publish Pose messages based on distances I get from ar_track_alvar. I have static transforms which relate the markers to the map. These static transforms broadcast at 100Hz. I take the position and orientation data from the marker message and create a transform from it. I then broadcast that transform (I can't use the one supplied by ar_track_alvar so I create my own). I then listen for a transform from the map to my robot in order to get my position and orientation with respect to the map, and then publish that as a pose message. This works fine, but the problem is that the poses are published with an intolerable delay. After moving my robot, it can take up to a minute for the pose to update. To be clear, poses continue to be published, but they reflect the old position of the data. I used rosrun tf tf_echoto track the tfs, and I found that the tf is reflecting old data also.
+Additionally, I see a lot of errors saying:
+
+Lookup would require extrapolation
+into the past. Requested time XXXXXX
+but the earliest data is at time
+YYYYYYY, when looking up transform
+from frame [thor] to frame [map].
+
+Despite my constant broadcasting and the static transforms.
+Things I have tried:
+I have gotten rid of the waitForTransform call in case that was adding some latency.
+I have reduced the tag subscribers buffer to 1 to ensure processing of only the most recent message.
+I have added extra AsyncSpinners.
+These had no effects. Does anyone have any idea why it is taking the tfs so long to broadcast?
+Relevant code:
+//Figure out which tag we are looking at.
+    int tagID = msg->markers[0].id;
+    std::stringstream ss;
+    ss << "hsmrs/marker_" << tagID;
+    std::string markerFrameID = ss.str();
+
+    //Manually create transform from robot to tag
+    tf::Transform transform;
+
+    double x, y;
+    x = msg->markers[0].pose.pose.position.x;
+    y = msg->markers[0].pose.pose.position.y;
+
+    tf::Quaternion q;
+    tf::quaternionMsgToTF(msg->markers[0].pose.pose.orientation, q);
+
+    transform.setOrigin( tf::Vector3(x, y, 0.0) );
+    transform.setRotation(q);
+
+    //Broadcast transform
+    ROS_INFO("Broadcasting transform!");
+    br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), markerFrameID, "thor"));
+    ROS_INFO("Transform broadcasted!");
+    
+    //Listen for transform from map to robot
+    ROS_INFO("Listening for transform!");
+    tf::StampedTransform mapTransform;
+    try{
+                listener.waitForTransform("map", "thor", ros::Time(0) ros::Duration(0.1));
+        listener.lookupTransform("map", "thor",
+            ros::Time(0), mapTransform);
+        ROS_INFO("Transform heard");    
+    }
+    catch (tf::TransformException &ex) {
+        ROS_ERROR("%s",ex.what());
+        return;
+    }
+
+    //Unpack position and orientation
+    double map_x, map_y;
+    map_x = mapTransform.getOrigin().x();
+    map_y = mapTransform.getOrigin().y();
+
+    geometry_msgs::Quaternion quat;
+    tf::quaternionTFToMsg(mapTransform.getRotation(), quat);
+
+    //Publish pose as geometry message
+    geometry_msgs::Pose pose;
+    pose.position.x = map_x;
+    pose.position.y = map_y;
+    pose.orientation = quat;
+
+    pose_pub.publish(pose);
+
+EDIT:
+The static publisher was running on a separate computer. By running it on the robot this problem disappeared. But I need it to work on the workstation computer. How can I make it work?
+
+Originally posted by Robocop87 on ROS Answers with karma: 255 on 2015-02-16
+Post score: 0
+
+A:
+
+EDIT:
+
+The static publisher was running on a separate computer. By running it on the robot this problem disappeared. But I need it to work on the workstation computer. How can I make it work?
+
+Have you checked the clocks on both computers? TF has a temporal aspect to it, and if the clocks are not in sync, things start to go wrong.
+From wiki.ros.org/Clock - Introduction:
+
+When using wall-clock time on multiple machines, it is important that you synchronize time between them. ROS does not provide this functionality as there are already well-established methods (e.g. ntp) for doing this. If you do not synchronize the wall-clocks of multiple machines, they will not agree on temporal calculations like those used in tf.
+
+See also wiki.ros.org/ROS/NetworkSetup - Timing issues, TF complaining about extrapolation into the future?, and Why robot needs to set NTP? fi.
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-02-16
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Robocop87 on 2015-02-16:
+I'll look into this, that may very well be the problem!
+

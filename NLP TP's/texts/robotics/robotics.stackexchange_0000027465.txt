@@ -1,0 +1,98 @@
+Q:
+
+send arguments from system plugin to model plugin?
+
+Hello,
+How to send a message from a system plugin to a model plugin. I tried this code but it doesn't work:
+I want to send arguments to the model plugin. And I run this plugin in server side.
+#include <gazebo/math/Rand.hh>
+#include <boost/bind.hpp>
+#include <gazebo/gazebo.hh>
+#include <gazebo/common/common.hh>
+#include <iostream>
+
+using namespace std;
+namespace gazebo
+{
+  typedef const boost::shared_ptr<const msgs::Vector2d> VectorTwoDPtr;
+
+  class CommandLine : public SystemPlugin
+  {
+    public: void Load(int argc, char ** argv)
+    {
+      for(int i =0; i<argc; i++)// I want to send the arguments to the model plugin
+        cout << argv[i] << endl;
+      this->connections.push_back( event::Events::ConnectPreRender( boost::bind(&CommandLine::Update, this)));
+     }
+
+private: void Init()
+{
+  transport::NodePtr nodePub = transport::NodePtr(new transport::Node());
+  nodePub->Init();
+  transport::PublisherPtr  publisher = nodePub->Advertise<msgs::Vector2d>("~/robotName");
+
+  math::Vector2d vect( 2, 1);   
+  msgs::Vector2d msg;
+  msgs::Set(&msg, vect);
+  publisher->Publish(msg);
+}
+private: void Update()
+{
+  // the onUpdate don't work 
+}
+private: std::vector<event::ConnectionPtr> connections;
+  };
+  GZ_REGISTER_SYSTEM_PLUGIN(CommandLine) 
+}
+
+THANK YOU !
+
+Originally posted by djou07 on Gazebo Answers with karma: 78 on 2015-06-22
+Post score: 0
+
+A:
+
+I solved the problem, here is what I did:
+#include <boost/bind.hpp>
+#include <gazebo/gazebo.hh>
+#include <gazebo/common/common.hh>
+using namespace std;
+namespace gazebo 
+{ 
+  class systemPlugin : public SystemPlugin 
+  {    
+
+    public: void Load(int argc, char ** argv)
+    {
+      robotName= argv[argc-1];
+    }
+    private: virtual void Init()
+    {
+
+      node=transport::NodePtr(new transport::Node());
+      node->Init();
+      pub = node->Advertise<msgs::GzString>("~/robotName");
+
+      this->updateConnection = event::Events::ConnectWorldUpdateBegin(
+          boost::bind(&systemPlugin::OnUpdate, this));      
+    }
+    private: virtual void OnUpdate()
+    {
+       msgs::GzString msg;
+       msg.set_data(robotName);
+       pub->Publish(msg);
+    }
+    private: event::ConnectionPtr updateConnection;
+
+    transport::NodePtr node;
+    transport::PublisherPtr pub;
+    string robotName;
+ };
+
+  GZ_REGISTER_SYSTEM_PLUGIN(systemPlugin)
+}
+
+Originally posted by djou07 with karma: 78 on 2015-06-25
+This answer was ACCEPTED on the original site
+Post score: 1
+

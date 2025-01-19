@@ -1,0 +1,157 @@
+Q:
+
+PoseArray not getting published
+
+Hi, so I'm trying to find the shortest path from source to destination using dijkstra's algorithm.
+In this program, I intend to first store the path in an array from which I retrieve it and publish it as a Pose Array. However, when I run this program I see no PoseArray topics.
+I am trying to publish it from inside the dijkstra function.
+#include <ros/ros.h>
+#include <math.h>
+#include <queue>
+#include <vector>
+#include <std_msgs/String.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseArray.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/GetMap.h>
+#include <ros/console.h>
+#define FMAX 999999999.99
+
+    int rows = 1000, columns = 1000, size = rows * columns;
+    bool visited[1000000];
+    float distance[1000000];
+    int prev[1000000];
+    int source = 15100, destination = 990500; // Random source and destination
+    .
+    .
+    .
+    
+    void dijkstra(const nav_msgs::OccupancyGrid& map)
+    {
+        prev[source] = 0;
+        node first = {source, 0.0}; 
+        pq.push(first);
+        while(!pq.empty())
+        {
+            .
+                    .
+            int rr, cc;
+            for(int i = 0; i < 8; i++) // to calculate neighbours
+            {
+                .
+                            .
+                            .
+                .
+            }
+        }
+    
+        poseArray.poses = pose_vector;
+        ros::NodeHandle n("~");
+        ros::Publisher pose_array_pub = n.advertise<geometry_msgs::PoseArray>("/poseArray", 1);
+        pose_array_pub.publish(poseArray);
+    }
+    
+    
+    
+    int main(int argc, char **argv)
+    {
+        init();
+        distance[source] = 0;
+        visited[source] = true;
+        ros::init(argc, argv, "dijkstra");
+        ros::NodeHandle n("~");
+        ros::ServiceClient client = n.serviceClient<nav_msgs::GetMap>("/static_map");
+        nav_msgs::OccupancyGrid my_map = srv.response.map;
+        dijkstra(my_map);
+        ros::spin();    
+    }
+
+EDIT - Deleted parts of my code to make the question more relevant.
+
+Originally posted by Parth2851 on ROS Answers with karma: 63 on 2019-12-22
+Post score: 0
+
+A:
+
+We see this:
+
+void dijkstra(const nav_msgs::OccupancyGrid& map)
+
+{
+  ...
+
+  ros::NodeHandle n("~");
+
+  ros::Publisher pose_array_pub = n.advertise<geometry_msgs::PoseArray>("/poseArray", 1);
+  pose_array_pub.publish(poseArray);
+}
+
+Never create NodeHandles, ros::Publisher or ros::Subscribers in the body of callbacks or in short-lived functions.
+It will not work.
+Also never call publish(..) immediately after constructing a ros::Publisher. There is no time for Subscribers to actually subscribe, so no one receives your message.
+Create them in your main(..) and pass them to your callback. Or create them as global variables or create a class and store them as members.
+Then if you're only publishing the message once, make sure there are subscribers. You can use ros::Publisher::getNumSubscribers() for this. But if only publishing once and it's important your message always arrives, then I would suggest to use a service instead of a topic.
+
+Edit:
+
+Okay, yes. I made a publisher in mainand then I declared a global poseArray and then published it in a loop something like this -
+
+while(ros::ok())
+
+{
+  pose_array_pub.publish(pa);
+}
+
+I would strongly recommend you do not do this. For two reasons (at least):
+
+you're not publishing many, many old messages as pa is not updated before publish(..) is called
+if this is the exact code you used: you're publishing at the maximum rate at which your PC can publish (which for a typical PC is upwards of 10kHz)
+
+What I was actually suggesting was something like this:
+#include <ros/ros.h>
+
+...
+
+ros::Publisher pub;   // note: in global scope here
+
+...
+
+void dijkstra(const nav_msgs::OccupancyGrid& map)
+{
+  ...
+
+  // use variable in global scope
+  pub.publish(poseArray);
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "dijkstra");
+  ros::NodeHandle n("~");
+  ...
+
+  // initialise variable in global scope
+  pub = n.advertise<geometry_msgs::PoseArray>("/poseArray", 1);
+
+  ...
+  ros::spin();
+}
+
+Originally posted by gvdhoorn with karma: 86574 on 2019-12-22
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2019-12-22:
+PS: yes, this is software, so "never" is never really never, but if you're just starting out with all of this, you should really not do this.
+Comment by Parth2851 on 2019-12-22:
+This worked! thanks!
+Comment by gvdhoorn on 2019-12-23:
+For future readers: what worked, specifically?
+Comment by Parth2851 on 2019-12-23:
+Okay, yes. I made a publisher in mainand then I declared a global poseArray and then published it in a loop something like this -
+while(ros::ok())
+        {
+            pose_array_pub.publish(pa);
+        }
+

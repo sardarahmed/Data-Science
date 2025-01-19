@@ -1,0 +1,89 @@
+Q:
+
+Hand Eye Calibration
+
+I'm trying to use a dual quaternion Hand Eye Calibration Algorithm Header and Implementation, and I'm getting values that are way off. I'm using a robot arm and an optical tracker, aka camera, plus a fiducial attached to the end effector. In my case the camera is not on the hand, but instead sitting off to the side looking at the arm.
+The transforms I have are:
+
+Robot Base -> End Effector
+Optical Tracker Base -> Fiducial
+
+The transform I need is:
+
+Fiducial -> End Effector
+
+I'm moving the arm to a series of 36 points on a path (blue line), and near each point I'm taking a position (xyz) and orientation (angle axis with theta magnitude) of Camera->Fiducial and Base->EndEffector, and putting them in the vectors required by the HandEyeCalibration Algorithm. I also make sure to vary the orientation by about +-30 degrees or so in roll pitch yaw.
+I then run estimateHandEyeScrew, and I get the following results, and as you can see the position is off by an order of magnitude. 
+[-0.0583, 0.0387, -0.0373] Real
+[-0.185, -0.404, -0.59] Estimated with HandEyeCalib
+Here is the full transforms and debug output:
+# INFO: Before refinement: H_12 =
+-0.443021 -0.223478  -0.86821  0.321341
+ 0.856051 -0.393099 -0.335633  0.470857
+-0.266286 -0.891925   0.36546   2.07762
+        0         0         0         1
+Ceres Solver Report: Iterations: 140, Initial cost: 2.128370e+03, Final cost: 6.715033e+00, Termination: FUNCTION_TOLERANCE.
+# INFO: After refinement: H_12 =
+  0.896005   0.154992  -0.416117  -0.185496
+ -0.436281    0.13281  -0.889955  -0.404254
+-0.0826716   0.978948   0.186618  -0.590227
+         0          0          0          1
+
+expected RobotTipToFiducial (simulation only):   0.168   -0.861    0.481  -0.0583
+expected RobotTipToFiducial (simulation only):   0.461   -0.362    -0.81   0.0387
+expected RobotTipToFiducial (simulation only):   0.871    0.358    0.336  -0.0373
+expected RobotTipToFiducial (simulation only):       0        0        0        1
+
+estimated RobotTipToFiducial:   0.896    0.155   -0.416   -0.185
+estimated RobotTipToFiducial:  -0.436    0.133    -0.89   -0.404
+estimated RobotTipToFiducial: -0.0827    0.979    0.187    -0.59
+estimated RobotTipToFiducial:       0        0        0        1
+
+Am I perhaps using it in the wrong way? Is there any advice you can give?
+
+A:
+
+After solving the problem, I created a keynote presentation explaining many details about hand eye calibration for those that are interested. Practical code and instructions to calibrate your robot can be found at handeye-calib-camodocal.
+I've directly reproduced some key aspects answering the question here.
+
+Camodocal
+Camodocal is the library I'm using to solve the problem. It is a well written C++ library that includes hand eye calibration, though documentation is extremely sparse.
+Camodocal includes implementations of:
+
+K. Daniilidis 1999 Hand-Eye Calibration Using Dual Quaternions (Tested and working)
+Chessboard camera calibration
+Stereo Camera Calibration
+SLAM with multiple non-overlapping cameras and odometry 
+designed for a mobile vehicle
+
+Relevant Papers
+
+CamOdoCal: Automatic Intrinsic and Extrinsic Calibration of a Rig with Multiple Generic Cameras and Odometry, In Proc. IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2013.
+Lionel Heng, Mathias Bürki, Gim Hee Lee, Paul Furgale, Roland Siegwart, and Marc Pollefeys, Infrastructure-Based Calibration of a Multi-Camera Rig, Submitted to IEEE International Conference on Robotics and Automation, 2014.
+
+Feeding data into CamOdoCal
+
+Each measurement taken at a different time, position, and orientation narrows down the possible transforms that can represent the unknown X
+Record a list of many transforms A and B taken between different time steps, or relative to the first time step
+
+Rotations are in AxisAngle = UnitAxisAngle format, or [x_axis,y_axis,z_axis]_angle 
+
+||UnitAxis||=1
+|| AxisAngle || = _angle
+
+Translations are in the normal [x,y,z] format
+
+Pass both vectors into EstimateHandEyeScrew()
+Returns X in the form of a 4x4 transform estimate
+
+ROS Integration
+There is a package that implements a solver for this using camodocal + ROS called handeye_calib_camodocal. It also includes detailed troubleshooting instructions. 
+References
+
+Strobl, K., & Hirzinger, G. (2006) . Optimal hand-eye calibration. In 2006 IEEE/RSJ international conference on intelligent robots and systems (pp. 4647–4653), October 2006.
+Technical University of Munich (TUM) CAMP lab wiki 
+K. Daniilidis, “Hand–Eye Calibration Using Dual Quaternions,” Int. Journal of Robs. Research, vol. 18, no. 3, pp. 286–298, June 1999.
+E. Bayro–Corrochano, K. Daniilidis, and G. Sommer, “Motor–Algebra for 3D Kinematics: The Case of Hand–Eye Calibration,” Journal for Mathem. Imaging and Vision, vol. 13, no. 2, pp. 79–100, Oct. 2000. 
+F. Dornaika and R. Horaud, “Simultaneous Robot–World and Hand– Eye Calibration,” IEEE Trans. on Robs. and Aut., vol. 14, no. 4, pp. 617–622, August 1998. 
+Note: figures and text are from mixed sources including the presentation author, the various papers referenced, and the TUM wiki.
+

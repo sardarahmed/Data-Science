@@ -1,0 +1,99 @@
+Q:
+
+Service server doesn’t get the subscriber objects readings
+
+I wrote this class for a laser/scan subscriber:
+#! /usr/bin/env python
+import rospy
+from sensor_msgs.msg import LaserScan
+import time
+
+class laser_sub_class(object):
+    def __init__(self):
+        self.subscriber = rospy.Subscriber("/kobuki/laser/scan", LaserScan, self.laser_callback)
+        self.ctrl_c = False
+        rospy.on_shutdown(self.shutdownhook)
+        self.rate = rospy.Rate(10)
+       
+
+    def shutdownhook(self):
+        rospy.loginfo("laser shutdownhook! stopped!")
+        self.ctrl_c=True
+    
+    def laser_callback(self, msg):
+        rospy.loginfo("laser_callback")
+        self.range= msg.ranges
+
+if __name__=="__main__":
+    rospy.init_node("laser_scan_subscriber")
+    laserScan_sub_ob = laser_sub_class()
+    rospy.spin()
+
+and, I wrote this service_server that makes an object of mentioned class:
+laser_sub = laser_sub_class()
+#! /usr/bin/env python
+
+import rospy
+from std_srvs.srv import Trigger, TriggerResponse
+from laser_scan_subscriber import laser_sub_class
+import time
+
+def serv_callback(request):
+    rospy.loginfo("The Service obstacle_avoidance_service has been called")
+    laser_sub = laser_sub_class()
+    #time.sleep(0.3)
+    
+    r = laser_sub.range
+    r_min= min(r)
+    min_ind = r.index(r_min)
+
+    response = TriggerResponse()
+    response.success = True
+    response.message = "straight"
+
+    if r_min <0.4:
+        response.success = False
+        if min_ind<360:
+            response.message = "left"
+        elif min_ind>360:
+            response.message = "right"
+        elif min_ind==360:
+            if r[0]>r[710]:
+                response.message = "right"
+            else:
+                response.message = "left"
+    
+    return response
+
+rospy.init_node("obst_avoid_service_server")
+rospy.Service("obstacle_avoidance_service", Trigger, serv_callback)
+rospy.loginfo("Service /obstacle_avoidance_service Ready")
+
+rospy.spin()
+
+When I call this service, I get this:
+‘laser_sub_class’ object has no attribute ‘range’.
+but I've declared in callback of the subscriber class that: self.range= msg.ranges
+so why the object has no range attribute?
+
+Originally posted by Morteza70 on ROS Answers with karma: 5 on 2020-12-17
+Post score: 0
+
+A:
+
+You only declared it in the callback. Until the callback is called once, it does not exist.
+As a subscriber needs a little time to be fully available, and then it needs to receive a message for the callback to be fired, you'll probably simply haven't received any message.
+Thus, self.ranges doesn't exist the moment you are trying to access it.
+I suggest you setup an instance of your laser_sub_class in global scope, such that it is instantiated at the beginning of the script and then continuously listening to incoming topics. Not only at the moment of the service call.
+And it would also make sense to instantiate self.ranges in the constructor and assign it e.g. None and check for that in the service call.
+Or you could get rid of your laser_sub_class all together and use the rospy.wait_for_message function.
+
+Originally posted by mgruhler with karma: 12390 on 2020-12-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Morteza70 on 2020-12-19:
+Thanks,
+It worked!
+

@@ -1,0 +1,36 @@
+Q:
+
+Pose (rvec, tvec) from Opencv
+
+Hi everyone,
+Does anyone know what rvec and tvec corresponds to? I read the corresponding opencv pages but it just indicates that rvec is the rotation and tvec is the translation vector. But with respect to what?
+Best regards..
+References:
+SolvePnp
+FindExtrinsiccameraparams2
+
+Originally posted by dlmypr on ROS Answers with karma: 236 on 2011-03-22
+Post score: 1
+
+A:
+
+In tod_detecting (I think we tell about this transformation) after running recognizer->match you get vector of guesses. Each guess contains PoseRT (rvec, tvec) field (aligned_pose). It is transformation from some abstract coordinate system (defined by fiducial.yaml configuration file: in this system coordinates of corners of fiducial markers must be equals described ones in config) to coordinate system of camera for test image.
+If you want to find projection of this guess to the test image, you should take any observation of this object from training base(recommend to choose observation with ImageId equals imageIndex from guess->imageIndices). Next you should transform 3d points related with the observation to the abstract coord. system using inverse features3d->camera->pose transformation (for example with using Tools::invert and project3dPoints). Then you should transform obtained 3d points with guess->aligned_pose and project them to the test image (for this purpose you should know intrinsics parameters of the camera, now we assume, that test and train images was photographed with the same camera; we use projectPoints function for this purpose).
+Let consider a case of solvePnP or solvePnPRansac:
+
+void solvePnP(const Mat& objectPoints, const Mat& imagePoints, const Mat& cameraMatrix, const Mat& distCoeffs, Mat& rvec, Mat& tvec, bool useExtrinsicGuess=false)
+
+The function returns rvec and tvec. This transformation converts objectPoints to the coordinate system of the camera such a way, that re-projection error between imagePoints and projected points after transformation would be a minimal. In other words we try to find rvec-tvec pair to minimize distance between projection (u, v) of transformed point (x,y,z) calculated on (X,Y,Z) point from objectPoints and corresponding point (x, y) from imagePoints. ki and pi are from distCoeffs, fx, fy, cx, cy are from cameraMatrix.
+See attached image:
+image description http://opencv.willowgarage.com/documentation/cpp/_images/math/054f0abbb6938203d15f91dd5f8e3b1bd19c1666.png
+
+Originally posted by Alexander Shishkov with karma: 191 on 2011-03-23
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by dlmypr on 2011-03-23:
+As an example in tod_detecting we end up with a candidate object pose inside an ObjectInfo object. The output of object.tvec is as follows, tvec = [-0.0661444212290265; -0.0178236515058925; 0.01091917408303104]. So it means the object coordinate frame is moved -6 CM in x direction, -1 CM in y direction and 1 CM in z direction with respect to what? Where this translation will get me from object origin to WHICH coordinate frame's ORIGIN?
+Comment by dlmypr on 2011-03-23:
+Thank you for your detailed reply. For being sure, if I have a guess containing PoseRT and transformed it to the image plane using projectpoints and saw that my GUESS is fine. So the tvec of the guess is the TRANSLATION vector IN CENTIMETERS? from my board coordinate system to the camera coordinate system. But in terms of camera coordinate system or chessboard coordinate system?
+

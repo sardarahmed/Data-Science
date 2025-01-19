@@ -1,0 +1,111 @@
+Q:
+
+ros2 osrf docker container fails to build
+
+Hello. I'm trying to build a dockerfile that extends the ones osrf is providing at https://hub.docker.com/r/osrf/ros2 and builds our company robot software. This is a first step towards setting up a CI system with jenkins and to simplify building for people that may not have the ros2 toolchain built and installed (maybe we can move to using a container vs. installing locally like we do now).
+I've been having some issues with the build and put together two example projects that I can share that build with my local ros2 foxy install but won't build in the container.
+The osrf/ros2:nightly is from yesterday.
+The dockerfile is inline (because I can't attach it as I have less than 5 points...):
+FROM osrf/ros2:nightly
+
+# we want to be able to source
+SHELL ["/bin/bash", "-c"]
+
+# Install git
+RUN apt-get update && \
+    apt-get install -y git
+
+# clone the test repos
+RUN cd /root && mkdir -p ros2_workspace/src && \
+    cd ros2_workspace/src && \
+    git clone https://github.com/cmorganBE/ros2_server_example.git && \
+    git clone https://github.com/cmorganBE/ros2_idl_example.git && \
+    cd ros2_idl_example && git checkout 7091c75045f26d
+
+# build the workspace
+RUN cd /root/ros2_workspace && \
+    source /opt/ros/foxy/setup.bash && \
+    colcon build --symlink-install
+
+CMD ["bash"]
+
+I'm not planning or using the connext dds implementation but it looks like somehow this build expects it, although there aren't any errors about missing tools to generate the idl libraries either....
+The output from the failed build is:
+...
+Removing intermediate container 904c18a2ae5a
+ ---> fc53bea5cc02
+Step 5/6 : RUN cd /root/ros2_workspace &&     source /opt/ros/foxy/setup.bash &&     colcon build --symlink-install
+ ---> Running in 0f75521896ba
+[connext_cmake_module] Warning: The location at which Connext was found when the workspace was built [[/opt/rti.com/rti_connext_dds-5.3.1]] does not point to a valid directory, and the NDDSHOME environment variable has not been set. Support for Connext will not be available.
+Starting >>> ros2_idl_example
+--- stderr: ros2_idl_example
+CMake Error at /opt/ros/foxy/share/rosidl_generator_py/cmake/rosidl_generator_py_generate_interfaces.cmake:276 (add_dependencies):
+  The dependency target "ros2_idl_example__rosidl_typesupport_connext_c" of
+  target "ros2_idl_example__rosidl_typesupport_connext_c__pyext" does not
+  exist.
+Call Stack (most recent call first):
+  /opt/ros/foxy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+  /opt/ros/foxy/share/rosidl_cmake/cmake/rosidl_generate_interfaces.cmake:286 (ament_execute_extensions)
+  CMakeLists.txt:26 (rosidl_generate_interfaces)
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+---
+Failed   <<< ros2_idl_example   [ Exited with code 1 ]
+
+Summary: 0 packages finished [1.91s]
+  1 package failed: ros2_idl_example
+  1 package had stderr output: ros2_idl_example
+  1 package not processed
+The command '/bin/bash -c cd /root/ros2_workspace &&     source /opt/ros/foxy/setup.bash &&     colcon build --symlink-install' returned a non-zero code: 1
+cmorgan@cmorgan-bec:~/projects/ros2_docker/publictest$
+
+Originally posted by cmorgan on ROS Answers with karma: 35 on 2020-04-16
+Post score: 0
+
+Original comments
+Comment by tfoote on 2020-04-16:
+This is likely a bug in the automatic disabling of unavailable implementations from the warning above. I'd suggest that you check for a ticket and if one's not found open the ticket on rosidl: https://github.com/ros2/rosidl
+
+A:
+
+This is a recent error that comes from the OSRF nightly archives.
+Opened an issue at https://github.com/ros2/ros2/issues/903
+In the meantime, if you want to use the latest version of the code and working around this issue, you can use the osrf/ros2:nightly-rmw-nonfree docker image and sourcing the RTI setup file before building.
+FROM osrf/ros2:nightly-rmw-nonfree
+
+# we want to be able to source
+SHELL ["/bin/bash", "-c"]
+
+# Install git
+RUN apt-get update && \
+    apt-get install -y git && \
+    apt-get install -y libssl-dev
+
+# clone the test repos
+RUN cd /root && mkdir -p ros2_workspace/src && \
+    cd ros2_workspace/src && \
+    git clone https://github.com/cmorganBE/ros2_server_example.git && \
+    git clone https://github.com/cmorganBE/ros2_idl_example.git && \
+    cd ros2_idl_example && git checkout 7091c75045f26d
+
+# build the workspace
+RUN cd /root/ros2_workspace && \
+    source /opt/rti.com/rti_connext_dds-5.3.1/setenv_ros2rti.bash && \
+    source /opt/ros/foxy/setup.bash && \
+    colcon build --symlink-install
+
+CMD ["bash"]
+
+Note that the need to install libssl-dev by hand is another issue that is being resolved independently
+
+Originally posted by marguedas with karma: 3606 on 2020-04-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by marguedas on 2020-04-20:
+@cmorgan both the libssl-dev issue and https://github.com/ros2/rosidl_python/issues/106 have been fixed
+If you pull a recent version of the osrf/ros2:nightly image you should now be able to build your original dockerfile without modification
+Comment by cmorgan on 2020-04-20:
+@marguedas I can confirm that it does work correctly now, thank you for opening a ticket and to Dirk for fixing it!
+

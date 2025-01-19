@@ -1,0 +1,53 @@
+Q:
+
+Need correct syntax to call an actionlib service from a class member function
+
+What is the correct syntax  to call an actionlib service from a class member function.  As it is defined below I believe the var ac goes out of scope. But I am my attempts to move it outside being weak in c++ have failed.
+void handelerSimpleGoal(const geometry_msgs::PoseStamped msg)
+{
+     typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+
+     // find the coke can and use it as goal
+     ros::ServiceClient client = n.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
+     gazebo_msgs::GetModelState getmodelstate;
+     getmodelstate.request.model_name ="coke_can";
+     client.call(getmodelstate);
+
+     // send the new goal
+     MoveBaseClient ac("move_base", true);
+     move_base_msgs::MoveBaseGoal goal;
+     goal.target_pose.header.frame_id = "map";
+     goal.target_pose.header.stamp = ros::Time::now();
+     goal.target_pose.pose = getmodelstate.response.pose;
+     ac.sendGoal(goal);
+}
+
+Originally posted by rnunziata on ROS Answers with karma: 713 on 2013-10-15
+Post score: 0
+
+A:
+
+I would imagine at some point you want to know the status of this issued request. The tutorial on using this in the navigation stack suggests that you wait for the result (which will block), then check the result to see what happened. "ac" will still go out of scope once the function finishes but at least this way you'll have all the information you need. Depending on your exact use case needs you can also increase the scope of that MoveBaseClient variable and avoid this issue. Anyway according to http://wiki.ros.org/navigation/Tutorials/SendingSimpleGoals :
+  ac.waitForResult();
+
+  if(ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+    ROS_INFO("Hooray, the base moved 1 meter forward");
+  else
+    ROS_INFO("The base failed to move forward 1 meter for some reason");
+
+Originally posted by skiesel with karma: 549 on 2013-10-23
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by rnunziata on 2013-10-23:
+I do not want to wait in my callback ..but not sure how to move the typedef and declaration outside the method. All my attempts have failed. Do you know how to do this ...this is my jest of my question.
+Comment by skiesel on 2013-10-23:
+You can move the typedef out of the function, that shouldn't be an issue. The other situation is the object. If you REALLY want it to persist, you can declare it as a pointer outside the function, instantiate it in your main function, and access it in this callback.
+Comment by rnunziata on 2013-10-25:
+I do not understand why many functions like action interface and time sync are not oop friendly.  I should not have to jump though hoops to use these in a member class. Can this be treated as a ticket-able item?
+Comment by skiesel on 2013-10-25:
+When you issue a goal, typically you want to know if it was achieved. As a result you need to wait for the execution to complete. On the other hand, if you do not care about those things, why do you care if "ac" goes out of scope and is cleaned up? sendGoal will complete before that happens?
+Comment by rnunziata on 2013-10-25:
+I do care , I just want to check on it later and not in the issuing call back. But my question is not one of usage but why is it not callable from class method putting the handle in a class var. We are in a OOP. Anyway I think this topic is wondering.
+

@@ -1,0 +1,113 @@
+Q:
+
+Inconsistencies in Transform Definition between tf2 and ROS?
+
+According to this definition of a homogeneous transformation matrix (pictured below), a transform consists of a rotation from source to destination and the location of the source origin relative to the destination origin. So, for example, if I want to transform a point from frame A to frame B, where B is 2 meters ahead of A, my transformation matrix would have an x translation of -2 (using ROS coordinate conventions).
+To add this transform to my transform tree I'd expect to have to publish a TFMessage, with parent A and child B with a translation of -2. However, when I do this and use tf2_ros::Buffer::lookupTransform with the target frame as B and the source frame as A my transform contains a +2 x-translation. Additionally, this relationship between A & B, with B being 2 meters ahead of A, is only visualized correctly in RVIZ if my published transform contains a +2 translation. This leads me to believe that the homogeneous transform matrix is being represented in tf2 as I expect, with the negative translation, but in ROS it is being represented in the opposite way.
+What exactly is the difference in transformation representation between ROS and tf2? Do the standard built-in tools all interpret transformations in the same way?
+
+A:
+
+We believe we've figured this out. Here's what we've learned:
+What is a Transform?
+Consider the diagram below which shows two coordinate frames, source and destination, as well as a vector representing some hypothetical measurement.
+To get the source frame to align to the destination frame we'd have rotate counterclockwise by 15 degrees.
+We'll define positive rotation as clockwise, so the pose of the destination frame in the source frame is negative 15 degrees.
+If our data vector is defined in the source frame and we want to transform it to the destination frame, we'd rotate it by a positive 15 degrees; the below diagram helps illustrate this transformation.
+When we refer to a transform we're talking about transforming data, and when we refer to a pose we're talking about the relationship between two coordinate frames.
+These concepts of transform vs. pose are diametrically opposed, in that the pose is the inverse of the transform.
+In more concise terms, the transform from the source frame to the destination frame is the inverse of the pose of the destination frame in the source frame.
+
+Now let's consider a more complicated example, as illustrated in the below figure, where the frames are not only rotated 15 degrees apart but also offset from each other.
+In this case, the destination frame is some positive x and y distance away from the source frame, so the pose of the destination frame in the source frame would be negative 15 degrees with a positive translation.
+When transforming our data vector though we're in-fact subtracting some x and y offset.
+
+Below is a helpful illustration of how the transform is encoded in a 4x4 homogeneous transform matrix (source).
+In particular, we use a subset of homogeneous transforms called isometric transforms, which consist only of a rotation and translation (technically an isometry can also be a reflection rather than a rotation, but our implementation only allows them to be rotations), disallowing operations such as scaling, shearing, and rotation, and also preserving colinearity.
+More information on isometries can be found here.
+The C++ Eigen library is very useful for working with transforms and data, and there's already a library for converting between Eigen and the geometry_msgs/TransformStamped, eigen_conversions
+
+When we lookup a transform from a source frame to a destination frame, using the lookupTransform API of the tf2 library, we receive the transform needed to transform a point in our source frame to a point in our destination frame.
+You might've noticed previously that looking up the transform from source to destination gives opposite relationship between the two frames compared to what was published to the transform tree.
+This is because the published transform tree actually contains poses, not transforms!
+The lookupTransform API then converts these poses into actual transforms by inverting them.
+How to Transform Data
+Below are examples of how to utilize 3D isometric transforms to modify data as well as poses:
+Construct a transform.
+Inputs
+
+$R_A^B$ ∴ 3x3 rotation matrix, specifying how to rotate data in frame A to frame B.
+$t_B^A$ ∴ 1x3 translation vector, specifying location of frame A origin relative to frame B origin.
+
+Output
+$T_A^B$ ∴ Transform from frame A to frame B.
+Expression
+$T_A^B = \begin{bmatrix} R_A^B & t_B^A \\\ \left<0,0,0\right> & 1 \end{bmatrix}$
+Construct a pose.
+Inputs
+
+$R_A^B$ ∴ 3x3 rotation matrix, specifying orientation of frame A relative to frame B.
+$t_B^A$ ∴ 1x3 position vector, specifying location of frame A origin relative to frame B origin.
+
+Output
+$P_A^B$ ∴ Pose of frame A in frame B.
+Expression
+$P_A^B = \begin{bmatrix} R_A^B & t_B^A \\\ \left<0,0,0\right> & 1 \end{bmatrix}$
+Rotate a 3D vector in frame A to frame B.
+Inputs
+
+$R_A^B$ ∴ 3x3 rotation matrix, specifying how to rotate data in frame A to frame B.
+$\vec{v}_A = \left<{v_x, v_y, v_z}\right>_A$ ∴ 3D vector in frame A.
+
+Output
+$\vec{v}_B = \left<{v_x, v_y, v_z}\right>_B$ ∴ 3D vector in frame B.
+Expression
+$\vec{v}_B = R_A^B * \vec{v}_A$
+Transform a point in frame A to frame B.
+Inputs
+
+$T_A^B$ ∴ Transform from frame A to frame B.
+$\vec{p}_A = \left<{p_x, p_y, p_z, 0}\right>_A$ ∴ 3D vector in frame A. Zero is added as 4th element so we can multiply by the transformation matrix.
+
+Output
+$\vec{p}_B = \left<{p_x, p_y, p_z, 0}\right>_B$ ∴ 3D vector in frame B.
+Expression
+$\vec{p}_B = T_A^B * \vec{p}_A$
+Composing multiple transforms into a single transform.
+Inputs
+
+$T_A^B$ ∴ Transform from frame A to frame B.
+$T_B^C$ ∴ Transform from frame B to frame C.
+
+Output
+$T_A^C$ ∴ Transform from frame A to frame C.
+Expression
+$T_A^C = T_B^C * T_A^B$
+Composing multiple poses into a single pose.
+Inputs
+
+$P_B^A$ ∴ Pose of frame B in frame A.
+$P_C^B$ ∴ Pose of frame C in frame B.
+
+Output
+
+$P_C^A$ ∴ Pose of frame C in frame A.
+
+Expression
+$P_C^A = P_B^A * P_C^B$
+Inverting an Isometry
+Input
+$I = \begin{bmatrix} R & t \\\ \left<0,0,0\right> & 1 \end{bmatrix}$ ∴ Isometric transform or pose to invert.
+Output
+$I^{-1}$ ∴ Inverted isometric transform or pose.
+Expression
+$I^{-1} = \begin{bmatrix} R^{-1} & t^{-1} \\\ \left<0,0,0\right> & 1 \end{bmatrix}$, where
+
+$R^{-1} = transpose(R)$
+$t^{-1} = -R^{-1} * t$
+
+Identities
+
+$T_A^B = P_A^B = inverse(T_B^A) = inverse(P_A^B)$
+$T_B^A = P_B^A = inverse(T_A^B) = inverse(P_B^A)$
+

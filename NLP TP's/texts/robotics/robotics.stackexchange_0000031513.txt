@@ -1,0 +1,60 @@
+Q:
+
+What is the actual size of point cloud from a kinect
+
+Hello, all.
+As far as I know a kinect provides 640x480x3 size of 2D image data (widthxheightxRGB) and
+640x480x(sizeof a point in 3D).
+Is there anyone who knows the actual size of a point cloud?
+640x480x4x3 ? widthxheightx(float)x(x,y,z) ?
+Cheers.
+
+Originally posted by enddl22 on ROS Answers with karma: 177 on 2011-05-08
+Post score: 5
+
+A:
+
+The data payload is 640 x 480 x 8 x sizeof(float) bytes = 9830400 bytes
+Plus some bytes for auxiliary information like origin, timestamp etc.
+A good way to check out the bandwidth required for transmission is rostopic bw
+$ rostopic bw /camera/rgb/points
+subscribed to [/camera/rgb/points]
+(...)
+average: 295.37MB/s
+    mean: 9.83MB min: 9.83MB max: 9.83MB window: 100
+
+To find the size in memory consider the following analysis:
+I store them as pcl::pointcloud. The data for one point is described in this header file, although it is somewhat cryptic. PointXYZRGB is described as follows:
+00204 struct PointXYZRGB
+00205 {
+00206   PCL_ADD_POINT4D;  // (...)
+00207   union
+00208   {
+00209     struct
+00210     {
+00211       float rgb;
+00212     };
+00213     float data_c[4];
+00214   };
+00215   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+00216 } EIGEN_ALIGN16;
+
+PCL_ADD_POINT4D and the union below will add 4 floats each. While that is overkill memorywise, it is required to benefit from some cpu optimizations. Therefore for a pcl::pointcloud<pcl::PointXYZRGB> from the kinect, you store 640 x 480 x 8 x sizeof(float) bytes.
+I wonder why rgb is in a separate struct though. Does anybody know this.
+For a PointCloud2 you can look at the message with rostopic echo -n 1 /camera/rgb/points| less.
+The interesting parts are:
+height: 480
+width: 640
+point_step: 32
+
+Therefore, also here you have 640 x 480 x 32, where 32 is 8 x sizeof(float)
+Optimization Hack
+A colleague of mine modified the openni_camera driver and rgbdslam to communicate the color value via the unused forth dimension of the pointXYZ. This essentially cuts the required memory to half the size. It is a little hackish, but if anyone wants the patch, you are welcome to contact me. Keep in mind though, that linear algebra operations with Eigen might be affected by the color value or overwrite it. Haven't experienced that yet though.
+The bandwidth reduction shown by rostopic bw
+average: 148.35MB/s
+        mean: 4.92MB min: 4.92MB max: 4.92MB window: 100
+
+Originally posted by Felix Endres with karma: 6468 on 2011-05-09
+This answer was ACCEPTED on the original site
+Post score: 13
+

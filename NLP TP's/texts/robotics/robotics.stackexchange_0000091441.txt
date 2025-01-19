@@ -1,0 +1,29 @@
+Q:
+
+Possibility of data race in subscriber callback(s)?
+
+I have a question on how does the ros::subscriber work.
+For example, if I have a class and inside that class I constantly update a specific variable in a while loop:
+while(ros::ok()) _effort = this->getEffort();
+
+What will happen if this same class has a subscriber callback function which also writes into this _effort variable? Does it have some kind of a memory lock enabled?
+
+Originally posted by EdwardNur on ROS Answers with karma: 115 on 2019-04-21
+Post score: 0
+
+A:
+
+Short answer: no, there is not a memory race (in terms of two threads writing to the same memory address at the same time). By default, ROS doesn't start any threads when you make subscribers/callbacks. When you call ros::spin() or ros::spinOnce(), it will call each of the subscribers you have added sequentially, in the same thread as the spin.
+Note about your code: if the while(ros::ok()) _effort = this->getEffort(); is running in the main loop, then your subscribers will never get called, since (as mentioned above), in a single threaded program, subscribers are only called when ros::spin() or ros::spinOnce() is called. A slight modification to your above code that would call the subscriber would be:
+while(ros::ok()) {
+    ros::spinOnce();
+    _effort = this->getEffort();
+}
+
+Now if you are creating a different thread to run the while(ros::ok()) _effort = this->getEffort();, then yes, there will be a data race, as ROS doesn't handle memory locks for you. For some more resources on this, look around ROS answers some more (here's one).
+Source: mostly from http://wiki.ros.org/roscpp/Overview/Callbacks%20and%20Spinning.
+
+Originally posted by BryceWilley with karma: 711 on 2019-04-21
+This answer was ACCEPTED on the original site
+Post score: 0
+

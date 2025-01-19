@@ -1,0 +1,163 @@
+Q:
+
+Unable to include C++ header file while compiling
+
+There are 2 files in my package
+
+A c++ class file (example_ros_class.cpp)
+roscpp file that uses the header of the first file (implementation.cpp)
+
+using catkin_make, i receive this error code
+Here's the error code
+fatal error: example_ros_class.h: No such file or directory
+ #include "example_ros_class.h"
+
+I have tried to follow this documentation
+
+https://docs.ros.org/api/catkin/html/howto/format1/building_libraries.html
+http://answers.ros.org/question/65716/which-is-the-correct-way-to-install-header-files-in-catkin-packages/
+http://answers.ros.org/question/45422/ros-c-custom-header-not-found/
+
+and so fort
+Here's my CMake
+cmake_minimum_required(VERSION 2.8.3)
+
+project(eg_ros_class)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES eg_ros_class
+  CATKIN_DEPENDS roscpp std_msgs
+  DEPENDS system_lib
+)
+
+##BUILD##
+include_directories(
+  include
+  src/eg_ros_class
+  ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${GSTREAMER_INCLUDE_DIRS}
+)
+
+add_library(eg_ros_class src/example_ros_class.cpp)
+
+add_executable(eg_ros_class_exe src/example_ros_class.cpp)
+target_link_libraries(eg_ros_class ${catkin_LIBRARIES}, )
+
+add_executable(implementation_exe src/implementation.cpp)
+target_link_libraries(implementation_exe ${catkin_LIBRARIES})
+add_dependencies(implementation_exe eg_ros_class_generate_messages_cpp)
+
+##Install##
+catkin_package(INCLUDE_DIRS include
+               LIBRARIES eg_ros_class)
+ install(TARGETS eg_ros_class
+   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+ )
+
+ install(DIRECTORY include/${PROJECT_NAME}/
+   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+   FILES_MATCHING PATTERN "*.h"
+   PATTERN ".svn" EXCLUDE
+ )
+
+Originally posted by Dickson on ROS Answers with karma: 5 on 2019-06-20
+Post score: 0
+
+A:
+
+My answer is just guessing, so i point out certain potential concerns related to your implementation, in numbered points.
+
+You should paste a bigger piece of error message.
+
+If you have only two files in your package, most likely you have #include "example_ros_class.h" in the example_ros_class.cpp resulting in fatal error: example_ros_class.h: No such file or directory
+
+Your CMakeLists.txt contains a lot of mistakes
+
+A fixed file would look like this
+cmake_minimum_required(VERSION 2.8.3)
+
+project(eg_ros_class)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+
+catkin_package(
+  # (A) INCLUDE_DIRS include
+  LIBRARIES eg_ros_class
+  CATKIN_DEPENDS roscpp std_msgs
+  # (B) DEPENDS system_lib
+)
+
+##BUILD##
+include_directories(
+  include
+  # (C) src/eg_ros_class
+  ${catkin_INCLUDE_DIRS}
+  # (D) ${Boost_INCLUDE_DIRS}
+  # (E) ${GSTREAMER_INCLUDE_DIRS}
+)
+
+add_library(eg_ros_class src/example_ros_class.cpp)
+
+add_executable(eg_ros_class_exe src/example_ros_class.cpp)
+# (F) target_link_libraries(eg_ros_class ${catkin_LIBRARIES}, )
+target_link_libraries(eg_ros_class ${catkin_LIBRARIES})
+
+add_executable(implementation_exe src/implementation.cpp)
+target_link_libraries(implementation_exe ${catkin_LIBRARIES})
+add_dependencies(implementation_exe eg_ros_class_generate_messages_cpp)
+
+##Install##
+# (G)
+#catkin_package(INCLUDE_DIRS include
+#               LIBRARIES eg_ros_class)
+# install(TARGETS eg_ros_class
+#   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
+# install(DIRECTORY include/${PROJECT_NAME}/
+#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+#   FILES_MATCHING PATTERN "*.h"
+#   PATTERN ".svn" EXCLUDE
+# )E_BIN_DESTINATION}
+# )
+# install(DIRECTORY include/${PROJECT_NAME}/
+#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+#   FILES_MATCHING PATTERN "*.h"
+#   PATTERN ".svn" EXCLUDE
+# )
+
+2 A. You wrote that your project contains only two files, so include directory is empty. In this case this line is not needed.
+2 B. What is a system_lib? It's probably the name used as an example in the template CMakeLists.txt.
+2 C. In this line you should include only headers
+2 D and 2E. It depends on if you using Boost or GStreamer library. Are you using?
+2 F. Freaky comma before parenthesis. Fixed in the next line: target_link_libraries(eg_ros_class ${catkin_LIBRARIES})
+2 G. You don't need use catkin_package again
+
+Originally posted by abrzozowski with karma: 290 on 2019-06-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Dickson on 2019-06-23:
+Hello! Thank you for your guidance
+I manage to get it working now.
+Just using
+include_directories(
+include
+${eg_ros_class} #package_name
+${catkin_INCLUDE_DIRS}
+)
+

@@ -1,0 +1,73 @@
+Q:
+
+Why doesn't ROS_INFO allow calling std::queue.size() inside as a param
+
+I have declared a global variable queue
+// Global variable for queue declaration
+std::queue<geometry_msgs::PointStamped::ConstPtr> waypointQueue;
+
+And I have subscribed to a topic. Here is my subscriber callback method.
+/*
+* Callback method to be executed on reception of a message
+*/
+void clickedPointsCb(const geometry_msgs::PointStamped::ConstPtr& msg) {
+  ROS_INFO("%f %f %f", msg->point.x, msg->point.y, msg->point.z);
+  waypointQueue.push(msg);
+  ROS_INFO("%d", waypointQueue.size());
+}
+
+When I try to build this, I get the following error.
+In file included from /opt/ros/indigo/include/ros/ros.h:40:0,
+                 from /home/janindu/workspace/catkin_ws/src/turtlebot_waypoint_navigation/src/turtlebot_waypoint_navigation_v2.cpp:10:
+/home/janindu/workspace/catkin_ws/src/turtlebot_waypoint_navigation/src/turtlebot_waypoint_navigation_v2.cpp: In function ‘void clickedPointsCb(const ConstPtr&)’:
+/opt/ros/indigo/include/ros/console.h:342:176: warning: format ‘%d’ expects argument of type ‘int’, but argument 8 has type ‘std::queue<int>::size_type {aka long unsigned int}’ [-Wformat=]
+     ::ros::console::print(filter, __rosconsole_define_location__loc.logger_, __rosconsole_define_location__loc.level_, __FILE__, __LINE__, __ROSCONSOLE_FUNCTION__, __VA_ARGS__)
+                                                                                                                                                                                ^
+/opt/ros/indigo/include/ros/console.h:345:5: note: in expansion of macro ‘ROSCONSOLE_PRINT_AT_LOCATION_WITH_FILTER’
+     ROSCONSOLE_PRINT_AT_LOCATION_WITH_FILTER(0, __VA_ARGS__)
+     ^
+/opt/ros/indigo/include/ros/console.h:375:7: note: in expansion of macro ‘ROSCONSOLE_PRINT_AT_LOCATION’
+       ROSCONSOLE_PRINT_AT_LOCATION(__VA_ARGS__); \
+       ^
+/opt/ros/indigo/include/ros/console.h:557:35: note: in expansion of macro ‘ROS_LOG_COND’
+ #define ROS_LOG(level, name, ...) ROS_LOG_COND(true, level, name, __VA_ARGS__)
+                                   ^
+/opt/ros/indigo/include/rosconsole/macros_generated.h:110:23: note: in expansion of macro ‘ROS_LOG’
+ #define ROS_INFO(...) ROS_LOG(::ros::console::levels::Info, ROSCONSOLE_DEFAULT_NAME, __VA_ARGS__)
+                       ^
+/home/janindu/workspace/catkin_ws/src/turtlebot_waypoint_navigation/src/turtlebot_waypoint_navigation_v2.cpp:58:3: note: in expansion of macro ‘ROS_INFO’
+   ROS_INFO("%d", q.size());
+
+However, if I modify the subscriber callback method as follows, it compiles and runs just fine.
+/*
+* Callback method to be executed on reception of a message
+*/
+void clickedPointsCb(const geometry_msgs::PointStamped::ConstPtr& msg) {
+  ROS_INFO("%f %f %f", msg->point.x, msg->point.y, msg->point.z);
+  waypointQueue.push(msg);
+  int i = waypointQueue.size();
+  ROS_INFO("%d", i);
+}
+
+Am I missing something?
+
+Originally posted by janindu on ROS Answers with karma: 849 on 2016-04-27
+Post score: 0
+
+A:
+
+This looks like just a warning; it shouldn't prevent your code from compiling and running.
+The warning in question is telling you that you're asking it to print an unsigned type with a signed format string:
+warning: format ‘%d’ expects argument of type ‘int’, but argument 8 has type ‘std::queue<int>::size_type {aka long unsigned int}’
+
+Instead of using the %d type specifier, you should use an unsigned specifier like %ud, or the dedicated specifier for size_t: %zd
+
+Originally posted by ahendrix with karma: 47576 on 2016-04-27
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by janindu on 2016-04-27:
+Thanks! Worked with %zd
+Note - Still warns for %ud
+

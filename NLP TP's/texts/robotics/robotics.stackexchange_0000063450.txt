@@ -1,0 +1,128 @@
+Q:
+
+trigger python rostest with catkin_make test
+
+the goal:
+I want to trigger a python unit-test trough rostest in the ros-enviroment by calling catkin_make test in the package-root.
+the version of ros is hydro with python 2.7.3
+what works:
+along the official instructions i wrote the test which works fine when calling it with the command rostest jenkins_test_repro testAll.test and the related "launch"-file as described here.
+also working fine when direct executing the script...
+test-output:
+/home/USER/VirtEnvPython/bin/python /home/USER/sandbox/metric_tester/src/jenkins_test_repro/scripts/TestMetricStarter.py
+[ROSUNIT] Outputting test results to /home/USER/.ros/test_results/jenkins_test_repro/rosunit-MetricStarter.xml
+test_server_feedback ... ok
+test_true ... ok
+-------------------------------------------------------------
+SUMMARY:
+ * RESULT: SUCCESS
+ * TESTS: 2
+ * ERRORS: 0 []
+ * FAILURES: 0 []
+
+test-file:
+#!/usr/bin/env python
+PKG = 'jenkins_test_repro'
+#import roslib; roslib.load_manifest(PKG)  # This line is not needed with Catkin.
+
+import sys
+import os
+import rostest
+import unittest
+import requests
+
+class TestMetricStarter(unittest.TestCase):
+
+    def test_server_feedback(self):
+        r = requests.get('http://SRV-ADR/MetricServer/default/index/MetricStarter' + os.getcwd())
+        self.assertEqual(r.status_code, 200)
+
+    def test_true(self):
+        self.assertTrue(True)
+
+if __name__ == '__main__':
+    rostest.rosrun(PKG, 'MetricStarter', TestMetricStarter)
+
+"launch"-file:
+<launch>
+    <test test-name="MetricStarter" pkg="jenkins_test_repro" type="TestMetricStarter.py" />
+</launch>
+
+the problem:
+for invoking the test-stuff trough catkin_make test i need add the test in the CMakeLists.txt.
+i figured out 3 ways to do this and for me it's still unclear what i really need to do. for all ways i have done a clean build (removing build / devel and rebuilding catkin-workspace)
+
+because of the useage of rostest and the analogy to the working command-line-execution
+ add_rostest(test/testAll.test)
+
+but the test seems not to be executed:
+ Running tests...
+ Test project /home/USER/sandbox/metric_tester/build
+     Start 1: _ctest_jenkins_test_repro_rostest_test_testAll.test
+ 1/1 Test #1: _ctest_jenkins_test_repro_rostest_test_testAll.test ...   Passed    1.64 sec
+
+ 100% tests passed, 0 tests failed out of 1
+
+ Total Test time (real) =   1.65 sec
+ catkin_make test  4.58s user 0.54s system 79% cpu 6.404 total
+
+i also tried it with
+ add_rostest(scripts/TestMetricStarter.py)
+
+witch leads to following error
+ Running tests...
+ Test project /home/USER/sandbox/metric_tester/build
+     Start 1: _ctest_jenkins_test_repro_rostest_scripts_TestMetricStarter.py
+ 1/1 Test #1: _ctest_jenkins_test_repro_rostest_scripts_TestMetricStarter.py ...***Failed    0.46 sec
+
+ 0% tests passed, 1 tests failed out of 1
+
+ Total Test time (real) =   0.47 sec
+
+ The following tests FAILED:
+       1 - _ctest_jenkins_test_repro_rostest_scripts_TestMetricStarter.py (Failed)
+ Errors while running CTest
+ make: *** [test] Error 8
+ Invoking "make" failed
+
+just tried while it had something to do with rostest,
+ add_rostest_gtest(jenkins_test_repro test/testAll.test scripts/TestMetricStarter.py)
+
+but seems to be c/c++ stuff due to the output and the requested linker language
+ CMake Error: CMake can not determine linker language for target:jenkins_test_repro
+ CMake Error: Cannot determine link language for target "jenkins_test_repro".
+ -- Generating done
+ -- Build files have been written to: /home/USER/sandbox/metric_tester/build
+ make: *** [cmake_check_build_system] Error 1
+
+in the official guide is a section for running tests as part of make tests
+this leads into a similar behaviour as in the first way
+ catkin_add_nosetests(test/testAll.test)
+
+same as with add_rostest(scripts/TestMetricStarter.py)
+ catkin_add_nosetests(scripts/TestMetricStarter.py)
+
+same as with add_rostest(test/testAll.test)
+
+and now?
+so there is still the question how i have to add the test in the CMakeLists.txt... for me its unclear how to do this for a unit-test written in python. with c/cpp there are ways that are working, but for python?
+due to the tool-chains on the build-farm it would be nice if there is a way to trigger the tests with catkin_make test. other ways which bypassing CMake are not requested by this question.
+if more information is needed just ask :). i hope someone can help or give a hint to the right solution.
+Note: i posted the same question on http://stackoverflow.com before but reconsidered that ros answers should be the better place for a relative specific question
+Update:  just found an post with similar issues.
+
+Originally posted by Acuda on ROS Answers with karma: 36 on 2014-10-21
+Post score: 1
+
+A:
+
+As described here the solution works. Still unclear is what had really had changed because add_rostest(test/testAll.test) was tested before (first approach)...
+Just added following lines in the CMakeLists.txt:
+if (CATKIN_ENABLE_TESTING)
+  add_rostest(test/testAll.test)
+endif()
+
+Originally posted by Acuda with karma: 36 on 2014-10-21
+This answer was ACCEPTED on the original site
+Post score: 1
+

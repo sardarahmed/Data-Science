@@ -1,0 +1,78 @@
+Q:
+
+Changing End effector in realtime in moveit
+
+Hello all,
+I am using UR5 robot with some custom end effector which obviously works good.Now my requirement is I need to change end effector in run time while move group is running which means URDF which is loaded as robot_description on ros param server is to be changed to other URDF which consist of my second gripper.Also I need to change semantic description on ros param server.Anybody has worked in such scnerio or can help me regarding this?
+
+Originally posted by akash_p on ROS Answers with karma: 26 on 2017-09-15
+Post score: 0
+
+Original comments
+Comment by matEhickey on 2017-10-10:
+Hello, I'm exactly in the same situation, did you manage to find a solution for this ?
+
+A:
+
+Yup.I found a workaround to solve this issue not a complete solution though.Following are the steps.
+1.Load robot_description to rosparam server with urdf consisting of 1st end effector.
+2.Whenever you want to switch to new end effector replace robot_descritption on rosparam server by reading data from URDF of new end effector with complete robot and also replace robot_description_semantic on rosparam server by new srdf file corrosponding to your new URDF.
+3.Now I am doing all this replacing through my cpp node and then using system() function to kill move_group node,robot_description node and rviz_node.(Remember to set respawn=true for all these nodes in your corresponding moveit package launch files).
+4.All the killed nodes will respawn now and will load my newly uploaded robot_description and robot_description_semantic from rosparam server and in rviz you will be able to visualize your new end effector.
+Since moveit move_group node spawns up moveit_planning_scene service once at the start and it loads robot_description only once at start we need to respawn all the nodes to take up our new robot URDF and its corresponding semantic description.Hope this helps you!
+
+Originally posted by akash_p with karma: 26 on 2017-10-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by matEhickey on 2017-10-10:
+Thank you, well played for this solution, I will try to implement this for my needs !
+Comment by gvdhoorn on 2017-10-10:
+A note of caution: this isn't really a solution, but more of a work-around, and, as you're only restarting some of the consumers of those parameters/artefacts, you run the risk of ending up with a 'desynced' ROS node graph, in which some participants are using one version of robot_description ..
+Comment by gvdhoorn on 2017-10-10:
+.. and related parameters, and others another. In controlled environments this probably won't be a big problem, but I wanted to note it (for future readers) in any case.
+The real problem here is the immutability of robot_description, and the fact that none of its current consumers are set up ..
+Comment by gvdhoorn on 2017-10-10:
+.. to deal with changes to that parameter.
+Also note: there are multiple ways to parse urdfs (raw xml, urdf_dom, custom parsers, etc), and many nodes even use a combination of those different ways at the same time. This all makes "changing EEFs in 'real-time'" a rather complex piece of ..
+Comment by gvdhoorn on 2017-10-10:
+.. functionality to implement. Much more complex than a lot of people assume.
+Comment by gvdhoorn on 2017-10-10:
+Finally: some alternative work-arounds:
+
+if the EEF doesn't require any control (based on URDF, that is): use MoveIt's attached collision object infrastructure for your gripper. Those can be attached and detached at runtime without the earlier mentioned complications (although it will be ..
+
+Comment by gvdhoorn on 2017-10-10:
+.. MoveIt-specific)
+2 . run two move_group instances in parallel. Namespaced and each with their own robot_description and related parameters.
+Comment by gvdhoorn on 2017-10-10:
+@akash_p wrote:
+
+but move_group loads robot_description only at start was my main concern
+
+as it should: robot_description is a parameter, and those are only intended to be read in a node's initialisation phase.
+That is why having robot_description being a parameter is such a limitation.
+Comment by akash_p on 2017-10-10:
+True I do understand this is workaround and not solution.I cannot use my second end effector as attached collision object since I need to actually attach object to my second end effector in real time.Regarding your second solution in order to keep unique moveit application I kept things simple.
+Comment by akash_p on 2017-10-10:
+But it can be tried using multiple moveit instances with multiple robot_description
+Comment by gvdhoorn on 2017-10-10:\
+
+.I cannot use my second eef as attached collision object [..] I need to actually attach object to my second eef
+
+as far as I know there is no limit to the nr of attached objects. So you should be able to attach the eef and the objects.
+Comment by akash_p on 2017-10-10:
+One more issue was my second end effector has a joint which is active joint in moveit package which cant be emulated in an attached collision object.
+Comment by gvdhoorn on 2017-10-10:
+No. As I wrote above: work-around 1 only works if your EEF doesn't need to be controlled by MoveIt (fi: if it's a simple open/close gripper with its own controller).
+A work-around for that might be to have two different 'versions' of your EEF 'collision object': one closed, the other open. But ..
+Comment by gvdhoorn on 2017-10-10:
+.. again: that will not be much help if your gripper needs to be controlled by MoveIt.
+Comment by akash_p on 2017-10-10:
+My joint is not like fingered gripper like just fully open and fully closed,its revolute joint rotating in semi circular +/- 180 degree so its really hard for me to save orientation of each of the degree as collision object so I discarded this option since this was suggestion by many people on forum
+Comment by akash_p on 2017-10-10:
+@gvdhoorn For your second solution how will my multiple moveit instances behave to real single robot controller and its feedback in the form of joint states?Wont it go much complex?
+Comment by gvdhoorn on 2017-10-10:
+It will take some careful topic remapping and namespacing, but it should be possible.
+

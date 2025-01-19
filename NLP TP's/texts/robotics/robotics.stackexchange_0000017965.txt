@@ -1,0 +1,50 @@
+Q:
+
+constraining rotation in jacobian IK algorithm
+
+i'm implementing a damped least squares IK algorithm for an articulated arm, based on the work here. I have the algorithm working well, but it occasionally produces solutions that have segments intersecting, and doesn' account for the realities of cable management etc. that prevents full 360 rotation of any given joint. 
+can the constraints be incorporated into the composition of the Jacobian, or is there some other approach for solving for these?
+edit
+I have a solution that kind of works, but it gets stuck sometimes and feels inelegant. In effect, as I perform an iterative IK, at each step I check to see if the solution self-collides, or violates an angle constraint. If it violates an angle constraint, I clamp the angle. If it self collides, I take the offending segment and rotate it by a random amount. This seems to work, but in addition to feeling wrong, it occasionally "gets stuck." What I mean by this is that as I try to run the solver, it's unable to find a solution from a particular configuration to get to what is otherwise a reachable area until I move it into some other configuration. Code below. Any advice appreciated.
+while (iterations++ < 100) {
+  SimpleMatrix j = computeJacobian(segments);
+  SimpleMatrix dTheta = calcDeltaThetasDLS(j, target);
+
+  for (int i=0; i<segments.size(); i++) {
+    Segment s = segments.get(i);
+    s.angle += dTheta.get(i, 0);
+    if (s.angle < s.minAngle)
+      s.angle = s.minAngle;
+    else if (s.angle > s.maxAngle)
+      s.angle = s.maxAngle;
+  }
+
+  segments.get(0).recompute();
+
+  for (int i=0; i<segments.size(); i++) {
+    Segment s = segments.get(i);
+
+    if (s.isOverlapping(segments)) {
+      s.angle += PI * Math.random();
+      segments.get(0).recompute();
+      dThetaLast = null;
+    }
+  }
+
+  if (dThetaLast != null && dTheta.minus(dThetaLast).elementMaxAbs() < 0.0001) {
+    break;
+  } else
+    dThetaLast = dTheta;
+}
+
+A:
+
+If you want to stick to Jacobian-based IK techniques, such as DLS, you ought to take barrier functions into the game and couple the resulting primary and secondary tasks with the null-space operator.
+The barrier functions can generate a repulsive potential for the joints when they approach their physical constraints.
+The primary task (reaching for the target) and the secondary task (joint bounds avoidance) can be then aggregated together using the null-space projection of the Jacobian.
+Here's an enlighting paper on these topics:
+
+A Realistic Joint Limit Algorithm for Kinematically Redundant Manipulators, H.-Y. Lee, B.-J. Yi, and Y. Choi, International Conference on Control Automation and Systems, Seoul, 2007.
+
+In particular, the null-space projection of the DLS version $J^\#$ of the Jacobian $J$ is $I-J^\#\cdot J$.
+

@@ -1,0 +1,78 @@
+Q:
+
+Which ROS controller to achieve 'teachmode'?
+
+Hi I'm using ROS Kinetic to control the Elfin 6 DOF robot arm, and am looking into the options to achieve 'teachmode' with ROS.
+With 'teachmode' I mean this , also known as: freedrive, backdrive, compliance, zero-force.
+Which ROS controller?
+It's not clear to me which controller is suitable (or that I need to write a controller from scratch myself), I couldn't find any code examples how teachmode can be achieved. I found the following control options, but it's not clear how to use them for teachmode, and which one is suited:
+
+Admittance control: example
+Gravity compensation control: example
+
+###Implementation####
+the robot I use (Elfin) has torque sensors in each joint, and I can read the effort of all joints on /joint_states.
+It also comes with different hardwareinterfaces
+I started by implementing a gravity compensation controller in gazebo,based on this. This is implemented, but needs commands to move. do I need to use the joint effort to calculate joint position/effort/velocity commands?
+I hope someone can clearify the different ros controllers, and how to achieve teachmode.
+If there are any relevant topics/github please let me know :).
+
+Originally posted by crnewton on ROS Answers with karma: 71 on 2020-11-20
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-11-20:\
+
+I couldn't find any code examples how teachmode can be achieved
+
+that doesn't really surprise me, as it's functionality which is typically marketed under that name, but is not really a widely recognised control approach or scheme.
+You may be able to implement this using fzi-forschungszentrum-informatik/cartesian_controllers. I'm only a software engineer, so I may be misunderstanding you, but if you provide the inverse force and/or torque from an F/T sensor at the flange, you should end up with following behaviour.
+Whether or not you'll achieve sufficient / satisfactory performance though I can't say.
+Comment by crnewton on 2020-11-20:
+Thank you. I'll have a look! Yeah that's exactly my problem, teachmode is just a name, that's why I'm looking for a controller with 'teachmode' functionality.
+Comment by Dragonslayer on 2020-11-23:
+Sometimes they use endeffector force torque sensors (as a kind of "joystick") to command any kind of controller via a kinematic model. What I see in the video might be triggering control motion by "torque spike or overtorque and follow" approach. Identifying a torque spike (push) and by some simple algorithm equalize out the "overtorque" by commanding motion on relevant joints.
+I dont thing you need a joint effort controller (position control is simpler to gravity compensate), you need force feedback and use its data to command the joints via position/velocity controller. In the end this command node only is useful for "teaching" so I dont see it as a controller its more of a comand input type node, like teleop etc.
+Comment by crnewton on 2020-11-23:
+Thank you for your reply. Yeah, they mostly use external tf_sensor. I can follow your approach, and sounds logical. I can read the torque (/joint_states), and see spikes when pushing the robot. Don't know if the algorithm is 'simple', but I'll give it a try and let you know :D.
+Comment by Dragonslayer on 2020-11-23:
+"simple" well, if you have position control, gravity compensation is somewhat "non existent". So if someone pushes the joint it spikes (torque) and when stopping there should be a negative spike as well. Command in direction of first spike, stop at position at negative spike/step. With two hands guiding at the right spot you get differential spikes which let you distinguish which joint is to be moved. As you can see in most demonstrations, they use two hands, to not "trigger"the wrong joint, as to move joint 1 not 4 and they use very consistent speed  and relative "abrupt" stopping of movement. There is really the question how useful this functionality is in  reality and how much is just for show. Really only relevant for collision detection in an application? The "endeffector joystick" approach in my opinion is the much more usable approach for programming by demonstration. Look at welding robot programming. They do real work they use endeffector command (those that I saw - a lot)
+Comment by Dragonslayer on 2020-11-23:
+Just stumbled over exactly what you are looking for IROS 2020 - series Most interesting for you likely starting at part 4or5.
+Comment by crnewton on 2020-11-24:
+The difficulty is that robot movement also causes spikes in torque so I need to filter those out.
+this functionality is usefull for us because we use the robot in a small workspace and the products it handles can have defects which will cause collision. Moving the robot manually makes it alot easier to put the robot in a safe position.
+Comment by gvdhoorn on 2020-11-24:
+@crnewton: does your robot not support this natively? My first approach would be to integrate functionality which is provided by the OEM. More scalable, less maintenance and probably more performant.
+Only as a last resort would I try to implement it myself.
+Comment by crnewton on 2020-11-24:
+Yes it does, but is not provided in ROS. We want the best of both worlds, so that's why were looking to implement that functionality  in ROS.
+Comment by gvdhoorn on 2020-11-24:
+It just appears to me to be more of a control problem at this point than anything "with ROS" (which is ambiguous to say anyway).
+Comment by Solrac3589 on 2020-11-24:
+I think you should check the script API library (https://www.elfinrobot.nl/download/documents/Elfin-HansRobot_Script_API_Library.pdf) i think what you are searching is what there is called zeroforce. I was checking if ithe ros driver has a specific service to send scripts but i didn't find one (I am used to do that with UR10). Maybe the reason is because the API is already in C. Not sure exactly where to follow but hope it helps
+Comment by crnewton on 2020-11-24:
+Their API is not available in ROS. It's a nice UR feature that I'm missing here :(
+Comment by Dragonslayer on 2020-11-24:
+As this turns about to not be about research or prototyping of some sort, be very aware that there are ISO norms for workplace safety regarding robots. I wouldnt consider it legally sound to just implement this "on the fly" in such a scenario! You might want to look into ROS-Industrial, maybe you find something more there?
+
+A:
+
+I solved by using a PID controller with <hardware_interface::EffortJointInterface> where all PID values are 0.
+I used this controller, but any should work.
+Not sure if there is a downside to this approach, since it's mentioned nowhere.
+but this works and is very simple.
+
+Originally posted by crnewton with karma: 71 on 2021-05-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-05-21:\
+
+I solved by using a PID controller with <hardware_interface::effortjointinterface> where all PID values are 0. I used this controller, but any should work.
+
+I'm not a control engineer, but I don't believe any regular "PID controller" would work.
+The controller you link to is very specifically a gravity compensating controller. That's exactly how many cobots implement "teach mode": compensate gravity and then try to keep forces on joints (compared to disturbance torques fi) zero.
+Afaik, without the gravity compensation, a torque controller with "all PID values 0" would probably result in a collapsing robot.
+

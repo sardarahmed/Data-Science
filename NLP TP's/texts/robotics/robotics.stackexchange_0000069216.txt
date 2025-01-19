@@ -1,0 +1,43 @@
+Q:
+
+navsat_transform missing child_frame_id?
+
+I am integrating GPS with odometry and IMU data.  I am using two instances of robot_localization, one for the continuous data.  That one feeds into a second one that gets gps data input.  I use navsat_transform to transform the gps data to the proper frame.  However, I found that the odometry output from navsat_transform.cpp is missing the child_frame_id.  The string for that value is correctly passed to baseLinkFrameId_ but is not used in the prepareGpsOdometry method.
+The result is that robot_localization does not update when passed the odometry output from navsat_transform.  I was confused when I could not get output from robot_localization using the odometry from navsat_transform, yet could get output using other odometry sources as test inputs.  When I saw that the child frame was missing from the navsat_transform odometry, I modified the source to supply that value and then robot_localization started responding.  I don't know if that was the correct thing to do.  In fact, I suppose it was not, since nobody else is having this problem, it must mean I am doing something incorrectly, but I cannot figure out what that could be.
+Changing this section in navsat_transform.cpp:
+  gpsOdom.header.frame_id = worldFrameId_;
+  gpsOdom.header.stamp = gpsUpdateTime_;
+
+to the following:
+  gpsOdom.header.frame_id = worldFrameId_;
+  gpsOdom.child_frame_id = baseLinkFrameId_;
+  gpsOdom.header.stamp = gpsUpdateTime_;
+
+fixes the problem.  However, since the code is working for everyone else, I assume I am doing something wrong.
+Here is the navsat_transform.launch file:
+<node pkg="robot_localization" type="navsat_transform_node" name="navsat_transform_node" output= "screen" respawn="true">
+
+  <param name="magnetic_declination_radians" value="0"/>
+
+  <param name="yaw_offset" value="0"/>
+  <param name="use_odometry_yaw" value="true" />   <!-- when true, we use yaw from the UKF, when false we use imu_data -->   
+  <param name="wait_for_datum" value="false" />     <!-- when true, we use the datum parameter for initial location, when false we get it from the UKF -->
+
+  <remap from="/imu/data" to="/imu_center" />
+  <remap from="/gps/fix" to="/fix" />
+  <remap from="/odometry/filtered" to="/odom_ukf" />
+  <remap from="/odometry/gps" to="/odom_navsat" /> 
+
+</node>
+
+Originally posted by dan on ROS Answers with karma: 875 on 2015-08-12
+Post score: 0
+
+A:
+
+I was not properly including the first robot_localization output into the gps robot_localization odom input.  Since it was not receiving that data, it was not updating.
+
+Originally posted by dan with karma: 875 on 2015-08-14
+This answer was ACCEPTED on the original site
+Post score: 1
+

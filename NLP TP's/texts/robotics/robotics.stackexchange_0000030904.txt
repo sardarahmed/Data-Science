@@ -1,0 +1,42 @@
+Q:
+
+quaternion from IMU interpreted incorrectly by ROS
+
+I have a new CH Robotics UM6 IMU that outputs Quaternion which the datasheet labels as [a,b,c,d]. When I pass the Quaternion to ROS the X and Z axes are swapped, also pointing the IMU UP points the quat DOWN in rviz. I thought Quaternions didn't have "handedness"?
+Here is a video of the behavior.
+Anyhow, how do I swap axes without converting to Euler angles and introducing singularities?
+From the datasheet:
+
+All UM6 angle measurements are made
+with respect to a North-East-Down
+(NED) inertial frame. The inertial
+frame x-axis is aligned with magnetic
+north, the y-axis is aligned with
+magnetic east, and the z-axis points
+down toward the center of the Earth.
+The "pitch" angle represents positive
+rotation about the x-axis, "roll"
+represents positive rotation about the
+y-axis, and "yaw" represents positive
+rotation about the z-axis.rotation about the z-axis.
+
+PS I'm using python so numpy code would be great!
+
+Originally posted by JeffRousseau on ROS Answers with karma: 1607 on 2011-04-06
+Post score: 3
+
+A:
+
+Your sensor is reporting data using the North-East-Down (NED) convention commonly used by aircraft. ROS messages assume the East-North-Up (ENU) coordinates more often used with ground robots. This should really be documented in REP 103, but is not explicitly mentioned. For a (long) discussion of ROS navigation satellite conventions, see the sensor_msgs GPS API review.
+Multiplying by a constant quaternion should rotate your data from one frame to the other, but I don't have a good enough intuitive feel for quaternions to give you the exact multiplier. A little experimentation should suffice. Basically, you need to rotate Pi radians about the x-axis followed by -Pi/2 radians about the z-axis.
+
+Originally posted by joq with karma: 25443 on 2011-04-06
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by JeffRousseau on 2011-04-07:
+Also, if needed it turns out transformations.py has some nice functions that rotate quats:  q_orig = data_imu; qx = quaternion_about_axis(math.pi, (1,0,0)); qy = quaternion_about_axis(math.pi/2, (0,1,0)); q_tmp = quaternion_multiply(q_orig, qy); q_rot = quaternion_multiply(q_tmp, qx)
+Comment by JeffRousseau on 2011-04-07:
+so it turns out it's a data misinterpretation problem! The UM6 outputs [abcd] which is actually [wxyz], so I had w and z swapped when passing the quat to ROS (I had assumed the scalar was at the end). So my solution is just w=a,x=b,y=c,z=-d (up/down swap)
+

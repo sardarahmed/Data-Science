@@ -1,0 +1,130 @@
+Q:
+
+Error CvImagePtr cv_ptr;
+
+I want to blend two images the rgb and the depth to look for the shift between.
+This is my program, I make it very easy to understand just using the basic of ros programming
+    #include <ros/ros.h>
+    #include <image_transport/image_transport.h>
+    #include <opencv/cv.h>
+    #include <opencv/highgui.h>
+    #include <cv_bridge/cv_bridge.h>
+    #include <sensor_msgs/image_encodings.h>
+    
+    using namespace cv;
+    
+    cv_bridge::CvImagePtr cv_ptr_rgb;
+    
+    void imageCallbackrgb(const sensor_msgs::ImageConstPtr& msg)
+    {
+    
+        //cv_bridge::CvImagePtr cv_ptr_rgb;
+    
+        try
+        {
+            cv_ptr_rgb = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::MONO8);
+        }
+    
+        catch (cv_bridge::Exception& e)
+        {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
+            return;
+        }
+    
+    
+        //cv::imshow("OpenCV viewer Kinect RGB", cv_ptr_rgb->image);
+        
+        cvWaitKey(3);
+        
+    }
+    
+    
+    void imageCallbackdepth(const sensor_msgs::ImageConstPtr& msg)
+    {   
+        // convert message from ROS to openCV
+        cv_bridge::CvImagePtr cv_ptr_depth;
+        
+        try
+        {
+            cv_ptr_depth = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1);
+    
+        }
+    
+        catch (cv_bridge::Exception& e)
+        {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
+            return;
+        }
+    
+        
+        //conversion 16UC to 8UC
+/*
+Conversion Sutffs
+*/
+    /*
+    //*******************************blending two images*************************************
+        double alpha = 0.5; double beta; 
+        beta = ( 1.0 - alpha );
+        Mat dst;
+        addWeighted( cv_ptr_rgb->image, alpha, image_8CU, 0.5, 0.5, dst);
+        cv::imshow( "Linear Blend", dst );
+    //**************************************************************************************
+    */
+    
+        cv::imshow("OpenCV viewer Kinect RGB", cv_ptr_rgb->image);
+        //cv::imshow("OpenCV viewer Kinect depth", image8U);
+        cvWaitKey(3);
+    
+    }
+    
+    int main(int argc, char **argv)
+    
+    {
+        ros::init(argc, argv, "listenerKinectuEye");
+        ros::NodeHandle nh;
+    
+        image_transport::ImageTransport it(nh);
+        
+        image_transport::Subscriber subkirgb = it.subscribe("/camera/rgb/image_color", 1, imageCallbackrgb);
+        image_transport::Subscriber subkidepth = it.subscribe("/camera/depth_registered/image_raw", 1, imageCallbackdepth);
+        
+        ROS_INFO("subscribed to Kinect and uEye topics");
+    
+        ros::spin();
+    }
+
+And this is the error that I get (sub_node is my executable):
+sub_node: /usr/include/boost/smart_ptr/shared_ptr.hpp:418: T* boost::shared_ptr::operator->() const [with T = cv_bridge::CvImage]: Assertion `px != 0' failed.
+Aborted (core dumped)
+the error comes from the pointer cv_ptr_rgb  that I use in imageCallbackdepth because even when I try to
+cv::imshow("OpenCV viewer Kinect RGB", cv_ptr_rgb->image);
+
+before doing any blending I get the same error.
+How to solve this ? (there is another way to do it?)
+
+Originally posted by ROSkinect on ROS Answers with karma: 751 on 2014-07-31
+Post score: 0
+
+Original comments
+Comment by 2ROS0 on 2014-07-31:
+Is this really a ROS problem?
+Comment by ROSkinect on 2014-08-01:
+I don't know you have the same problem ? I found a basic solution you can use it
+
+A:
+
+You have a race condition with cv_ptr_rgb.
+You set this global variable in imageCallbackrgb and use it in imageCallbackdepth.
+If the latter callback is called first you get your null-pointer error.
+Check if cv_ptr_rgb has been set and only then use it.
+You could do it like this:
+if (cv_ptr_rgb != NULL) addWeighted( cv_ptr_rgb->image, alpha, image8U, 0.5, 0.5, dst);
+
+Originally posted by BennyRe with karma: 2949 on 2014-08-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by ROSkinect on 2014-08-01:
+I don't really understand what should I do exactly ?
+

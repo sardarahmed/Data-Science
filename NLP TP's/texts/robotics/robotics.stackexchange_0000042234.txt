@@ -1,0 +1,97 @@
+Q:
+
+Help with tf and sensor & odometry and robot positioning
+
+Hi All,
+Soz if this question is a bit confused after much flicking through the tuts) - I am...
+At the moment I'm simply trying to, in code (i.e. leaving out URDF for now) create my robot. It's simply has 7 Sonars cover 180 deg around the front.
+To keep things simple I've tried to start off with the left most sensor and the one up at the front. The code I have is:
+            sensor_msgs::Range sonar;
+            sonar.radiation_type = sensor_msgs::Range::ULTRASOUND;
+            sonar.field_of_view = (10.0/180.0) * 3.14;
+            sonar.min_range = 0.0;
+            sonar.max_range = 10.0; sonar.header.stamp = ros::Time::now();
+            sonar.range = 1.3;
+            sonar.child_frame_id = "base_link";
+            sonar.header.frame_id = "sonar_1";
+            sonar_pub.publish(sonar);
+
+            sonar.header.frame_id = "sonar_2";
+            sonar_pub.publish(sonar);             
+
+            sonar_broadcaster.sendTransform(tf::StampedTransform(tf::Transform(tf::Quaternion(0, 0, 0, 1), 
+                                                                                tf::Vector3(-0.15, 0.0, 0.0)),
+                                                                                ros::Time::now(),
+                                                                                "base_link", 
+                                                                                "sonar_1"));
+
+            sonar_broadcaster.sendTransform(tf::StampedTransform(tf::Transform( tf::Quaternion(1.57079633, 0, 0, 1), 
+                                                                                tf::Vector3(0.0, 0.15, 0.0)),
+                                                                                ros::Time::now(),
+                                                                                "base_link", 
+                                                                                "sonar_2"));
+
+Where 1.57079633 is 90 degrees for Radians. But is rviz the both show up pointing in the same direction. My intention is that one is 15cm to the left of the bots centre and pointing at 90 degrees the other 15cm from cent to front and pointing fwd.
+
+Then the other part I'm not sure about is the Odometry - how should I model that? So far I've just used the tutorial code.
+         // first, we'll publish the transform over tf
+     geometry_msgs::TransformStamped odom_trans;
+     odom_trans.header.stamp = current_time;
+     odom_trans.header.frame_id = "odom";
+     odom_trans.child_frame_id = "base_link";
+
+     odom_trans.transform.translation.x = x;
+     odom_trans.transform.translation.y = y;
+     odom_trans.transform.translation.z = 0.0;
+     odom_trans.transform.rotation = odom_quat;
+
+     // send the transform
+     odom_broadcaster.sendTransform(odom_trans);
+
+     // next, we'll publish the odometry message over ROS
+     nav_msgs::Odometry odom;
+     odom.header.stamp = current_time;
+     odom.header.frame_id = "odom";
+
+     // set the position
+     odom.pose.pose.position.x = x;
+     odom.pose.pose.position.y = y;
+     odom.pose.pose.position.z = 0.0;
+     odom.pose.pose.orientation = odom_quat;
+
+     // set the velocity
+     odom.child_frame_id = "base_link";
+     odom.twist.twist.linear.x = vx;
+     odom.twist.twist.linear.y = vy;
+     odom.twist.twist.angular.z = vth;
+
+     // publish the message
+     odom_pub.publish(odom);
+
+Finally in rviz how should I be setting fixed frame and targetframe so that I effectively see the robot as a whole just moving around?
+
+Many Thanks
+Mark
+
+Originally posted by MarkyMark2012 on ROS Answers with karma: 1834 on 2012-07-12
+Post score: 1
+
+A:
+
+Your quaternions don't look quite right. I guess instead of constructing the quaternion with x, y, z, and w you want the constructor that takes euler angles. If I read the Bullet API docs correctly, you just need to leave out the 4th parameter, i.e. the 1.
+For more information on quaternions, have a look at this question.
+
+Originally posted by Lorenz with karma: 22731 on 2012-07-12
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Eric Perko on 2012-07-12:
+The tf::createQuaternion* functions are probably a better choice: http://ros.org/doc/fuerte/api/tf/html/c++/namespacetf.html . In this case, tf::createQuaternionFromRPY is probably best. In Fuerte, tf types are no longer simply typedefs of the Bullet types and the 3 element constructor is deprecated
+Comment by MarkyMark2012 on 2012-07-12:
+Thanks - I'll have another crack at is over the weekend see if is starts to play ball
+Comment by Lorenz on 2012-07-12:
+Thanks Eric! +1
+Comment by MarkyMark2012 on 2012-07-16:
+Thanks both - went with tf::createQuaternionFromRPY - did the job nicely
+

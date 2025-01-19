@@ -1,0 +1,79 @@
+Q:
+
+With ueye_cam, no image published, rqt_image_view crashes
+
+I'm not yet succesful in using ueye_cam at all. Issues I'm facing are:
+
+Out of a few .launch files available, I don't know which one to use for what cases.
+
+I rarely see the image topics published so far. On ueye's GUI that's provided by the seller the cameras are connected and I can see the images via its viewer too.
+
+rqt_image_view crashes when I choose to show image_raw. Log snippets is below (more lengthy log):
+
+    what():  Image is wrongly formed: step != width * byte_depth * num_channels  or  4800 != 640 * 1 * 3
+
+    [ERROR] [1383131645.310434350]: Failed to acquire image from UEye camera 'slave2' (IS_TIMED_OUT)
+    [ERROR] [1383131645.322152805]: Compressed Depth Image Transport - Compression requires single-channel 32bit-floating point or 16bit raw depth images (input format is: rgb8).
+    [ERROR] [1383131645.322248342]: cv_bridge exception: 'Image is wrongly formed: step != width * byte_depth * 
+
+- Had to patch `CMakeLists.txt` in order to pass `catkin_make` like this (not sure if this is correct though):
+
+#set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS} -g -Wall")
+set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS} -g -Wall")
+
+(I just favored over ueye package, with which some people reported error but I'm not really sure. I might give a shot to it too.)
+@anqixu I think you're the developer. I appreciate a lot if you could help me out.
+Ubuntu 12.04, ROS Groovy
+
+Update-1) @anqixu Thanks for immediate response. The output of roslaunch ueye_cam rgb8.launch is posted here.
+Also, rostopic:
+$ rostopic hz /UI122xLE_C/image_raw
+subscribed to [/UI122xLE_C/image_raw]
+average rate: 30.883
+    min: 0.017s max: 0.043s std dev: 0.00510s window: 27
+average rate: 30.353
+    min: 0.017s max: 0.043s std dev: 0.00454s window: 57
+
+Still, choosing UI122xLE_C/image_raw on rqt_image_view crashes with the same error I cited above.
+
+Update-2) Using the latest commit,
+$ rostopic hz /UI122xLE_C/image_raw
+WARNING: topic [/UI122xLE_C/image_raw] does not appear to be published yet
+$ rostopic list
+/camera/camera_info
+/camera/image_raw
+/camera/image_raw/compressed
+/camera/image_raw/compressed/parameter_descriptions
+/camera/image_raw/compressed/parameter_updates
+/camera/image_raw/compressedDepth
+/camera/image_raw/compressedDepth/parameter_descriptions
+/camera/image_raw/compressedDepth/parameter_updates
+/camera/image_raw/theora
+/camera/image_raw/theora/parameter_descriptions
+/camera/image_raw/theora/parameter_updates
+/nodelet_manager/bond
+/rosout
+/rosout_agg
+/ueye_cam_nodelet/parameter_descriptions
+/ueye_cam_nodelet/parameter_updates
+
+By the way uEye Camera Manager v1.7.2 says the model of the camera is UI155xSE-C.
+
+Originally posted by 130s on ROS Answers with karma: 10937 on 2013-10-30
+Post score: 2
+
+Original comments
+Comment by anqixu on 2013-11-08:
+Re. Update-2): The latest commit changed the topic name to /camera/image_raw. You need to manually edit the launch file if you would to use a different camera namespace.
+Also, the extended log (pastebin.com/Km2zVU0N) shows you running master_slaves_rgb8.launch. Try rgb8.launch instead.
+
+A:
+
+Hi. I would need to know a bit more info before I can help you out. Please try running rgb8.launch, [IMPORTANT!] connect to the image topic (e.g. by running "rostopic hz /UI122xLE_C/image_raw" on a separate terminal), wait for ~5 sec, and paste the entire output of the roslaunch (e.g. on pastebin.com).
+Also, thank you for reporting the c++11 flag compile error; I eagerly upgraded to g++4.7, which supports c++11, and forgot to use the backward-compatible c++0x flag instead.
+Edit: the extended log (pastebin.com/Km2zVU0N) shows execution log from running master_slaves_rgb8.launch. In this particular case, only slave2 had a camera connected, and it was configured (in the launch file, see "ext_trigger_mode") to be externally triggered. Assuming that nothing is wired to the camera, then it will spit out garbage images at a unpredictable rate. Please consider using rgb8.launch or bayer_rggb_image_proc.launch for single-camera usage.
+
+Originally posted by anqixu with karma: 193 on 2013-10-30
+This answer was ACCEPTED on the original site
+Post score: 2
+

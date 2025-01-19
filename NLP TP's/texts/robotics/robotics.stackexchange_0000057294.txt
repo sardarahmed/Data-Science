@@ -1,0 +1,110 @@
+Q:
+
+catkin: how to set up build dependencies of two packages correctly?
+
+Hello dear ROS-community!
+I am currently struggeling with the setup of "CMakeLists.txt" and "package.xml" of two selfmade catkin packages. To my eyes it does not seem to be a very complicated situation, but somehow I am not able to make it work...
+Here is the situation:
+Package A builds a c++ library, Package B uses and links against this library.
+From my understanding, the CMakeLists.txt of Package A should therefore look something like this:
+
+CMakeLists.txt Package A:
+cmake_minimum_required(VERSION 2.8.3)
+project(Package_A)
+find_package(catkin REQUIRED COMPONENTS
+ roscpp
+ rospy
+)
+
+catkin_package(
+INCLUDE_DIRS include 
+LIBRARIES libmylibrary.so 
+CATKIN_DEPENDS roscpp rospy
+# DEPENDS system_lib
+)
+
+Package.xml Package A:
+<name>Package_A</name>
+<version>0.0.0</version>
+<description>The A package</description>
+<maintainer email="foo@bar.de">foobar</maintainer>
+<license>TODO</license>
+<buildtool_depend>catkin</buildtool_depend>
+<build_depend>roscpp</build_depend>
+<build_depend>rospy</build_depend>
+<run_depend>roscpp</run_depend>
+<run_depend>rospy</run_depend>
+
+So now here comes package B, which needs the library of Package A:
+CMakeLists.txt Package B:
+cmake_minimum_required(VERSION 2.8.3)
+project(Package_B)
+find_package(catkin REQUIRED COMPONENTS
+ roscpp
+ rospy
+ Package_A
+)
+
+catkin_package(
+# INCLUDE_DIRS include 
+# LIBRARIES libmylibrary.so 
+CATKIN_DEPENDS Package_A
+# DEPENDS system_lib
+)
+
+Package.xml Package B:
+<name>Package_B</name>
+<version>0.0.0</version>
+<description>The B package</description>
+<maintainer email="foo@bar.de">foobar</maintainer>
+<license>TODO</license>
+<buildtool_depend>catkin</buildtool_depend>
+<build_depend>roscpp</build_depend>
+<build_depend>rospy</build_depend>
+<build_depend>Package_A</build_depend>
+<run_depend>roscpp</run_depend>
+<run_depend>rospy</run_depend>
+<run_depend>Package_A</run_depend>
+
+In this configuration, it is not possible to run "catkin_make", it will stop with the following error:
+Project 'Package_B' tried to find library 'libmylibrary.so'. The library is neither a target nor built/installed properly.  Did you compile project 'Package_A'?
+Why doesn't catkin see the dependency and build the library first, so that the other package can find it?
+My only workaround at the moment is to remove the dependencies, build the library stand-alone, put the dependency back in and then build the rest. What am I doing wrong?
+Thanks for your answers
+
+Originally posted by psei on ROS Answers with karma: 318 on 2014-02-18
+Post score: 2
+
+Original comments
+Comment by gvdhoorn on 2014-02-18:
+Is this copy-paste from your actual CMakeLists.txt? Cause there is no add_library() statement in Package_A's CMakeLists.txt, so no library would be ever build?
+Comment by psei on 2014-02-18:
+Yes, it is copy-paste from my CMakeLists, but I think "add_library()" is not necessary. See my solution below, I needed to change the name of the library, so CMake can identify it as a target.
+Comment by Dirk Thomas on 2014-02-18:
+add_library is definitely necessary. That is the CMake command to create a library target.
+Comment by psei on 2014-02-18:
+Yeah I see that now, i misunderstood the first comment of gvdhoorn.... Of course add_library() is needed. What I posted is not the complete makefile, just the parts where the catkin dependencies are configured. Building at all was not my problem, but making those packages build together didn't work.
+
+A:
+
+The Problem can be solved by changing "libmylibrary.so" to "mylibrary" in the following lines of CMakeLists.txt of Package A:
+from:
+catkin_package(
+INCLUDE_DIRS include 
+LIBRARIES libmylibrary.so 
+CATKIN_DEPENDS roscpp rospy
+# DEPENDS system_lib
+)
+
+to:
+catkin_package(
+INCLUDE_DIRS include 
+LIBRARIES mylibrary
+CATKIN_DEPENDS roscpp rospy
+# DEPENDS system_lib
+)
+
+Originally posted by psei with karma: 318 on 2014-02-18
+This answer was ACCEPTED on the original site
+Post score: 1
+

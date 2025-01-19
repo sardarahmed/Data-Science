@@ -1,0 +1,129 @@
+Q:
+
+ROS node can not import a class
+
+Hello everyone, 
+I am not sure that my problem is ROS related, but I have made a ROS node that was successfully working before I try to import a class inside it.
+Now, I get an undefined reference every catkin_make :
+CMakeFiles/attachPoint.dir/src/attachPoint.cpp.o: In function `main':
+attachPoint.cpp:(.text+0x4c5): undefined reference to `Magnet::Magnet(ros::NodeHandle)'
+collect2: error: ld returned 1 exit status
+
+I did try to modify the cmakelist to make it work, but I was not successfull.
+This is my main where I get the error :
+#include <ros/ros.h>
+#include <tf/tf.h>
+#include "magnet.h"
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "attachPoint");
+    ros::NodeHandle nh;
+
+    Magnet mgt = Magnet(nh);
+[...]
+}
+
+Cmakelist :
+cmake_minimum_required(VERSION 2.8.3)
+project(approche)
+
+find_package(catkin REQUIRED COMPONENTS
+  message_generation
+  roscpp
+  rospy
+  std_msgs
+  mavros
+  aruco_detect
+  geometry_msgs
+)
+
+ add_message_files(
+    FILES
+    posmarker.msg
+#   Message2.msg
+ )
+
+ generate_messages(
+   DEPENDENCIES
+   std_msgs
+   geometry_msgs
+ )
+
+catkin_package(
+#  INCLUDE_DIRS include
+#  LIBRARIES approche
+  CATKIN_DEPENDS roscpp std_msgs aruco_detect mavros message_runtime
+#  DEPENDS system_lib
+)
+
+include_directories(
+# include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(attachPoint src/attachPoint.cpp)
+target_link_libraries(attachPoint ${catkin_LIBRARIES})
+
+This the header file of my class magnet.h
+#include <ros/ros.h>
+#include <dynamic_reconfigure/IntParameter.h>
+#include <std_msgs/Int16.h>
+
+class Magnet
+{
+public:
+    Magnet(ros::NodeHandle mynode);
+
+    void boost(void);
+
+    void off(void);
+
+    void down(void);
+    
+    int getPWMBoost(void);
+
+    void setPWMBoost(int mypwm);
+
+    int getPWMDown(void);
+
+    void setPWMDown(int mypwm);
+
+private:
+    ros::NodeHandle nh;
+    ros::Publisher sendOrder_pub;
+
+    std_msgs::Int16 data_magnet;
+    void magnet_cb(const std_msgs::Int16::ConstPtr& data);
+    ros::Subscriber magnet_sub;
+    dynamic_reconfigure::IntParameter sendOrder;
+
+    bool read;
+};
+
+Best regards.
+
+Originally posted by oiseau on ROS Answers with karma: 32 on 2019-03-19
+Post score: 0
+
+Original comments
+Comment by christophebedard on 2019-03-19:
+Please include the CMakeLists.txt file in your post!
+Comment by oiseau on 2019-03-19:
+Done, don't worry about messages that are not including in the main, I just put the essentials here.
+
+A:
+
+I got the answer and that was pretty simple.
+I only needed to change this line in the cmakelist :
+add_executable(attachPoint src/attachPoint.cpp src/magnet.cpp)
+target_link_libraries(attachPoint ${catkin_LIBRARIES})
+
+Originally posted by oiseau with karma: 32 on 2019-03-20
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by christophebedard on 2019-03-22:
+Yes, usually you list all of your .cpp files in add_executable(). Only noticed that after everything else!
+

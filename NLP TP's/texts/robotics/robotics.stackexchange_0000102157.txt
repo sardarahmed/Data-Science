@@ -1,0 +1,70 @@
+Q:
+
+Hokuyo UST-10LX connected via Ethernet and urg_node
+
+Hello,
+TL;DR
+When I don't use urg_node with Hokuyo UST-10LX, I can see ROS2 topics from the robot on the other PC, after using urg_node with the Hokuyo laser scanner - ros2 topic list doesn't have them, ssh doesn't work either, I don't know why?
+My configuration:
+
+ROS 2 Galactic, Ubuntu 20.04 on each PC and an Intel NUC on the TurtleBot 2
+
+Everything is on the local network with addresses in 192.168.5.xxx, i.e. TB2 IP is 192.168.5.55, the PC IP is 192.168.5.100 etc. Gateway's IP: 192.168.5.1.
+
+TB2 has Hokuyo UST-20LX connected via Ethernet cable to Intel NUC, NUC has a WiFi internet access; default IP of the Hokuyo sensor is 192.168.0.10 (important later).
+
+To see other ROS topics on the local network on my PC, that are published by nodes running on TB2 or other computer, I need to add this route on the PC and similar on the TB2:
+sudo route add -net 192.168.5.0 gw 192.168.5.1 netmask 255.255.255.0 dev wlp7s0
+I was able to use ros2 run demo_nodes_py talker on the PC and see it on the TB2 (ros2 run demo_nodes_py listener), same with analogous situation - talker on the TB2 and listener on the PC. It seems that everything works as expected.
+Everything broke down when I added the Hokuyo connected via Ethernet cable - I couldn't see (ros2 topic list) any other topics or send/listen to any messages.
+When I tried to change Hokuyo's IP from the default 192.168.0.10 to the 192.168.5.65 and restarted the whole robot and it's NUC, it seemingly broke the Internet connection - I couldn't ssh to the TB2 or see the robot's ROS topics in the network on the PC.
+I found some other questions which seems to be related to this problem, but I can't find a solution:
+
+https://answers.ros.org/question/297291/error-connecting-to-hokuyo-could-not-open-network-hokuyo/
+
+https://github.com/ros-drivers/urg_node/issues/79
+
+https://www.finnrietz.dev/linux/hokuyo-ros-setup/
+
+https://answers.ros.org/question/211508/etcnetworkinterfaces-configuration-for-urg-node/
+
+How can I use the TB2 with Hokuyo LiDAR connected via Ethernet, with TB2 accessing the Internet via WiFi (so I could ssh to it) and with ROS2 DDS working as it should (e.g. topics from TB2 are visible from another PC on the same network)?
+
+Originally posted by ljaniec on ROS Answers with karma: 3064 on 2022-07-21
+Post score: 1
+
+Original comments
+Comment by igrak34 on 2022-07-22:
+I encountered same problem, so if someone knows how to fix it please share.
+
+A:
+
+With help of my friend I get it to work, I will try to describe changes with steps:
+
+I don't need to use any route add - I deleted every added route with sudo route del ...
+
+Wired connection on the TB2 with Hokuyo LiDAR - settings: IP 192.168.0.15 with netmask 255.255.255.0 without gateway
+
+For the working DDS I had to use this setup guide, with preparation of XML settings file called cyclonedds.xml (I changed wifi0 to wlp58s0, check it with ifconfig for your case):
+
+<?xml version="1.0" encoding="UTF-8"?>  
+<CycloneDDS xmlns="https://cdds.io/config"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="https://cdds.io/config
+https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+    <Domain id="any">
+        <General>
+            <NetworkInterfaceAddress>wifi0</NetworkInterfaceAddress>
+        </General>
+    </Domain>  
+</CycloneDDS>
+
+(XML isn't showing nice in this editor, so there is the picture too)
+
+and then put export CYCLONEDDS_URI=file://$PWD/cyclonedds.xml in the ~/.bashrc
+I could then launch my nodes on the TB2 with plugged-in Hokuyo, with ROS2 topics visible on the other PC.
+
+Originally posted by ljaniec with karma: 3064 on 2022-07-22
+This answer was ACCEPTED on the original site
+Post score: 1
+

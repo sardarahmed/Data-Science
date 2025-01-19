@@ -1,0 +1,31 @@
+Q:
+
+Obstacle Avoidance while Navigating
+
+I need some ideas for strategies or algorithms to apply on these strategies to perform obstacle avoidance while navigating.
+At the moment I'm doing offline path planning and obstacle avoidance of known obstacles with an occupancy grid. And running the A* algorithm over the created matrix. After that my robot follows along the resulting trajectory. This is done by splitting the whole trajectory into sub-path. The robot adjust it's heading to the new target and follows the straight line. The robot is controlled by a fuzzy logic controller to correct deviations from the ideal line (steering) and adjusting the velocity according to the steering action and distance to the target. So far so good. And it's working very well.
+As sensor system, I solely use the Google Project Tango (Motion Tracking and Area Learning for proper path following). Now I want to use the depth perception capability of the device. Getting the appropriate depth information and extracting a possible obstacle is done with a quite simple strategy. The robot analyses the depth information in front of the robot and if any object is in between the robot and the target point of the sub-path, an obstacle must be there.
+Now I'm wondering how to bypass this obstacle most efficiently. The robot is only aware of the height and width of the obstacle, but has no clue about the depth (only the front of the obstacle is scanned). Feeding the occupancy grid with this new obstacle and running again the A* algorithm is not effective, because of the missing depth. One possible strategy I could imagine is estimating a depth of the length of the grid cell, re-plan and continue the navigation. If the robot faces the same obstacle again, the depth is increased by the size of one additional grid cell length. But I think this is extremely ineffective. 
+The requirement is to only use the Google Project Tango and no additional sensors, such as ultrasonic to sense the sides.
+Update 1
+The first picture illustrates the given trajectory from the path planning (orange). The gray and blue data points are the sensed obstacles in front of the robot. The notch behind the blue obstacle is actually the wall, but is shadowed by the blue obstacle. Image 2 shows the same scene just from a different perspective.
+The issue I have to treat is, how to optimally bypass the blue obstacle even I don't know how deep it is. Driving to the left and to the right only to capture better data points (to generate a 3D model) is not possible. 
+
+Update 2
+Yes, I'm using a depth sensor, the one integrated in Google Project Tango. It's a visual measurement. A infra-red laser beams a grid onto the objects and a RGB-IR camera capture these information and evaluates the appropriate depth information.
+
+A:
+
+I think that vector field histogram method should be a good solution here. It's a method of local motion planning (avoiding local obstacles while navigating to a global target). It involves mapping measurements into cartesian occupancy grid, and making a polar obstacle density histogram from that grid. Later the direction with lowest obstacle density and closest to the desired target is selected.
+
+A:
+
+It sounds like you need a costmap.  I would project the 3D points down onto a 2D plane.  (At least the points that correspond to the height of your robot).  Then make an occupancy grid where each cell is labeled as either "free space", "obstacle", or "unknown".  You'll get something like this: 
+
+Where white is free space, blue is obstacle, and grey is unknown.  
+Points from your point cloud become the "obstacle" class obviously.  Use simple ray tracing so that points between the robot and obstacle are "free space".  And everything else is unknown.  (i.e. points beyond the obstacle or max distance of your sensor).  Then use these as costs in your A* path planner.  Allow the robot to plan paths through unknown space, but make it cost more than free space.  
+Other notes:
+
+Typically, you bloat the obstacle cells by at least the robot's radius so it doesn't get too close to them.
+You can do this probabilisticly if your robot/sensor has noise, or you are in a dynamic environment.  Here, "free", "obstacle", and "unknown" are now floating values based on a number of past sensor readings.
+

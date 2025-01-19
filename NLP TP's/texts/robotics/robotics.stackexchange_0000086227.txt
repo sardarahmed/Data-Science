@@ -1,0 +1,61 @@
+Q:
+
+Get Arm Gravity Compensation Joint Efforts from URDF, Joint Positions, and Grav Vector?
+
+Given:
+
+a URDF
+the current joint positions
+a gravity vector
+
+I want to calculate the joint efforts needed to compensate for gravity ("achieve weightlessness").
+Is there an existing (ROS) package that will do this (preferably Python b/c existing code)?
+I've been searching but haven't been able to find anything yet. Best lead (I think) is https://github.com/orocos/orocos_kinematics_dynamics/tree/master/python_orocos_kdl.
+
+Originally posted by josephcoombe on ROS Answers with karma: 697 on 2018-03-28
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-03-28:
+It's not a ROS package, but would RBDL work for you? According to it's documentation:
+
+There are multiple ways of creating Models for RBDL:
+
+Loading models from URDF (the Unified Robot Description Format) xml files or strings using the URDFReader addon
+
+Comment by gvdhoorn on 2018-03-28:
+KDL should also be able to do this I believe, but I haven't used it myself for this particular purpose.
+Comment by josephcoombe on 2018-04-05:
+@gvdhoorn Thanks for recommendations. After your suggestion, I looked into RBDL a little bit, but ended up going with KDL (since it's URDF support seems more mature/tested). PyKDL ended up having what I needed.
+
+A:
+
+I figured out how to calculate joint efforts from gravity using KDL's Python API.
+The kdl.ChainDynParam class provides a JntToGravity method which will produce the joint torques needed to counteract the effects of gravity.
+Example:
+import PyKDL as kdl
+
+# Given: kdl_tree, base_link, end_link
+
+chain = kdl_tree.getChain(base_link, end_link)
+# Assuming: chain contains 3 rotational joints
+
+grav_vector = kdl.Vector(0, 0, -9.81)  # relative to kdl chain base link
+dyn_kdl = kdl.ChainDynParam(chain, grav_vector)
+jt_positions = kdl.JntArray(3)
+jt_positions[0] = 0.0
+jt_positions[1] = 0.0
+jt_positions[2] = 0.0
+
+grav_matrix = kdl.JntArray(3)
+dyn_kdl.JntToGravity(jt_positions, grav_matrix)
+
+gravity_compensating_jt_torques = [grav_matrix[i] for i in range(grav_matrix.rows())]
+
+Orocos KDL repository: https://github.com/orocos/orocos_kinematics_dynamics
+PyKDL Documentation (incomplete): http://docs.ros.org/diamondback/api/kdl/html/python/
+
+Originally posted by josephcoombe with karma: 697 on 2018-04-05
+This answer was ACCEPTED on the original site
+Post score: 0
+

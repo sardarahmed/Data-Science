@@ -1,0 +1,86 @@
+Q:
+
+Error with gripper action server client connection
+
+I am trying to control the gripper of a 6 DOF arm(dynamixel based). The gripper is a 2 finger gripper controlled by a single dynamixel servo. I have generated the moveit config file using moveit setup assistant for the arm along with the gripper. Following are the settings:
+Within moveit/config/controllers.yaml
+controller_list: 
+- name: cool400_trajectory_controller
+action_ns: follow_joint_trajectory
+type: FollowJointTrajectory
+default: true
+joints:
+  - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+ - name: cool400_gripper_controller
+action_ns: gripper_action
+type: GripperCommand
+default: true
+joints:
+  - left_gripper_joint
+
+I customized the gripper controller code written by 'Dave Coleman' and launched it along with moveit's move_group.launch
+https://github.com/davetcoleman/clam/blob/indigo-devel/clam_controller/src/clam_gripper_controller.cpp
+I get the following error:
+[ERROR] [1438173750.465511476]: Unknown controller type: 'Cool1000GripperCommand'
+
+I checked if the action files are available inside the cool1000_msgs and found that Cool1000GripperCommand.action file exists.
+Investigated further with the following results:
+Published static values to check if the gripper moves on sending commands to the corresponding dynamixel servo.
+rostopic pub /gripper_controller/command std_msgs/Float64 "data: 0.0"
+
+On doing this gripper is controllable.However, when the gripper is tried to be controlled via action client setup it does not work.
+First launched the cool400_gripper_controller server which has the source code in the above mentioned link. Then launched the client which sends the commands to open/close the gripper.
+https://github.com/davetcoleman/clam/blob/indigo-devel/clam_controller/src/clam_gripper_controller_test.cpp
+Following are the errors:
+[ERROR] [1438682672.723875634]: Unable to control end effector: servo not responding
+[ERROR] [1438682672.723906583]: Failed to complete gripper action
+
+Originally posted by Sphenops on ROS Answers with karma: 5 on 2015-07-29
+Post score: 0
+
+A:
+
+In your controllers.yaml, you have the type set to GripperCommand.
+I guess this should be Cool1000GripperCommand.
+
+If you check the source code, you see that the message comes from the function endEffectorResponding on Line 203.
+There, it is checking the status of the dynamixel motor, which it receieves over the topic /gripper_finger_controller/state of type dynamixel_hardware_interface::JointState (see ll. 160 and 70 for this).
+Is the output of your driver correct there? I.e. is topic name and content as expected (especially the alive flag)?
+
+Originally posted by mgruhler with karma: 12390 on 2015-07-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Sphenops on 2015-07-29:
+Thanks for your reply mig, that was a good catch, I never noticed that. However, now after changing I get the following error:
+[ERROR] [1438169877.040095410]: Unknown controller type: 'Cool1000GripperCommand'
+Comment by mgruhler on 2015-07-29:
+Please send a new question if this is solved (and accept this one ;-) )
+Or update your question by using the edit button below your question.
+Comment by Sphenops on 2015-07-29:
+Thanks for narrowing down the problem Mig. Yes, your answer solved the previous problem. I have edited the question with a new one.
+Comment by mgruhler on 2015-07-30:
+I'm sorry, but there is no error shown. So everything is good? :-)
+Comment by Sphenops on 2015-07-30:
+I have edited the question again. For some reason the error was not visible in the question.
+Comment by mgruhler on 2015-08-07:
+Sorry for getting back to this only now.
+But I cannot help you with that. I mean the error clearly states what the problem is, however, without the respective hardware there is (almost) no way to debug it... Probably some problem with your action server or dynamixel driver. But that are just guesses
+Comment by Sphenops on 2015-08-07:
+The drivers does not seem to have problem as the commands can be sent and read from the dynamixel servos. The problem comes when the action client server architecture comes into picture.
+Comment by mgruhler on 2015-08-07:
+Edited the answer...
+Comment by Sphenops on 2015-08-07:
+I am sorry! I did not mention about this change. I had to change the alive flag to is_moving flag as it had compile errors. And also another point:For an unknown reason this flag status does not change when the gripper is moved. So I removed that dependency throughout the code.
+Comment by mgruhler on 2015-08-07:
+alright. so without the REAL CODE you are using, there is no way to help you...
+But there seems to be something wrong there...
+Comment by Sphenops on 2015-08-07:
+The code is the same excepting this active flag replaced to is_moving which is commented now as it's not working as expected even outside the action client environment. I am debugging it further. Anyway thanks a lot for your time and inputs. I will update once I find the solution.
+

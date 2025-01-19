@@ -1,0 +1,150 @@
+Q:
+
+Converting x, y, z array to point cloud data
+
+Hello ROS developers,
+I am trying to convert a2D array to a point cloud value and publish it thereby visualising it in rviz. Can anyone guide me to solve the below issue which I am facing during the conversion ?
+This is the code and I get the error stated below that.
+def scanProcessing(msg):
+    laserProj = LaserProjection()
+    cloud_out = laserProj.projectLaser(msg)
+    xyz_array = ros_numpy.point_cloud2.pointcloud2_to_xyz_array(cloud_out)
+    stamp = rospy.Time.now()
+    frame_id = 'odom'
+    xyz_coordinate = [[x[i],y[i], z[i]] for i in range(len(x))]
+    print(xyz_array)
+    header = std_msgs.msg.Header()
+    header.stamp = rospy.Time.now()
+    header.frame_id = 'map'
+    cloud_msg = ros_numpy.point_cloud2.array_to_pointcloud2(xyz_array, stamp, frame_id)
+    pointcloud_publisher.publish(cloud_msg)
+
+if __name__ == "__main__":
+    rospy.init_node('scan_processor')
+    pointcloud_publisher = rospy.Publisher("/my_pointcloud_topic", PointCloud, queue_size=1)
+    scanSubscriber = rospy.Subscriber('/robot2/scan', LaserScan, scanProcessing, queue_size=1)        
+    rospy.spin()
+
+The Error observed is:
+[ERROR] [1614671648.584787, 6.342000]: bad callback: <function scanProcessing at 0x7f88928728b0>
+Traceback (most recent call last):
+  File "/opt/ros/noetic/lib/python3/dist-packages/rospy/topics.py", line 750, in _invoke_callback
+    cb(msg)
+  File "pointCloud_v8.py", line 120, in scanProcessing
+    cloud_msg = ros_numpy.point_cloud2.array_to_pointcloud2(xyz_array, stamp, frame_id)
+  File "/opt/ros/noetic/lib/python3/dist-packages/ros_numpy/point_cloud2.py", line 147, in array_to_pointcloud2
+    cloud_msg.fields = dtype_to_fields(cloud_arr.dtype)
+  File "/opt/ros/noetic/lib/python3/dist-packages/ros_numpy/point_cloud2.py", line 92, in dtype_to_fields
+    for field_name in dtype.names:
+TypeError: 'NoneType' object is not iterable
+
+P.S: As I understand this is a bit basic question. I would really appreciate some answers which could help me to continue my ROS journey
+Edit 1: To emphasize more on the issue side from the comments :
+Inside the function array_to_pointcloud2 there is a conversion to a 2D array. After which an object of pointCloud2 is created and the field attribute is associated with the data type of the array which in my case is 'float64'
+So basically dtype = 'foat64'
+All all good till the below function, iteration over dtype.names takes place which is None (which is logical), is there anything which we must do to tag it along with the dtype ?
+ def dtype_to_fields(dtype):
+         fields = []
+         for field_name in dtype.names:
+             np_field_type, field_offset = dtype.fields[field_name]
+             pf = PointField()
+             pf.name = field_name
+             if np_field_type.subdtype:
+                 item_dtype, shape = np_field_type.subdtype
+                 pf.count = np.prod(shape)
+                 np_field_type = item_dtype
+             else:
+                 pf.count = 1 ...(more code)...
+
+Originally posted by Vignesh_93 on ROS Answers with karma: 43 on 2021-03-02
+Post score: 0
+
+Original comments
+Comment by Ranjit Kathiriya on 2021-03-03:
+Could you be more specific? For troubleshooting, you can do check your variables and check the output by printing it and compare with this link
+
+ros_numpy.point_cloud2.array_to_pointcloud2(xyz_array, stamp, frame_id)
+
+Over here, check the variables.
+Comment by Vignesh_93 on 2021-03-05:
+The gist is that the iteration takes place over an non iterate-able object. I think I am missing to add some parameters which I would be happy to learn from others if they find it correctly.
+Comment by Ranjit Kathiriya on 2021-03-05:
+Hello, can you please! describe what hardware you are using over here?
+Comment by Vignesh_93 on 2021-03-05:
+I am getting the scan topics from rplidar which is attached to a bot and I run the ros master on a ubuntu 20.04 pc (which does the conversion of scan to pcd , filtering and some computations and then converting back to point cloud data). Not sure why hardware comes into pplay over here.
+Comment by Ranjit Kathiriya on 2021-03-05:
+I have done integration with 3d camera and not explored lidar. Sorry bro
+Comment by Vignesh_93 on 2021-03-06:
+Yeah No problem. I am able to convert the laser scan to point cloud data but stuck up in reversing
+
+A:
+
+hi @vignesh_93,
+With the PointCloud2 message type you need to tell it what fields you want within it. It was written in a way so that PointCloud2 could be used for many different types of pointclouds (xyz, xyzi, xyzrgb, etc.).
+I just recently contributed an example on how to publish a pointcloud2 message. You should be able to use that example to set the fields correctly for your message type (x, y, z I think).
+#!/usr/bin/env python
+from __future__ import print_function
+
+import rospy
+import numpy as np
+from sensor_msgs import point_cloud2
+from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointField
+from std_msgs.msg import Header
+
+width = 100
+height = 100
+
+def publishPC2(count):
+    fields = [PointField('x', 0, PointField.FLOAT32, 1),
+              PointField('y', 4, PointField.FLOAT32, 1),
+              PointField('z', 8, PointField.FLOAT32, 1),
+              PointField('intensity', 12, PointField.FLOAT32, 1)]
+
+    header = Header()
+    header.frame_id = "map"
+    header.stamp = rospy.Time.now()
+
+    x, y = np.meshgrid(np.linspace(-2,2,width), np.linspace(-2,2,height))
+    z = 0.5 * np.sin(2*x - count/10.0) * np.sin(2*y)
+    points = np.array([x,y,z,z]).reshape(4,-1).T
+
+    pc2 = point_cloud2.create_cloud(header, fields, points)
+    pub.publish(pc2)
+
+if __name__ == '__main__':
+    rospy.init_node('pc2_publisher')
+    pub = rospy.Publisher('points2', PointCloud2, queue_size=100)
+    rate = rospy.Rate(10)
+
+    count = 0
+    while not rospy.is_shutdown():
+        publishPC2(count)
+        count += 1
+        rate.sleep()
+
+Once you identify your fields, you should then use the create_cloud function rather than the one you are using above.
+Hope this helps.
+
+Originally posted by flynneva with karma: 191 on 2021-03-06
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Vignesh_93 on 2021-03-06:
+@flynneva
+Thank you very much for the help. I am able to publish and visualize it in rviz
+Comment by flynneva on 2021-03-10:
+@vignesh_93 no problem! if you could "up-vote" the answer to mark it as "answered" that would be great
+Comment by dvy on 2022-08-12:
+@flynneva: What does 'count' contain? And where are we reading the actual xyz values? From the example, i infer that we are making our own values using numpy's linspace and meshgrid functionality. Also, I could not understand the trigonometry used for z calculation. Please help to explain this part. Sorry for the trouble, I understood after devoting some time and taking a closer look. Thanks for the help!!!
+Comment by flynneva on 2022-08-14:
+@vignesh_93 I'll try to answer most of your questions:
+
+count is just an index of how many times the publisher is triggered by the rate (10Hz above)
+In the example above we are not reading any values but rather packing values into a message and then publishing the message.
+Yes we are just making a grid of points and using those for x and y
+z is calculated to be just a value from 1 to -1 based on its position in the grid.
+The sin() is used to just keep the values between 1 and -1
+The count in there is just to "move" the waves across the grid to give the pointcloud the perception of moving waves through water.
+

@@ -1,0 +1,78 @@
+Q:
+
+Fail to build create_gazebo_plugins package on Mac OS X 10.9
+
+Hi all!
+upon
+rosinstall_generator turtlebot_gazebo --rosdistro hydro --deps --wet-only --tar > turtlebot.list
+wstool merge -t src turtlebot.list
+wstool update -t src
+./src/catkin/bin/catkin_make_isolated --install
+
+I end up with multiple "undefined symbol" errors. https://gist.github.com/anaderi/a321476446aa7f828635
+These message are result of the following command: https://gist.github.com/anaderi/a321476446aa7f828635#file-link-cmd
+Has anyone managed to build this package? (it is one of dependencies for turtlebot simulator (http://answers.ros.org/question/158641/turtlebot-navigation-on-hydro-osx/), which I'm actually interested in most of all)
+(Sorry for not workable links, but is seems like a workaround for my lack of karma)
+
+Originally posted by anaderi on ROS Answers with karma: 11 on 2014-05-26
+Post score: 1
+
+A:
+
+The following instructions work for me on OS X 10.9 after patching a few packages. This builds, but I haven't tested running it. avahi seems to be a Linux-only thing, so we won't install related packages. I guess you don't need them for you purpose.
+Edit: forgot one patch.
+mkdir turtlebot_ws
+cd turlebot_ws
+. /opt/ros/hydro/setup.bash
+
+# download source, but exclude zeroconf_avahi since this seems to be linux only thing
+rosinstall_generator turtlebot_gazebo --rosdistro hydro --deps --wet-only --tar --exclude RPP zeroconf_avahi > turtlebot.list
+wstool init -j8 src turtlebot.list
+
+# manually install dependencies (rosdep rules are not complete on osx)
+brew install libftdi0 libusb-compat
+
+# the following is a dependency, but not needed for compiling. So you might need them to execute, or you might not.
+brew install redis
+
+# check what rosdep has to say
+rosdep check --from-path src -i --skip-keys "avahi-utils ftdi-eeprom libftdi-dev avahi-daemon libusb-dev redis-server"
+# this should only tell you to install "gcc" and "ros/hydro/zeroconf_avahi_suite", ignore those. 
+# Install any additional packages coming up here by hand.
+
+# apply patches
+pushd src/openni_camera
+curl https://github.com/ros-drivers/openni_camera/pull/22.patch | patch -p1
+popd
+
+pushd src/ecl_core
+curl https://github.com/stonier/ecl_core/pull/36.patch | patch -p1
+popd
+
+pushd src/ecl_lite
+curl https://github.com/stonier/ecl_lite/pull/5.patch | patch -p1
+popd
+
+pushd src/kobuki_desktop
+curl https://github.com/yujinrobot/kobuki_desktop/pull/30.patch | patch -p1
+popd
+
+pushd src/turtlebot_create_desktop
+curl https://github.com/turtlebot/turtlebot_create_desktop/pull/14.patch | patch -p1
+popd
+
+pushd src/kobuki_core
+curl https://github.com/yujinrobot/kobuki_core/pull/14.patch  | patch -p1
+popd
+
+# build
+catkin_make -DCMAKE_BUILD_TYPE=Release
+
+Originally posted by demmeln with karma: 4306 on 2014-05-28
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by meneguzzi on 2014-10-17:
+I just tried following your instructions to compile the turtlebot simulator in my Mac, it builds almost until the end, but it seems to fail to link libgazebo_ros_kobuki.dylib with exactly the same message as the OP. What can I be doing wrong?
+

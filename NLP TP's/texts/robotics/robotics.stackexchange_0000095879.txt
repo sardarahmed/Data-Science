@@ -1,0 +1,166 @@
+Q:
+
+Who publishes the map frame?
+
+ROS Melodic, Ubuntu18, Gazebo9
+Issue:
+Not able to visualize laser scan data in rviz
+Error:
+No tf data. Actual error: Fixed Frame [map] does not exist
+Steps to recreate:
+
+Launch gazebo with ros
+roslaunch gazebo_ros empty_world.launch
+Insert Hokuyo laser sensor. Go to the insert tab in gazebo and add the hokuyo model to the world. Also add a few blocks near the sensor (for visualization).
+Open rviz
+rviz
+
+Rviz gives the error as mentioned above. I have done rostopic list and saw that there was /laser/scan topic, but there was no /tf topic. I added the LaserScan visualisation to rviz.
+I did rostopic echo  on /laser/scan and the data was actually being published properly. I am not doing slam or anything, I just want to visualize the scan data in rviz.
+Who publishes this map frame? Should I be publishing this? If so, how should I?
+
+Originally posted by pravardhan on ROS Answers with karma: 38 on 2020-05-18
+Post score: 2
+
+Original comments
+Comment by Roberto Z. on 2020-05-18:
+Rviz is a ROS tool and Gazebo does not require ROS to run and does not natively publish ros topics and ros TF's. So you need an interface for using ROS with Gazebo. Following just the steps mentioned above does not provide a rostopic. Running roscore and then rviz just provides these ros topics:
+/clicked_point
+/initialpose
+/move_base_simple/goal
+/rosout
+/rosout_agg
+/tf
+/tf_static
+But if you do have a rostopic showing up a laser msg, as you mention, you should also have an URDF model with a plugin definition on it? Could you confirm?
+Comment by pravardhan on 2020-05-18:
+The included hokuyo model does use a laser plugin.
+<plugin name="laser" filename="libRayPlugin.so" />
+    <plugin name="gazebo_ros_head_rplidar_controller" filename="libgazebo_ros_laser.so">
+        <topicName>laser/scan</topicName>
+        <frameName>map</frameName>
+ </plugin>
+
+This is in the sdf of the hokuyo laser. As u can see the frameName is set to map but there is no tf topic being published. You are right that gazebo doesn't require ros to run, but see that I am not opening gazebo from my app drawer, I am opening it with the launch file which will bind gazebo to ros.
+
+A:
+
+In order to spawn a laser sensor in Gazebo and visualize the laser scan in Rviz there are some steps missing. For instance:
+You need an URDF file, this is a minimal example (lets call it laser_sensor.urdf):
+<?xml version="1.0"?>
+
+<robot name="cube_laser">
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- a cube to use as laser sensor geometry -->
+  <link name="hokuyo_link">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+    </visual>
+    <inertial>
+      <mass value="1e-5" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6" />
+    </inertial>
+  </link>
+
+  <joint name="hokuyo_joint" type="fixed">
+    <axis xyz="0 1 0" />
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="hokuyo_link"/>
+  </joint>
+    
+    <!-- placeholder for laser sensor plugin-->
+    
+    </robot>
+
+You have to add the following Gazebo tag with a plugin that interacts with ROS (put it where the placeholder is):
+  <!-- this is a laser sensor-->
+  <gazebo reference="hokuyo_link">
+      <sensor type="ray" name="laser">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>false</visualize>
+      <update_rate>40</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1</resolution>
+            <min_angle>-1.570796</min_angle>
+            <max_angle>1.570796</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.10</min>
+          <max>30.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <plugin name="gazebo_ros_laser" filename="libgazebo_ros_laser.so">
+        <topicName>laser/scan</topicName>
+        <frameName>hokuyo_link</frameName>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+<frameName> must match the name of one link in the URDF file.
+Fire up Gazebo:
+$ roslaunch gazebo_ros empty_world.launch
+Then cd to where you saved your URDF file.
+Next spawn the URDF model to Gazebo:
+$ rosrun gazebo_ros spawn_model -file laser_sensor.urdf -urdf -z 0.5 -model laser_sensor
+Load the robot model to parameter server:
+$ rosparam set robot_description --textfile laser_sensor.urdf
+To broadcast the robot model (from the URDF description) to the tf transform library run:
+$ `rosrun joint_state_publisher joint_state_publisher`  
+$ rosrun robot_state_publisher robot_state_publisher
+To verify that everything in running:
+$ `rostopic list`  
+$ rostopic echo tf_static
+Then open Rviz.
+Select the drop_down for fixed frame and type in "base_link".
+Finally add a LaserScan visualization and set the correct topic.
+I can recommend starting with these tutorials:
+Building a Visual Robot Model with URDF from Scratch
+http://wiki.ros.org/urdf/Tutorials/Building%20a%20Visual%20Robot%20Model%20with%20URDF%20from%20Scratch
+Tutorial: Using Gazebo plugins with ROS
+http://gazebosim.org/tutorials?tut=ros_gzplugins#GPULaser
+
+Originally posted by Roberto Z. with karma: 500 on 2020-05-19
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by pravardhan on 2020-05-19:
+Thank You! This worked. I understand that the key here was the *_state_publisher nodes. rostopic info showed that the tf topic was indeed published by the state publisher. The only question I have is, this seems like a whole lot of work just to visualize the LaserScan I know I can put all this in a launch file and just use that single file. Anyways, the hokuyo model provided by gazebo is an sdf model, is there any way I can do this with an sdf file? Thanks for ur answer again.
+Comment by Roberto Z. on 2020-05-20:
+I am glad that this resolved your question. You are right that the best is to add all commands into one launch file and execute that, and all that should be into one package.
+You cannot do the same using only a SDF file, you require an URDF file. Having the URDF is central to what robot_state_publisher does.
+Also you require an ROS-aware plugin, as Gazebo topics are not the same as ROS topics.
+For instance to get a list of all Gazebo topics use:
+$ `gz topic -l`
+To list all ROS topics use:
+$ rostopic list
+

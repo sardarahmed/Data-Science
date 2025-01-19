@@ -1,0 +1,53 @@
+Q:
+
+After loading the urdf model in gazebo, there is no `map` frame on the tf tree
+
+I defined a robot model with the urdf file, but after gazebo reads the urdf file, I check out the tf tree and find that there is no map frame on the tf tree. I wanna figure out how I can generate a map frame when I spawn my robot model in gazebo. Any advice will be appreciated.
+Screenshot of tf tree:
+
+My launch file:
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch this file to spawn cambot model in gazebo. -->
+<launch>
+    <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+    <arg name="paused" default="false" />
+    <arg name="use_sim_time" default="true" />
+    <arg name="gui" default="true" />
+    <arg name="headless" default="false" />
+    <arg name="debug" default="false" />
+    <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="debug" value="$(arg debug)" />
+        <arg name="gui" value="$(arg gui)" />
+        <arg name="paused" value="$(arg paused)" />
+        <arg name="use_sim_time" value="$(arg use_sim_time)" />
+        <arg name="headless" value="$(arg headless)" />
+    </include>
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find cambot_description)/urdf/cambot.urdf.xacro" />
+    <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model cambot -param robot_description"></node>
+</launch>
+
+Originally posted by anonymous38087 on ROS Answers with karma: 9 on 2019-04-01
+Post score: 0
+
+A:
+
+The problem of getting the map -> odom transformation is essentially the robot localization problem. So, if you have a map of the environment, you can use a ROS localization package like robot_pose_ekf or AMCL depending on the type of map and the sensors available.
+However, if what you need is a simple pose for the robot, you can use the libgazebo_ros_p3d.so gazebo plugin as used here.
+It will publish a nav_message/Odometry message to the specified topic. This message essentially is the map -> base_link transformation. You can manipulate this information to publish a /tf yourself. Since ROS
+doesn't allow multiple parent frames, you can't simply publish a /tf using message_to_tf. You will need to publish map -> odom by subtracting odom -> base_link from map -> base_link. A clear example is given in the AMCL implementation.
+
+Originally posted by janindu with karma: 849 on 2019-04-01
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by anonymous38087 on 2019-04-02:
+Actually, I want to run cartographer in gazebo with a simulated robot described by urdf format. I defined a laser gazebo plugin to get the simulated lidar data, but because there is no map frame in the tf tree, I can't get the map produced by the cartographer  node.
+Comment by janindu on 2019-04-02:
+Publishing the map frame in the tf tree is the responsibility of the SLAM / Localization algorithm. And Cartographer does that. Are you sure you have configured it properly? You can take a look at the lua config. You need to set the map_frame, tracking_frame and published_frame properly.
+Comment by anonymous38087 on 2019-04-02:
+Now I know the reason: the robot model I generated in gazebo was started in empty world(roslaunch gazebo_ros empty_world.launch), causing the data of the simulated laser to be all 0. Now I generate the robot in a world with some obstacles(roslaunch gazebo_ros shapes_world.launch), cartographer will update the map->odom transform on the tf tree according to the non-zero sensor_msgs/LaserScan data.
+Comment by anonymous38087 on 2019-04-02:
+Thank you, sir!
+

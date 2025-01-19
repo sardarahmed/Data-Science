@@ -1,0 +1,95 @@
+Q:
+
+ROS Unreliable Cell Signal
+
+Hi,
+I am using ROS to control robots that are many miles away. Each robot has a cell modem to connect to the internet.  I use my laptop and tinc VPN to access the robots.
+I need the ability to drive the robots around manually from inside the office. I find it easiest to plug an Xbox controller into my laptop and run the ROS Joy node. I also want to be able to drive the robot with my phone or tablet if I run out to the field to check on something.
+
+Lost signal problem
+Currently if I lose cell signal the robot keeps doing the last command it was told.
+Re-connection problem
+When the robot reconnects it starts doing old commands
+
+Originally posted by shoemakerlevy9 on ROS Answers with karma: 545 on 2018-03-12
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-03-13:\
+
+Currently if I lose cell signal the robot keeps doing the last command it was told.
+
+this sounds like your base driver does not have a command time-out built-in. Whatever you do with the 'e-stop', I would start with adding that command time-out. JoyStamped is not needed for that.
+Comment by ahendrix on 2018-03-13:
+I also suggest using the autorepeat_rate parameter to the joy node to have it publish messages at a regular rate so that you do not get a command timeout when you're not moving the controls.
+Comment by Maarten on 2018-03-13:
+Stamping allows you to identify delayed messages, but doesn't stop the robot if you lose the connection. For that use @ahendrix's autorepeat_rate and implement @gvdhoorn's timeout in the driver. If you can't change the driver, create a node sending stop when it doesn't receive new commands.
+Comment by shoemakerlevy9 on 2018-03-13:
+I've implemented these using the header from the Joy message. Now I'm realizing if I use my Andriod Teleop app which sends /cmd_vel to the robot this code won't work. I could do the same method with cmd_vel if it had a timestamp but it does not.  Why does move_base not use twist stamped. Any advice?
+Comment by gvdhoorn on 2018-03-14:
+There is no need for timestamped messages. As Twists encode velocity (and not position), everything is relative. Record the time you received a Twist and then start your watchdog timer.
+
+Why does move_base not use twist stamped?
+
+because it makes use of velocity control interfaces ..
+Comment by gvdhoorn on 2018-03-14:
+.. exposed by base drivers to implement a position control loop. Everything is relative then, and time is not that important (or at least, not when it comes to interpreting the Twist).
+
+which sends /cmd_vel to the robot
+
+cmd_vel is a topic, so that should be geometry_msgs/Twist?
+Comment by shoemakerlevy9 on 2018-03-14:
+Okay that makes sense for stopping the robot when connection is lost. How about when connection is re-established, I often see the robot start moving because its receiving old commands. I guess this wasn't stated in my original question but I would like to prevent both, scenarios.
+Comment by Maarten on 2018-03-14:
+To prevent that, you'll need to tag the messages before sending them. Or you can test that in such cases, the new command arrives quick enough to prevent problems).
+Of course, time tagging the messages before sending them is by far the most robust approach.
+Comment by shoemakerlevy9 on 2018-03-14:
+@Maarten, that's why I'm confused at why geometry_msgs/TwistStamped is not the standard for cmd_vel. In order to do what you suggest I would have to go edit the source code of the Andriod app I'm using, which I did not write. Also I would have to edit move_base source if I wanted to run it remotely.
+Comment by gvdhoorn on 2018-03-14:
+The problem here is, is that you're using a reliable transport (TCPROS), which results in msgs being delivered even in the face of packet loss. Using an unreliable transport (as would be more appropriate for velocity-based teleop over potentially lossy networks) would result in dropped msgs, ..
+Comment by gvdhoorn on 2018-03-14:
+.. which makes this somewhat of a non-issue.
+
+I'm confused at why geometry_msgs/TwistStamped is not the standard for cmd_vel
+
+I'm not the author of those components, but I can speculate: ROS was not designed for this use-case, so there was no need to use a stamped msg for the cmd_vel topic.
+Comment by gvdhoorn on 2018-03-14:
+I typically use UDPROS for this, but seeing as you're using a VPN, that will probably not help much. One slightly convoluted way to achieve what you want would be:
+ROS1 <-> ros2/ros1_bridge <-> ROS2 <-> ros2/ros1_bridge <-> ROS1. The ROS2 parts would use DDS, suitably configured to deal ..
+Comment by gvdhoorn on 2018-03-14:
+.. with lossy networks (ie: maximum age of msgs still delivered in case of late deliveries, etc).
+What is unknown to me is how the VPN would influence this: if it's a TCP based VPN, I'm not sure that would work, or how it would influence the QoS that DDS is trying to maintain.
+Comment by gvdhoorn on 2018-03-14:
+Alternatively you could use topic_tools/transform on the PC side to wrap your Twist in a TwistStamped (just add the stamp). Then on the robot side, have a node that selectively unwraps incoming TwistStamped msgs and publishes only those that have a maximum age.
+This would need synced ..
+Comment by gvdhoorn on 2018-03-14:
+.. clocks between the PC and robot though.
+Comment by shoemakerlevy9 on 2018-03-14:
+Using autorepeat_rate does not update the timestamp, only the sequence number.
+Comment by gvdhoorn on 2018-03-14:\
+
+Using autorepeat_rate does not update the timestamp, only the sequence number.
+
+which makes sense, as the feature makes joy resend a copy of the state of the joystick as it was last time anything changes. Timestamps encode when data was captured, not when it was sent.
+
+A:
+
+Summarizing the helpful answers in the comments above:
+Lost Signal Fix
+In order to fix the lost signal problem a command timeout can be implemented in the motor controller code. When commands are received start a timer, stop the robot if no new commands have been received in a certain period of time. If using the ROS Joy node, the autorepeat_rate parameter should be set to avoid timeouts when moving at a constant speed.
+Reconnection Fix
+The re-connection problem is trickier so solve. This issue is caused because ROS1 uses TCP to publish and subscribe to topics because it was not designed with unreliable connections in mind. TCP will sent old packets once connection is re-established.
+ROS2 provides better methods for dealing with unreliable networks, but if you aren't ready to make the switch one solution would be to use topic_tools/transform to add a timestamp to a message before it is sent over the network, and then compare the timestamp on the receiving side to the system time. The robot and remote PC's clocks would need to be synced in order for this method to be used.
+Thanks @gvdhoorn, @ahendrix, and @Maarten for the help
+
+Originally posted by shoemakerlevy9 with karma: 545 on 2018-03-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-03-14:\
+
+ROS2 provides better methods for dealing with unreliable networks, but if you aren't ready to make the switch
+
+the ros2/ros1_bridge makes it so that you don't have to 'make the switch'.
+

@@ -1,0 +1,95 @@
+Q:
+
+Where is the topic "imu/data" defined?
+
+I am running the Clearpath Husky ROS simulation (https://github.com/husky/husky) and need to change the header frame ID of the topic "imu/data" from "base_link" to add a transform prefix (overall, want it to be "husky_alpha/base_link), so that I can use navsat_transform from robot_localization. I've dug quite extensively in the launch, config, and source files, but can't find any place where I modify or alter that particular topic at all. Any advise on where to go in order to modify "imu/data" so that the header frame_id is different than the default of "base_link"?
+Thanks!
+
+Originally posted by cmcheung on ROS Answers with karma: 32 on 2020-12-29
+Post score: 0
+
+A:
+
+Here it is. If um6 or um7 is likely about the version of husky used.
+
+husky/husky_bringup/launch/um6_config/um6.launch
+husky/husky_bringup/launch/um7_config/um7.launch
+
+  <!-- Transforms UM7 tilted data in imu_link frame to ENU data in base_link frame -->
+  <node pkg="nodelet" type="nodelet" name="imu_data_transformer" args="load imu_transformer/imu_transformer_nodelet imu_manager">
+    <remap from="imu_in" to="imu_um7"/>
+    <remap from="imu_out/data" to="imu/data_raw"/>
+    <remap from="imu_out/mag" to="imu/mag"/>
+    <param name="target_frame" value="base_link"/>
+  </node>
+
+EDIT:
+from comments - Answer was:
+You said you tried changing the urdf, but did you add "" or really mistook the "" parameter maybe? Take a look -> this
+
+Originally posted by Dragonslayer with karma: 574 on 2020-12-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by cmcheung on 2020-12-29:
+Thanks for the suggestion, but that didn't change it. Going to walk through how I'm testing this to sanity check...
+First, I do a "rostopic echo" and see that the frame ID is as follows:
+user@mycomputer:~/catkin_ws$ rostopic echo  /husky_alpha/imu/data
+    header: 
+      seq: 67434
+      stamp: 
+        secs: 1696
+        nsecs: 120000000
+      frame_id: "base_link"
+
+I then went into both UM6 & 7 launch files and  changed   to 
+I then did rostopic echo again and see the frame_id did not change
+user@mycomputer:~/catkin_ws$ rostopic echo  /husky_alpha/imu/data
+header: 
+  seq: 1204
+  stamp: 
+    secs: 371
+    nsecs: 740000000
+  frame_id: "base_link"
+
+So based on that, looks like nothing changed. Seems like where the change should be is at husky.urdf.xacro, by adding frameID to the IMU plugin, but adding that does nothing as well.
+Comment by cmcheung on 2020-12-29:
+And for greater clarity, I want to change it because of the following line in navsat_transform:
+bool can_transform = RosFilterUtilities::lookupTransformSafe(tf_buffer_,
+                                                               base_link_frame_id_,
+                                                               msg->header.frame_id,
+                                                               msg->header.stamp,
+                                                               transform_timeout_,
+                                                               target_frame_trans);
+
+Right now, base_link_frame_id_ is husky_alpha/base_link, while msg->header.frame_id is just base_link. Trying to change the msg->header.frame_id to have the proper tf prefix so that it correctly matches up.
+Comment by Dragonslayer on 2020-12-30:
+Yes, sorry, just realized you are talking about simulation not the real one. The pdf from rosrun tf view_frames would be nice. Frame_id is the link name in the urdf. rosparam dump dump.yaml would be nice to have, to see if it all is actually in the same namespace. Likely navsat isnt in husky_alpha namespace or the other way arround? What does your navsat launchfile look like?
+Example from roslaunch doc - launch in namespace:
+  <!-- start listener node in the 'wg1' namespace -->
+  <node ns="husky_alpha" name="listener-wg1" pkg="rospy_tutorials" type="listener" respawn="true" />
+  <!-- start a group of nodes in the 'wg2' namespace -->
+  <group ns="husky_alpha">
+
+Comment by cmcheung on 2020-12-30:
+Sure! The frames PDF is a beast, because I'm running three robots at the same time. Here it is:
+https://drive.google.com/file/d/1q5enq6cVuBuo8UyV1OQGjKGSUe-N4diW/view?usp=sharing
+Here's the ROS params dump:
+https://drive.google.com/file/d/1AGyHU_R1acFatpYxxczBFOiJstd6vfFD/view?usp=sharing
+And I'm running navsat with just rosrun as I test it out. So I'm running:
+export ROS_NAMESPACE=/husky_alpha
+rosrun robot_localization navsat_transform_node
+
+I feel like this warrants further explanation so this makes sense. I'm working on creating a multi-robot delayed GPS way point following system. I have three Husky bots running in Gazebo. I am trying to see if I can use navsat_transform to take a GPS coordinate, and then translate that into the global coordinate frame of the robot. I'm testing this only on one bot now (husky_alpha), but would notionally want this node running on each bot (husky_beta and husky_gamma) so any one of them can be sent some GPS coordinates and transform them.
+Comment by Dragonslayer on 2020-12-30:
+You said you tried changing the urdf, but did you add "" or really mistook the "" parameter maybe? Take a look -> this.
+Comment by cmcheung on 2020-12-30:
+You found my error! I did indeed try it before, but my mistake was using the tag frameID instead of frameId. Thanks for the help!
+Comment by cmcheung on 2020-12-30:
+Do you want to pull that previous comment out as its own "Answer" post so I can mark it as "correct"? If you don't care about that, I can just pull it out myself and mark it as well; just want to ensure that people see the answer.
+Comment by Dragonslayer on 2020-12-31:
+Iam glad I could help you slay your dragon ;) Added the comment to my Answer. So it was a typo then "ID" vs "Id"?
+Comment by cmcheung on 2020-12-31:
+Yup. frameID is wrong, frameId is right.
+

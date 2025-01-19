@@ -1,0 +1,240 @@
+Q:
+
+Simultaneous dual arm movement
+
+I am attempting to plan and move two arms using moveit2 at the same time. I have setup a move group that contains both arms and am using the c++ move_group_interface to attempt to plan and execute for both arms.
+When I try to plan I get the message "No kinematics solver instantiated for group 'both_arms'"  (I have tried to add and remove "both_arms" from the kinematics.yaml but neither seems to work?)
+the rest of the planning and execution "finishes successfully" but I imagine thats because no plan is actually being sent to the move_group.
+I can successfully plan and move each arm individually but when i attempt to use the combined move group nothing seems to work
+I am also able to successfully use the rviz tool to plan and execute for both arms at the same time, its specifically with the c++ api that I am unable to.
+If anyone could point me in the right direction it would be greatly appreciated!
+c++
+      bothArmsMoveGroup->setApproximateJointValueTarget(goal_pose, "left_lower_finger_1");
+      bothArmsMoveGroup->setApproximateJointValueTarget(goal_pose, "right_lower_finger_1");
+      // Plan and execute
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+
+      bool planning_success =
+          (bothArmsMoveGroup->plan(plan) ==
+           moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+      if (planning_success) {
+        RCLCPP_INFO(LOGGER, "Planning succeeded. Executing movement...");
+        bothArmsMoveGroup->execute(plan);
+        RCLCPP_INFO(LOGGER, "Movement executed successfully.");
+      } else {
+        RCLCPP_ERROR(LOGGER, "Planning failed for %s",
+                     planningGroupName.c_str());
+      } 
+
+SRDF
+<!--This does not replace URDF, and is not an extension of URDF.
+    This is a format for representing semantic information about the robot structure.
+    A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
+-->
+<robot name="avatar-assembly-202303">
+    <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
+    <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
+    <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
+    <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
+    <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
+    <group name="left_arm">
+        <joint name="left_shoulder_joint_1"/>
+        <joint name="left_shoulder_joint_2"/>
+        <joint name="left_forearm_joint"/>
+        <joint name="left_elbow_joint"/>
+        <joint name="left_wrist_joint"/>
+        <joint name="left_hand_joint"/>
+    </group>
+    <group name="left_gripper">
+        <link name="left_finger_1"/>
+    </group>
+    <group name="right_arm">
+        <joint name="right_shoulder_joint_1"/>
+        <joint name="right_shoulder_joint_2"/>
+        <joint name="right_forearm_joint"/>
+        <joint name="right_elbow_joint"/>
+        <joint name="right_wrist_joint"/>
+        <joint name="right_hand_joint"/>
+    </group>
+    <group name="right_gripper">
+        <link name="right_finger_1"/>
+    </group>
+    <group name="both_arms">
+        <group name="left_arm"/>
+        <group name="right_arm"/>
+    </group>
+    <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
+    <group_state name="open" group="left_gripper">
+        <joint name="left_finger_joint" value="-0.6422"/>
+    </group_state>
+    <group_state name="closed" group="left_gripper">
+        <joint name="left_finger_joint" value="0.3645"/>
+    </group_state>
+    <group_state name="open" group="right_gripper">
+        <joint name="right_finger_joint" value="-0.6422"/>
+    </group_state>
+    <group_state name="closed" group="right_gripper">
+        <joint name="right_finger_joint" value="0.3645"/>
+    </group_state>
+    <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
+    <end_effector name="left_gripper" parent_link="left_lower_finger_1" group="left_gripper" parent_group="left_arm"/>
+    <end_effector name="right_gripper" parent_link="right_lower_finger_1" group="right_gripper" parent_group="right_arm"/> 
+</robot>
+
+Kinematics.yaml
+(I've tried both having a the separate kinematics for the combined group and keeping is speerate, either way it doesn't seem to work)
+left_arm:
+  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
+  kinematics_solver_search_resolution: 0.0050000000000000001
+  kinematics_solver_timeout: 0.0050000000000000001
+right_arm:
+  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
+  kinematics_solver_search_resolution: 0.0050000000000000001
+  kinematics_solver_timeout: 0.0050000000000000001
+both_arms:
+  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
+  kinematics_solver_search_resolution: 0.0050000000000000001
+  kinematics_solver_timeout: 0.0050000000000000001
+
+Launch File
+import os
+import yaml
+from launch import LaunchDescription
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
+from launch_ros.substitutions import FindPackageShare
+from launch.actions import DeclareLaunchArgument
+
+def load_file(package_name, file_path):
+    package_path = get_package_share_directory(package_name)
+    absolute_file_path = os.path.join(package_path, file_path)
+
+    try:
+        with open(absolute_file_path, "r") as file:
+            return file.read()
+    except EnvironmentError:  # parent of IOError, OSError *and* WindowsError where available
+        return None
+
+def load_yaml(package_name, file_path):
+    package_path = get_package_share_directory(package_name)
+    absolute_file_path = os.path.join(package_path, file_path)
+
+    try:
+        with open(absolute_file_path, "r") as file:
+            return yaml.safe_load(file)
+    except EnvironmentError:  # parent of IOError, OSError *and* WindowsError where available
+        return None
+
+def generate_launch_description():
+
+    robot_description_semantic_config = load_file(
+        "Moveit2", "config/avatar-assembly-202303.srdf"
+    )
+    robot_description_semantic = {
+        "robot_description_semantic": robot_description_semantic_config
+    }
+    
+    robot_description_content = Command(
+        [
+            PathJoinSubstitution([FindExecutable(name="xacro")]),
+            " ",
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("avatar"),
+                    "urdf",
+                    "avatar.xacro",
+                ]
+            ),
+        ]
+    )
+    robot_description = {"robot_description": robot_description_content}
+
+    kinematics_yaml = load_yaml(
+        "Moveit2", "config/kinematics.yaml"
+    )
+
+    planning_plugin = {"planning_plugin": "chomp_interface/CHOMPPlanner"}
+    
+    sim_arg = DeclareLaunchArgument(
+        'sim_mode',
+        default_value='false', 
+        description='Launch in sim_mode if true'
+    )
+    
+
+    return LaunchDescription(
+        [
+            sim_arg,
+            Node(
+                package="avatar",
+                executable="planner_bridge_plugin",
+                parameters=[
+                    robot_description,
+                    robot_description_semantic,
+                    kinematics_yaml,
+                    planning_plugin,
+                    {"use_sim_time": LaunchConfiguration('sim_mode')},
+                ],
+            )
+        ]
+    )
+
+A:
+
+So after trial and error and looking around for a while online I seems to have found a solution, from what I understand multi chain planning is possible but not multi chain kinematics solving. essentially this means that you need to solve the kinematics of each move group independently (moveit2 does not support multi chain kinematic solver? this doesnt seem to be specified anywhere nor mentioned in the documents) and then pass the solved joint states to the combined move group planner.
+Essentially:
+
+Use individual move_groups to calculate desired angles based on pose
+extract the joint angles
+combine the joint angles as expected by the dual arm group (this isn't documented I had to trial and error)
+then plan the movements with the dual arm group using the combined joint angles
+
+Here is my code:
+  geometry_msgs::msg::Pose rightGoalPose = msg->poses.back();
+  geometry_msgs::msg::Pose leftGoalPose = msg->poses.front();
+
+    // Calculate Kinematics for each arm individually using separate move_groups
+    leftArmMoveGroup->setJointValueTarget(leftGoalPose);
+    rightArmMoveGroup->setJointValueTarget(rightGoalPose);
+
+    std::vector<double> leftJointValue;
+    std::vector<double> rightJointValue;
+
+    leftArmMoveGroup->getJointValueTarget(leftJointValue);
+    rightArmMoveGroup->getJointValueTarget(rightJointValue);
+
+    std::vector<double> bothJointsSend;
+
+    bothJointsSend.insert(bothJointsSend.end(), rightJointValue.begin(),
+                          rightJointValue.end());
+    bothJointsSend.insert(bothJointsSend.end(), leftJointValue.begin(),
+                          leftJointValue.end());
+
+    auto successCheck = bothArmsMoveGroup->setJointValueTarget(bothJointsSend);
+
+    std::vector<double> bothJointValue;
+    bothArmsMoveGroup->getJointValueTarget(bothJointValue);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    bool planning_success =
+        (bothArmsMoveGroup->plan(plan) ==
+         moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+    if (planning_success) {
+      RCLCPP_INFO(LOGGER, "Planning succeeded. Executing movement...");
+      bothArmsMoveGroup->execute(plan);
+      // rightArmMoveGroup->execute(planRight);
+      RCLCPP_INFO(LOGGER, "Movement executed successfully.");
+    } else {
+      RCLCPP_ERROR(LOGGER, "Planning failed for both arms");
+    }
+
+```
+

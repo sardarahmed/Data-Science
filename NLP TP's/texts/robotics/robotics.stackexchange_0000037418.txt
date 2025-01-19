@@ -1,0 +1,131 @@
+Q:
+
+How to solve "Timestamps of odometry and imu are x seconds apart"?
+
+I am getting the "Timestamps of odometry and imu are x seconds apart" problem listed in robot_pose_ekf  troubleshooting. What are the possible ways to solve this?
+I am currently publishing to /odom and /imu/data in two separate nodes. I notice that turtlebot publishes both in the same turtlebot_node. Is this the only way to get the two timestamps to sync?
+
+EDIT (code snippets of publishing nodes, launch file uses the same robot_pose_ekf parameters found in turtlebot's minimal.launch)
+for node publishing odometry:
+  odom_pub = nh.advertise<nav_msgs::Odometry>("odom", 1);
+
+...
+void publish_odom(double x, double y, double theta)
+{
+// store the current pose
+  prevPose.x = cur_x;
+  prevPose.y = cur_y;
+  prevPose.theta = cur_theta;
+// calculate the new pose
+  trobot.calcOdom(&cur_x,&cur_y,&cur_theta);
+
+  current_time = ros::Time::now();
+  double dt = (current_time - last_time).toSec();
+
+  // convert rotation about z into quaternion
+  geometry_msgs::Quaternion odom_quat;
+  odom_quat.z=sin(cur_theta/2.0);
+  odom_quat.w=cos(cur_theta/2.0);
+
+  //next, we'll publish the odometry message over ROS
+  nav_msgs::Odometry odom;
+  odom.header.stamp = current_time;
+  odom.header.frame_id = "odom";
+  odom.child_frame_id = "base_footprint";
+
+  //set the position
+  odom.pose.pose.position.x = cur_x;
+  odom.pose.pose.position.y = cur_y;
+  odom.pose.pose.position.z = 0.0;
+  odom.pose.pose.orientation = odom_quat;
+  odom.pose.covariance = 
+        boost::array<double, 36>{{1e-3, 0, 0, 0, 0, 0, 
+                                0, 1e-3, 0, 0, 0, 0,
+                                0, 0, 1e6, 0, 0, 0,
+                                0, 0, 0, 1e6, 0, 0,
+                                0, 0, 0, 0, 1e6, 0,
+                                0, 0, 0, 0, 0, 1e-3}};
+
+  //set the velocity
+  odom.twist.twist.linear.x = (cur_x-prevPose.x)/dt;
+  odom.twist.twist.linear.y = (cur_y-prevPose.y)/dt;
+  odom.twist.twist.angular.z = (cur_theta-prevPose.theta)/dt;
+  odom.twist.covariance = 
+        boost::array<double, 36>{{1e-3, 0, 0, 0, 0, 0, 
+                                0, 1e-3, 0, 0, 0, 0,
+                                0, 0, 1e6, 0, 0, 0,
+                                0, 0, 0, 1e6, 0, 0,
+                                0, 0, 0, 0, 1e6, 0,
+                                0, 0, 0, 0, 0, 1e-3}};
+
+  //publish the message
+  odom_pub.publish(odom);
+  last_time = current_time;
+}
+
+And for the imu (covariance values defined in initialisation):
+imu_data_pub_ = imu_node_handle.advertise<sensor_msgs::Imu>("data", 100);
+
+...
+void publish_imu_data()
+{
+    // get gyro-stabilized quaternion, instantaneous acceleration and bias-compensated angular rate
+    if(imu.ReadQuatVect(comPort, quaternion, accel, angRate))
+    {
+
+    // convert North-East-Down (NED) to East-North-Up (ENU) coordinates
+        imu_data.orientation.w = quaternion.w;
+        imu_data.orientation.x = quaternion.y;
+        imu_data.orientation.y = quaternion.x;
+        imu_data.orientation.z = -quaternion.z;
+
+        imu_data.linear_acceleration.x = accel.y;
+        imu_data.linear_acceleration.y = accel.x;
+        imu_data.linear_acceleration.z = -accel.z;
+
+        imu_data.angular_velocity.x = angRate.y;
+        imu_data.angular_velocity.y = angRate.x;
+        imu_data.angular_velocity.z = -angRate.z;
+
+        if(errcnt>0) errcnt--;
+
+        imu_data.header.stamp = ros::Time::now();
+        imu_data.header.frame_id = "gyro_link";
+        imu_data_pub_.publish(imu_data);
+    }
+    else errcnt++;
+
+    // removed: code to handle large errcnt 
+}
+
+Originally posted by weiin on ROS Answers with karma: 2268 on 2012-01-29
+Post score: 0
+
+Original comments
+Comment by weiin on 2012-02-02:
+well. I'm not able to get the error message anymore, even after trying different callback rates (up to the max that my imu can handle). perhaps the system restart overnight did the trick...
+Comment by tfoote on 2012-01-31:
+How often are you calling these callbacks?  Can you put a ROS_INFO into each printing the timestamp each time it publishes and show the result?
+
+A:
+
+It is not required to publish them from the same node.  From the link:
+"This error occurs when the timestamps of the sensor messages that are received differ more than 1 second. This is probably an indication of timing issues in your system, e.g. the clocks of two hosts connected to the same ros core are not synchronized."
+The most common cause of this is that you're running on 2 or more computers and their system clocks are out of sync by x seconds.  It's recommended to setup ntp servers to keep all computers in sync.
+
+Originally posted by tfoote with karma: 58457 on 2012-01-29
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by raahlb on 2012-01-30:
+The frame /odom and the topic /odom are not related and won't affect each other.
+Comment by weiin on 2012-01-30:
+and with robot_pose_ekf using output_frame="odom", will it affect how things work?
+Comment by weiin on 2012-01-30:
+I have posted the codes from the two nodes. But I am not currently able to reproduce the same error message all the time (it is basically the "[ERROR]... Timestamps of ... are x seconds apart" with x being something more than 1.0). I'm not sure if it matters, but my odom publisher publishes to /odom
+Comment by tfoote on 2012-01-30:
+You should check how your nodes are setting their timestamps.  If you want more help you will need to provide more information.  Code snippets, and error messages verbatim.
+Comment by weiin on 2012-01-29:
+The problem is that I am getting this out of sync message even though I'm running everything on the same laptop (the ASUS that came with turtlebot)
+

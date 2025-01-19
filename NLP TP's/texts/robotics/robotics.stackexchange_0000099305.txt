@@ -1,0 +1,51 @@
+Q:
+
+Blend Radius with MoveIt/ROS/UR5e
+
+Dear all,
+i controll my Universal Robot UR5e with Ros and MoveIt. It works all fine. Now I want to add the functionality "movep" that the UR5e has in the UR-Script Language. This command is described here. The TCP of the robot should not go exactly on the target point, it should do a smooth transistion between the previous and following trajectory, like in the picture.
+
+The Pilz Industrial Motion Planner provides such an implementation.
+But now my question: Is it possible to realize it without the Pilz Planner? I could compute several points on the "rounded edge" with a specific sampling rate, but then the robot will stop for a while at each point. That is not a smooth transition. I am looking forward for your help. Thanks a lot!!
+My Setup: Ubuntu 18.04 and Ros Melodic for UR5e (UR Driver)
+
+Originally posted by anonymous74883 on ROS Answers with karma: 13 on 2021-06-18
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-06-18:
+What's the problem with the Pilz Planner?
+Comment by anonymous74883 on 2021-06-18:
+There is no problem, but for our project we need to test more planner instead of only the Pilz Planner.
+Comment by fvd on 2021-06-18:
+Switching between planning pipelines (e.g. OMPL and Pilz) is supported on the MoveIt master branch, so if you build from source, you use both right away.
+Comment by anonymous74883 on 2021-06-22:
+Thanks a lot for your answers.
+I know that i can use both right away. But i want explicitly compare both planners. So what i am looking for is a solution how i can do a blend radius "manually" with the ompl. Somehow it has to be possible to do a circular move with constant velocity, but i have no idea how.
+Comment by gvdhoorn on 2021-06-22:
+Perhaps @fexner can comment on the driver-side of this, but I seem to recall blending is not supported right now.
+
+But i want explicitly compare both planners.
+
+personally I'd not find this a fair comparison: the Pilz planner essentially interpolates between a set of poses. It does not investigate alternatives, nor is it capable of optimising a plan. It's also not capable of avoiding obstacles. It linearly interpolates over a given trajectory, stopping if a collision is detected.
+OMPL on the other hand is a full probabilistic motion planner with a planning scene, optimisation support, etc, etc.
+What aspects would you want to compare these on?
+I'm also wondering whether the concept of blending makes sense in the OMPL case: the output of those planners is essentially joint space paths, and the various optimisation and smoothing steps already lead to curved paths most of the time, with rarely any sharp, instantaneous direction changes (where you'd need blending).
+Comment by fvd on 2021-06-23:
+It depends on what you call "sharp, instantaneous direction changes", but the paths produced by MoveIt and the OMPL default settings aren't exactly very smooth (outside of the trivial solution). I think blending multiple OMPL trajectories may be useful, but blending inside one seems like an ill-posed problem.
+There was a tiny discussion here about using blending outside of the Pilz planner, for the record.
+In summary, there is no standard way to blend OMPL trajectories, but if I were to do it, I would use the existing plugin, take the start/end of each trajectory as a waypoint, relax the requirements on acceleration/velocity, and then retime the trajectory as a whole.
+Comment by anonymous74883 on 2021-06-30:
+Thanks for all your extensive input. It really help me a lot.
+I think the approach @fexner mentioned, sound very interesting for me. I will have a look into the testing repository and will then comment here again.
+
+A:
+
+From my understanding planning and execution are two different parts, right? As far as I understand, planning a trajectory in MoveIt yields a Cartesian path, that then gets transformed into a FollowJointTrajectory action for execution, which in turn samples the Cartesian trajectory in order to make it follow the Cartesian path. The FollowJointTrajectory then gets executed by a robot driver.
+So, any "blending" should be happening either during the motion planning step or the Cartesian -> joint space transformation, right?
+However, we are currently implementing trajectory execution (and interpolation) on the robot controller for both, joint-based and Cartesian trajectories. This also kind of supports blending right now, but it is not very accessible at the moment. To try it out, please see this PR (ur_client_library from-source build or from testing repository currently required).
+
+Originally posted by fexner with karma: 221 on 2021-06-23
+This answer was ACCEPTED on the original site
+Post score: 0
+

@@ -1,0 +1,75 @@
+Q:
+
+Rotate a certain angle using PID and mpu6050
+
+Currently I'm working with a 4 wheel robot and I'm trying to rotate a certain amount of angle. I used PID_V1 library to rotate this. But when I upload and test the code Robot rotate continously.
+#include <MPU6050_tockn.h>
+#include <Wire.h>
+#include <PID_v1.h>
+MPU6050 mpu6050(Wire);
+double Setpoint, Input, Output;
+int enA = 6;
+int in1 = 4;
+int in2 = 5;
+
+int enB = 11;
+int in3 = 8;
+int in4 = 9;
+double Kp = 8, Ki = 4, Kd = 5;
+PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
+void setup() {
+ pinMode(enA, OUTPUT);
+ pinMode(enB, OUTPUT);
+ pinMode(in1, OUTPUT);
+ pinMode(in2, OUTPUT);
+ pinMode(in3, OUTPUT);
+ pinMode(in4, OUTPUT);
+
+digitalWrite(in1, LOW);
+digitalWrite(in2, LOW);
+digitalWrite(in3, LOW);
+digitalWrite(in4, LOW);
+
+  Serial.begin(9600);
+  Wire.begin();
+  mpu6050.begin();
+  mpu6050.calcGyroOffsets(true);
+  Setpoint = 15;
+
+  myPID.SetMode(AUTOMATIC);
+  }
+
+ void loop() {
+   mpu6050.update();
+
+    Serial.print(mpu6050.getAngleZ());
+    Input = mpu6050.getAngleZ();
+ myPID.Compute();
+    if(0<Output and Output<255){
+    analogWrite(enA, Output );
+    analogWrite(enB, Output);
+    Serial.print("\toutput : ");
+    Serial.println(Output);
+
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  }
+ }
+
+I used serial monitor to visualize the data and rotate the robot frame slowly and I figured out values of PWM signal is reduced. But when I powered the motors It rotate continously. Any help please.
+
+A:
+
+Started writing this as a comment, but there are quite a few troubleshooting/predictions here about what could be going on, so I'm posting it as an answer that I'll edit if you can provide more information.
+Welcome to Robotics, Kasun Thushara. Could you please edit your question to include a diagram or picture of how your system is wired? I'm trying to guess by convention, but it looks like you're trying to write an analog value to a motor enable bit (enA/enB) and then you're writing outputs to... input pins? in1, in2, etc.
+Given you've got two (enable?) en bits I'm going to guess there are two motors, but then your four outputs (inputs?) in bits might be setting up directions for a motor driver, or aligning power to an H-bridge for a single motor - I can't tell.
+What I do see is:
+
+You're only turning your motors on if your Output is greater than 0 or less than 255, which means you don't have the ability to change direction if (when!!) you overshoot your angle reference (i.e., when your output goes negative).
+You never turn the motors off! This is probably as much to do with your bug as anything - what do you do if Output<1? You should have an else case there that disables your outputs.
+Your serial message is inside your if statement; I would put it just below the call to the PID controller so you can see all the outputs, not just the ones that fall within your actionable range.
+
+As stated at the top, I would need some wiring diagram or at least some explanation of how your equipment is setup to make better guesses about where your code could be going wrong.
+

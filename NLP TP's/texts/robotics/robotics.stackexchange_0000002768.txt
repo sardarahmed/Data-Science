@@ -1,0 +1,56 @@
+Q:
+
+differential drive PID controller
+
+I have a differential drive robot that works fine (good PD parameters) driving at say 1 m/s. Now, if it speeds up (to 1.2 m/s) it starts wobbling again. What would be a good strategy for a controller that is able to cope with the whole speed range of 0 - 4 m/s?
+edit 14th of April:
+The robot is a line follow robot but I do not see how this would be related to my question since a robot following a trajectory would have the same problem. 
+I recently talked to other developers of differential drive robots and they are facing similar issues e.g. they told me that they need to adjust PID parameters once the battery is not fully charged hence the robot drives at a different speed.
+I do not know if you guys are into youtube, but if your are really interested in my robot this link would be helpful: https://www.youtube.com/watch?v=vMedNPhXlEo
+PID parameters are: P 0.31, D 0.59, I 0.00
+PID controller programmed using C:
+  // note: the inner wheel turns backwards for narrow curves
+  // cte is -128..128 depending on the robots position
+  // relative to a trajectory / black line 
+  /** Execute the PID controller and update motor speeds */
+  void PID()
+  {
+    int32_t steer;
+    int32_t cte;
+    cte = 128 - get_segment_center(0);
+    // Compute PID equation
+    steer = (int)(
+      -P * (float)cte 
+      -D * (float)(cte - diff_cte) / (float)PERIOD_MS
+      -I * (float)int_cte
+    );
+    if (steer < -5)
+    {
+      // turn left
+      turn = -1;
+      uXbot_move(MAX_SPEED + steer, MAX_SPEED);
+    } 
+    else if (steer > 5)
+    {
+      // turn right
+      turn = 1;
+      uXbot_move(MAX_SPEED, MAX_SPEED - steer);
+    }
+    else
+    {
+      // go straight
+      turn = 0;
+      uXbot_move(MAX_SPEED, MAX_SPEED);
+    }
+    diff_cte = cte;
+    int_cte += cte;
+  }
+
+A:
+
+After thinking about this problem a little more I had an important insight: 
+For the robots differential drive PID controller to be operational at different speeds, the turning angle R used for steering must be consistent over the whole speed range.
+This post inspired my thinking and explains the turning angle of a differential drive robot:
+Calculate position of differential drive robot
+Thanks to Guy Sirton and Ian for discussing my PID controller and providing useful debugging tips.
+

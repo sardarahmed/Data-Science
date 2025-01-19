@@ -1,0 +1,66 @@
+Q:
+
+[MoveIt!] Plan to a goal without specifying all axes
+
+Hi,
+is there a way to plan a path to a goal which is defined with a position (x, y, z) and a value for pitch and roll, but leave yaw open for variation?
+For my use case the yaw angle is not relevant, so I don't want to restrict possible paths by defining a value for it.
+As far as I understand not giving a value for the axis will not work, because the value is initialized to zero.
+Another approach would be to set the goal_orientation_tolerance. However, this is quite unsatisfying as this sets the tolerance for the whole pose and not only one specific axis.
+
+Originally posted by F4bich on ROS Answers with karma: 79 on 2016-11-26
+Post score: 3
+
+Original comments
+Comment by gvdhoorn on 2016-11-26:
+Not an answer, but this would seem like something descartes is very good at:
+
+Descartes is a ROS-Industrial project for performing path-planning on under-defined Cartesian trajectories
+
+Cartesian only though.
+Comment by NEngelhard on 2016-11-26:
+I think this could be implemented with a OrientationConstraint. I haven't used it yet, but I think you could set the absolute_z_axis_tolerance to something small and the other two much larger.
+Comment by gvdhoorn on 2016-11-27:
+OrientationConstraints are also definitely possible. Would remove the need for any additional planners. I just wanted to give a pointer to a planner that might be better suited for underconstrained planning problems.
+Comment by F4bich on 2016-11-28:
+As far as I understand these are constraints one can limit the possible paths with. Therefore, an OrientationConstraint would only solve the problem, when the scenario is something like moving in a straight line, otherwise the constraint has a high chance of preventing us to find any path.
+
+A:
+
+The OMPL's RRTConnectkConfigDefault planner should handle this, you just need to setup the constraint at the goal pose such that the orientation about the desired tool axis is underconstrained, below is pseudo code of how you'd set this up:
+  // Create the Motion Plan request object
+  moveit_msgs::MotionPlanRequest req;
+  req.motion_plan_request.group_name = group_name;
+  req.motion_plan_request.workspace_parameters.header.stamp = ros::Time::now();
+  req.motion_plan_request.start_state = start_state;
+
+  // Set the tool pose
+  geometry_msgs::PoseStamped stamped;
+  stamped.pose = pose;
+  stamped.header.stamp = ros::Time::now();
+  stamped.header.frame_id = req.motion_plan_request.workspace_parameters.header.frame_id;
+
+  // defining constraints such that tool z orientation constraint has a large tolerance of 1.0 
+  std::vector<double> pos_constraint = {1e-3,1e-3,1e-3};
+  std::vector<double> orient_constraint =  {0.01,0.01,1.0}; 
+  moveit_msgs::Constraints c = kinematic_constraints::constructGoalConstraints(
+    tool_link_name, stamped,pos_constraint,orient_constraint);
+
+ // Add the constraint to the motion planning service request 
+ req.motion_plan_request.goal_constraints.push_back(c);
+
+// call the motion planning service
+ motion_planning_client.call(req, res)
+
+Originally posted by jrgnicho with karma: 486 on 2016-11-29
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by F4bich on 2016-12-27:
+Is it possible to do this with the python api aswell? I don't know how to do the step
+moveit_msgs::Constraints c = kinematic_constraints::constructGoalConstraints(
+    tool_link_name, stamped,pos_constraint,orient_constraint);
+
+with python
+

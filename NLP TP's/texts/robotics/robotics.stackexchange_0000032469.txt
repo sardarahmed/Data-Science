@@ -1,0 +1,60 @@
+Q:
+
+Is there a ROS wrapper for Pololu SMC-04B servomotor?
+
+Hello all,
+I'm putting a robot together (from scratch) and I've decided to make use of ROS's programming tools because it's excellent for mixing and matching several different sensors that can't necessarily be bought together from any robotics companies. My problem is that I have an excellent base with servomotor wheels already installed, but I can't find a ROS driver for the chip (Pololu SMC-04B). I'm even having trouble finding any documentation at all for these chips online.
+So I need some advice:
+
+Does a wrapper for Pololu chips exist in ROS?
+
+Is it possible for me to write my own driver, say in Python, or perhaps C++, by modifying driver code from some other robotic navigation system. For example, could I find the navigation code for an iRobot Create and modify it somehow for my Pololu chips? (I have no idea how quite to do this, just general ideas, so pointers would be appreciated).
+
+If none of the above are feasible for a beginner like me, would it just be better to invest in something like an ArbotiX RoboController and just use the servomotor capabilities?
+
+Thanks, and if I ought to explain anything more clearly, please let me know.
+-Khiya
+
+Originally posted by Khiya on ROS Answers with karma: 49 on 2011-06-22
+Post score: 0
+
+A:
+
+The SMC-04B has a great guide here.  Your best bet is the serial interface (page 8). Seems like a pretty simple and straight forward protocol. You'll want to send serial data in the following form (from the guide):
+
+[start byte, device type, motor # and direction, speed]
+
+so for example sending the bytes:
+
+[0x80,0x00,0x03,0x7F]
+
+will result in full speed of motor #1
+pyserial is your friend. if you'd like to see python serial code for example, checkout the IMU driver using python's serial interface here.
+Here's some example code to get you started:
+import serial
+...
+s = serial.Serial('/dev/ttyUSB0', 
+                         baudrate=9600, 
+                         bytesize=8, parity='N', 
+                         stopbits=1, timeout=None)
+s.write(chr(0x80))
+s.write(chr(0x00))
+s.write(chr(0x03))
+s.write(chr(0x7F))
+
+Once you have a basic driver written for the SMC-04B you'll have to write a node that subscribes to ~cmd_vel (geometry/Twist) and outputs the corresponding driver commands to achieve the correct linear and angular velocities--that's where code from the irobot create driver may come in handy (if you have a 2-wheel diff drive with caster style robot it'll use the same math).
+I'd recommend creating two nodes: smc04b_driver and YOUR_ROBOT_NAME_node which makes use of the smc04b_driver--the idea being that others could reuse smc04b_driver, while the YOUR_ROBOT_NAME_node will be specific to your homebrew platform.
+PS I think you're confusing terms when you say you have servo motors attached the the SMC-04B.  The SMC-04B can accept RC servo commands (it has 3 modes: analog, RC, and serial) but is actually designed for driving standard DC motors in any case.
+
+Originally posted by JeffRousseau with karma: 1607 on 2011-06-23
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by JeffRousseau on 2011-06-23:
+As a side note, developing the driver-side stuff in windows is fine (in fact I did that for my IMU driver)... but once you get involved with the ROS side you'll probably want to switch over to Ubuntu. ROS + Windows is still in its infancy. Good luck
+Comment by JeffRousseau on 2011-06-23:
+pyserial in windows just takes an integer # for the com port instead of a string so for "COM1" you'd just pass 0 (its an com # - 1 for some reason, hence the 0 instead of 1) as the first argument for serial.Serial()... http://pyserial.sourceforge.net/shortintro.html#opening-serial-ports
+Comment by Khiya on 2011-06-23:
+Thanks a lot! This was really helpful. Just one more question that I hope you could explain: I'm using a Windows machine - does that mean that my port name, instead of being '/dev/ttyUSB0' would be something like 'COM1'? Or whichever COM number my device manager says is connected? Thanks,
+

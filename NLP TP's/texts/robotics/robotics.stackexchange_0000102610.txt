@@ -1,0 +1,126 @@
+Q:
+
+Is there a way to load urdf from parameter in ros2?
+
+Hi. Sorry for all mistakes, English is not my native language. In ROS 1 we can use this lines:
+urdf::Model urdfModel;
+urdfModel.initParam("robot_description")
+
+Is there a way to load robot URDF description from parameter in ROS 2 Foxy? I found initXml(), initFile() and initString() methods and that's all. Maybe I'm looking in the wrong place. Appreciate any help.
+
+Originally posted by Edvard on ROS Answers with karma: 95 on 2022-10-25
+Post score: 0
+
+A:
+
+It seems a bit complicated but I managed to instantiate urdf::Model by following the below steps:
+
+Get the value of robot_description as string: This requires extra effort. Remember, ROS 2 does not have a centralized parameter server. So, getting a parameter from another node is tricky. You can read more about the procedure at this link.
+Use the string as input to build URDF model: We can use initString() method.
+
+Code
+// license removed for brevity
+
+#include <urdf/model.h>
+
+#include <chrono>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+
+using namespace std::chrono_literals;
+
+class MinimalPublisher : public rclcpp::Node
+{
+public:
+  MinimalPublisher() : Node("minimal_publisher")
+  {
+    parameters_client_ = std::make_shared<rclcpp::SyncParametersClient>(this, "/robot_state_publisher");
+    while (!parameters_client_->wait_for_service(1s))
+    {
+      if (!rclcpp::ok())
+      {
+        RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+        rclcpp::shutdown();
+      }
+      RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
+    }
+
+    std::string urdf_string;
+    auto parameters = parameters_client_->get_parameters({ "robot_description" });
+    for (auto& parameter : parameters)
+    {
+      if (parameter.get_name() == "robot_description")
+      {
+        urdf_string = parameter.value_to_string();
+        break;
+      }
+    }
+
+    urdf::Model urdfModel;
+    urdfModel.initString(urdf_string);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Name:" << urdfModel.getName());
+  }
+
+private:
+  std::shared_ptr<rclcpp::SyncParametersClient> parameters_client_;
+};
+
+int main(int argc, char* argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::shutdown();
+  return 0;
+}
+
+Run
+
+First, I published a URDF using urdf_tutorial. Please see the command below:
+ravi@dell:~$ ros2 launch urdf_tutorial display.launch.py model:=/opt/ros/foxy/share/urdf_tutorial/urdf/06-flexible.urdf
+
+Next, I confirmed that the robot_description is available as shown below:
+ravi@dell:~$ ros2 param list
+/joint_state_publisher:
+  delta
+  publish_default_efforts
+  publish_default_positions
+  publish_default_velocities
+  rate
+  source_list
+  use_mimic_tags
+  use_sim_time
+  use_smallest_joint_limits
+/robot_state_publisher:
+  frame_prefix
+  ignore_timestamp
+  publish_frequency
+  robot_description
+  use_sim_time
+  use_tf_static
+/rviz2:
+  use_sim_time
+
+Finally, I executed my node which prints URDF model name
+ravi@dell:~/ros2_ws$ ros2 run  examples_rclcpp_minimal_publisher publisher_member_function 
+Parsing robot urdf xml string.
+[INFO] [1666688084.856405837] [minimal_publisher]: Name:visual
+
+Just for sake of completeness, below is the robot name queried from the terminal:
+ravi@dell:~$ ros2 param get /robot_state_publisher robot_description | grep robot
+<robot name="visual">
+</robot>
+
+Originally posted by ravijoshi with karma: 1744 on 2022-10-25
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Edvard on 2022-10-25:
+Thank you so much for you time and help!
+Comment by RobotDreams on 2022-10-27:
+Is your example code on GitHub somewhere?  I want to launch robot state and joint publishers on my robot (not on the Remote Desktop), passing path to the URDF file as a param to the launcher.  It seems like your answer is needed for my situation.
+Comment by ravijoshi on 2022-10-27:
+@RobotDreams: I am out of work now! Give me a day or two, I will upload the complete package to GitHub.
+Comment by ravijoshi on 2022-10-28:
+@RobotDreams : Here you go: ravijo/minimal_publisher
+

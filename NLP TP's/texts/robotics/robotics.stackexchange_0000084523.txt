@@ -1,0 +1,94 @@
+Q:
+
+ROS2 ament overlay issue with messages
+
+I'm working on adding array parameter support for ROS2, and am having trouble with ament.
+I've added new types and values here and here.
+I then sourced /opt/ros/ardent/setup.bash, and ran ament build. Eventually, this happened:
+[ 83%] Building C object CMakeFiles/rcl_interfaces__rosidl_typesupport_introspection_c__pyext.dir/rosidl_generator_py/rcl_interfaces/msg/_parameter_value_s.c.o
+/home/automatom/ros2/build/rcl_interfaces/rosidl_generator_py/rcl_interfaces/msg/_parameter_value_s.c: In function ‘rcl_interfaces_parameter_value__convert_from_py’:
+/home/automatom/ros2/build/rcl_interfaces/rosidl_generator_py/rcl_interfaces/msg/_parameter_value_s.c:111:61: error: ‘rcl_interfaces__msg__ParameterValue {aka struct rcl_interfaces__msg__ParameterValue}’ has no member named ‘byte_array_value’
+ if (!rosidl_generator_c__byte__Array__init(&(ros_message->byte_array_value), size)) 
+
+This error repeats for all the new types. However, that structure does have the field in question. From build/rcl_interfaces/rosidl_generator_c/rcl_interfaces/msg/parameter_value__struct.h:
+/// Struct of message rcl_interfaces/ParameterValue
+typedef struct rcl_interfaces__msg__ParameterValue
+{
+  uint8_t type;
+  bool bool_value;
+  int64_t integer_value;
+  double double_value;
+  rosidl_generator_c__String string_value;
+  rosidl_generator_c__byte__Array byte_array_value;
+  rosidl_generator_c__bool__Array bool_array_value;
+  rosidl_generator_c__int64__Array integer_array_value;
+  rosidl_generator_c__float64__Array double_array_value;
+  rosidl_generator_c__String__Array string_array_value;
+} rcl_interfaces__msg__ParameterValue;
+
+This suggests that ament/cc are looking in the wrong location for the files in question. I manually went into build/rcl_interfaces and ran make VERBOSE=1, and found this for the first object that fails to build:
+/usr/lib/ccache/cc  -Drcl_interfaces__rosidl_typesupport_c__pyext_EXPORTS -I/home/automatom/ros2/build/rcl_interfaces/rosidl_typesupport_c -I/opt/ros/ardent/include -I/home/automatom/ros2/build/rcl_interfaces/rosidl_generator_c -I/home/automatom/ros2/build/rcl_interfaces/rosidl_generator_py -I/usr/include/python3.5m  -fPIC   -Wall -Wextra -o CMakeFiles/rcl_interfaces__rosidl_typesupport_c__pyext.dir/rosidl_generator_py/rcl_interfaces/msg/_parameter_value_s.c.o   -c /home/automatom/ros2/build/rcl_interfaces/rosidl_generator_py/rcl_interfaces/msg/_parameter_value_s.c
+
+Note that -I/opt/ros/ardent/include comes before -I/home/automatom/ros2/build/rcl_interfaces/rosidl_generator_c. If I swap them, and manually run the command, it builds successfully.
+I'm sure I'm missing something obvious, and I apologize if so, but what am I doing wrong? Am I missing a step for ament workspaces? I already tried sourcing install/local_setup.bash and building again, but to no avail.
+EDIT: providing steps to reproduce:
+mkdir -p ~/ament_test/src
+cd ~/ament_test/src
+git clone git@github.com:ayrton04/rcl_interfaces.git -b param-arrays
+cd ..
+source /opt/ros/ardent/setup.bash
+ament build
+
+Originally posted by Tom Moore on ROS Answers with karma: 13689 on 2018-01-05
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-01-05:
+May I suggest to use permalinks to the ParameterType.msg and ParameterValue.msg?
+Comment by Tom Moore on 2018-01-05:
+Good call, have fixed. Thank you!
+Comment by William on 2018-01-08:
+How have you setup your workspaces? If you changed something in rcl_interfaces in a copy of it in your workspace, then you need to also build from source everything that depends on rcl_interfaces in the overlay. Can you provide some basic steps to reproduce the problem?
+Comment by Tom Moore on 2018-01-08:
+I'm only building rcl_interfaces, and all I did was add some fields to two messages. I've provided the steps to reproduce, and ran them to verify that it causes the build error for me. It fails at around 95%.
+Comment by William on 2018-01-08:
+Oh, it's not consistently failing? That sounds like a target dependency issue in cmake. I'll see if I can reproduce it.
+Comment by Tom Moore on 2018-01-08:
+No, sorry, I don't mean it fails 95% of the time, but rather it fails at the ament 95% build point.
+Comment by William on 2018-01-09:
+Ok, I can reproduce it. It looks like it is including the old version of the header from the underlay. I'll look into what that is the case. Might be worth moving to an issue on the GitHub repository.
+
+A:
+
+The problem is the include path order allows it to get the underlay, this is what it looks like on my machine:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc
+-Drcl_interfaces__rosidl_typesupport_introspection_c__pyext_EXPORTS
+-I/Users/william/ament_test/build/rcl_interfaces/rosidl_typesupport_c
+-I/Users/william/ament_test/build/rcl_interfaces/rosidl_typesupport_introspection_c
+-I/Users/william/ros2_ws/install/include  <-- this has the old header
+-I/Users/william/ament_test/build/rcl_interfaces/rosidl_generator_c  <-- this has the new header
+-I/Users/william/ament_test/build/rcl_interfaces/rosidl_generator_py
+-I/usr/local/Cellar/python3/3.6.3/Frameworks/Python.framework/Versions/3.6/include/python3.6m
+
+-fPIC
+
+-Wall
+-Wextra
+-o
+CMakeFiles/rcl_interfaces__rosidl_typesupport_introspection_c__pyext.dir/rosidl_generator_py/rcl_interfaces/srv/_describe_parameters__response_s.c.o
+
+-c
+/Users/william/ament_test/build/rcl_interfaces/rosidl_generator_py/rcl_interfaces/srv/_describe_parameters__response_s.c
+
+Please open an issue on the https://github.com/ros2/rcl_interfaces/issues repository and reference this question. It might end up needing to be fixed in rosidl instead, but that's the right place for now.
+
+Originally posted by William with karma: 17335 on 2018-01-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Tom Moore on 2018-01-09:
+Will do. Thanks for looking into it.
+Comment by marguedas on 2018-01-29:
+Update: The order of population of the include path has been fixed in https://github.com/ros2/rosidl/pull/261
+

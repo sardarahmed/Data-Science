@@ -1,0 +1,66 @@
+Q:
+
+Setting GAZEBO_PLUGIN_PATH crashes Gazebo
+
+Hi all,
+So I have a model of a WAM Arm.  I wrote a plugin that moves its joints through a list of joint positions.
+When I:
+
+don't have the GAZEBO_PLUGIN_PATH set
+cd into the directory of the model
+then run Gazebo
+
+I can insert the model from the "insert" menu. It then executes the joint movements.
+If I try running Gazebo from outside that directory, I can still insert the model, but it won't go through the movements.
+Then, if I try setting the GAZEBO_PLUGIN_PATH to the model directory, inserting the model results in an errorless crash.
+Any thoughts?
+
+Originally posted by Ben B on Gazebo Answers with karma: 175 on 2013-04-30
+Post score: 0
+
+Original comments
+Comment by scpeters on 2013-05-01:
+You may also need to set the LD_LIBRARY_PATH to include the model directory as well. Can you try that?
+Comment by Ben B on 2013-05-01:
+I still have both problems:  The plugin isn't found when I launch Gazebo from outside of the model/plugin directory.  Also, Gazebo still crashed when I set the GAZEBO_PLUGIN_PATH
+Comment by scpeters on 2013-05-01:
+Can you get a backtrace of the crash using gdb? gdb gzserver in one terminal, gzclient in another, and then insert the model. If it crashes, then bt in the gdb terminal.
+Comment by Ben B on 2013-05-02:
+Thanks for the help, scpeters.  In the end, the problem was my fault. See below.
+
+A:
+
+In case this happens to anyone else:
+The plugin was designed to read in a list of joint coordinates from a file. The file was placed in the same directory as the SDF file.
+So: When I ran Gazebo from the directory containing the model & plugin, it found the plugin and found the joint file. No problem.
+When I ran Gazebo from outside of the directory without the GAZEBO_PLUGIN_PATH set, it wouldn't find the plugin, and it handled that gracefully by inserting the model, not running the plugin and giving me a "plugin not found" message.
+When I ran Gazebo from outside of the directory with the GAZEBO_PLUGIN_PATH set, it found the plugin, but the plugin couldn't find the joint file and segfaulted.  This brought Gazebo down with it.
+Solution: In the plugin code: Use an absolute file path instead of a file path that was relative to the plugin.  Or, in the plugin code, handle missing joint files more gracefully.
+
+Originally posted by Ben B with karma: 175 on 2013-05-02
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by scpeters on 2013-05-03:
+Can you clarify which environment variables you set? I don't think GAZEBO_MODEL_PLUGIN is right.
+Comment by scpeters on 2013-05-03:
+Also, if you want to store additional files in your model directory, you can find them using gazebo::common::SystemPaths::FindFileURI() with the uri "model://model_name/path/to/file"
+Comment by scpeters on 2013-05-03:
+Also, if you want to store additional files in your model directory, you can find them using gazebo::common::SystemPaths::FindFileURI() with the uri "model://model_name/path/to/file"
+Comment by Ben B on 2013-05-03:
+Right you are :)  I meant GAZEBO_PLUGIN_PATH.   Thanks for the tip on FindFileURI!
+Comment by Ben B on 2013-05-03:
+Actually, I'm a bit confused how to use this.  SystemPaths is a class, right?  So I try to instantiate an object inside the load function of my plugin : common::SystemPaths sys_path_obj;  and then I get the error: /usr/include/gazebo-1.7/gazebo/common/SystemPaths.hh:60:16: error: ‘gazebo::common::SystemPaths::SystemPaths()’ is private.  Is that telling me the constructor is private?
+Comment by scpeters on 2013-05-03:
+You don't need to instantiate that class; you should be able to just call the gazebo::common::SystemPaths::FindFileURI(), as long as you have the header included.
+Comment by Ben B on 2013-05-03:
+Doing this:  std::string pathy =  gazebo::common::SystemPaths::FindFileURI("model://WAM Model/forGazebo");
+gives /home/benjaminblumer/.../set_joints.cc: In member function ‘virtual void gazebo::SetJoints::Load(gazebo::physics::ModelPtr, sdf::ElementPtr)’: /home/benjaminblumer/.../plugins/set_joints.cc:49:99: error: cannot call member function ‘std::string gazebo::common::SystemPaths::FindFileURI(const string&)’ without object
+Comment by Ben B on 2013-05-03:
+And I'm including the common/common.hh header.
+Comment by scpeters on 2013-05-03:
+My apologies, based on ModelDatabase.cc:396, you should use gazebo::common::SystemPaths::Instance()->FindFileURI().
+Comment by Ben B on 2013-05-03:
+Ah. That works great.  Thanks, SC.
+

@@ -1,0 +1,23 @@
+Q:
+
+move_base/base_local_planner maximum velocity
+
+I'm currently working on a large outdoor robot that requires high speeds to operate effectively. As such, I've tried to increase the command velocity output by move_base and base_local_planner, but upon increasing the max_vel_x parameter, I see a cap in the cmd_vel message output by move_base. My current configuration can be found here.
+I have the max_vel_x parameter set to 10.0 m/s, but the maximum cmd_vel output by move_base is ~2.75m/s. I've observed this both in a simulated environment and on the actual robot.
+I assumed that the forward simulation time might have something to do with it. I figured, "if the robot can't simulate far enough into the future, it may not allow itself to move faster than it can predict." I tested this theory by setting the sim_time parameter from 1.7 to 3.0. What I noticed was the exact opposite of what I predicted. With a higher sim_time, the maximum output cmd_vel was ~1.8m/s (lower than the previous). A sim_time of 5.0 resulted in a maximum cmd_vel of ~1m/s.
+My question is: what are the factors that play into the calculation of the cmd_vel message output by base_local_planner, and is there any way to make it move faster? We're looking to achieve ~10m/s.
+
+Originally posted by DimitriProsser on ROS Answers with karma: 11163 on 2011-11-23
+Post score: 4
+
+A:
+
+OK, I finally took some time to check this out. After playing around a bit I was able to get a robot, in an empty environment in simulation, to achieve very, very, high velocities. I'm not sure that the navigation stack is an awesome way to control an outdoor robot at high speeds, but I can at least give an explanation of why you were likely having trouble:
+The local planner doesn't consume the entire global path for planning, instead it is given a region of the path that fits inside of a local window that based on the size of the local costmap. By default, the local costmap is centered at the robot and sized at 6m x 6m. This means that the goal point for the local planner is never going to be more about 3 meters away from the robot. As such, the cost function will actually limit the speeds the robot chooses to be slower because its planning to a point that is only a couple of meters away. Furthermore, as you increase the maximum velocity for the local planner, you're also increasing the size of the steps between simulated velocities. For example, 10 steps between 0 and 1 m/s would give 0.1 m/s increments, but 10 steps between 0 and 10 m/s would give 1.0m/s increments. As such, you could end up with slower velocities chosen for the 10 m/s max  than the 1 m/s max because its at a coarser resolution. One solution here would bet to increase vx_samples, but this has performance implications as the planner will simulate a lot more trajectories.
+I ended up changing my local map size to something absurdly large, it should  be noted that this will also have some performance implications, and ran the local planner again with a high velocity limit. Lo and behold, the robot achieved its max velocity. To hit max velocity even faster, I upped the acceleration limits a bit, reduced the pdist_scale parameter to zero to allow the robot to just pursue its goal point, and switched to Trajectory Rollout from DWA since it consideres accelerations over the entire sim_time for the velocities it commands as opposed to DWA which just considers acceleration over the first simulation step.
+I'm not sure this will make for the most reliable or robust planner for your application, but at least it explains what was happenning and I hope it helps.
+
+Originally posted by eitan with karma: 2743 on 2011-12-01
+This answer was ACCEPTED on the original site
+Post score: 9
+

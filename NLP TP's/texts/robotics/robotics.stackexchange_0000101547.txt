@@ -1,0 +1,47 @@
+Q:
+
+Getting the rclcpp::Duration in microseconds
+
+Hello everyone!
+I am trying to calculate the time it takes for a single message from one Node to get to the other Node.
+The way I calculate the difference is by substituting the timestamp of the received message from the present time of the node (rclcpp::Node::now()) and store it as rclcpp::Duration. Next, I convert the rclcpp::Duration to std::chrono::duration of microseconds, so that I can store it later in uint64_t. There is a method to achieve this as described here.
+However, I seem to not understand, will this conversion convert only the nanoseconds? (assuming the seconds() represent amount of seconds since epoch, and nanoseconds() represent nanoseconds from seconds). Should I then separately convert seconds and nanoseconds, convert them to microseconds and then sum up?
+Or, the to_chrono() converts both seconds and nanoseconds (ie total time since epoch) in nanoseconds?
+The code is below:
+void inputCallback(const digital_twin_msgs::msg::SupplyInput::SharedPtr msg)
+    {
+      if(msg->seq_id == p_input_sub->next_id) {
+        p_input_sub->recv_counter += 1;
+        rclcpp::Duration diff = rclcpp::Node::now() - msg->stamp;
+        auto num_of_us = diff.to_chrono<std::chrono::duration<uint64_t, std::micro>>(); // <- is this total time since epoch in microseconds?
+        uint64_t var = num_of_us.count();
+        p_input_sub->time_diffs.push_back(var);
+      }else{
+        p_input_sub->lost_count += 1;
+      }
+      p_input_sub->next_id = msg->seq_id + 1;
+    }
+
+Thank you in advance!
+
+Originally posted by sejego on ROS Answers with karma: 53 on 2022-04-21
+Post score: 1
+
+A:
+
+Yes, what you're getting is the time in microseconds. May I suggest one QoL change to that line:
+auto num_of_us = diff.to_chrono<std::chrono::microseconds>();
+
+Originally posted by aprotyas with karma: 456 on 2022-04-21
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by aprotyas on 2022-04-21:
+To answer the rest of the question. No, the nanoseconds function won't only convert the nanoseconds.
+nanoseconds returns the full time period represented by the rclcpp::Duration object in nanoseconds, as does seconds in seconds. There's usually a lot of accuracy lost with the latter, so I'd suggest sticking to the former, or better, to to_chrono.
+Comment by sejego on 2022-04-22:
+Great! Thank you for the QoL change and for explanation, that is exactly what I need :) . I wish I had the experience to know these kinds of little details regarding std::chrono types. It indeed looks much clearer.
+Comment by aprotyas on 2022-04-22:
+No worries. Slight tangent, but if you want to learn about std::chrono specifically, this video will take you a long way: https://www.youtube.com/watch?v=P32hvk8b13M
+

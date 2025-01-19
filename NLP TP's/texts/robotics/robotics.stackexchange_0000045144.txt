@@ -1,0 +1,66 @@
+Q:
+
+tf::TransformBroadcaster in callback
+
+Hi,
+So I was trying to have a transform published over tf as a result of a callback call, which made me think I had to have a tf::TransformBroadcaster as a global variable. However these can't be declared before the ros::NodeHandle is created.
+I have tried using a boost::shared_ptr and almost got the hang of it but I still didn't quite understand how to use these boost pointers. Here's what I tried to do:
+boost::shared_ptr<tf::TransformBroadcaster> pose_broadcaster;
+void poseCallback(const nav_msgs::Odometry& pose){
+
+    geometry_msgs::TransformStamped pose_trans;
+    pose_trans.header.stamp = pose.header.stamp;
+    pose_trans.header.frame_id = "odometry_frame"; 
+    pose_trans.child_frame_id = "base_link";
+
+    pose_trans.transform.translation.x = pose.pose.pose.position.x;
+    pose_trans.transform.translation.y = pose.pose.pose.position.y;
+    pose_trans.transform.translation.z = pose.pose.pose.position.z;
+    pose_trans.transform.rotation = pose.pose.pose.orientation;
+    ROS_INFO("Sending TF broadcast");
+    pose_broadcaster.sendTransform(pose_trans);
+
+}
+int main(){
+    ros::init(argc, argv, "pioneer_tf");
+    ros::NodeHandle n;
+    ros::Subscriber pose_sub=n.subscribe("pose", 1000, poseCallback);
+    boost::shared_ptr<tf::TransformBroadcaster> ptr;
+    pose_broadcaster= boost::shared_ptr<tf::TransformBroadcaster>(ptr);//problem here
+   ros::spin();
+}
+
+I obviously got it wrong in the initialization of the pointer, what's the right way of doing it in this case?
+--- EDIT ---
+This problem is solved now, but I have a similar issue at the moment with a transformListener
+It is basically the same set up, with a global variable (pointer declared as global and initialized in main) and the listener being called in a callback. The thing is, even though it compiles, the callback is never called, but if I comment the line where it is called inside the callback, it works and does everything normally... Any ideas of why the callback might not be called?
+--- EDIT2 ---
+This problem is totally solved. It was just a matter of making the TF buffer bigger and using a try/catch.
+
+Originally posted by Barbosa on ROS Answers with karma: 35 on 2012-10-22
+Post score: 3
+
+Original comments
+Comment by dornhege on 2012-12-14:
+If you have a new question, please open a new one instead of using this old question.
+
+A:
+
+This is not a direct answer to your question. But a simpler (yet more naive) way to do what you want. Instead of using boost:share_ptr, I usually globally declare a pointer of type tf::TransformBroadcaster first. Next, In the main function, I use new to create the object after ros::init.
+//Global Variable(s)
+tf::TransformBroadcaster *tb;
+// Rest of the code
+int main(int argc, char **argv) {
+    // After ros::init
+    tb = new tf::TransformBroadcaster();
+
+Originally posted by Mani with karma: 1704 on 2012-10-22
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Barbosa on 2012-10-29:
+I will try this simpler way of doing it! Thanks!
+Comment by Barbosa on 2012-12-15:
+This worked fine. thank you!
+

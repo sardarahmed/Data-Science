@@ -1,0 +1,56 @@
+Q:
+
+How to check if network connection or remote ROS Master is down?
+
+I am running ROS (Kinetic on Ubuntu 16.04) on two machines (desktop pc and Jackal pc) and the Jackal pc is set as the ROS Master. The both machines are connected over a wireless network.
+I am writing a python node which is supposed to run on my machine and in case of being disconnected from the wifi to perform some action. To keep it simple for now, this action can be just a ROS warning. So my question is:
+What is the best way in ROS to check/detect in the node code if the connection is down (i.e. my machine has disconnected from the network)? 
+When the connection goes down, the nodes that are run on my machine (in sourced terminals) are waiting for the master which is on the Jackal to be reconnected so that the publishers can continue to publish the messages. In this case when the connection is down if I run rostopic list in a sourced terminal there is no output at all. The same goes for any rosrun/roslaunch commands.
+I am sure that there is also a way to check if there is a connection to the ROS Master but I could not find a working solution. I can always write my own timeout method but I would like to know if an proper way to do this already exists.
+
+Originally posted by pavel92 on ROS Answers with karma: 1655 on 2018-08-21
+Post score: 2
+
+Original comments
+Comment by PeteBlackerThe3rd on 2018-08-21:
+If this definitely isn't a 'proper' method but you could use a system call to ifconfig <NIC_name> to find out if your wi-fi connection is down very quickly.
+Comment by gvdhoorn on 2018-08-22:
+An alternative to checking (but something that might actually be better): a multimaster setup.
+
+A:
+
+Seems like ros::master::check () would be one way to go.
+API
+techno74 asking and answering a similar question.
+A similar function for python is mentioned in the previous question.
+rosgraph.is_master_online()
+
+Originally posted by Reamees with karma: 591 on 2018-08-22
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by pavel92 on 2018-08-22:
+I tried the rosgraph.is_master_online() and it works without a problem when there is a network connection. The problem still occurs when the network goes down as the node is in limbo state. In this case rosgraph blocks the node and fails to check for the master
+Comment by Ariel_GLR on 2019-04-11:
+having same issue as pavel92, every method which somehow relies on rosgraph, somehow blocks. it s as though resorption until reconnecting
+Comment by aa-tom on 2021-10-20:
+I'm also facing this issue. I've raised a PR with rosgraph here adding an optional timeout parameter to rosgraph.is_master_online(). In the meantime, the following solution seems to be sufficient, despite feeling a little hacky
+import socket
+...
+socket.setdefaulttimeout(timeout)
+rosgraph.is_master_online()
+socket.setdefaulttimeout(None)
+...
+
+Comment by gvdhoorn on 2021-10-21:
+@aa-tom: might be nicer to do:
+old_def_timeout = socket.getdefaulttimeout()
+socket.setdefaulttimeout(timeout)
+rosgraph.is_master_online()
+socket.setdefaulttimeout(old_def_timeout)
+
+that would future-proof it a little more (if it ever changes).
+Comment by max11gen on 2022-03-07:
+Is there anything like this for ROS2 as well? I mean obviously you can't check if the remote master is online, because there is no master. But can I check if another machine is online or if a specific node is running on the network?
+

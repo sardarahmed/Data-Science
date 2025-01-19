@@ -1,0 +1,140 @@
+Q:
+
+The meaning of error msgs in arm_navigation and how to debug
+
+I followed this tutorial
+http://www.ros.org/wiki/move_arm/Tutorials/MoveArmPoseGoal
+
+and modified it slightly to make it move to four different positions.
+Sometime errors happened such as:
+Action failed: ACTIVE
+Timed out achieving goal A
+Action failed: PENDING
+
+When error occurred, sometimes it still took the end-effector to the right place, while sometimes the arm wouldn't move. This is my code, it's almost the same as the one in the tutorial.
+#include <ros/ros.h>
+#include <actionlib/client/simple_action_client.h>
+
+#include <arm_navigation_msgs/MoveArmAction.h>
+#include <arm_navigation_msgs/utils.h>
+
+int main(int argc, char **argv){
+  if(argc!=4)
+  {
+      ROS_INFO("Wrong Argument : rosrun package binary_file x y z");
+      return -1;
+  }
+
+  ros::init (argc, argv, "move_arm_pose_goal_test");
+  ros::NodeHandle nh;
+  actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction>     move_arm("move_right_arm",true);
+  move_arm.waitForServer();
+  ROS_INFO("Connected to server");
+  arm_navigation_msgs::MoveArmGoal goalA;
+
+  goalA.motion_plan_request.group_name = "right_arm";
+  goalA.motion_plan_request.num_planning_attempts = 1;
+  goalA.motion_plan_request.planner_id = std::string("");
+  goalA.planner_service_name =     std::string("ompl_planning/plan_kinematic_path");
+  goalA.motion_plan_request.allowed_planning_time = ros::Duration(5.0);
+
+  arm_navigation_msgs::SimplePoseConstraint desired_pose;
+  desired_pose.header.frame_id = "torso_lift_link";
+  desired_pose.link_name = "r_wrist_roll_link";
+  desired_pose.pose.position.x = atof(argv[1]);
+  desired_pose.pose.position.y = atof(argv[2]);
+  desired_pose.pose.position.z = atof(argv[3]);
+
+  desired_pose.pose.orientation.x = 0.0;
+  desired_pose.pose.orientation.y = 0.0;
+  desired_pose.pose.orientation.z = 0.0;
+  desired_pose.pose.orientation.w = 1.0;
+
+  desired_pose.absolute_position_tolerance.x = 0.02;
+  desired_pose.absolute_position_tolerance.y = 0.02;
+  desired_pose.absolute_position_tolerance.z = 0.02;
+
+  desired_pose.absolute_roll_tolerance = 0.04;
+  desired_pose.absolute_pitch_tolerance = 0.04;
+  desired_pose.absolute_yaw_tolerance = 0.04;
+
+      arm_navigation_msgs::addGoalConstraintToMoveArmGoal(desired_pose,goalA);
+
+  if (nh.ok())
+  {
+    move_arm.sendGoal(goalA);
+    if(move_arm.waitForResult(ros::Duration(200.0)))
+    {
+      move_arm.cancelGoal();
+      ROS_INFO("Timed out achieving goal A");
+    }
+    else
+    {
+      actionlib::SimpleClientGoalState state = move_arm.getState();
+      bool success = (state == actionlib::SimpleClientGoalState::SUCCEEDED);
+      if(success)
+        ROS_INFO("Action finished: %s",state.toString().c_str());
+      else
+        ROS_INFO("Action failed: %s",state.toString().c_str());
+    }
+  }
+  ros::shutdown();
+}
+
+I would like to know what's the meaning of the errors :
+PENDING
+ACTIVE
+RECALLED
+REJECTED
+PREEMPTED
+ABORTED
+SUCCEEDED
+LOST
+And how to debug using these error msgs.( the timeout msg as well)
+Besides, why is that sometimes the arm can still move when the error occurred.
+Thanks for any advise~
+.----------------------------------------.
+The four positions I've test :
+./ik_arm_traj 0.5 0.0 -0.2
+./ik_arm_traj 0.5 -0.4 -0.2
+./ik_arm_traj 0.5 -0.4 0.2
+./ik_arm_traj 0.5 0.0 0.2
+---modified---
+
+I've follow dornhege's advise and try to print out the result defined by MoveArm.action in arm_navigation_msgs.
+ROS_INFO("Action result:%d", move_arm.getResult()->error_code.val)
+
+However, the error code always be 0, no matter whether the arm can move or not.
+So I still can't know what makes the move_arm action fail.
+Besides, I would like to ask that since the move_arm is built on actionlib, how can the arm sometimes still moves while the status of the action server reported failed?
+
+Originally posted by Albert K on ROS Answers with karma: 301 on 2012-11-12
+Post score: 0
+
+A:
+
+The state is actually just the state that you get from actionlib and not specific to move_arm. This will only tell you if the action is running/succeeded/failed, etc.
+To get detailed information about the move_arm result, look at the MoveArmActionResult that contains arm_navigation_msgs error codes.
+
+Originally posted by dornhege with karma: 31395 on 2012-11-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Albert K on 2012-11-14:
+What's the different between the state of actionlib and the state of move_am in this situation, since the arm is controlled by the arctioblib of "move_right_arm" ?
+Comment by dornhege on 2012-11-14:
+actionlib is the generic action wrapper that can be any action. It is used to provide the specific move_arm action. This action defines its custom state/result. It is the same relationship as a ROS service call and the actual service definition.
+Comment by Albert K on 2012-11-18:
+I've written a simple action server and find out that the status topic is of the type actionlib_msgs/GoalStatusArray, which is related to PENDING, ACTIVE, RECALLED, etc. However, I don't know how to write a program to print out the result, since the tutorial of actionlib also uses status as well.
+Comment by Albert K on 2012-11-18:
+Any simple example or tutorial about how to print out the result? Thanks
+Comment by dornhege on 2012-11-19:
+You get the result via the getResult() function (instead of getState()).
+Comment by Albert K on 2012-11-19:
+What is the return type of getResult()? In this example, the following code snippet get compile error:
+arm_navigation_msgs::MoveArmActionResult * result=move_arm.getResult();
+ROS_INFO("Action result: %d", result -> error_code.val);
+Comment by Albert K on 2012-11-19:
+@dornhege : please see the modified part of the original post. Thanks~
+

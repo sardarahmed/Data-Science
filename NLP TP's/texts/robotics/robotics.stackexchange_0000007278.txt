@@ -1,0 +1,32 @@
+Q:
+
+Adding an Actuator or Force to a (Featherstone) Articulated Rigid Body Model
+
+I'm working on a project where I need to model a system that is essentially comprised of a series of ball-and-socket joints attached to a base, which is attached in turn to a prismatic joint (rail). 
+I've read Roy Featherstone's Rigid Body Dynamics Algorithms cover-to-cover, and I've also read the Dynamics section from the Springer Handbook of Robotics (also written by Featherstone). 
+It took me a long time to get acclimated to using his "spatial vector" and "spatial matrix" notation, but after re-creating all of his notation by hand as an exercise it works out to just be a nice way of concatenating 3x3 and 3x1 matrices and vectors into 6x6 and 6x1 matrices and vectors. The maths he invents to perform operations can be a bit tedious to read as he hijacks some standard notation, but overall everything is very compact, very easy to implement in MATLAB. 
+My problem is this: How do I add actuators to the model? He walks through explicitly configuring the joint definitions, link definitions, etc., but when it comes to actuators or applied forces he says something like, "Just add a $\tau_a$ here and Bob's your uncle!" - it's not discussed at all. In the Handbook of Robotics he suggests introducing a false acceleration to the fixed base to add the gravitational force term, but doesn't show how to add it in local coordinates nor does he mention how to add the actuator input. 
+Any help would be greatly appreciated. I've considered starting over with a different book, but it's going to be a great expense of my time to re-acclimate myself to a different set of notation. I'd like to move forward with this, but I feel like I'm just a few inches shy of the finish line. 
+
+A:
+
+Actuators Forces
+Do I get this right: you have a theoretical model of a rigid multibody system and would like to perform rigid body dynamics computations. You have implemented the model and now would like to compute how the model behaves when driven by an actuator.
+However what is an actuator for you? Is it simply a force acting at that joint? Is it a DC motor model? Is it a PID controller?
+The dynamics algorithms in the book are described in terms of generalized positions $q$, generalized velocities $\dot{q}$, generalized velocities $\ddot{q}$, and generalized forces $\tau$. If you have a prismatic joint whose's translation is described by $q_i$ then the linear force at that joint is described by $\tau_i$. If you have a revolute (hinge) joint whose's rotation is described by $q_j$ then $\tau_j$ represents a torque at that joint.
+It is up to your understanding of an actuator how $\tau$ is computed. If you simply want to apply forces or torques then put the values into the corresponding values of $\tau$. Once you have that they serve as an input to the forward dynamics algorithms to compute the systems response to the applied forces.
+Note beside: Featherstone uses $\tau^a$ to denote the active loop closure forces. From your model description there does not seem to be any kinematic loops and therefore $\tau^a$ does not apply.
+Gravitational Acceleration:
+Featherstone applies the gravitational acceleration at the base and lets it propagate by the algorithms through the tree. This is done in the RNEA, Table 5.1 in the line
+$a_0 = -a_g$.
+Instead of doing that you can also modify the line
+$f_i^B = I_i a_i + v_i \times^* I_i v_i$
+to 
+$f_i^B = I_i (a_i - {}^iX_0a_g) + v_i \times^* I_i v_i$
+to apply the gravitational effects individually on each body. This introduces additional computations and I do not see any benefits in doing so.
+Spatial Algebra vs. Concatenation of 3-D Vectors
+Spatial Algebra is not just concatenation of 3-D vectors. The former expresses rigid body motions at a fixed coordinate frame, whereas the latter is expressed at points that move with the body. As a result spatial accelerations are the time derivatives of spatial velocities. In the classical notation using two 3-D equations this is not the case (Section 2.11 of Featherstone's book):
+If a body has a constant angular velocity $\omega$ then all points on that body that are not on the axis of rotation have an acceleration towards the axis of rotation (center of rotation in the planar case). In Spatial Algebra this body has zero spatial acceleration independent of the frame the acceleration is expressed in.
+Spatial velocity describes linear and angular velocity of the body point that currently coincides with the origin of the (fixed) reference frame. If that frame is expressed at the center of mass and oriented with the global reference frame then it appears to be a simple concatenation of 3-D linear and angular velocity, however this is only the case for this specific choice of reference frame. Expressed at a different frame you get different values but it still represents the same spatial velocity.
+Spatial acceleration describes the flow of the linear and angular velocity of the point that coincides with origin. "Flow" here means how the vector quantities (linear and angular velocity) change over time.
+

@@ -1,0 +1,75 @@
+Q:
+
+ROS2 Eloquent - KDL - How do I get 'live' (Global) Joint Axis information?
+
+Ubuntu 18.04
+ROS2 Eloquent
+C++
+TF
+KDL
+URDF
+robot_state_publisher (but the Foxy version!)
+
+###Setup
+I am running ROS2 Eloquent, but I copied the Foxy version of the robot_state_publisher from github to use in my own project. Inside robot_state_publisher (Foxy version!) I learned how to use setupURDF(...) to transform my URDF file into a URDF::Model, and subsequently copy the Joints from that Model into a MimicMap. This MimicMap is used inside the JointState callback and ultimately end up at publishTransforms. In short, the URDF Model and JointStateMsg (sensor_msgs::msg::JointState) are used to populate at a TransformStampedMsg (geometry_msgs::msg::TransformStamped), which is published for anyone to use. I can see that a bulk of the magic is done with the KDL namespace, which manages the tree, segments, joints, links, plus more, and allows us to get poses of a segment based on the current joint position.
+###Question
+Is there a way for me to get 'live' (or Global) Joint Axis pose (with the applied joint_positions) using functions already provided to me by KDL or another ROS library? If not, how do I apply my joint rotations to the segments so that I can calculate the Forward Kinematics for the Axis of Rotation for each joint?
+
+Originally posted by ateator on ROS Answers with karma: 37 on 2020-11-13
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2020-11-14:
+Your post confuses me greatly. Normally, people use a joint_state_publisher instance (or any other source) to get JointState messages published for their robot. The robot_state_publisher will then take those messages, and, based on the URDF it has loaded earlier, will perform FK for all joints defined in the URDF (and for which it has information from the JointState messages). It will then broadcast the result of that FK as TF frames.
+Consumers then use regular TF lookups to retrieve those transforms.
+None of this requires any custom code.
+Could we take a step back and could you please clarify why you are investigating the internals of robot_state_publisher?
+
+copied the Foxy version of the robot_state_publisher from github to use in my own project.
+
+do you want to use the FK part from robot_state_publisher in a non-ROS project?
+Comment by gvdhoorn on 2020-11-14:
+And a tip: please always use permalinks when linking to files on Github (or similar services), as links to HEAD have a tendency to go stale very quickly.
+Comment by ateator on 2020-11-14:
+At first, I was trying to understand the usage of joint_state_publisher and robot_state_publisher, so I investigated the sources for the Eloquent version. I didn't personally like the format of the Eloquent code, and preferred the Foxy code. Instead of upgrading my ROS2 version, I implemented the Foxy version of robot_state_publisher by copying it inside my ROS2 Eloquent package inside my ROS2 colcon workspace. That's fine. Now, I have a need to publish the 'live' JointAxis information of my robot for a different node to use. I am trying to understand how to get the JointAxis information that is transformed by the JointState messages, pack that into some sort of message (I don't care what type, custom interface, TF, etc.), and publish it on a topic
+Comment by ateator on 2020-11-14:
+I don't have any problem with ROS2, my system, my package or the robot_state_publisher node itself. My system works exactly as expected, but now I am trying to gather information which I assume should already be calculated through KDL or figure out how to use a (KDL or other) library to calculate this information so that I can publish it for use in my system
+Comment by gvdhoorn on 2020-11-15:
+As I wrote: the canonical way to use/find/get these transformations is by using TF2. What you describe is standard use of this piece of infrastructure.
+That will allow you to find transforms between all frames present in your TF tree.
+Comment by ateator on 2020-11-15:
+I am looking for information on how to get the orientation for the Joint Axis (or Axis of Rotation for the associated joint) that is related to the FK calculated by KDL.TF2 or robot_state_publisher will help me calculate the position and orientation of each link, and therefore the associated joints, but I don't know how to get/calculate the Axis of Rotation for these joints. I am asking for help with either learning how to calculate the Global Axis of Rotation that is associated with my Joints, or use information already provided by the KDL functionality, as I wrote in my question. If this is possible, I would appreciate some example code or references to functions that I can use to learn how to do this.
+
+A:
+
+I found that my question was not stated correctly. Restated, it would be: I have Local Rotation Axis of all the joints available. How do I get the Global Rotation Axis for these joints?
+I have not found the way to do this through TF, or KDL, but two solutions I found are:
+1- use Rodrigues' rotation formula.
+Given:
+ v = Vector to Rotate 
+k = the axis on which the vector has to be rotated on 
+vRot = rotated vector
+
+vRot = v . cos(theta) +(k x v )sin (theta) + k (k.v) (1-cos(theta))
+
+2- as decribed here
+//a' = ai . Wi-parent 
+//a' =  global axis 
+//a = local axis 
+//Wi-Parent  = Parent's link Quaternion 
+//It will be rotating a vector v with a quaternion 
+
+void rotate_vector_by_quaternion(const Vector3& v, const Quaternion& q, Vector3& vprime)
+{
+  // Extract the vector part of the quaternion
+  Vector3 u(q.x, q.y, q.z);
+  // Extract the scalar part of the quaternion
+  float s = q.w;
+  // Do the math
+  vprime = 2.0f * dot(u, v) * u + (s*s - dot(u, u)) * v + 2.0f * s * cross(u, v);
+}
+
+Originally posted by ateator with karma: 37 on 2020-11-16
+This answer was ACCEPTED on the original site
+Post score: 0
+

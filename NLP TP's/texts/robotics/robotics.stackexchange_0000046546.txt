@@ -1,0 +1,89 @@
+Q:
+
+Pcl error in stl container
+
+Hi,
+I'm using ROS fuerte with Ubuntu 11.10 and i'm having a problem with pcl.
+I'm geting a PointCloud from the kinect and later on the program i'm putting that in a std::deque.
+But sometimes this gives me an error.
+kinect_track: /usr/include/eigen3/Eigen/src/Core/DenseStorage.h:69: Eigen::internal::plain_array<T, Size, MatrixOrArrayOptions, 16>::plain_array() [with T = float, int Size = 4, int MatrixOrArrayOptions = 0]: Assertion `(reinterpret_cast<size_t>(array) & 0xf) == 0 && "this assertion is explained here: " "http://eigen.tuxfamily.org/dox-devel/TopicUnalignedArrayAssert.html" " **** READ THIS WEB PAGE !!! ****"' failed.
+    Aborted
+
+Acording to the that page the problem is that the deque(PointCloud) must be aligned according to the eigen files.
+The PCL 1.5.1 in the file point_types.cpp shows that the PointXYZRGB is aligned
+struct EIGEN_ALIGN16 _PointXYZRGB
+00351   {
+00352     PCL_ADD_POINT4D; // This adds the members x,y,z which can also be accessed using the point (which is float[4])
+00353     union
+00354     {
+00355       union
+00356       {
+00357         struct
+00358         {
+00359           uint8_t b;
+00360           uint8_t g;
+00361           uint8_t r;
+00362           uint8_t _unused;
+00363         };
+00364         float rgb;
+00365       };
+00366       uint32_t rgba;
+00367     };
+00368 
+00369     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+00370   };
+
+but the PCL 1.5 that comes with ROS on the same file (but .h) have (line 299):
+POINT_CLOUD_REGISTER_POINT_STRUCT (pcl::_PointXYZRGB,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, rgb, rgb)
+)
+
+only and no
+EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+anywhere in the file.
+this is my code:
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
+namespace enc = sensor_msgs::image_encodings;
+
+using namespace cv;
+using namespace std;
+
+deque(PointCloud) PC;
+
+(and later)
+
+void GetFeaturePoints::NewImage(const PointCloud::ConstPtr& msg){
+....
+PC.push_back(*msg);
+}
+
+Can i do anything to this?
+it's the same error as this
+thanks
+
+Originally posted by jcc on ROS Answers with karma: 200 on 2012-12-13
+Post score: 1
+
+A:
+
+I believe the pointcloud is properly aligned, but not the container holding the point clouds.
+Let's assume you have a point cloud of type PointCloud. Initializaing a std::vector like this will cause alignemnet errors:
+std::vector<PointCloud> my_deque;
+
+The proper way to initialize is:
+std::vector<PointCloud, Eigen::aligned_allocator<PointCloud> > my_deque;
+
+I assume the same holds for other types of stl containers, such as a deque. More information here
+
+Originally posted by Ivan Dryanovski with karma: 4954 on 2012-12-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by jcc on 2012-12-26:
+Great! the problem is gone! Thanks
+

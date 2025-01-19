@@ -1,0 +1,93 @@
+Q:
+
+CMake can't find yaml-cpp on debian jessie
+
+I'm trying to release a new package on the ROS build farm, and the debian jessie build is currently failing due to the yaml-cpp dependency. I have it listed as a dependency in my package.xml:
+
+<depend>yaml-cpp</depend>
+
+and the relevant lines in my CMakeLists.txt are:
+
+find_package(yaml-cpp REQUIRED)
+catkin_package(
+...
+DEPENDS YAML_CPP
+)
+include_directories(
+${catkin_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIR}
+)
+add_library(my_target ...)
+target_link_libraries(my_target ${YAML_CPP_LIBRARIES})
+
+On Ubuntu this builds just fine, both locally and on the ROS build farm. For the Debian Jessie build, however, I get the following error:
+
+CMake Error at CMakeLists.txt:18 (find_package):
+  By not providing "Findyaml-cpp.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "yaml-cpp",
+  but CMake did not find one.
+
+  Could not find a package configuration file provided by "yaml-cpp" with any
+  of the following names:
+
+    yaml-cppConfig.cmake
+    yaml-cpp-config.cmake
+
+  Add the installation prefix of "yaml-cpp" to CMAKE_PREFIX_PATH or set
+  "yaml-cpp_DIR" to a directory containing one of the above files.  If
+  "yaml-cpp" provides a separate development package or SDK, be sure it has
+  been installed.
+
+-- Configuring incomplete, errors occurred!
+
+The rosdep dependency seems to be resolving just fine (It installs libyaml-cpp-dev properly and rosdep resolve yaml-cpp --os=debian:jessie returns as expected). However, it seems that either the CMake config file either isn't being installed or is not being found. I'm not sure what to do about this, especially since it works in Ubuntu.
+The package that's failing is the "rosflight" package at https://github.com/rosflight/rosflight.git. If you're set up to run ROS prerelease tests, the error can be reproduced using the following commands:
+
+mkdir -p /tmp/prerelease_job
+cd /tmp/prerelease_job
+generate_prerelease_script.py \
+  https://raw.githubusercontent.com/ros-infrastructure/ros_buildfarm_config/production/index.yaml \
+  kinetic default debian jessie amd64 \
+  --custom-repo \
+    rosflight:git:https://github.com/rosflight/rosflight-release.git:release/kinetic/rosflight/0.1.2-0 \
+    rosflight_msgs:git:https://github.com/rosflight/rosflight-release.git:release/kinetic/rosflight_msgs/0.1.2-0 \
+    rosflight_pkgs:git:https://github.com/rosflight/rosflight-release.git:release/kinetic/rosflight_pkgs/0.1.2-0 \
+    rosflight_utils:git:https://github.com/rosflight/rosflight-release.git:release/kinetic/rosflight_utils/0.1.2-0 \
+  --level 0 \
+  --output-dir ./
+./prerelease.sh
+
+Any insights would be appreciated!
+
+Originally posted by dpkoch on ROS Answers with karma: 132 on 2017-05-24
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2017-05-25:
+Is yam-cpp a CMake package on Debian? I remember having to use PkgConfig like this:
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(yaml_cpp REQUIRED yaml-cpp)
+
+Comment by dpkoch on 2017-05-25:
+@gvdhoorn That appears to have resolved my issue, thanks! Switching to PkgConfig seems to work for both Ubuntu and Debian, although I did have to change from ${YAML_CPP_INCLUDE_DIR} to ${YAML_CPP_INCLUDEDIR} (I used a YAML_CPP prefix instead of yaml_cpp in pkg_check_modules()).
+
+A:
+
+As per @gvdhoorn's suggestion, this was resolved by switching to PkgConfig to find the module. So now instead of find_package(yaml_cpp REQUIRED) I have
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
+
+I also needed to modify my include statement slightly to
+include_directories(${YAML_CPP_INCLUDEDIR})
+
+where before it was include_directories(${YAML_CPP_INCLUDE_DIR}).
+This seems to work for both Debian and Ubuntu.
+
+Originally posted by dpkoch with karma: 132 on 2017-05-25
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Rick Armstrong on 2017-07-13:
+Ran into this issue building clearpathrobotics/pulson_ros, and this solution worked for us, too.
+

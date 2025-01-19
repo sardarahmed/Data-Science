@@ -1,0 +1,42 @@
+Q:
+
+Why does rmw_implementation have a build dependency on certain middleware packages?
+
+I notice in rmw_implementation package.xml, there are build dependencies for certain middleware implementation packages. I thought the point of build_depends was only to list the packages that must be around for a package to be built, so rosdep can install them or colcon can build in topological order.
+
+"Bloom does not support group_depend so entries below duplicate the group rmw_implementation_packages. This ensures that binary packages have support for all of these rmw impl. enabled"
+
+The comment there mentions that these dependencies are needed for Bloom. How so? What happens in Bloom if these packages are not listed as build dependencies? Why doesn't Bloom need build references to other available RMW packages (e.g. rmw_fastrtps_dynamic_cpp and rmw_coredds_cpp)?
+
+Originally posted by DanRose on ROS Answers with karma: 274 on 2019-09-05
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-09-05:
+Comments from the PR that added those lines: ros2/rmw_implementation#41: here.
+Comment by DanRose on 2019-09-05:
+Thanks, @gvdhoorn. I saw that discussion already but it just left me scratching my head.
+Comment by gvdhoorn on 2019-09-05:
+Yeah. It wasn't meant as an answer. Just some additional context.
+
+A:
+
+bloom generates the Debian control files based on the dependencies in the package manifest. When the Debian package is being built all declared build dependencies will be installed in order to build the package. As the comment mentions it doesn't take group dependencies into account.
+If the package wouldn't declare any explicit build dependencies on RMW implementations there would be none installed and the package would simply fail to build (see https://github.com/ros2/rmw/blob/9f2e181306c66ac0f09674086a108d4657611766/rmw_implementation_cmake/cmake/get_default_rmw_implementation.cmake#L28).
+
+Originally posted by Dirk Thomas with karma: 16276 on 2019-09-05
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by tfoote on 2019-09-05:
+Note that because of this these dependencies reflect the dependencies that the debian packages will be built against and available to be selected using the environment variable RMW_IMPLEMENTATION.
+Comment by DanRose on 2019-09-05:
+Thank you, Dirk and Tully! So why are some middlewares excluded from package.xml? Do they work without being in the Debian control files or do I need to rebuild rmw_implementation from source in order to use them?
+Comment by Dirk Thomas on 2019-09-06:
+See the conversation on https://github.com/ros2/rmw_implementation/pull/63
+Comment by DanRose on 2019-09-06:
+That’s the convo that prompted this question :-). Correct if wrong, but I think what you might be trying to say is “a particular RMW needs to be present when rmw_implementation is compiled if that RMW has a custom typesupport”
+Comment by Dirk Thomas on 2019-09-06:
+It it has a custom typesupport you will also need to rebuild all interface packages. The need to rebuild rmw_implementation to use a RMW impl, installed afterwards (assuming it uses e.g. introspection typesupport) is being re-evaluated and there are PRs pending to get rid of that requirement.
+

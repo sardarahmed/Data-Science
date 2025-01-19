@@ -1,0 +1,45 @@
+Q:
+
+How do I go about implementing a Kalman Filter for a pose estimation algorithm?
+
+I am currently in the process of writing a pose estimation algorithm using image data. I receive images at 30 fps, and for every image, my program computes the x,y,z and roll, pitch, yaw of the camera with respect to a certain origin. This is by no means very accurate, there are obvious problems such as too much exposure in the image, not enough feature points in the image, etc., and the positions go haywire every once in a while; so I want to write a Kalman filter that can take care of this part.  
+I have read through the basics of KF, EKF etc. and then I was reading through an OpenCV tutorial that has an implementation of a Kalman Filter inside an algorithm for the pose estimation of an object. While this matches my use case very well, I don't understand why they are using a linear Kalman Filter while explicitly specifying parameters like (dt*dt) in the state transition matrix. For reference, the state transition matrix they are considering is 
+             /* DYNAMIC MODEL */
+//  [1 0 0 dt  0  0 dt2   0   0 0 0 0  0  0  0   0   0   0]
+//  [0 1 0  0 dt  0   0 dt2   0 0 0 0  0  0  0   0   0   0]
+//  [0 0 1  0  0 dt   0   0 dt2 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  1  0  0  dt   0   0 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  1  0   0  dt   0 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  0  1   0   0  dt 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  0  0   1   0   0 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  0  0   0   1   0 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  0  0   0   0   1 0 0 0  0  0  0   0   0   0]
+//  [0 0 0  0  0  0   0   0   0 1 0 0 dt  0  0 dt2   0   0]
+//  [0 0 0  0  0  0   0   0   0 0 1 0  0 dt  0   0 dt2   0]
+//  [0 0 0  0  0  0   0   0   0 0 0 1  0  0 dt   0   0 dt2]
+ /  [0 0 0  0  0  0   0   0   0 0 0 0  1  0  0  dt   0   0]
+//  [0 0 0  0  0  0   0   0   0 0 0 0  0  1  0   0  dt   0]
+//  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  1   0   0  dt]
+//  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   1   0   0]
+//  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   1   0]
+//  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   0   1]
+
+I'm a little confused, so my main question can be broken down into three parts:
+
+Would a linear Kalman Filter suffice for a 6DOF pose estimation filtering? Or should I go for an EKF?
+How do I come up with the "model" of the system? The camera is not really obeying any trajectory, the whole point of the pose estimation is to track the position and rotation even through noisy movements. I don't understand how they came up with that matrix.
+Can the Kalman Filter understand that, for instance, if the pose estimation says my camera has moved half a meter between one frame and other, that's plain wrong, because at 1/30th of a second, there's no way that could happen?
+
+Thank you!
+
+A:
+
+It sounds like you're using the camera frames to get a PnP solution, or something along those lines.
+
+A linear Kalman filter will usually work OK for most purposes if you're using roll/pitch/yaw and pose measurements coming from the camera algorithm. This is always the first port of call because it's much easier than EKF/UKF/etc. If this does not give adequate results then you should consider more complex filters.
+The "model" of the system is generally at least two models: a process model (how the system state evolves in time) and a measurement model (how the camera makes measurements based on the system state). Aside: "Pose estimation" is simply finding a pose, what the *KF does is state filtering. A widely used model ( and what seems to be the model you have pasted ) is the constant-velocity model; which assumes that between camera measurements the camera is a particle travelling with constant linear and angular velocity.
+The KF has no in-built way to discriminate if there is an uncharacteristically large spike in measurements. The term for this used in KF papers is "update rejection" and a popular empirical method thresholding each update based on Mahalanobis distance (see 1 section IIIE). Before implementing this, simply increase the measurement noise in your filter and see if it gives you acceptable results. If you see a high correlation between unacceptable state error and the "outlier" then you will need update rejection.
+
+A very good read is: A Kalman Filter-based Algorithm for IMU-Camera Calibration.
+Aside: You can also do things like after every measurement update, saturate the state vector's velocities or positions (e.g. make sure it's not travelling 100m/s when it can only go 1m/s). Also be aware if you use Euler angles to represent your orientation then you will undoubtebly run in to problems if you operate near +/- 90 degree Pitch angles. Also problematic is if operating near the Yaw angle limits (angle wrap), typically only if you are controlling something based off the Yaw angle.
+

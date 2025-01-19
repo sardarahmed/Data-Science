@@ -1,0 +1,50 @@
+Q:
+
+No color bag_to_pcd
+
+Hi all,
+I'm using the bag_to_pcd command. However when I open my clouds in pcl, I can just see the depth data, but no color.  This is weird because the file says that it does contain RGB information. Also, I am declaring the cloud as "PointXYZRGB".
+Do you have an idea why this is happening and how should I fix it?
+Best,
+Rafael
+
+Originally posted by kuchiyo on ROS Answers with karma: 36 on 2015-05-15
+Post score: 0
+
+A:
+
+I answered myself this question in the PCL forum. I post the answer also here because it is a problem related to ROS and PCL.
+This post has NOT been accepted by the mailing list yet.
+Okay, this one was tricky.
+Back then, when I made the question my redaction was pretty bad. Probably that is the reason nobody could help me. Anyway, for anyone having this problem, first I will explain again the problem I had, and then the way I solved it!
+Objective
+I had a *.bag file with point clouds in 'pcd' format and the goal was to extract each of the point clouds. In order to do this I used the bag_to_pcd node.
+Procedure
+Once I extracted the files with ROS, I came back to PCL, and I used the "loadPCDFile" function in order to open such files. My intuition was to use a cloud with 'XYZRGB' points. This had send because by looking into the "bag_to_pcd" code, the clouds contained in the *.bag are opened as PointCloud2 and then they are transformed by using pcl_ros::transformPointCloud.
+Problem
+The situation is that, as strange as it may sound, I could just see the depth data, but I could not see the RGB color: I was getting a message saying: "failed to find a match for field 'rgb'. This had actually no sense because the clouds had color indeed, and I could see it using rviz. Also I had already used the same procedure to convert a *bag dataset I downloaded from the CV group at TUM. So, why was this not working just for one *.bag file????
+Solution
+To came to a solution, I tried several things, but I noticed that if I opened one of those clouds using "pcl_viewer" from the terminal, and I pressed then 5, I could see the color!!!
+Immediately, I went inside the pcl_viewer.cpp code, and I noticed that the clouds are declared with the format PointCloud2.
+My logic was to open the clouds in the same way and then transform them to 'XYZRGB' points. I tried both, the ROS and PCL functions to do so, but nothing worked!!!
+Then I carefully read the whole pcl_viewer.cpp, and noticed that they took a particular approach to color images!!! The trick is that the PointCloud2 is just converted into a cloud with XYZ points, then a color handler takes information directly from the cloud with format PointCloud2. Finally this handler can be used together with the 'XYZ' cloud to color it!.
+The recipe
+1.- Initialize two clouds:
+pcl::PCLPointCloud2::Ptr cloud (new pcl::PCLPointCloud2);
+pcl::PointCloudpcl::PointXYZ::Ptr cloud_xyz (new pcl::PointCloudpcl::PointXYZ);
+2.-  Declare a Color handler with the  'PCLPointCloud2' format:
+typedef pcl::visualization::PointCloudColorHandlerpcl::PCLPointCloud2 ColorHandler;
+ColorHandler::Ptr color_handler;
+3.- Open the cloud of interest using the cloud with PCLPointCloud2 format:
+pcl::io::loadPCDFile("name.pcd", *cloud);
+4.-  Use the color handler to get the RGB data:
+color_handler.reset (new pcl::visualization::PointCloudColorHandlerRGBFieldpcl::PCLPointCloud2 (cloud));
+Now you will be able to add and see depth and color in a PCL visualizer.
+I really struggled with this one, and I hope I can save some hours to someone having the same problem.
+Best,
+Rafael
+
+Originally posted by kuchiyo with karma: 36 on 2015-05-16
+This answer was ACCEPTED on the original site
+Post score: 2
+

@@ -1,0 +1,83 @@
+Q:
+
+Spawning multiples robots with 1 URDF/XACRO file
+
+Hello,
+I'm spawning 2 pioneer robots but I have some plug-ins for the sensors, odom and cmd/vel that are publishing for the same topics.
+Is there any simple/and efficient way to change the topics where they are publishing this messages? The robots have different names already.  Anyone knows how to do this?
+I don't want just to copy paste all the xacro code and change the topics by hand, I think its not a good solution.
+Anyone knows how to do this? So far I created 2 launch files to try to do this:
+ <launch>
+    <param name="/use_sim_time" value="true"/>
+    
+    <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+    
+  <group ns="p3dx_1">
+    <include file="$(find p3dx_gazebo)/launch/pioneer.launch">
+      <arg name="name" value="p3dx_1"/>
+      <arg name="pos_x" value="-4.0"/>
+      <arg name="namespace_arg" value="p3dx_1"/>
+    </include>
+  </group>
+
+  <group ns="p3dx_2">
+    <include file="$(find p3dx_gazebo)/launch/pioneer.launch">
+      <arg name="name" value="p3dx_2"/>
+      <arg name="pos_x" value="4.0"/>
+      <arg name="namespace_arg" value="p3dx_2"/>
+    </include>
+  </group>
+</launch>
+
+and this one:
+<launch>
+  <!-- push robot_description to factory and spawn robot in gazebo -->
+  <arg name="name" default="pioneer"/>
+  <arg name="pos_x" default="0.0"/>
+  <arg name="pos_y" default="0.0"/>
+  <arg name="pos_z" default="0.0"/>
+  <arg name="namespace_arg" default=""/>
+
+  <arg name="model" default="$(find p3dx_description)/urdf/$(arg namespace_arg).xacro"/>
+  <!-- send the robot XML to param server -->
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(arg model)'" />
+  <param name="tf_prefix" value="$(arg namespace_arg)" />
+  <node name="spawn_robot" pkg="gazebo_ros" type="spawn_model"
+        args="-param robot_description
+              -urdf
+              -x $(arg pos_x)
+              -y $(arg pos_y)
+              -z $(arg pos_z)
+              -model $(arg name)"
+        respawn="false" output="screen">
+  </node>
+</launch>
+
+But I think this way I will have to copy the .xacro files. Anyone has a better idea?
+
+Originally posted by End-Effector on ROS Answers with karma: 162 on 2015-03-05
+Post score: 0
+
+A:
+
+I just tried it myself with my robot. One thing you need are groups in launchfiles.
+http://wiki.ros.org/roslaunch/XML/group
+BTW. If you use robot namespace tags in your model plugins, remove them!
+Otherwise your topics like for example cmd_vel will overlap.
+You also need another parameter with a different name for the other robot because I found out they are named like the param in gazebo.
+Put the same launch tags (except the parameter for the spawn and spawn position) for your robots in two tags,
+For example:
+<node name="spawn_test_bot" pkg="gazebo_ros" type="spawn_model" args="-z 0.1 -urdf -param robot_description -model robot_description" respawn="false" />
+
+ <node name="spawn_test_bot" pkg="gazebo_ros" type="spawn_model" args="-z 0.1 -x 1 -urdf -param robot_description2 -model robot_description2" respawn="false" />
+
+That seems to work for me, but currently I just need one robot.
+
+Originally posted by LucianTM with karma: 62 on 2015-03-06
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by cybodroid on 2015-12-13:
+how did you make it work? node nam must be unique!
+

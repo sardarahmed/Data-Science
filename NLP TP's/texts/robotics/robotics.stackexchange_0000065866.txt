@@ -1,0 +1,56 @@
+Q:
+
+How do i get the distancies between frames in openni_tracker?
+
+Hi all!
+I'm running ROS hydro with ubuntu 12.04 (I'm new for both of them).
+I'm using kinect for skeletal tracking, but I don't know how to get the length of the limbs during a movement.
+Can someone help me?
+Regards
+
+Originally posted by chiaraDark on ROS Answers with karma: 1 on 2015-02-17
+Post score: 0
+
+A:
+
+If you're using openni_tracker, the general way to do this would be to create a tf listener, and in some sort of loop use the listener to lookup the transform between the joints that you're interested in. This method will return a vector and a quaternion representing the transform between the two frames. If all you're interested in is distance, then you can simply calculate that using the transformation vector. Here's a simple example adapted from the previously-linked tf listener tutorial:
+#!/usr/bin/env python  
+import rospy
+import tf
+import geometry_msgs.msg
+import numpy as np
+
+if __name__ == '__main__':
+    rospy.init_node('tf_lookup_example')
+
+    listener = tf.TransformListener()
+
+    rate = rospy.Rate(10.0)
+    while not rospy.is_shutdown():
+        try:
+            (trans,rot) = listener.lookupTransform('/right_hand_1', '/left_hand_1', rospy.Time(0))
+            rospy.loginfo("Distance between the hands is = {0:f}".format(np.linalg.norm(trans)))
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            continue
+
+        rate.sleep()
+
+The only key to making this example work is ensuring that your tf tree is fully connected. My version of openni_tracker uses, by default, openni_depth_frame as the frame it produces transforms in, but the openni.launch file uses camera as its default name to define all frames and topics. This inconsistency can be fixed, for example, by running openni.launch in the following way:
+roslaunch openni_launch openni.launch camera:=openni
+
+Then openni_tracker could be started with just rosrun openni_tracker openni_tracker
+
+Originally posted by jarvisschultz with karma: 9031 on 2015-02-17
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by chiaraDark on 2015-02-17:
+Is the same if i run this command in the terminal?
+rosrun tf tf_echo right_shoulder_1 right_hand_1
+With this i get a vector for translation and one for rotation, but what i need is the effective registered length of the limb (i have to see if my track is affected by noise and i have to measure it)
+Comment by jarvisschultz on 2015-02-17:
+The "trans" part in my code is exactly the vector for translation. If you want, for example, the length of the right forearm simply lookup the transform from "/right_hand_1" to "/right_elbow_1". That will give you a translation between those frames. Then the Euclidean norm will give the distance.
+Comment by chiaraDark on 2015-02-17:
+Thanks a lot!
+

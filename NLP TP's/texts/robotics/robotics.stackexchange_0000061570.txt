@@ -1,0 +1,92 @@
+Q:
+
+How can I reference an external project with Catkin?
+
+I would like to build a ROS node that uses some code from an external project.  I certainly need to reference some header files from that project, and will probably also need to "pull in" some C++ source code from that project.
+The simplest, dumbest, least maintainable way I could to this would be to simply copy the header file(s) and source file(s) into my ROS project.
+I feel like there should be some way to tell Catkin or Cmake "Add this directory to the list of includes" and "Add that directory to VPATH".  But, as Catkin and Cmake are totally new to me (as of about a week ago), I haven't the foggiest idea how to ask the Google to find the answer to my question.  So I'll ask the community instead :-)
+Thanks for any tips you can give me.
+
+Originally posted by wpd on ROS Answers with karma: 249 on 2014-08-06
+Post score: 0
+
+Original comments
+Comment by jbinney on 2014-08-06:
+Do the external projects use cmake? If they provide a cmake config file, you can find_package them just like opencv: http://wiki.ros.org/vision_opencv
+Comment by wpd on 2014-08-06:
+Unfortunately, it does not.  It is a traditional Make based project.  I would like to pull a few header files and source files from that project into mine.
+Comment by wpd on 2014-08-06:
+So far, I have started down the path of writing my own "Findtrunk.cmake" file to find the project in my source tree (which I keep separate from my budding ROS source tree... for the moment) ,defining ${TRUNK_DIR} in Findtrunk.cmake, and adding ${TRUNK_DIR}/include to include_directories().
+
+A:
+
+All right, here is what I did.  I feel like it is tremendously hacky, but it appears to work.
+I created a cmake_modules/Findtrunk.cmake file containing:
+#invented based on what I found in libfreenect/cmake_modules/Findlibusb-1.0.cmake
+if (TRUNK_DIR)
+  # in cache already
+  set(TRUNK_FOUND TRUE)
+else (TRUNK_DIR)
+  find_path(TRUNK_DIR
+    NAMES
+    rcp/Makefile
+    PATHS
+        $ENV{HOME}/src/hai/trunk
+  )
+
+  if (TRUNK_DIR)
+    set(TRUNK_FOUND TRUE)
+  endif (TRUNK_DIR)
+
+  if (TRUNK_FOUND)
+    if (NOT trunk_FIND_QUIETLY)
+      message(STATUS "Found trunk:")
+      message(STATUS " - ${TRUNK_DIR}")
+    endif (NOT trunk_FIND_QUIETLY)
+  else (TRUNK_FOUND)
+    if (trunk_FIND_REQUIRED)
+      message(FATAL_ERROR "Could not find trunk")
+    endif (trunk_FIND_REQUIRED)
+  endif (TRUNK_FOUND)
+
+endif (TRUNK_DIR)
+
+I added the following 2 snippets to my CMakeLists.txt file:
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/")
+find_package(trunk REQUIRED)
+
+and
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${TRUNK_DIR}/common/include
+  ${TRUNK_DIR}/this/that
+  ${TRUNK_DIR}/the/other/thing
+)
+set(BBR_FILES
+  ${TRUNK_DIR}/this/that/buffer.c
+  ${TRUNK_DIR}/this/that/config.c
+)
+set_source_files_properties(${BBR_FILES} PROPERTIES LANGUAGE CXX)
+
+add_executable(mp2ros_node
+  src/mp2ros_node.cpp
+  ${BBR_FILES}
+)
+
+and that seems to work.  I'm not sure it's the most straightforward thing to do.  I like the idea of creating a Findtrunk.cmake file so that others on my team might edit it to reflect the location of their trunk directory.  We'll see if that ever comes to pass.
+I would appreciate any questions, comments, or snide remarks more experienced folks would care to make regarding this approach.  I'm certain that I'm not following any number of standard Cmake conventions (I noticed that other Findxxx.cmake files define INCLUDE_XXX_DIRS, for example), but this seems to work for me so far.
+
+Originally posted by wpd with karma: 249 on 2014-08-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by jbinney on 2014-08-07:
+This seems like a good approach. Thanks for posting this!
+Comment by zultron on 2018-07-18:
+Setting CMAKE_MODULE_PATH is forbidden in the ROS CMake Coding Standards document, although it doesn't say what folks should do in this case.
+Comment by Dirk Thomas on 2018-08-03:
+I don't recall why that was added to the docs (https://github.com/ros/catkin/commit/f8757cb248f255df49365a98b13f3917a132ad18#diff-4ad8521ab1ee054b80370475d0786563R134). Maybe the original author remembers?
+Comment by Dirk Thomas on 2018-08-03:
+The approach to extend the CMAKE_MODULE_PATH locally in your CMake seems fine to me.
+

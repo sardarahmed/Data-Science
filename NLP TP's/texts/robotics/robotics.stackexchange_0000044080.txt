@@ -1,0 +1,51 @@
+Q:
+
+how do I "install" stacks into /opt/ros?
+
+Good morning.  I am putting together a distro of common ros components my company may want to use, building from source to upgrade the boost version.  The core is installed after some headaches (btw where do i post how to upgrade a boost version? i cannot find an actual tutorial anywhere.).
+Now i have some additional packages such as vision_opencv. It is built in ~/ros, but how do i get it installed into /opt/ros/fuerte_myversion?
+
+Originally posted by Bob Dean on ROS Answers with karma: 61 on 2012-09-12
+Post score: 0
+
+Original comments
+Comment by dornhege on 2012-09-12:
+Do you plan to make those packages publicly available? Then you can use willow's release infrastructure to build .deb packages that install to /opt/ros.
+Comment by tfoote on 2012-09-16:
+To post about how to upgrade a boost version, you could ask and answer your own question.  An admin can mark it as accepted.
+
+A:
+
+Using  rosbuild there is no install target.  I highly recommend if you're building/packaging things to go into /opt/ros you build them in place.  That is effectively how we build the debian packages which we release.  (There's some magic to work through chroots etc in the debbuild system).
+This is one of the primary features driving the development of the new build system, catkin.  To see how the debian building happens see the rosdeb package single_deb.py is being used for rosbuild stacks in fuerte and groovy.
+It's invocation is like this:
+#!/bin/bash -x
+OS_PLATFORM=precise
+ARCH=amd64
+STACK_NAME=arm_navigation_experimental
+PACKAGE_NAME=ros-groovy-arm-navigation-experimental
+DISTRO_NAME=groovy
+
+echo $DISTRO_NAME
+echo $STACK_NAME
+echo $OS_PLATFORM
+echo $ARCH
+
+sudo apt-get install pbuilder git-core python-rospkg python-vcstools -y
+
+cat > $WORKSPACE/build.bash << DELIM
+source /opt/ros/cturtle/setup.sh
+export ROS_PACKAGE_PATH=$WORKSPACE/ros_release:$WORKSPACE/release:$ROS_PACKAGE_PATH
+
+#noupload while testing
+rosrun rosdeb single_deb.py $DISTRO_NAME $STACK_NAME $OS_PLATFORM $ARCH
+DELIM
+
+bash $WORKSPACE/build.bash
+
+There's lots of state setup on the build machine to support this.  There are people who have replicated some or all of this, but it's definitely not designed to be deployed externally and will not be a focus of development.  The new buildsystem does have a goal of supporting external projects deploying the infrastructure behind firewalls.
+
+Originally posted by tfoote with karma: 58457 on 2012-09-16
+This answer was ACCEPTED on the original site
+Post score: 2
+

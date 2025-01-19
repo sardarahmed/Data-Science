@@ -1,0 +1,54 @@
+Q:
+
+How to clear older costmap just before updating the map?
+
+Hi,
+What I'm trying to do is putting a rolling window on top of each robot (5 robots in total), then inflating the points representing each obstacle near to the robot of interest as soon as a new sensor data is received, but the map will be reset after a new sensor data comes (clearing).
+Here are some of the important parameter settings:
+nh.setParam ("pointcloud/observation_persistence", 0.0);
+nh.setParam ("pointcloud/expected_update_rate", 0.080);
+nh.setParam ("pointcloud/clearing", true);
+nh.setParam ("pointcloud/marking", true);
+nh.setParam ("pointcloud/obstacle_range", 5.0);
+nh.setParam ("static_map", false);
+nh.setParam ("rolling_window", true);
+nh.setParam ("width", 1);
+nh.setParam ("height", 1);
+nh.setParam ("obstacle_range", 1.0);
+nh.setParam ("raytrace_range", 1.0);
+
+When I run the simulation, everything seems to be properly set, but somehow obstacles are stored, and they stay there all the time. I've read costmap doc and nav tutorials many times, I checked if the parameters are set, I debugged the costmap and observation buffer source codes and verified that buffer is actually cleared(since observation_persistence is set to 0.0).
+I thought making the sensor as "marking+clearing" will help it to overwrite already obtained data automatically. But since it is set as rolling_window with the width and height of 1 meter, sensor couldn't clear the inflated regions since the origin of the sensor becomes outside of the window.
+"The origin for the sensor at (0.00, 0.00) is out of map bounds. So, the costmap cannot raytrace for it".
+Having set the raytrace_range 1.0 as in the case of obstacle_range didn't change anything. I was hoping that somehow it will be handled automatically that the sensor data inside the rolling window will be updated and cleared automatically.
+Then, why still see the traces of the dynamic objects, as it is shown in this video?
+In this video, there are 5 static yellow robots, and five dynamic blue robots, one of which is creating a costmap for itself, and the point clouds being sent to the costmap is shown with red, orange points are obstacles, green regions are the inflated obstacles.
+Many thanks in advance..
+
+Originally posted by Kadir Firat Uyanik on ROS Answers with karma: 288 on 2011-06-27
+Post score: 2
+
+A:
+
+Hi Eitan,
+Current system is very slow since costmap modules -I suppose- were not designed to consider a fully observable, offboard sensing and computing multi-agent platform like this one.
+To be more hacky about clearing the costmap, I dig into the costmap source code. Since the current system with five controllable nodes can achieve at most 30Hz refresh rate, which is half of what it is supposed to be, and we cannot call a service due to the problem you've mentioned, and it will not be that reasonable to make the system spend extra effort on clearing operations, I will clear the map at each updateMap operation.
+It seems Costmap2DROS::resetMapOutsideWindow method does what I'ld like to do. That is, having a rolling window on top of each robot and considering only the latest sensor observation but discarding whole history, clearing everything at each iteration.
+But I don't want to crash other things in dwa_local_planner. Could you please guide me what is the most proper line that I've to insert resetMapOutsideWindow.
+My initial solution is in costmap_2d_ros.cpp line 653:
+costmap_->resetMapOutsideWindow(wx, wy, 0, 0);
+costmap_->updateWorld(wx, wy, observations, clearing_observations);
+
+It did work indeed, please see this video, but I'm not sure if it's gonna cause any trouble in dwa_local_planner or other parts of the ros::navigation software that I use for this application.
+Thanks a lot for your assistance..
+
+Originally posted by Kadir Firat Uyanik with karma: 288 on 2011-06-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by dornhege on 2011-06-27:
+I assume you are computing the obstacles directly from the robots. If you know the previous/old locations you could use eitan's second option, but only fake clearing information on the old ones, not the full grid. That might be more efficient.
+Comment by Peter Listov on 2012-12-05:
+Hi, Kadir! I'm struggling with the same issue. And I'm not sure when this two functions should be called? In the beginning of mapUpdate() function?
+

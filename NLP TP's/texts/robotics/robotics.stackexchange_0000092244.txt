@@ -1,0 +1,105 @@
+Q:
+
+Urdf is not moving on RViz
+
+Hello, I designed a particle filter using orocos-bfl. Everything is working properly. I can see the particle cloud moving with time and according to the information of the sensors.
+However when it comes to show my urdf model on RViz nothing is moving. I added a small print screen so that you can visualize what is happening:
+
+From the image it is possible to see the urdf but it is detached from the center of the particle cloud. The estimated position is shown on the Pose topic and represented using a longer arrow.
+How do I link the urdf robot model with the particle cloud? Or better, how do I link the urdf robot model with the estimated position bigger arrow I can see on rostopic list?
+Below is how I publish particles and pose:
+// Publishing particles for the whole system
+void publishParticles()
+{
+    geometry_msgs::PoseArray particleCloudMsg;
+    particleCloudMsg.header.stamp = ros::Time::now();
+    particleCloudMsg.header.frame_id = "/base_link";
+
+    std::vector<WeightedSample<ColumnVector>>::iterator sample_it;
+    std::vector<WeightedSample<ColumnVector>> samples;
+
+    samples = filter->PostGet()->ListOfSamplesGet();
+
+    for(sample_it = samples.begin(); sample_it<samples.end(); sample_it++)
+    {
+        geometry_msgs::Pose pose;
+        ColumnVector sample = (*sample_it).ValueGet();
+
+        pose.position.x = sample(1);
+        pose.position.y = sample(2);
+        pose.position.z = sample(3);
+
+        particleCloudMsg.poses.insert(particleCloudMsg.poses.begin(), pose);
+    }
+    particle_pub.publish(particleCloudMsg);
+}
+
+void publishPose() // publish of the estimate of the state
+{
+    Pdf<ColumnVector> * posterior = filter->PostGet();
+    ColumnVector pose = posterior->ExpectedValueGet();
+    SymmetricMatrix pose_cov = posterior->CovarianceGet();
+
+    geometry_msgs::PoseStamped pose_msg;
+    pose_msg.header.stamp = ros::Time::now();
+    pose_msg.header.frame_id = "/base_link";
+
+    pose_msg.pose.position.x = pose(1);
+    pose_msg.pose.position.y = pose(2);
+    pose_msg.pose.position.z = pose(3);
+
+    pose_pub.publish(pose_msg);
+}
+
+Below is the launch file if needed:
+<?xml version="1.0"?>
+<launch>
+
+<param name="use_sim_time" value="true" />
+<param name="use_sim_time" value="true" />
+
+<rosparam command="load" file="$(find ros_float)/config/au_au.yaml" />
+<node pkg="rosbag" type="play" name="player" output="screen" args="--clock -q -s 2340 /home/emanuele/test.bag"/>
+<node pkg="rosbag" type="record" name="record" output="screen" args="-O filter_second_order_bis /estimate /particle_cloud "/>
+
+<node pkg="ros_float" type="pf_second_order_bis_node" name="pf_node" output="screen"/>
+<node pkg="ros_float" type="transform_pose.py" name="tras_pose" output="screen"/>
+
+<!--Adding URDF model-->
+<arg name="floatModel" default="$(find ros_float)/urdf/floatModel.urdf"/>
+<arg name="gui" default="true" />
+<param name="robot_description" command="$(find xacro)/xacro.py $(arg floatModel)" />
+<param name="publish_frequency" value="1.0" />
+<param name="use_gui" value="$(arg gui)"/>
+<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+</launch>
+
+Thanks for pointing in the right direction to solve this issue.
+
+Originally posted by RayROS on ROS Answers with karma: 108 on 2019-06-27
+Post score: 0
+
+A:
+
+Rviz is doing what you are telling it to do.
+You are loading a static URDF model and telling Rviz to set the fixed frame to "/base_link". So Rviz is considering "/base_link" to be the origin coordinate (0, 0 , 0) and the relative position of your static URDF model and "/base_link" never changes (that is why you can see your robot model at the origin).
+But then, the poses on your particle filter are also using "/base_link" as their frame of reference. For instance a particle at pose (1, 1, 0) will appear 1 meter to the front and one meter to the left of "/base_link". That is why you are seeing the point cloud displaced from the robot model.
+What you need to do is to set the frame of your particle filter pose to something different, for example "/particle_filter_frame" and publish the tf transform between "/particle_filter_frame" -> "/base_link".
+Then set Rviz's fixed frame to "/particle_filter_frame" and you should be able to see what you expect.
+
+Originally posted by Martin Peris with karma: 5625 on 2019-06-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by RayROS on 2019-06-29:
+@Martin Peris, thanks for your comment, I will give it a try this weekend and let you know
+Comment by RayROS on 2019-06-30:
+@Martin Peris, from your suggestion I understand that the next step should be to write a small C++/Python script that calculates the transformation from /base_link to /particle_filter_frame and publish the /particle_filter_frame. Am I correct?
+Comment by Martin Peris on 2019-07-01:
+Yes, you are correct. But you don't need a separate C++/Python script. You can publish the transformation inside of the publishPose  function using a tf broadcaster: http://wiki.ros.org/tf2/Tutorials/Writing%20a%20tf2%20broadcaster%20%28C%2B%2B%29
+Comment by RayROS on 2019-07-01:
+Thanks that is a great suggestion. Thanks for that :) I will let you know
+

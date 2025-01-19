@@ -1,0 +1,113 @@
+Q:
+
+ROS Answers SE migration: ROS2 respawn
+
+Hello ROS2 community,
+I'm currently playing around with the best way to respawn a node (ROS2 foxy). My current solution exists of two files (see below). The first file ("test_package_launch.py") defines the generate_launch_description() method. This file is invoked with "ros2 launch test_package test_package_launch.py".  Within the launch file the ExecuteProcess invokes the second file ("test_package_respawn.py").
+So far everything works fine and also it's working as expected. I just don't like the fact to have two files. Is there a way to do this in a single file?
+Thanks
+Jeremy
+test_package_launch.py:
+import sys
+import os
+
+from launch import LaunchDescription
+import launch
+from launch.actions.execute_process import ExecuteProcess
+from launch_ros.actions import Node
+from launch import LaunchService
+from ament_index_python.packages import get_package_share_directory
+
+def callback_respawn(event, context):
+    print("---------------------------------- on exit callback -------------------------------")
+    
+respawn_delay = 3
+def generate_launch_description():
+    return LaunchDescription([
+        ExecuteProcess(
+        cmd=[sys.executable, "test_package_respawn.py"],
+        respawn=True, respawn_delay=respawn_delay, on_exit=callback_respawn,
+        emulate_tty=True,
+        output="screen"
+        )
+    ])
+
+test_package_respawn.py:
+#!/usr/bin/env python3
+
+import os
+import sys
+
+from launch import LaunchDescription
+from launch.actions.execute_process import ExecuteProcess
+from launch.actions.shutdown_action import Shutdown
+from launch.actions.timer_action import TimerAction
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchService
+
+config = os.path.join(
+    get_package_share_directory('test_package'),
+    'config',
+    'config.yaml'
+)
+
+def launch_node():
+    return LaunchDescription(
+        [Node(
+              package="test_package",
+              executable="test_package_node",
+              name="test_package",
+              output="screen",
+              emulate_tty=True,
+              parameters=[config]
+          )
+      ]
+    )
+
+def main():
+  print("------------------------- started node in respawn process -----------------------------")
+  desc = launch_node()
+  service = LaunchService()
+  service.include_launch_description(desc)
+  service.run()
+
+if __name__ == '__main__':
+  main()
+
+Originally posted by Jeremy on ROS Answers with karma: 53 on 2021-07-08
+Post score: 2
+
+A:
+
+Node actions inherit from ExecuteProcess actions, so you can add the respawn parameters to the Node action. An example:
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='orca_base',
+            executable='fake_barometer.py',
+            output='screen',
+            name='fake_barometer',
+            respawn=True,
+            respawn_delay=4,
+        )])
+
+Originally posted by clyde with karma: 1247 on 2021-07-08
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Jeremy on 2021-07-09:
+Thanks that worked.
+Just wondering why I didn't work, when I tried this some days ago :-D.
+Comment by dheeranet on 2021-07-11:
+It seems to still not work from XML launch files. Is that known?
+There are lots of use cases where XML launch files are "nicer", especially if you want to generate them from something else.
+Comment by clyde on 2021-07-14:
+Yes, looks like respawn is missing from the XML parser: https://github.com/ros2/launch/pull/226
+It is known: https://github.com/ros2/ros2_documentation/blob/rolling/source/Guides/Launch-files-migration-guide.rst
+It certainly would be a nice addition.
+

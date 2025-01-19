@@ -1,0 +1,89 @@
+Q:
+
+ROS Arduino Sabertooth Controller
+
+Hi,  I am trying to control a sabertooth 2x60 motor controller with an arduino interfaced to a raspberry pi using rosserial_arduino.  I have the connection working great, but whenever I try to publish a command to the topic that the arduino is subscribed to, the  sabertooth controller does nothing.  I can verify that the callback is working because of the receipt of various loginfo back to the terminal.  Also, I uploaded code to control the sabertooth (with no ROS), and it worked fine, so I know I have everything connected right.  Any ideas what is wrong/missing in the following code?  Thanks
+#include <Sabertooth.h>
+#include <ros.h>
+#include <std_msgs/UInt16.h>
+
+ros::NodeHandle nh;
+
+Sabertooth ST(128);
+
+void sabertooth_callback(const std_msgs::UInt16& cmd_msg){
+  int power = cmd_msg.data;
+  nh.loginfo("Got Command");
+  // Ramp motor 1 from -127 to 127 (full reverse to full forward),
+  // waiting 20 ms (1/50th of a second) per value.
+  for (int power1 = -power; power1 <= 127; power1 ++)
+  {
+    ST.drive(power);
+    delay(20);
+    nh.loginfo("Got Command to Drive"); 
+  }
+  
+  // Now go back the way we came.
+  for (power = 127; power >= -127; power --)
+  {
+    ST.turn(power); // Tip for SyRen users: Typing ST.motor(power) does the same thing as ST.motor(1, power).
+    nh.loginfo("Got Command to Turn"); 
+    delay(20); 
+  }
+} 
+
+ros::Subscriber<std_msgs::UInt16> sub("Sabertooth", sabertooth_callback);
+    
+
+void setup()
+{ 
+  ST.drive(0);
+  ST.turn(0);
+  SabertoothTXPinSerial.begin(9600); // 9600 is the default baud rate for Sabertooth packet serial.
+  nh.initNode();
+  nh.subscribe(sub);
+}
+
+void loop()
+{
+  nh.spinOnce();
+}
+
+Originally posted by nathanspotts on ROS Answers with karma: 16 on 2018-01-27
+Post score: 0
+
+Original comments
+Comment by tean chen on 2020-05-18:
+dear
+i want to make an autonomous indoor Mobile robot for my study, can you explain to me how to interface with hardware systems, I have Sabertooth 2X60 and Zed stereo Camera and Adruino Microcontroller and RPLIDAR. Thank you very much.
+
+A:
+
+I have found that the Sabertooth software doesn't work with ROS. Just do a direct Serial.write instead. You'll lose the nice, similar number placement, but it will work. 1-127 is motor1, 128-255 is motor 2. Check out
+https://github.com/avirtuos/ros_hercules/blob/master/src/hercules/arduino/hercules_rosserial/hercules_rosserial.ino
+
+Originally posted by Rodolfo8 with karma: 299 on 2018-01-28
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by nathanspotts on 2018-01-28:
+Thanks for the response.  I figured there was something wrong with the Serial connection and reverted to using Sabertooth in RC mode.  However, I tried to use Serial.write and it didn't work as expected.  What version of serial do I need to put the Sabertooth in?  Simplified Serial or Packet Serial?
+Comment by Rodolfo8 on 2018-01-29:
+The Sabertooth should be in simplified serial mode. Use 9600 baud. Works perfectly. Did you check the sample code?
+Comment by nathanspotts on 2018-01-29:
+That's what I tried to do.  I need to experiment a little more with it.  Do you use the tx and rx pins on the Arduino Uno.  Also, just checking that the SoftwareSerial Library is not needed.  How does writing 2 different values to serial.write work?  The second range doesn't overwrite the first?
+Comment by Rodolfo8 on 2018-01-29:
+Mine is a Mega. I use TX2 which is #16. So my commands are Serial2.write. Like this:
+if (millis() > motorTimer + MOTOR_TIMEOUT_MS) {
+Serial2.write(64); // apply brakes
+Serial2.write(192);
+}
+else {
+Serial2.write(pwrLeft); // motor speed
+Serial2.write(pwrRight);
+Comment by nathanspotts on 2018-01-29:
+Thanks so much for your help.  That makes complete sense to me.  I'll see if I can get it set up and working later today.
+Comment by nathanspotts on 2018-01-30:
+Well, for others with this same issue using the Arduino Uno, I couldn't get it to work on pins 0 and 1 (Rx, Tx).  I had to include the library SoftwareSerial and assign different pins for the communication (for me I used 10 & 11, but only the Tx is needed).  Then it worked great!
+

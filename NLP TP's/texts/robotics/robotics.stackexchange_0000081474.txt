@@ -1,0 +1,81 @@
+Q:
+
+rosserial - Arduino DUE - sync issues
+
+I am trying to get an Arduino DUE to work with ROS Kinetic on my machine running Ubuntu 16.04 (using the DUE programming port, although I've tried the native one too).  I seem to be having issues unique to the DUE as everything seems to work perfectly fine with the exact same cone with an Ardunio Uno.
+When running the code:
+
+rosrun rosserial_python serial_node.py /dev/ttyACM0
+
+I get the following error message:
+
+[ERROR] [1498484524.793356]: Unable to sync with device; possible link problem or link software version mismatch such as hydro rosserial_python with groovy Arduino
+
+Again using the exact same code uploaded to the Arduino Uno I do not get this error.  I have tried a number of different baud rates (all from 9600 - 115200), where I found that the Uno gives the same error if it doesn't have the correct baud rate set, however, I continue to get the same message for the DUE regardless of the setting.
+I have tried both my simple custom code as well as the example code provided with ros (e.g. pubsub), but have had not success.  Further to force a specific baud rate I have including the following lines in setup (both individually, and alone):
+
+nh.getHardware()->setBaud(115200);
+
+Serial.begin(115200);
+
+Using pyserial I can connect to the DUE unlike with ROS.  It appears that others have been successful using the DUE based on other questions on here, however, nothing that I have found seems to resolve my issue.
+Any ideas what might resolve the issue?
+
+Originally posted by jesse on ROS Answers with karma: 91 on 2017-06-26
+Post score: 1
+
+Original comments
+Comment by jesse on 2017-06-26:
+I've tried pretty much everything suggested related to arduino sync issues included in this question too:
+http://answers.ros.org/question/196204/unable-to-sync-with-device-arduino-uno/
+Comment by jesse on 2017-06-26:
+From rosserial/SerialClient.py (found at https://github.com/ros-drivers/rosserial/blob/jade-devel/rosserial_python/src/rosserial_python/SerialClient.py) line 432, it appears that the given Error is simply indicative of sync timing out.
+Comment by jesse on 2017-06-29:
+Looking at https://github.com/ros-drivers/rosserial/issues/113
+It appears that you need to add:
+
+#define SAM3XA
+
+however, this does not seem to work. There's also mention something about using:
+
+#define USE_USB
+
+which also does not work.
+
+A:
+
+I ended up finding several solutions, however, I would hope that a change to /rosserial_arduino/src/ArduinoHardware.h might make any work arounds necessary.
+1 -- First solution that worked.
+In your version of ArduinoHardware.h in the Arduino Libraries directory change line 75 to read:
+
+iostream = &Serial;
+
+This works but will likely make use of other Arduino boards a problem (e.g. Leonardo)
+2 -- Put the following code before including the ROS library
+
+#define USE_USBCON
+
+This also seems to work, however, it means that you'd have to add this in every case you use a DUE, which you might forget.
+3 -- Modify the line 73 to read:
+
+#if defined(USBCON) and !(defined(USE_USBCON)) and !(defined(SAM3XA))
+
+Which I believe will resolve all previous issues, however, there might be another board released that also uses the SAM3X... processor and may be an issue in the future.
+
+Originally posted by jesse with karma: 91 on 2017-07-02
+This answer was ACCEPTED on the original site
+Post score: 8
+
+Original comments
+Comment by Rakjoon on 2017-09-20:
+Thanks a lot. I solved this issue by using what you said. Thanks
+Comment by quannv on 2018-04-04:
+very useful
+Comment by jakegoldsmith on 2018-04-08:
+Thanks! This finally fixed my problem, after many hours of searching and trying other solutions.
+Comment by R Valk on 2018-10-18:
+For me, this does not seem to work. Can you provide us with the full ArduinoHardware.h file?
+Tried all three suggestions, but none seem to work.
+Comment by EwingKang on 2019-03-28:
+Thanks! This helps a lot, glad I've googled the issue with "DUE" keyword.
+

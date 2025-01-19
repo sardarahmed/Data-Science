@@ -1,0 +1,69 @@
+Q:
+
+Moving CollisionObject in Moveit by moving its parent frame
+
+Hi,
+I am adding a collision object to my planning_scene.
+When moving the parent frame I want the object to move. However, they do not.
+I know, I can move a collision object by using the MOVE operation and giving it a new pose. Using MOVE with the same pose (as the object should move because of the moving parent frame) does not work.
+Is there a way to achieve the desired behaviour and if, how? Changing the object's pose is not an option.
+Thank you in advance!
+Edit:
+I tried the following:
+
+Add the parent frame of object with static_frame_publisher, add the object, then move the robot. All while updating the object with MOVE.
+Add the parent frame, move the robot, then add the object. All while updating the object with MOVE.
+
+Both result in the object being put into the planning scene at the exact position of its parent frame when the robot is in its initial state and never move despite being updated. So I update the frame itself, I update the object with MOVE. I can see the frame moving in RViz. This makes me believe, I somehow forgot to update the frames in my move_group. How would I do that?
+Edit2:
+When I update the move group namespace in RViz, some things get reloaded and the pose of my object gets updated as well.
+Plus, I can confirm that moveit does not get the correct robot states although my move_group node listens to the correct joint states topic. I am using the move_group interface
+this->move_group_interface = new moveit::planning_interface::MoveGroup(moveit::planning_interface::MoveGroup::Options(<group_name>));
+to read the joint states:
+this->move_group_interface->getCurrentJointValues();
+Although the joint states published on the joint_states topic are all correct, when I move the robot, the joint values read from the  move_group interface are all zero (my initial joint state). I am using the /powerball/joint_states instead of /joint_states but my move_group node subscribes to the correct topic. So at least, the information makes it to the node. I probably am missing a simple setting. If I could set the current joint state for moveit manually, that would be fine as well.
+Edit3:
+MoveIt does get the correct robot states. Nonetheless, the object does not move despite its parent frame moving and being updated with MOVE (no change in pose,updated timestamp)
+
+Originally posted by Marcel Usai on ROS Answers with karma: 200 on 2017-08-11
+Post score: 0
+
+A:
+
+Internally, MoveIt works with one planning frame, so changing the frames does not affect the pose of previously added objects.
+The MOVE operation is meant to allow the user to change the pose when required.
+
+Using MOVE with the same pose (as the object should move because of the moving parent frame) does not work.
+
+Please elaborate on this. This sounds like a valid way to go to me and I believe it should work.
+Did you update the time stamp of the collision object you move?
+Otherwise this would probably use the previous transform even though the current transform is different.
+
+Originally posted by v4hn with karma: 2950 on 2017-08-14
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Marcel Usai on 2017-08-15:
+First, I start my robot. Then, I ADD an object to the planning scene to one of the robot's frames. To make the object move, I tried using MOVE, but with the same pose as with ADD. (I thought maybe that would "refresh" the object.
+Using ADD-REMOVE-ADD-REMOVE-ADD-.... didn't work either.
+Comment by Marcel Usai on 2017-08-15:
+I updated the stamp of the collision object message
+Comment by v4hn on 2017-08-15:
+This is supposed to work and I'm not aware of reported bugs here.
+So either you made a mistake in your setup or there is an undiscovered bug in the MOVE code.
+Please file a bug report with the moveit repository, in the best case including a source that demonstrates the problem.
+Comment by Marcel Usai on 2017-08-15:
+I think, this is a similar issue as in https://github.com/ros-industrial/industrial_core/issues/122
+So, I guess, moveit never records the changes in the joint states and therefore, my CollisionObject never moves.
+Comment by Marcel Usai on 2017-08-15:
+I tried this: add a frame to one of the robot frames, move the robot (which moves the new frame), add my CollisionObject. The object is not placed at the current origin of its parent frame but at the origin as if the robot never moved.
+I do not think this has to do with MOVE at all (any more).
+Comment by v4hn on 2017-08-15:
+How do you "add a frame"? And which interface did you use to add the CollisionObject?
+Comment by Marcel Usai on 2017-08-15:
+For frames, I use a static_transform_publisher and for the CollisionObject I use the planning_scene topic interface
+Comment by Marcel Usai on 2017-08-29:
+I updated my question, moveit gets the updated joint states. but the object still does not move.
+So if using MOVE with the same pose but an updated time stamp should make the object move when the parent frame has moved, I think there is a bug. - So either there is a bug or this shouldn't work...
+

@@ -1,0 +1,148 @@
+Q:
+
+Max Number of Points in Cartesian Path
+
+I've been trying to use ROS and Moveit to simulate a tool path which is made up of about 7600 points. I seem to always have issues around point 115, where it will stop calculating poses but still return a success for some reason. Most of the pertinent sections of code are pasted below.
+    geometry_msgs::Pose target_pose2;
+tf2::Quaternion TEMP;
+
+tf2::convert(interm1,interm_pose); // this goal is reachable in a friendly manner.
+tf2::Vector3 point, Tpoint;
+int i,j;
+int numlines;
+double datain;
+double x,y,z,w,p,r;
+std::ifstream infile("Run1_11-22-16.dt");
+//std::ifstream infile("Surf11.dt");
+std::string line;
+std::getline(infile,line);
+
+std::cout<< infile.is_open() << std::endl;
+try
+{
+
+    numlines = std::stoi(line);
+    std::cout << "Your answer : " << numlines << std::endl;
+} 
+catch (const std::invalid_argument& e)
+{
+    std::cout << "Invalid answer : " << line << std::endl;
+}
+catch (const std::out_of_range& e)
+{
+    std::cout << "Invalid answer : " << line << std::endl;
+}
+// make for(i = 1;i<=numlines;i++) for full toolpath
+for(i = 1;i<=numlines;i++){
+    std::getline(infile,line);
+    datain = std::stod(line);
+    switch(i%7) {
+        case 1 : x = datain/1000;
+            break;
+        case 2 : y = datain/1000;
+            break;
+        case 3 : z = datain/1000;
+            break;
+        case 4 : w = datain*pi/180;
+            break;
+        case 5 : p = datain*pi/180;
+            break;
+        case 6 : r = datain*pi/180;
+            break;
+        default : break;
+    }
+    if((i%7) == 0){
+        point[0] = x;
+        point[1] = y;
+        point[2] = z;
+        Tpoint = UFinv*point;
+
+        // here I want to put x,y,z,w,p,r into a std::vector<> object, turn wpr into a quaternion, and push the waypoint for ros.
+        //std::cout<<x<< ' '<<y<<' '<<z<<' '<<w<<' '<<p<<' '<<r<<std::endl;
+
+        q1.setRotation(ax2,w);
+        q2.setRotation(ax1,p);
+        q3.setRotation(ax3,r);
+        interm2 = q3*q2*q1; // composition of 3 quaternions representing rotations about x,y, and z respectively.
+        TEMP = UFinv.getRotation(); 
+        interm1 = interm2*TF; // composing current Toolpath orientation with the UserFrame orientation
+        tf2::convert(interm2,interm_pose); // converting tf::Quaternion to geometry_msgs::Quaternion;
+        
+
+        target_pose2.position.x = UFtrans[0] + Tpoint[0];
+        target_pose2.position.y = UFtrans[1] + Tpoint[1];
+        target_pose2.position.z = UFtrans[2] + Tpoint[2];
+
+        target_pose2.orientation.x = interm_pose.x;
+        target_pose2.orientation.y = interm_pose.y;
+        target_pose2.orientation.z = interm_pose.z;
+        target_pose2.orientation.w = interm_pose.w;
+        waypoints.push_back(target_pose2);
+    }
+
+}
+
+moveit_msgs::RobotTrajectory trajectory;
+double fraction = move_group.computeCartesianPath(waypoints,
+                                         0.02,  // eef_step
+                                         1,  // jump_threshold
+                                         trajectory);
+
+ROS_INFO("Visualizing plan 4 (cartesian path) (%.2f%% acheived)",fraction * 100.0);
+sleep(10);
+
+So my questions are:
+
+Is there a limit on the maximum number of waypoints one can have?
+Does anyone have any idea why it suddenly stops calculating trajectories around point 115.
+
+Originally posted by jbeck28 on ROS Answers with karma: 101 on 2017-05-25
+Post score: 0
+
+A:
+
+Is there a limit on the maximum number of waypoints one can have?
+
+as far as I know the implementation of computeCartesianPath(..) in MoveIt: no, there is no limit. Processing your waypoints will get progressively slower, but that is to be expected.
+
+Does anyone have any idea why it suddenly stops calculating trajectories around point 115
+
+In my experience computeCartesianPath(..) fails when it encounters either: a problem with IK, or if -- at the end -- the computed path violates your jump threshold.
+Without more (debug) output it's not necessarily easy to see which of the two it is.
+
+If I may make a suggestion: while MoveIt can do these kind of things, I would suggest you take a look at descartes. It is much better suited for generating tool paths from dense Cartesian trajectories and also supports things like optimisation of trajectories when they are underdefined (ie: 5 dof process with a 6 dof robot).
+
+Edit:
+
+where it will stop calculating poses but still return a success for some reason
+
+quick comment on this btw: computeCartesianPath(..) will almost always 'succeed', but the return value (fraction) should be used to determine whether it completely processed your list of waypoints. Anything < 1.0 basically means that it couldn't successfully generate a path through all the poses in the list.
+
+Originally posted by gvdhoorn with karma: 86574 on 2017-05-26
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by BrettHemes on 2017-05-26:
+Yes, I second gvdhoorn's comment that Descartes can help, IF you are willing to provide some allowable tolerances on your path poses.
+I can not be sure without more info, but imagine your problem is that at some point (e.g., 115) you cross a singularity or joint flip and the Cartesian path request
+Comment by BrettHemes on 2017-05-26:
+fails.  Descartes has the ability to use any provided tolerances to effectively expand the solution space such that you can find continuous paths that avoid such discontinuities and/or singularities.  To summarize, Descartes will find an optimal (in joint distance) path globally, while
+Comment by BrettHemes on 2017-05-26:
+computeCartesianPath is acting locally.
+After planning, you can take global (IK-valid / discontinuity-free) solution from Descartes and then send it down to computeCartesianPath.
+Comment by jbeck28 on 2017-06-14:
+Is sending the calculated trajectory from Descartes into ComputeCartesianPath the only way to properly visualize the calculated path? I ask because I've gotten Descartes to calculate some plans for a rather dense tool path I generated, and in RVIZ, it visualizes very slowly.
+Comment by jbeck28 on 2017-06-14:
+There are other issues as well, Descartes seems to think it's okay for the tool to flip wildly occasionally despite not using AxialSymmetricPt objects. I think I'll probably start a new thread for that if I can't figure it out soon.
+Thanks for all the help so far!
+Comment by gvdhoorn on 2017-06-14:\
+
+Descartes seems to think it's okay for the tool to flip wildly occasionally despite not using AxialSymmetricPt objects
+
+this is most likely an IK issue. Descartes relies on IK plugins to provide it with solutions. If the IK acts up, things are going to go wrong.
+Comment by gvdhoorn on 2017-06-14:
+re: visualising a trajectory: I don't know what sort of trajectory you have, but if it's a JointTrajectory one, then moveit_visual_tools has some nice functionality. Should also work with RobotTrajectory trajectories.
+Comment by gvdhoorn on 2017-06-14:
+Btw: please do report any issues or unexpected things with Descartes over at descartes/issues. The developers are very responsive and I believe would welcome any feedback you might have.
+

@@ -1,0 +1,34 @@
+Q:
+
+Mahalanobis distance between 2 line features
+
+I am implementing the ATLAS SLAM framework for a ground robot, using EKF Slam for local maps and using line segment features. The line segment features can be abstracted to their respective lines [d,α] where d and α represent the distance and angle in the distance-angle representation of lines. 
+In the given framework, there is a local map matching step where lines of the local maps will be matched, and there is a need for a distance metric between 2 lines. The mahalanobis distance is suggested in the literature, however strictly a mahalanobis distance is between a single measurement and a distribution and not between 2 distributions.
+How do I find the mahalanobis distance between line 1 [d1,α1] with covariance matrix S1 and line 2 [d2,α2] with covariance matrix S2?
+In the EKF Algorithm from the book Probabilistic Robotics by Sebastian Thrun, there is a computation during the feature update step, where it looks like the covariances (of a new measurement and an existing measurement) are multiplied to give a resultant covariance matrix, and then the inverse is used in the Mahalanobis distance computation. 
+That would be similar to 
+Mahalanobis_Distance = [d2-d1,α2-α1] * Inverse(S1*S2) * [d2-d1,α2-α1]'
+
+Is that correct?
+
+A:
+
+There are many ways to measure the statistical difference between two distributions. For your case, you might consider the Bhattacharyya distance. From that page, the Bhattacharyya distance $D_B$ is
+$$
+D_B={1\over 8}(\boldsymbol\mu_1-\boldsymbol\mu_2)^T \boldsymbol\Sigma^{-1}(\boldsymbol\mu_1-\boldsymbol\mu_2)+{1\over 2}\ln \,\left({\det \boldsymbol\Sigma \over \sqrt{\det \boldsymbol\Sigma_1 \, \det \boldsymbol\Sigma_2} }\right),
+$$
+where $\boldsymbol\mu_i$ and $\boldsymbol\Sigma_i$ are the means and covariances of the distributions, and
+$$
+\boldsymbol\Sigma={\boldsymbol\Sigma_1+\boldsymbol\Sigma_2 \over 2}.
+$$
+I would also like to issue a warning. When calculating the difference between angles (e.g., $\alpha_1 - \alpha_2$ in your case), you have to take care of wrapping issues. For example, for $\alpha_1 = -179$ deg and $\alpha_2 = 179$ deg, their different is not $(-179) - (179) = -358$ deg, but rather it is $2$ deg. If you are only concerned about the relative values of statistical differences (e.g., "which is the smallest"), then consider using the circular distance ($c$) between the two angles, which is
+$$
+c = \frac{1 - \cos(\alpha_1 - \alpha_2)}{2}.
+$$
+This always returns a value $c\in[0,1]$, where $c=1$ is the result when the two angles 180 degrees apart. So if you use the Bhattacharyya distance, the angle part of $\boldsymbol{\mu}$ would be a circular distance. However, if you are looking at lines, rotating a line 180 degrees returns it to its original orientation! That's because the directions of lines are examples of axial data, and are invariant to rotations of +/- 180 degrees. In this case, just double the angle of the above circular distance; i.e.,
+$$
+c = \frac{1 - \cos[2(\alpha_1 - \alpha_2)]}{2}.
+$$
+Now $c=1$ when the lines are 90 degrees apart!
+Good luck!
+

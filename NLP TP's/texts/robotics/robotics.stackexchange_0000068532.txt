@@ -1,0 +1,118 @@
+Q:
+
+Doubt regarding serial communication
+
+Hi all,
+I am new to ROS and Linux. I am using ROS Indigo on Ubuntu 14.04 LTS. I am trying to establish serial communication with an microcontroller using ROS serial package (https://github.com/wjwwood/serial). Came across an example program by garyservin (https://github.com/garyservin/serial-example). The program works well.
+The instruction packet I want to send to MCU has start bytes "@@". However, when I try to publish to this to the topic "write" I get this error:
+rostopic: error: Argument error: while scanning for the next token found character '@' that cannot start any token   in "<string>", line 1, column 1:
+    @@1233
+    ^
+
+Similarly if I try to send a number I get this error:
+ERROR: Unable to publish message. One of the fields has an incorrect type:
+  field data must be of type str
+
+The datatype used in the example program is std_msgs/String.
+What I want to send is actually data in hex code. Something like 0x40 0x40 0x09 0x01 0x00 0x00 0x02 0x0d 0x0a
+Could someone guide me on how to solve this problem?
+UPDATE
+#include <ros/ros.h>
+#include <serial/serial.h>
+#include <std_msgs/String.h>
+#include <std_msgs/Empty.h>
+
+serial::Serial ser;
+
+void write_callback(const std_msgs::String::ConstPtr& msg){
+    ROS_INFO_STREAM("Writing to serial port" << msg->data);
+    ser.write(msg->data);
+}
+
+int main (int argc, char** argv){
+    ros::init(argc, argv, "serial_example_node");
+    ros::NodeHandle nh;
+
+    ros::Subscriber write_sub = nh.subscribe("write", 1000, write_callback);
+    ros::Publisher read_pub = nh.advertise<std_msgs::String>("read", 1000);
+
+    try
+    {
+        ser.setPort("/dev/ttyACM0");
+        ser.setBaudrate(9600);
+        serial::Timeout to = serial::Timeout::simpleTimeout(1000);
+        ser.setTimeout(to);
+        ser.open();
+    }
+    catch (serial::IOException& e)
+    {
+        ROS_ERROR_STREAM("Unable to open port ");
+        return -1;
+    }
+
+    if(ser.isOpen()){
+        ROS_INFO_STREAM("Serial Port initialized");
+    }else{
+        return -1;
+    }
+
+    ros::Rate loop_rate(5);
+    while(ros::ok()){
+
+        ros::spinOnce();
+
+        if(ser.available()){
+            ROS_INFO_STREAM("Reading from serial port");
+            std_msgs::String result;
+            result.data = ser.read(ser.available());
+            ROS_INFO_STREAM("Read: " << result.data);
+            read_pub.publish(result);
+        }
+        loop_rate.sleep();
+
+    }
+}
+
+Thanks!
+
+Originally posted by vinjk on ROS Answers with karma: 96 on 2015-07-09
+Post score: 0
+
+Original comments
+Comment by ahendrix on 2015-07-09:
+It looks like you're writing a node in python which is publishing to a topic with the std_msgs/String type. You should post the source for that program if you want help with it, or follow @William's suggestion and just modify the example program.
+Comment by vinjk on 2015-07-09:
+Sorry about that. The program is the same one made by garyservin (see the link). I've posted the program in my question for your convenience.
+It's C++ program.
+Comment by ahendrix on 2015-07-09:
+The error message you post is clearly coming from a python program, and not for the sample code. If you're publishing to the write topic using rostopic, please include the exact command you're running.
+Comment by vinjk on 2015-07-10:
+This is the exact command I tried to run
+rostopic pub /write -r 100 std_msgs/String @@1233
+
+Comment by William on 2015-07-10:
+Did you try putting the string you want to send in quotes?
+Comment by vinjk on 2015-07-10:
+@William I had tried that as well
+
+A:
+
+Hi @William , @ahendrix
+I solved the problem. I did as per William's suggestion used UInt8MultiArray datatype. But before writing it to the serial port I convert it to string.
+void write_callback(const std_msgs::UInt8MultiArray::ConstPtr& msg)
+{
+    std::string str(msg->data.begin(), msg->data.end());
+    ser.write(msg->data);
+} 
+
+I used the command below (just an example) to publish to topic /write
+rostopic pub /write std_msgs/UInt8MultiArray '{data: [64,64,11,1,1,1,2,208,32,13,10]}'
+
+Originally posted by vinjk with karma: 96 on 2015-07-10
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by vinjk on 2015-07-10:
+Thank you guys for your time.
+

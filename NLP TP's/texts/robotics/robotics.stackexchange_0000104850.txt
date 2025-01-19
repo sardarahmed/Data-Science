@@ -1,0 +1,75 @@
+Q:
+
+In ROS2, when launching a node service with a launch file, when is the passed parameters populated?
+
+I'm trying to make sense of when launch file parameters are populated in ROS2. My situation is similar to the following simplified example; I have a launch file that contains a launch function.
+def generate_launch_description():
+    argument = DeclareLaunchArgument(
+        "argument", description="Sample parameter/argument"
+    )
+
+    service_node = Node(
+        package="example",
+        executable="my_service",
+        name="my_service",
+    )
+
+    return LaunchDescription([argument, service_node])
+
+...which i call via something like ros2 launch example example.launch.py argument:=test
+And the node code as such:
+import rclpy
+from rcl_interfaces.msg import ParameterDescriptor
+from rclpy.node import Node
+
+class Service(Node):
+    def __init__(self):
+        super().__init__("llm_service")
+
+        self.declare_parameter(
+            "argument",
+            "",
+            ParameterDescriptor(
+                description="Example argument"
+            ),
+        )
+
+        self.srv = self.create_service(LLM, "prompt", self.prompt_callback)
+
+    def get(self) -> str:
+        argument = (
+            self.get_parameter("argument").get_parameter_value().string_value
+        )
+        return argument
+
+def main(args=None):
+    # initialize the ROS communication
+    rclpy.init(args=args)
+    # declare the node constructor
+    service = Service()
+    # pause the program execution, waits for a request to kill the node (ctrl+c)
+    rclpy.spin(service)
+    # shutdown the ROS communication
+    rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()
+
+When I call the init for my service, the argument is not set, and if I called get() it'd return the default value of "" . If I had a callback trigger later, say through something like a service call, and I called get() then, I would get the correct populated value from the launch file.
+So when does that get populated? What is the best accepted pattern for grabbing those arguments on service startup such that I can use it for initialization?
+
+A:
+
+The above populates parameters correctly when I swapped the launchfile from what is described above to:
+def generate_launch_description():
+    service_node = Node(
+        package="example",
+        executable="my_service",
+        name="my_service",
+        parameters=[{"example": "test"}],
+    )
+
+    return LaunchDescription([service_node])
+
+...specifically, using the parameters keyword argument in the service node over a launch file argument; I am unsure at the moment why, or why the tutorial I read here suggested DeclareLaunchArgument.
+

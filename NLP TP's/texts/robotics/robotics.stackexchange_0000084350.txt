@@ -1,0 +1,116 @@
+Q:
+
+Applying restrictions on 360-degree LiDAR for slam and autonomous navigation
+
+I am working with TurtleBot 3-Burger (Rasberry Pi 3) and ROS Kinetic.
+On Turtlebot 3, we have a 360-degree Planner LiDAR for slam and autonomous navigation.
+What I need/want to do is to make this  scanner looking at certain angles for data collection.
+For example, I want it to collect the data from those angles which are highlighted using Slashes (front and rear), and ignore the data from those angles which are highlighted using Brackets (left and right).
+  \                              /
+     \                          /
+      \                        /
+       ]                       [    
+       ]                       [      
+       ] ]   LiDAR Scanner   [ [
+       ]                       [    
+       ]                       [    
+       /                       \
+     /                          \
+   /                              \
+
+**Sorry for my figure, I can't upload the actual image as i am new in ROS community and I don't have enough points to upload an image.
+Any help and hint needed and I will appreciate it.
+
+Originally posted by maziarser on ROS Answers with karma: 68 on 2017-12-20
+Post score: 2
+
+A:
+
+I have solved this issue and I was thinking that sharing the real solution is a good idea with others:
+import rospy
+import math
+from sensor_msgs.msg import LaserScan
+from math import *
+import numpy as np
+import copy
+
+ranges_filter = []
+intensities_filter = []
+
+#copy the range and intensities of "/scan" topic to "ranges_filter" and "intensities_filter" 
+#you need to convert them to "list" as "data.ranges" and "data.intensities" are "tuple"
+def callback_scan(data):
+    global ranges_filter, intensities_filter
+
+    len(data.ranges) #360
+    len(data.intensities) #360
+
+    ranges_filter = copy.copy(data.ranges)
+    intensities_filter = copy.copy(data.intensities)
+
+    #convert them to list
+    ranges_filter = list(ranges_filter)
+    intensities_filter = list(intensities_filter)
+
+     #filtering those angles that I do not want them (based on the question)
+    for x in range(45, 135):
+        ranges_filter[x] = 0
+        intensities_filter[x] = 0
+    
+    for y in range(225, 315):
+        ranges_filter[y] = 0
+        intensities_filter[y] = 0
+
+#define a new topic called "filterScan" to store all laser scanner data
+rospy.init_node('laser_scan_filter')
+
+scan_pub = rospy.Publisher('filterScan', LaserScan, queue_size=50)
+
+rospy.Subscriber("/scan", LaserScan, callback_scan) 
+
+#it is based on the type of laser scanner (length of data.ranges)
+num_readings = 360
+laser_frequency = 60
+
+count = 0
+r = rospy.Rate(1.0)
+while not rospy.is_shutdown():
+    current_time = rospy.Time.now()
+
+    filterScan = LaserScan()
+
+    filterScan.header.stamp = current_time
+    filterScan.header.frame_id = 'base_scan'
+    filterScan.angle_min = 0 # start angle of the scan [rad]
+    filterScan.angle_max = math.pi * 2  # end angle of the scan [rad]
+    filterScan.angle_increment = 0.0174532923847 # angular distance between measurements [rad]
+    filterScan.time_increment = 2.98699997074e-05 # time between measurements [seconds]
+    filterScan.range_min = 0.0 # minimum range value [m]
+    filterScan.range_max = 3.5 # maximum range value [m]
+
+    filterScan.ranges = []
+    filterScan.intensities = []
+
+    for i in range(0, num_readings-1):
+        filterScan.ranges = copy.copy(ranges_filter)
+
+        filterScan.intensities = copy.copy(intensities_filter)
+
+    scan_pub.publish(filterScan)
+    r.sleep()
+
+I have done it in Python and the code is working perfectly fine for Turtlebot3-Burger.
+
+Originally posted by maziarser with karma: 68 on 2018-01-05
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by gvdhoorn on 2018-01-05:
++1 for posting your solution, that is always appreciated.
+Was there any specific reason you could not use one of the filters from the laser_filters package?
+Comment by maziarser on 2018-01-05:
+@gvdhoom, thanks for your comment. No, that would be another solution. I think, the posted answer can help those people who are making apps for end users to work with robots.
+Comment by sujeet on 2018-07-29:
+Hello, I edited the turtlebot3_slam.launch and put a node for laser_filters over there. Furthermore, I created another file test.yaml in the same location of the launch file and put the maximum and minimum angles. The launch file ran without error but there was no change according to the filter.
+

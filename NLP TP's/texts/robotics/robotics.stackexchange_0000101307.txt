@@ -1,0 +1,114 @@
+Q:
+
+How to access the runtime value of a LaunchConfiguration instance within custom launch code (injected via an OpaqueFunction) in ROS2?
+
+I'm trying to add some dynamic behavior into my python launch file(s) that depends on the runtime value of a/few LaunchConfiguration object(s).
+For example, I have a yaml_file_path argument:
+def generate_launch_description():
+   yaml_file_path = LaunchConfiguration('yaml_file_path')
+   yaml_file_path_arg = DeclareLaunchArgument('yaml_file_path')
+   ...
+
+The yaml file contains a list of entities that I need to generate IncludeLaunchDescription instances for, which will be returned by my generate_launch_description() api. For example:
+#
+# Only required for launch processing. These are not node params.
+#
+module_a:
+   prefix: <some folder path>
+   ...
+module_b:
+   prefix: <some other folder path>
+   ...
+
+I understand I need to define and return an OpaqueFunction within my generate_launch_description() method, as below:
+def generate_launch_description():
+   yaml_file_path = LaunchConfiguration('yaml_file_path')
+   yaml_file_path_arg = DeclareLaunchArgument('yaml_file_path')
+
+   ...
+   variable_includer = OpaqueFunction(generate_variable_include_list, ...<???>...)     # <<<<<<< ??? <<<<<<<<
+
+   return [
+       yaml_file_path_arg,
+       variable_includer,
+   ]
+
+The generate_variable_include_list() method injected above generates a module_includes containing the IncludeLaunchDescription instances for each item in yaml file:
+def generate_variable_include_list(context: LaunchContext, yaml_file_path: str) -> List[LaunchDescriptionEntity]:
+   settings: Dict[str, Any] = parse_yaml_file_to_dict(yaml_file_path)
+
+   module_includes: List[IncludeLaunchDescription] = []
+   for (key,value) in settings.items():
+      module_includes.append(
+         IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+               PathJoinSubstitution([settings[key]['prefix'], "module.launch.py"])
+            ),
+            launch_arguments=[...]
+         )
+      )
+      module_includes.append(
+         LogInfo(msg=(["\tIncluding file: ", PathJoinSubstitution([settings[key]['prefix'], "module.launch.py"])]))
+      )
+   return module_includes
+
+... but, I can't seem to find documentation about the following:
+
+how to accept the yaml_file_path into this generate_variable_include_list() function above? (Specifically shown with the <???> comment).
+I mean, what type is the argument supposed to be? That is, should I be passing in the LaunchConfiguration object as-is, i.e, yaml_file_path, or some post-processed version of it?
+how to use that yaml_file_path value in that function?
+That is, since it is an asyncio future, how do I access the resolved (runtime) outcome of that LaunchConfiguration instance within my generate_variable_include_list() method? Should I invoke the perform() API on the object, or would that cause redundant evaluation of the associated future? Is there any cache that I can lookup instead, at runtime, for the resolved value of this entity?
+And, in a general sense, what if the entity in question was any LaunchDescriptionEntity object, not just a LaunchConfiguration, and I wanted to obtain its resolved/future value in my OpaqueFunction above?
+
+Some sample code, wherever applicable, would be greatly appreciated.
+
+Originally posted by alikureishy on ROS Answers with karma: 51 on 2022-03-05
+Post score: 2
+
+A:
+
+When using OpaqueFunction you can define the LaunchConfiguration variable inside it and use its .perform(context) method. You can check it out how I did it here
+So, in short
+def launch_setup(context, *args, **kwargs):
+    some_var = LaunchConfiguration('some_variable')
+    some_var_runtime_value = some_var.perform(context)
+
+I hope this helps
+
+UPDATE by @130s: Because relying on the content in the external link is fragile as it may become unavailable at anytime, I copy-pasted the essense below.
+def launch_setup(context, *args, **kwargs):
+
+    robot_model = LaunchConfiguration("robot_model")
+    :
+
+def generate_launch_description():
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument(
+                "robot_model",
+                default_value=TextSubstitution(text=""),
+                description=(
+                    "model type of the Interbotix Arm such as 'wx200' or 'rx150'"
+                ),
+            ),
+            DeclareLaunchArgument(
+        :
+
+            OpaqueFunction(function=launch_setup),
+        ]
+    )
+
+Originally posted by Serafadam with karma: 170 on 2022-03-10
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by alikureishy on 2022-03-10:
+Thanks @serafadam. The example link you included above takes me to duckduckgo.com. Perhaps you meant to include a github link instead?
+Comment by Serafadam on 2022-03-11:
+Ah, sorry, it's fixed now
+Comment by alikureishy on 2022-03-12:
+Thanks @serafadam! The example link is very helpful.
+Comment by 130s on 2023-05-12:
++1. I've edited your answer to include the entire info that's needed to make it more self-contained answer.
+

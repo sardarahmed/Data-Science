@@ -1,0 +1,83 @@
+Q:
+
+Error on navstack with P3DX robot: "Aborting because the robot appears to be oscillating over and over. Even after executing all recovery behaviors"
+
+Hi
+I have used the Navigation Stack before on a P3AT and am now attempting to run a new setup on Pioneer P3DX. In doing so, I have read through the following ROS Navigation Setup page:
+http://www.ros.org/wiki/navigation/Tutorials/RobotSetup
+Setup
+My setup and requirements do differ from that described on the above page. My setup requires me to not use a pre-made map, but to simultaneously localize and map a new area. I have chosen a relatively simple office space to test this. I am using Gmapping for this purpose. I am not using AMCL as described in the above tutorial.
+Related Questions
+I have read through the following related questions:
+
+http://answers.ros.org/question/407/exploration-stack-on-p3dx : I have read through this and checked the similarities, the difference is that I am using Gmapping and not AMCL. I plan to attempt AMCL as a last alternative.
+http://ros-users.122217.n3.nabble.com/Navigation-Stack-the-robot-rotates-most-of-the-time-after-receiving-a-goal-td1471418.html#a1528873 : The laser does move along with the turning of the robot, and in conjunction with the map data. You will also find tf/view_frames data in a later section.
+http://answers.ros.org/question/482/setting-up-navigation-stack-on-p3dx : Read through this, and no errors present here are present for me.
+http://ros-users.122217.n3.nabble.com/Navigation-stack-robot-starts-rotating-upon-recieving-goal-td819551.html#a819551: This seems like a similar problem: I don't have any unknown space in the path of the robot (Check rviz screenshots later), raytrace_range>obstacle_range (also shown later), rolling_window=true.
+
+Test Procedure
+
+Run Motor Driver: Output: http://pastebin.com/5qT1mEtp
+Run Laser Driver: Output: http://pastebin.com/keQ2rDrw
+Publish tf data from base_link to laser: Code: http://pastebin.com/9AZVkHmf
+Run Gmapping: Output: http://pastebin.com/iY9ZCWtu
+Run Navigation: Output: http://pastebin.com/HNF7p1nK (More data follows)
+Run Rviz : (More data follows)
+Run TF view_frames: Output : http://tinypic.com/r/34ooe4l/5
+Send simple navigation goal: Code : http://pastebin.com/MqGNqZe6
+
+Observed behavior
+Robot rotated around once and then stopped. A few seconds the message seen in the "Run Navigation" output appeared.
+Additional Data
+
+Run Navigation:
+
+The launch file for running the navigation stack is : http://pastebin.com/1nSM0jmf
+The additional configuration files are: base_local_planner_params, costmap_common_params, global_costmap_params, local_costmap_params, recover_behaviors.
+
+Some screenshots of RVIZ: (Red indicates the laser scan, Dark Orange are the local costmap obstacles, Light Orange are the local costmap inflated obstacles, Green is unexplored space). I have attached different screenshots with various angles, and with and without the unexplored spaces and the obstacles, in an effort that someone might see a detail that I overlooked. link, link, link, link, link, link.
+
+Hope the post was clear, and that I get some feedback!
+
+Thank you,
+Shanker Keshavdas (DFKI, Saarbruecken, Germany)
+the e
+
+UPDATE: Following Eric Perko's advice and changing the topic that the motor drivers were publishing on from /pose to /odom did have the desired effect. The robot followed a simple navigation goal. However on the next 2 tries a few days later, the error which I reported was exhibited again.
+Following Eric's advice, I am attaching a bag of /odom and /cmd_vel from one of the unsuccessful runs: http://www.2shared.com/file/4oZn0_68/rosanswers.html . Also here is an RVIZ screenshot showing you how close the robot came to the actual goal before giving the error message: http://tinypic.com/r/nmx4qf/5. The paths in blue show the paths planned. And the blue arrow denotes the goal pose. The robot pose cannot be seen, but it would be at the start of the blue paths.
+Hoping someone can help me with this!
+Thanks
+Shanker
+
+Originally posted by Shanker on ROS Answers with karma: 259 on 2012-01-31
+Post score: 3
+
+Original comments
+Comment by Shanker on 2012-02-05:
+Please note that the question is not resolved, you will find an update posted above.
+Comment by Shanker on 2012-02-01:
+The error was caused because p2os driver was publishing on /pose and not /odom. Now I do not encounter the error anymore, and navigation is working (for moving a short distance ahead atleast).
+
+A:
+
+The P3DX appears to be a differential drive robot, but you have configured base_local_planner for a holonomic robot (holonomic_robot: true). Set that to false, and see if that changes anything.
+If you still have issues, can you try reproducing the problem using Stage or posting a bag file with the /cmd_vel output from move_base as well as your /odom output from the P3DX while the problem is occurring.
+UPDATE:
+I took a look at the bagfile posted. After playing it back and plotting different things, you can definitely see the oscillation (try rxplot /odom/twist/twist/angular/z /cmd_vel/angular/z while playing the bag back and watch the /cmd_vel/angular/z output). For some reason, move_base is banging between an angular command of 0.4 and 0 rads/sec. Looking at your base_local_planner config again, I would bet that the culprit is misconfigured max and min rotational velocities. You have the max_rotational_vel set to 0.4, but you have the min_in_place_rotational_vel set to 0.6. That doesn't really make sense (max < min), so I suggest you change those such that min < max, and see how that affects this behavior.
+
+Originally posted by Eric Perko with karma: 8406 on 2012-02-01
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Shanker on 2012-02-08:
+Thanks Eric! That indeed was the problem, now that the minimum rotational velocity is lesser, the robot does execute goals on several tries.
+Comment by Eric Perko on 2012-02-06:
+See updated to answer for a possible solution...
+Comment by Shanker on 2012-02-05:
+This question was not fully resolved. I have posted an update that explains more.
+Comment by Shanker on 2012-02-01:
+Upon looking at the /odom output from P3DX, I noticed that the p2os driver was publishing on /pose and not /odom! Thanks a lot for your help Eric!
+Comment by Shanker on 2012-02-01:
+I misunderstood the meaning of holonomic. Thanks! I will also post the output of /cmd_vel and /odom
+

@@ -1,0 +1,77 @@
+Q:
+
+How to publish a array msgs with large data size in Arduino?
+
+Dear all, I amtrying to publish a msgs with large data size on Arduino. I have tried both Float32MultiArray and Laserscan msgs. However, when i increase the data_length more than 7, it shows an error in the terminal [INFO] [WallTime: 1391356801.758318] Failed Packet Flags after the command "rosrun rosserial_python serial_node.py /dev/ttyACM0" (the code as attached).  If I keep the size below 7, the msgs can be published normally.
+Could you help me and give me some suggestion, please? thank you!!
+#include <ros.h>
+#include <ros/time.h>
+#include <std_msgs/Float32MultiArray.h>
+
+ros::NodeHandle  nh;
+std_msgs::Float32MultiArray range_msg;
+ros::Publisher pub_range("/test", &range_msg);
+
+void setup()
+{
+  nh.initNode();
+  
+  range_msg.data_length=100;
+  
+  nh.advertise(pub_range);
+
+}
+
+long range_time;
+
+void loop()
+{
+  //publish the adc value every 50 milliseconds
+  //since it takes that long for the sensor to stabilize
+
+  if ( millis() >= range_time ) {
+
+    for(int i=0;i<100;i++)
+    {
+      range_msg.data[i]=0.01222331221;
+    }
+
+    pub_range.publish(&range_msg);
+    
+    range_time =  millis() + 50;
+  }
+
+  nh.spinOnce();
+}
+
+Originally posted by bisimai111 on ROS Answers with karma: 23 on 2014-02-02
+Post score: 2
+
+A:
+
+changing from 6,6,150,150 to 100,100,150,150 will change the number of Publishers/Subscribers from 6 to 100 and do not change the buffer size (150).
+try to change:
+typedef NodeHandle_<ArduinoHardware, 25, 25, 280, 280> NodeHandle;
+
+to
+typedef NodeHandle_<ArduinoHardware, 25, 25, 512, 512> NodeHandle;
+
+in 'rosserial/rosserial_arduino/src/ros_lib/ros.h'
+if you use the ATmega328P. Dont forget to run make_libraries.py. If you are using an arduino uno, think of upgrading to a arduino mega.
+
+Originally posted by David Galdeano with karma: 357 on 2014-02-02
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by bisimai111 on 2014-02-02:
+Thank you, i am using Mega2560 Arduino chip.so  I change typedef NodeHandle_<arduinohardware,> 25, 25, 280, 280>  to  typedef NodeHandle_<arduinohardware,> 25, 25, 512, 512>  and how to run "rosrun rosserial_arduino make_libraries.py" under sketchbook. Biz I am using fuerte version so that I cannot
+Comment by David Galdeano on 2014-02-02:
+if you just make the change on sketchbook/Libraries/ros_lib/ros.h it should be ok! Run rosrun rosserial_arduino make_libraries.py is only for the case of changing the original sources of the rosserial lib.
+Comment by bisimai111 on 2014-02-02:
+Dear Galdeano, thanks but i got the same error "Failed Packet Flags" after only changed it. When I reduce the size below 7, it works again. It is so wired.
+Comment by David Galdeano on 2014-02-02:
+ok, try to upgrade only the 280 (or 150) to 512 part. You can try to lower the use of nh.spinOnce() by using larger delay in your code, to be sure that the spped of usb com is not the bottleneck.
+Comment by bisimai111 on 2014-02-03:
+Dear Galdeano, appreciate for your detailed explanation. But i try only the 280 (or 150) to 512 part when i increase the size bigger than 30. It still shows the same error. Actually i want to achieve 240 data_length for msgs and I am using virtual box on mac laptop. Is the virtual box ACM0 port problem? thanks again
+

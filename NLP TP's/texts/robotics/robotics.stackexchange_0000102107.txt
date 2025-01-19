@@ -1,0 +1,121 @@
+Q:
+
+Exporting plugins to nav2. How to?
+
+I want to write a custom local planner and a custom recovery. I have made an ament_cmake package, written the code in .cpp files with .h files next to them. It compiles fine. Here's the setup.
+./src/prepare_for_path.h
+./src/prepare_for_path.cpp
+./src/rpp_controller.h
+./src/rpp_controller.cpp
+./CMakeLists.txt
+./package.xml
+./plugins.xml
+
+rpp_controller.h:
+...
+namespace plugins
+{
+class RPPController : public nav2_core::Controller
+...
+
+rpp_controller.cpp:
+...
+#include "pluginlib/class_list_macros.hpp"
+PLUGINLIB_EXPORT_CLASS(plugins::RPPController, nav2_core::Controller)
+
+prepare_for_path.h:
+...
+namespace plugins 
+{
+class PrepareForPath : public nav2_recoveries::Recovery<SomeRecoveryType>
+...
+
+prepare_for_path.cpp:
+...
+#include "pluginlib/class_list_macros.hpp"
+PLUGINLIB_EXPORT_CLASS(plugins::PrepareForPath, nav2_core::Recovery)
+
+plugins.xml:
+<class_libraries>
+    <library path="prepare_for_path">
+        <class name="plugins/PrepareForPath" type="plugins::PrepareForPath" base_class_type="nav2_core::Recovery">
+            <description>This prepares the robot to run a path.</description>
+        </class>
+    </library>
+    <library path="rpp_controller">
+        <class name="plugins/RPPController" type="plugins::RPPController" base_class_type="nav2_core::Controller">
+            <description>Regulated pure pursuit controller </description>
+        </class>
+    </library>
+</class_libraries>
+
+CMakeLists.txt: (select bits)
+set(controller_name rpp_controller)
+set(prepare_name prepare_for_path)
+
+add_library(${controller_name} SHARED src/${controller_name}.cpp)
+add_library(${prepare_name} SHARED src/${prepare_name}.cpp)
+
+ament_target_dependencies(${controller_name} ${controller_deps})
+ament_target_dependencies(${prepare_name} ${prepare_deps})
+
+pluginlib_export_plugin_description_file(nav2_core plugins.xml)
+
+install(TARGETS ${controller_name} ${prepare_name}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(FILES plugins.xml
+  DESTINATION share/{PROJECT_NAME}
+)
+
+ament_export_libraries(
+  ${controller_name}
+  ${prepare_name}
+)
+
+ament_package()
+
+Unsure what to write in package.xml, it seems to make no difference so I'm excluding it for brevity. Tell me if this is incorrect.
+Meanwhile, launching the nav2 stack with some recovery params:
+recoveries_server:
+  ros__parameters:
+    ...
+    recovery_plugins: [..., "prepare"]
+    prepare:
+      plugin: "plugins/PrepareForPath"
+
+Controller params:
+controller_server:
+  ros__parameters:
+    ...
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: plugins/RPPController
+
+Launch output:
+...
+[controller_server-1]: Created controller : FollowPath of type plugins/RPPController
+[controller_server-1]: Controller Server has FollowPath  controllers available.
+...
+[recoveries_server-3]: Creating recovery plugin prepare of type plugins/PrepareForPath
+[recoveries_server-3]: Failed to create recovery prepare of type plugins/PrepareForPath. Exception: Failed to load library /hugo_ws/install/plugins/lib/libprepare_for_path.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library LoadLibrary error: /hugo_ws/install/plugins/lib/libprepare_for_path.so: undefined symbol: _ZTVN13plugins14PrepareForPathE, at /opt/ros/foxy/src/rcutils/src/shared_library.c:84
+
+And then, it crashes. Now, for some questions.
+How come the local planner is exported correctly, while the recovery is not? They look identically treated to me.
+Pluginlib is extremely opaque to me - how can I view what plugins are available? In general, how do I go about troubleshooting something like this?
+I have been following tutorials but I can't ever be sure about which major version these are working with. I reverted back to comparing to the github repo, which should work, but even that doesn't work.
+
+Originally posted by Per Edwardsson on ROS Answers with karma: 501 on 2022-07-12
+Post score: 1
+
+A:
+
+Turned out to be that I had declared a destructor but not implemented it.
+
+Originally posted by Per Edwardsson with karma: 501 on 2022-07-12
+This answer was ACCEPTED on the original site
+Post score: 1
+

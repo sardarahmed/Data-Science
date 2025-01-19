@@ -1,0 +1,73 @@
+Q:
+
+Why does SDF plugin syntax not support additional parameters like URDF?
+
+All the gazebo ros plugins have a bunch of parameters that are set in the URDF and parsed by parser_urdf. SDFs don't seem to have the same functionality. As far as I can tell, the code doesn't even support it.
+How would you supply parameters to the plugins inside an SDF?
+Thanks!!
+Piyush
+EDIT #1:
+It looks like I was reading the code incorrectly, and @AndreiHaidu's answer is correct. My test case uses VisualPlugins which still fails (all parameters get wiped in the SDF received by the visual plugin). Are VisualPlugin's supposed to have this same functionality as well?
+Edit #2:
+Here are a few files that should reproduce the error:
+http://farnsworth.csres.utexas.edu/share/model.sdf
+http://farnsworth.csres.utexas.edu/share/gazebo_ros_video.h
+http://farnsworth.csres.utexas.edu/share/gazebo_ros_video.cc
+The plugin works for the default parameters, displaying a ROS image topic inside gazebo.
+Here's a bit more info that might be useful. I have a patch in the works that forwards visual plugins in parser_urdf. For my real setup I have verified that Gazebo receives the correct converted SDF:
+<visual name='base_footprint_visuallaptop_screen_link'>
+  <pose>0.236849 -0.000000 1.093250 0.000000 -1.047200 -0.000000</pose>
+  <geometry>
+    <box>
+      <size>0.254000 0.330200 0.019050</size>
+    </box>
+  </geometry>
+  <material>
+    <script>
+      <name>Gazebo/Grey</name>
+    </script>
+  </material>
+  <plugin name='laptop_video_controller' filename='libgazebo_ros_video.so'>
+    <height>240</height>
+    <width>320</width>
+    <topicName>image_raw</topicName>
+  </plugin>
+</visual>
+
+By the time this reaches Visual::Load, it gets changed to:
+<visual name='robot1::base_footprint::base_footprint_visuallaptop_screen_link'>
+  <geometry>
+    <box>
+      <size>0.254000 0.330200 0.019050</size>
+    </box>
+  </geometry>
+  <pose>0.236849 0.000000 1.093250 0.000000 -1.047200 0.000000</pose>
+  <material>
+    <script>
+      <name>Gazebo/Grey</name>
+      <uri>__default__</uri>
+    </script>
+  </material>
+  <plugin name='laptop_video_controller' filename='libgazebo_ros_video.so'/>
+</visual>
+
+This is as far as I have gotten to figuring out whats going wrong.
+
+Originally posted by piyushk on Gazebo Answers with karma: 138 on 2013-03-20
+Post score: 1
+
+Original comments
+Comment by nkoenig on 2013-03-20:
+Can you post your SDF. The visual plugin should behave exactly like every other plugin.
+Comment by piyushk on 2013-03-20:
+@nkoenig: see updated question
+
+A:
+
+I had a bit more time to take a look at this. It looks like unlike model Plugins, Visual Plugins are created by sending a visual message from Link::Load. At this time, the plugin msg does not support copying over the inner XML data from the SDF and this information is lost.
+I've filed a bug report here: https://bitbucket.org/osrf/gazebo/issue/598/visualplugin-parameters-lost-on-spawning-a
+
+Originally posted by piyushk with karma: 138 on 2013-03-21
+This answer was ACCEPTED on the original site
+Post score: 0
+

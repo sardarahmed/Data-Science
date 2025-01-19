@@ -1,0 +1,49 @@
+Q:
+
+Can I have a rviz::Tool inside an rviz::Panel?
+
+We have developed several tools for interacting with rviz.
+However, those tools are, in the end, providing "one" functionality (think of: add object, move object, delete object).
+Thus, to streamline this and make the rviz interface cleaner, I'd like to have all those tools not as buttons on the toolbar, but on a panel.
+Is this doable with rviz::Tool? Or does this require to load them to the toolbar?
+
+Originally posted by mgruhler on ROS Answers with karma: 12390 on 2017-01-11
+Post score: 0
+
+A:
+
+It's been a while since I did this (or even looked at the code), but I created a tool that I load/unload programmatically for a corresponding custom Display. Something to be aware of is that the tool currently in use is system-wide, so loading/unloading needs to be handled appropriately.
+In a Panel, you can access the ToolManager from the protected VisualizationManager member:
+ToolManager* toolManager = vis_manager_->tool_manager_;
+
+See the ToolManager API for further functionality. Note that this is for Indigo; things may be different for other ROS versions.
+Edit: given the ToolManager* (I'll call it tMan for brevity) and tool class name (tClassName), loading is:
+tMan->addTool(tClassName);
+
+Assume you have a reference to a Tool* tool; to make it the active tool:
+tMan->setCurrentTool(tool);
+
+That will take care of switching tools for you; unloading a tool is akin to removing it from the tool panel (which you likely don't need to do).
+Note that actually bookkeeping the tools is a pain. As far as I know, you need to use the class name; something like:
+Tool* curTool = tMan->getCurrentTool();
+if (curTool && curTool->getClassId() == tClassName) {
+    ...
+}
+
+But just doing tMan->setCurrentTool(tool) will deactivate the old and activate the new. Hope that helps some.
+
+Originally posted by kramer with karma: 1470 on 2017-01-12
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by mgruhler on 2017-01-13:
+Thanks for answering, I'll try it out soon
+With the toolManager I can then load this tool, in effect calling the activate() function of this tool? This would be exactly what I was looking for.
+What about a tool (say, SendGoal)  which is active at this moment. Do I need to manually unload this?
+Comment by kramer on 2017-01-14:
+'Cuz it's (somewhat) complicated text to put in a comment, I'm editing my answer with some extra code.
+Comment by mgruhler on 2017-01-16:
+@kramer thank you so much for the in depth answer. This helped me a lot and a quick proof-of-concept seems to work.
+I'll update if I stumble upon any issues worth noting. So far, I'll consider this answered.
+

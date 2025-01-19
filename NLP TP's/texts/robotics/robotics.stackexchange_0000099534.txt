@@ -1,0 +1,70 @@
+Q:
+
+Simultaneous rosserial_arduino publisher and subscriber at different rates?
+
+Hello everyone,
+Thank yuo for taking the time to read and answer my question. I am fairly new to both ROS and arduino so please pardon me if my question is simplistic. I am trying to make a ROS robot using an MCU for the low level hardware handling and I followed the rosserial_arduino tutorial to combine the publisher and subscriber into one node that can both publish and subscribe:
+#include <ros.h>
+#include <std_msgs/Empty.h>
+#include <std_msgs/String.h>
+
+ros::NodeHandle nh; 
+
+std_msgs::String str_msg; 
+char hello[6] = "hello"; 
+
+ros::Publisher chatter("chatter", &str_msg); 
+
+void messageCb(const std_msgs::Empty& toggle_msg){ 
+  digitalWrite(PC13, HIGH-digitalRead(PC13));
+}
+
+ros::Subscriber<std_msgs::Empty> sub("toggle_led", &messageCb); 
+
+void setup(){
+  nh.initNode(); 
+  nh.advertise(chatter); 
+  nh.subscribe(sub); 
+  pinMode(PC13, OUTPUT); 
+  str_msg.data = hello; 
+}
+
+void loop(){
+  chatter.publish(&str_msg); 
+  nh.spinOnce();
+  delay(1000);
+}
+
+With the delay(1000) function in loop(), both the subscribing and publishing occur at 1hz. Is there a way for the subscriber to subscribe at a higher rate, while keeping the publisher publishing at 1hz?
+
+Originally posted by Chandra_jaoming on ROS Answers with karma: 3 on 2021-07-07
+Post score: 0
+
+A:
+
+For exactly such situations blocking delays are unadvisable. Instead, using millis will get you the delay effect without blocking loop().
+Try this (code is untested):
+unsigned long timeFrom = 0;
+const unsigned long timeInterval = 5000;
+
+void loop()
+{
+    // stuff that should be occurring every `timeInterval` milli-seconds
+    if (millis() - timeFrom >= timeInterval)
+    {
+        chatter.publish(&str_msg);
+        timeFrom = millis();
+    }
+
+    // stuff that should be occurring at loop frequency
+    nh.spinOnce();
+}
+
+Originally posted by abhishek47 with karma: 228 on 2021-07-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Chandra_jaoming on 2021-07-12:
+Now I see...thanks!
+

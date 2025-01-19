@@ -1,0 +1,59 @@
+Q:
+
+Accelerometers in a self-balancing robot, can't we do better?
+
+I'm currently reading on self-balancing robots that use an IMU (gyroscopes + accelerometers) to estimate their current tilt angle. 
+Most documents that I have found say the same things:
+
+You can't just take the arc-tangent of the accelerometers data to find the gravity direction because they are affected by "inertial noises".
+You can't just integrate the output of the gyroscope over time because it drifts.
+There are two generally accepted solutions to merge those data:
+
+A Kalman filter estimating the current tilt along with the current gyroscope bias.
+A complimentary filter applying a low-pass filter on the accelerometer data (they can be trusted in the long term), and a high-pass filter on the gyroscope data (it can be trusted in the short term). 
+
+All sources that I have found seem to use the raw data from the accelerometers in those filters, disregarding the fact that, in a self-balancing robot, we can have a very good estimate of the "inertial noise" mentioned above.
+Here's my though
+Let's model our robot with an inverted pendulum with a moving fulcrum and use this poor drawing as a reference.
+
+The inertial forces felt by the accelerometers at C can be derived from (if I didn't make any mistake)
+$$
+\begin{pmatrix}
+\ddot{c_r}
+\\ 
+\ddot{c_\Theta}
+\end{pmatrix}
+=
+\begin{pmatrix}
+-\ddot{x}\sin(\Theta)-R\dot{\Theta}^2
+\\ 
+-\ddot{x}\cos(\Theta)+R\ddot{\Theta}
+\end{pmatrix}
+$$
+Assuming that 
+
+Our robot is rolling without slipping
+We can measure x (either by using stepper motors or DC motors with encoders)
+
+Then we can have a good estimate of all those variables:
+
+$\hat{\ddot{x}}_k$ : Finite differences over our current and previous measures of $x$
+$\hat{\dot{\Theta}}_k$ : The current gyroscope reading
+$\hat{\Theta}_k$ : Previous estimation of $\Theta$ plus the integration of $\hat{\dot{\Theta}}_k$ and $\hat{\dot{\Theta}}_{k-1}$ over one $\Delta t$
+$\hat{\ddot{\Theta}}_k$ : Finite differences over $\hat{\dot{\Theta}}_k$ and $\hat{\dot{\Theta}}_{k-1}$
+
+Once we have that, we can negate the effect of the inertial forces in the accelerometers, leaving only a much better measure of the gravity.
+It probably still is a good idea to use this as the input of the usual Kalman filter as in 1. above.
+Maybe we can even build a Kalman filter that could estimate all those variable at once? I'm going to try that.
+What do you think? Am I missing something here?
+I think self-balancing-robot could be a good tag, but I can't create it
+
+A:
+
+If you properly construct a Kalman filter with an 'x' input, then yes, it'll be better.  Notably, the inertial sensor cannot give you an absolute value for x in any case, because you're (essentially) trying to double-integrate an accelerometer signal into a position, and that is exquisitely sensitive to noise in the accelerometer output.
+Some things you may wish to consider in your travels:
+
+A full-blown Kalman filter is computationally intense, but a steady-state Kalman is basically a complimentary filter with rolloff frequencies selected by construction rather than b'guess and b'gosh.
+Speaking of b'guess and b'gosh, if you want a Kalman to work well (and, sometimes, at all) you need to very accurately account for everything that goes into your variances.  Kalmans are notorious for not responding well to mismatches between your model and reality.  If you're willing to do the math, look into H-infinity and other robust state estimation techniques.
+If you do go down the H-infinity road, you can also find the steady-state H-infinity filter and get the same computational advantage (and, in fact, the actual filter structure in your embedded code will be the same; it'll just have different values in the coefficients).
+

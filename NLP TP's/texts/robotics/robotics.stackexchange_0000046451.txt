@@ -1,0 +1,51 @@
+Q:
+
+including a java byte code class in ros stack
+
+Hey all,
+I have a java program which act like a TCP socket server. And a ros C++ Client node interacts with it and share data on socket. I run my java program using command "java Server" and my C++ ros node like "rosrun my_pkg Cleint". I want to include my java Server program in my ros stack. How can I include and run it there? I dont want to make its node because its not needed at all. I simply want to run it there being included in my stack. Is there any way to run it via roslaunch or how? Also how can I integrate it in my stack? shall I make jar file for Server.class or how? Please give detailed hints,
+Thanks in advance
+
+Originally posted by safzam on ROS Answers with karma: 111 on 2012-12-11
+Post score: 0
+
+A:
+
+You can run any program inside a ROS package using rosrun (or equally, using a launch file), no matter if it's a ROS node or not. So I would suggest you put the command(s) you use to run your program from the command line into a shell script and use rosrun to run that script.
+Example:
+my_pkg/scripts/server.sh:
+#!/bin/sh
+# TODO: set up CLASSPATH, ...
+java $1    # this won't work exactly, you need to add some more 
+           # arguments to java (never can remember which)
+
+run from command line:
+ $ rosrun my_pkg server.sh $(rospack find my_pkg)/classes/Server.class
+
+run from launch file (my_pkg/launch/my_stuff.launch):
+ <launch>
+   <node pkg="my_pkg" type="server.sh" name="server" args="$(find my_pkg)/classes/Server.class"/>
+ </launch>
+
+(remember to set the executable bit on server.sh)
+
+Originally posted by Martin Günther with karma: 11816 on 2012-12-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Lorenz on 2012-12-11:
+That's actually pretty much what is done in the old JNI based rosjava. rosjava cmake targets generate wrapper scripts that call java with an initial class and make sure that the classpath is  set up correctly.
+Comment by safzam on 2012-12-12:
+Hi, It gives me error like ClassNotFoundException: .home.my_pkg.classes.Server.class in both cases in launch and command line. My .sh file works if I simply give java Server instead of java $1. Also if I run java Server form classes folder it works. CLASSPATH is already set in .bashrc. Any hints?
+Comment by Martin Günther on 2012-12-12:
+As I wrote, the java call won't work exactly; this was only meant as an example. If it works if you simply write 'java Server', then just do it.
+Comment by safzam on 2012-12-12:
+yes I can do that, but the problem is that the Server class also read and write a file in the classes/ directory. Now if I simply add java Server in .sh file and run .sh from other directory then Server program cannot find those files. I want it always to read/write from the same classes/ dir.
+Comment by Martin Günther on 2012-12-13:
+It's easy to modify my example above to do just what you want. Just add an echo $1 in the .sh file of my example to see what happens, then make some modifications and add a cd to go to the package directory before running java.
+Comment by safzam on 2012-12-13:
+echo $1 and java $1 in .sh with comandline run givs : /home/my_pkg/classes/Server
+Exception in thread "main" java.lang.NoClassDefFoundError: /home/my_pkg/classes/Server
+Caused by: java.lang.ClassNotFoundException: .home.my_pkg.classes.Server at java.net.URLClassLoader$1.run(URLClassLoader.java:217)
+

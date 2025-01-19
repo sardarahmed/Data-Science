@@ -1,0 +1,67 @@
+Q:
+
+What kinematic equations should I use for Kalman filter state propagation in IMU based quadcopter navigation?
+
+I am working on implementing a Kalman filter for position and velocity estimation of a quadcopter using IMU and vision. First I am trying to use the IMU to get position and velocity.
+In a tutorial [1] the process model for velocity estimation using IMU sensor data is based on Newton's equation of motion
+$$
+v = u + at \\
+\\ 
+\begin{bmatrix} 
+\dot{x} \\ 
+\dot{y} \\ 
+\dot{z} 
+\end{bmatrix}_{k+1} = \begin{bmatrix} 
+\dot{x} \\ 
+\dot{y} \\ 
+\dot{z} 
+\end{bmatrix}_{k} + \begin{bmatrix} 
+\ddot{x} \\ 
+\ddot{y} \\ 
+\ddot{z} 
+\end{bmatrix}_k \Delta T
+$$
+while in the paper [2] the process model uses angular rates along with acceleration to propagate the linear velocity based on the below set of equations.
+
+$$
+\begin{bmatrix} 
+u \\ 
+v \\ 
+w \\
+\end{bmatrix}_{k+1} = \begin{bmatrix} 
+u \\ 
+v \\ 
+w \\
+\end{bmatrix}_{k} + \begin{bmatrix} 
+0& r& -q \\ 
+-r& 0& p \\ 
+-p& q& 0 
+\end{bmatrix} \begin{bmatrix} 
+u \\ 
+v \\ 
+w \\
+\end{bmatrix}_{k} \Delta T+ \begin{bmatrix} 
+a_x \\ 
+a_y \\ 
+a_z \\
+\end{bmatrix}_{k} \Delta T + \begin{bmatrix} 
+g_x \\ 
+g_y \\ 
+g_z \\
+\end{bmatrix}_{k} \Delta T
+$$
+where u, v, w are the linear velocities | p, q, r are the gyro rates while a_x,a_y,a_z are the acceleration |  g_x,g_y,g_z are the gravity vector
+Why do we have two different ways of calculating linear velocities? Which one of these methods should I use when modeling a quadcopter UAV motion?
+[1] http://campar.in.tum.de/Chair/KalmanFilter
+[2] Shiau, et al. Unscented Kalman Filtering for Attitude Determination Using Mems Sensors Tamkang Journal of Science and Engineering, Tamkang University, 2013, 16, 165-176
+
+A:
+
+The first form, from both the math and the webpage to which you link, is for linear motion only. 
+Tie a string to a rock. Swing the rock around in a circle above your head at a constant speed. If you cut the string, the rock flies outward because the centripetal force is no longer present to "pull" the rock onto the circular path. That is, the "forward" force is zero, because the rock is moving at a constant speed, but the "sideways" force is $mv^2/r$, the centrifugal force. 
+Put an accelerometer on a car. X-axis points forward and y-axis points out the right window. Drive the car around in a circle at a constant speed. The "forward" force is zero because the car is moving at constant speed. The "sideways" force is again $mv^2/r$, and is what causes the car to "hug" the curve. 
+If you were reading the output from an accelerometer, though, you would see that $a_x = 0$ and, from $F=ma$ and $F=mv^2/r$ for centripetal forces, you would see that $a_y = (mv^2/r)/m = v^2/r$. 
+That is, you will see an apparent acceleration on the y-axis that is used to "bend" the forward velocity of the vehicle around the curve. 
+The problem here is that the y-axis acceleration is constant while you are moving at constant speed around a circle of constant radius. That is, if you were to double-integrate the y-axis acceleration, then it would appear that the vehicle is accelerating to the right when in reality the vehicle is moving in a circle. 
+The y-axis centripetal force "bends" the x-axis about the z-axis, so the correct way to account for this is to apply the yaw rate to the y-axis acceleration.
+

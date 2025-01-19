@@ -1,0 +1,222 @@
+Q:
+
+diff_drive Robot descripion couldn't be retrieved from param server error
+
+Hi!
+I'm having issues trying to run diff_drive_controller in simulation. I put a minimal example in a repo.
+When I try to launch a diff drive controller the window from which I run Gazebo shows errors:
+[ERROR] [1529684868.494983844, 21.407000000]: Robot descripion couldn't be retrieved from param server.
+[ERROR] [1529684868.495055462, 21.407000000]: Failed to initialize the controller
+[ERROR] [1529684868.495111534, 21.407000000]: Initializing controller 'mobile_base_controller' failed
+
+The controller spawner returns:
+[INFO] [1529684868.441842, 0.000000]: Controller Spawner: Waiting for service controller_manager/load_controller
+    [INFO] [1529684868.443299, 0.000000]: Controller Spawner: Waiting for service controller_manager/switch_controller
+    [INFO] [1529684868.445685, 0.000000]: Controller Spawner: Waiting for service controller_manager/unload_controller
+    [INFO] [1529684868.447657, 0.000000]: Loading controller: joint_state_controller
+    [INFO] [1529684868.454313, 21.366000]: Loading controller: mobile_base_controller
+    [ERROR] [1529684869.496449, 22.405000]: Failed to load mobile_base_controller
+
+Here are relevant snippets:
+diff_drive.launch:
+<launch>
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find dd_bot)/config/diff_drive.yaml" command="load"/>
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="/dd_bot" args="joint_state_controller
+    mobile_base_controller"/>
+
+<!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+    <remap from="/joint_states" to="/dd_bot/joint_states" />
+  </node>
+
+</launch>
+
+diff_drive.yaml:
+dd_bot:
+    joint_state_controller:
+        type: joint_state_controller/JointStateController
+        publish_rate: 50  
+    
+    mobile_base_controller:
+      type: "diff_drive_controller/DiffDriveController"
+      left_wheel: 'left_wheel_joint'
+      right_wheel: 'right_wheel_joint'
+      pose_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+      twist_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+
+relevant piece of urdf:
+...
+  <transmission name="right_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="right_wheel_joint">
+        <!--hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface-->
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="right_motor">
+        <!--hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface-->
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+  </transmission>
+
+    <transmission name="left_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="left_wheel_joint">
+        <!--hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface-->
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="left_motor">
+        <!--hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface-->
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+  </transmission>
+
+  <gazebo>
+      <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+          <!-- <robotParam>/robot_state_publisher/robot_description</robotParam> -->
+          <robotNamespace>/dd_bot</robotNamespace>
+        <robotSimType>gazebo_ros_control/DefaultRobotHWSim</robotSimType>
+      </plugin>
+  </gazebo>
+
+I also created a file with velocity controllers for the joints and that one works every time:
+<launch>
+
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find dd_bot)/config/motor_control.yaml" command="load"/>
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="/dd_bot" args="joint_state_controller
+    right_velocity_controller left_velocity_controller"/>
+
+<!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+    <remap from="/joint_states" to="/dd_bot/joint_states" />
+  </node>
+
+</launch>
+
+Any help would be highly appreciated!
+
+Originally posted by msadowski on ROS Answers with karma: 311 on 2018-06-22
+Post score: 4
+
+A:
+
+I managed to solve the problem!
+The misleading bit was this message from Gazebo ros_control:
+[ INFO] [1529903997.363384038, 0.360000000]: gazebo_ros_control plugin is waiting for model URDF in parameter [/robot_description] on the ROS param server.
+
+It turns out that because of namespacing tha gazebo_ros_control was looking for /dd_bot/robot_description, even though the above message said otherwise.
+Once I made sure the namespacing was matching everything worked correctly. All of my updated files are in the mentioned in my question. Here are the highlights:
+gazebo.launch:
+
+  <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+
+  <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="verbose" value="true"/>
+  </include>
+
+    <!-- Load the URDF into the ROS Parameter Server -->
+    <param name="dd_bot/robot_description"
+      command="$(find xacro)/xacro --inorder '$(find dd_bot)/urdf/dd_bot.urdf'" />
+
+    <!-- Run a python script to the send a service call to gazebo_ros to spawn a URDF robot -->
+    <node name="urdf_spawner" pkg="gazebo_ros" ns="dd_bot" type="spawn_model" respawn="false" output="screen"
+      args="-urdf -model dd_bot -param robot_description -R 3.14"/>
+
+  <!-- convert joint states to TF transforms for rviz, etc -->
+    <node name="robot_state_publisher" ns="dd_bot" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+      <!-- <remap from="/joint_states" to="/dd_bot/joint_states" /> -->
+    </node>
+
+  <!-- Run joint state publisher (Gets robot_description from parameter server)-->
+<node pkg="joint_state_publisher"
+    type="joint_state_publisher"
+    name="joint_state_publisher" 
+    ns="dd_bot">
+    <param name="rate" value="50" />
+</node>
+
+</launch>
+
+diff_drive.yaml:
+dd_bot:
+    joint_state_controller:
+        type: joint_state_controller/JointStateController
+        publish_rate: 50  
+
+    mobile_base_controller:
+        type: "diff_drive_controller/DiffDriveController"
+        left_wheel: 'left_wheel_joint'
+        right_wheel: 'right_wheel_joint'
+        pose_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+        twist_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+        base_frame_id: base_link
+
+        # Odometry fused with IMU is published by robot_localization, so
+        # no need to publish a TF based on encoders alone.
+        enable_odom_tf: false
+
+        # Husky hardware provides wheel velocities
+        estimate_velocity_from_position: false
+
+        # Wheel separation and radius multipliers
+        wheel_separation_multiplier: 1.875 # default: 1.0
+        wheel_radius_multiplier    : 1.0 # default: 1.0
+
+        # Velocity and acceleration limits
+        # Whenever a min_* is unspecified, default to -max_*
+        linear:
+            x:
+                has_velocity_limits    : true
+                max_velocity           : 1.0   # m/s
+                has_acceleration_limits: true
+                max_acceleration       : 3.0   # m/s^2
+        angular:
+            z:
+                has_velocity_limits    : true
+                max_velocity           : 2.0   # rad/s
+                has_acceleration_limits: true
+        max_acceleration       : 6.0 # rad/s^2
+
+diff_drive.launch:
+<launch>
+
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find dd_bot)/config/diff_drive.yaml" command="load"/>
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="/dd_bot" args="joint_state_controller
+    mobile_base_controller"/>
+
+</launch>
+
+Hope someone finds it useful in the future!
+
+Originally posted by msadowski with karma: 311 on 2018-06-25
+This answer was ACCEPTED on the original site
+Post score: 5
+
+Original comments
+Comment by Dragonslayer on 2018-12-02:
+Nice Find! Thanks a lot thumbs up
+

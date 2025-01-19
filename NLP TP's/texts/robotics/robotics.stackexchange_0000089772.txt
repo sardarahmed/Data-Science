@@ -1,0 +1,36 @@
+Q:
+
+Calculate picking pose from mesh origin pose (using tf?)
+
+I would like to pick and place multiple times an object I have in the collision world. The object gets moved in different states, and at the moment I don't have cameras on the scene so I can't infer the picking pose from them. I however always know the origin point of the mesh describing the object before the first P&P happens, and I know the distance from there to the point where the picking pose should lie. It's also worth noting the mesh origin pose doesn't have the same orientation as the picking pose (which should be with opposite verse z axis (=approach) and y axis according to the sliding direction of the grippers, like always).
+Since P&P happens multiple times, I need to be able to set the new origin point for the mesh after placing the object, and afterwards calculate the picking pose based on this newly set origin point. This all seems theoretically feasible in some way with tf, however I'm having a hard time wrapping my head around a couple things:
+
+Quaternions: given the initial orientation for the mesh {0.808, 0.000, -0.589, 0.000} (right hand with palm up, three fingers like axes, rotate y of maybe 15° counterclockwise), I know the picking pose will have to be oriented with a 180° rotation around the x axis from the previous pose. To rotate a quaternion I multiply it by that rotation (which is {0.0, 1.0, 0.0, 0.0}) and obtain the wrong result, however, and the same happens with the robot if I try to change the orientation like this. What did I misunderstand?
+
+Transform: should this be published as a transform (in some shape or form) or is there a better way? Right now the object to be picked is instantiated with its origin pose, and I have ready a setup for a getPickPose() for the robot's class to interface with, but this all sounds confusing. The rest of the code for P&P is ready and working and I tested were I to set manually the pick pose for all the places I place the object the code is reliable, but I reckon it should be doable, even without vision, like this somehow.
+
+Originally posted by aPonza on ROS Answers with karma: 589 on 2018-12-06
+Post score: 0
+
+A:
+
+I agree the TF system is a very good way of solving this challenge. When I've worked on similar things in the past  we defined a static transform from the objects body frame to the end effector grasp location. Then keep a record of the location of the object in the world frame and publish the TF from the world to the objects body frame.
+The combination of these two transforms means you can do a TF lookup of the grasp pose of the object in the world frame at any time,  as well as having a TF of the objects pose as well.
+Hope this makes sense.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2018-12-06
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aPonza on 2018-12-06:
+Ok I'm reading the tf2 tutorials: you're suggesting to add to the class representing the object I have to pick both a tf2_ros::TransformBroadcaster for world->mesh_origin transform and atf2_ros::StaticTransformBroadcaster for mesh_origin->picking_pose transform. Sounds doable, however do you ...
+Comment by aPonza on 2018-12-06:
+... have any idea regarding the quaternions? I tried multiple other rotations but they don't make any sense. As you can see I'm using wolfram, this converter and this visualization website, but it's not working.
+Comment by PeteBlackerThe3rd on 2018-12-06:
+The TFs don't necessarily have to be broadcast from the class representing your object, but it's up to you to decide the best architecture for this. Regarding the quaternions, I wouldn't even bother trying to initialize then directly, use the set From RPY method instead.
+Comment by aPonza on 2018-12-06:
+Did you use extra nodes at the time you were using tf2? I now found out about tf2::BufferCore from here and as I understand it now I think I'd need more nodes with broadcasters to handle callbacks(?)
+Comment by PeteBlackerThe3rd on 2018-12-06:
+It shouldn't matter how many nodes you use, you can do it in one or many. We used the staticTransformPublisher for the static transform and ar_track_alvar to provide the world -> body TF. You should just need a single TF::Buffer object to find the TF's for the motion planning.
+

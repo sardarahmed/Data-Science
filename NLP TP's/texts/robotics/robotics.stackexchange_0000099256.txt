@@ -1,0 +1,54 @@
+Q:
+
+Get ros params from parameter server
+
+I have 2 ROS nodes running sequentially from a script. Node1 sets some params in the parameter server which are to be used by node2. But node2 starts after node1 is killed. Currently I have a yaml config file where the dummy values of the params are saved and I load this file in the launch file. As soon as node1 starts I can see the params being updated in the server to new values. Node1 is killed and node2 starts. But node2 is using the dummy values set in yaml
+How do I make sure node2 uses new values set by node1 in the parameter server?
+using rospy.set_param to set the values in node1 and rospy.get_param in node2 to read the params
+
+Originally posted by dee-mikey on ROS Answers with karma: 5 on 2021-06-14
+Post score: 0
+
+Original comments
+Comment by abhishek47 on 2021-06-15:\
+
+I have a yaml config file where the dummy values of the params are saved and I load this file in the launch file.
+
+Can you edit your question to include that section of the launch file?
+
+A:
+
+The launch file will load the parameters before the nodes are started.  I had a similar issue where a System configurator node had to perform a calculation on some data at startup and post that before a second node could use it.
+In my case I solved it by simply polling until the parameter had been updated.  Like this:
+rospy.init_node('my_node_name', anonymous=False) 
+ 
+# My normal parameter reads    
+
+usb_media_poll_interval = rospy.get_param('/file_system/usb_media_poll_interval')
+
+# My special parameter solution
+
+system_node_id = 0
+
+while system_node_id == 0: 
+    system_node_id = rospy.get_param('/canbus/system_node_id')   # Thread will keep looping here until it is set
+
+# Start the real work
+
+In your case the '0' could be your dummy parameter.
+You could also include a timeout if required
+Alternatively you could just not set the dummy parameter in the yaml file and do something like:
+while not rospy.has_param('your_parameter'):
+    pass
+
+Essentially you are creating a different state space for your node, one with the parameter set, and one without.  Therefore instead of a thread blocking while loop as I have used, you could have a simple if rospy.has_param('your_parameter'): branching down to a common ros::spinOnce() and sleep() if you wanted the node doing other things while waiting for the parameter
+Another approach which is trivially implemented is to delay the launch of the node requiring the parameter using the launch_prefix tag.  This of course has the disadvantage of being less deterministic but effective.
+<node name="yr_node" pkg="yr_pkg" type="yr_type" launch-prefix="bash -c 'sleep $(arg node_start_delay); $0 $@' " />
+
+I first saw this delay mechanism posted by kushlik and discussed here
+Happy for criticism/suggestions/drawbacks as to these approaches by others
+
+Originally posted by James NT with karma: 36 on 2021-06-15
+This answer was ACCEPTED on the original site
+Post score: 0
+

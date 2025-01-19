@@ -1,0 +1,63 @@
+Q:
+
+get odometry from car-like robot
+
+hi
+I want to make a car-like robot with steering wheels in front as you well know. the problem is modeling it and using it with navigation stack successfully!
+My solution is: use arduino!
+yes get commands from ros (which ones exactly?) then send them via rosserial to arduino and then process them and move the robot... then output odometry values.
+how to output such odometry values back to ros? is it gonna be easy? or should i consider differential 4 wheel drive (point me where)?
+thanks
+
+Originally posted by VEGETA on ROS Answers with karma: 11 on 2016-05-29
+Post score: 0
+
+A:
+
+You can use whatever steering method you like. The navigation stack outputs velocity commands for the robot base to follow. You will need to make a node to use the inverse kinematic equations to determine how to control the robot. To get odom you do the reverse; get the encoder counts from the wheels and use the kinematic equations to determine the velocities of the robot. This is easiest with a differential drive, but with some work you should be able to get it working with Ackerman steering.
+[EDIT]
+1 - You need to populate nav_msgs/Odometry messages. The link shows what information is required. Basically, the message requires a time stamp, frame id, the velocities (linear and rotational) of the robot, and the position (x, y, z) of the robot relative to its start pose.
+2 - A tutorial on how to generate the odometry messages can be found on the wiki. The tutorial puts in hard coded velocity values simulating the robot going in a circle. To calculate the actual values you need to use the kinematic equations of your robot. You will need some way of knowing what angles your wheels are at and at what speed they are rotating. You then sub these values into the kinematic equations to determine the the robot's overall velocities. Summing these velocities over a series of time steps provides the robot's pose. Here is a link to an odom node I wrote a while ago for an omnidirectional robot.
+3 - If you use the navigation stack with the move_base node, move_base will publish geometry_msgs/Twist messages, which contain linear and rotational velocities for the robot. Your arduino node will have to subscribe to that topic (default is cmd_vel), use the inverse kinematic equations to determine what speeds and angles the wheels need to be at to achieve the commands sent by move_base. The Arduino then sends this to the motors and actuators.
+
+Originally posted by Icehawk101 with karma: 955 on 2016-06-22
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by VEGETA on 2016-06-22:
+good info, thanks.
+can you give me an example of this kinematic equation? say for differential drive since it is easy.
+and how to make an inverse like you explained.
+thanks
+Comment by Icehawk101 on 2016-06-22:
+Here is a pdf on differential drive kinematics
+Comment by VEGETA on 2016-07-05:
+so what are the required values to be sent to ROS master as odometry?
+Comment by Icehawk101 on 2016-07-05:
+I'm not entirely sure what you are asking
+Comment by VEGETA on 2016-07-05:
+well, i am a noob myself so i will try to answer.
+1- what are the final values to be sent from the robot to ROS as odometry? like x or y...
+2- how to get them or calculate them for diff-drive or car-like robot?
+3- how to send/receive movement commands and convert them to readable values?
+thanks!
+Comment by billy on 2016-07-06:
+One note: The navigation stack output (move_base) will output commands appropriate for differential drive or holonomic wheeled robots. It will output some commands that include only rotation. Ackerman steering robot can't rotate in place. Do you know how to change move_base to mitigate the issue?
+Comment by Icehawk101 on 2016-07-06:
+I've only worked with omnidirectional robots so I am unsure. Their may be path planner plugins made using Ackermann steering, I don't know
+Comment by VEGETA on 2016-07-19:
+OK, I will use a 4-wheeled robot with diff drive... how to write the driver for it? assuming pi3 or pir3+arduino as control boards? what will change here since you used it before?
+Comment by Icehawk101 on 2016-07-20:
+The kinematics of differential drive vehicles are well known. Search google for the kinematics and then write a node to convert the robot velocities to wheel velocities. Then, send those wheel velocities to the motor drivers.
+Comment by VEGETA on 2016-07-24:
+so I only need a wheel incremental encoder to count pulses, then convert them into speed. after that apply it on the kinematics equations to get x,y,theta? are x,y,theta the only required parameters?
+Comment by VEGETA on 2016-07-24:
+I've seen that using 4 wheels instead of 2 (which is what I want) is now called skid-steering! what to do now? should I modify the diff drive code for this?
+Comment by Icehawk101 on 2016-07-25:
+Skid-steering and differential drive are pretty much the same thing. For the odometry, you need the x, y, and theta velocities and positions. The positions can be found by integrating the changes in the velocities over time. In other words, for each odom message multiply the velocities by the time
+Comment by Icehawk101 on 2016-07-25:
+step to get the change in positions, then add them for each variable.
+Comment by aarontan on 2018-07-09:
+hello @icehawk101 , I have opened up a separate question regarding this topic. I am confused on how to feed the steering back to rviz for navigation. Please help.
+

@@ -1,0 +1,89 @@
+Q:
+
+ROS Navigation - AMCL not transforming map to odom
+
+I am running a turtlebot 2 with an RPLidar instead of a Kinect, trying to get the navigation stack working.
+I am unable to get AMCL to transform map to odom. My current tf tree looks like this: https://drive.google.com/file/d/0B-2f_ZBhV2PKVkhCZW1vaVY3em8/view?usp=sharing
+I am running two transform scripts between base_link and base_footprint, and base_link and base_laser. When I execute move_base.launch, I get the following error: [ WARN] [1500318096.546547244]: Timed out waiting for transform from base_link to map to become available before running costmap, tf error: . canTransform returned after 0.100719 timeout was 0.1.
+In my launch file, I have: <include file="$(find tb2_2dnav)/launch/amcl.launch.xml" /> which references:
+<launch>
+  <arg name="scan_topic"     default="scan"/>
+  <arg name="initial_pose_x" default="0.0"/>
+  <arg name="initial_pose_y" default="0.0"/>
+  <arg name="initial_pose_a" default="0.0"/>
+
+  <node pkg="amcl" type="amcl" name="amcl">
+
+    <param name="min_particles"             value="500"/>
+    <param name="max_particles"             value="3000"/>
+    <param name="kld_err"                   value="0.02"/>
+    <param name="update_min_d"              value="0.20"/>
+    <param name="update_min_a"              value="0.20"/>
+    <param name="resample_interval"         value="1"/>
+    <param name="transform_tolerance"       value="0.5"/>
+    <param name="recovery_alpha_slow"       value="0.00"/>
+    <param name="recovery_alpha_fast"       value="0.00"/>
+    <param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
+    <param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
+    <param name="initial_pose_a"            value="$(arg initial_pose_a)"/>
+    <param name="gui_publish_rate"          value="50.0"/>
+
+    <remap from="scan"                      to="$(arg scan_topic)"/>
+    <param name="laser_max_range"           value="3.5"/>
+    <param name="laser_max_beams"           value="180"/>
+    <param name="laser_z_hit"               value="0.5"/>
+    <param name="laser_z_short"             value="0.05"/>
+    <param name="laser_z_max"               value="0.05"/>
+    <param name="laser_z_rand"              value="0.5"/>
+    <param name="laser_sigma_hit"           value="0.2"/>
+    <param name="laser_lambda_short"        value="0.1"/>
+    <param name="laser_likelihood_max_dist" value="2.0"/>
+    <param name="laser_model_type"          value="likelihood_field"/>
+
+    <param name="odom_model_type"           value="diff"/>
+    <param name="odom_alpha1"               value="0.1"/>
+    <param name="odom_alpha2"               value="0.1"/>
+    <param name="odom_alpha3"               value="0.1"/>
+    <param name="odom_alpha4"               value="0.1"/>
+    <param name="odom_frame_id"             value="odom"/>
+    <param name="base_frame_id"             value="base_footprint"/>
+
+  </node>
+</launch>
+
+I'm not sure what I'm doing wrong and why AMCL is not transforming map to odom.
+Edit:
+This morning I noticed that I also get this message: [ WARN] [1500393926.336248116]: No laser scan received (and thus no pose updates have been published) for 1500393926.336100 seconds.  Verify that data is being published on the /scan topic. I verified that the /scan topic was being published to and that the base_scanner was connected in my tf tree.
+I also received this warning: [ WARN] [1500394267.315925339]: MessageFilter [target=odom ]: Dropped 100.00% of messages so far. Please turn the [ros.amcandl.message_notifier] rosconsole logger to DEBUG for more information. so I did as said and got: 
+[DEBUG] [1500393934.597976349]: MessageFilter [target=odom ]: Removed oldest message because buffer is full, count 
+[DEBUG] [1500393933.564483123]: MessageFilter [target=odom ]: Added message in frame laser at time 1500393933.356, count now 100
+rostopic info /scan: https://www.pastiebin.com/596e3ca4ac1db 
+rosnode info /amcl: https://www.pastiebin.com/596e3b8b37865
+
+Originally posted by xnick77x on ROS Answers with karma: 77 on 2017-07-17
+Post score: 2
+
+A:
+
+add a flag to check what is going on with amcl, like this:
+<node pkg="amcl" type="amcl" name="amcl" output="screen">
+also, are you sure your laser scan is published in the /scan topic?
+
+Originally posted by Procópio with karma: 4402 on 2017-07-18
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by xnick77x on 2017-07-18:
+I added the screen output and didn't see any change. Instead I tried the debug logger as my edit to my question says. I also did verify that /scan was being published to.
+Comment by Procópio on 2017-07-18:
+please paste the output of:   rostopic info /scan and rosnode info /amcl
+Comment by xnick77x on 2017-07-18:
+Appended to my question. Thanks. I did notice that in rostopic echo /scan the frame_id is laser but in the tf_tree, it's base_laser. Is that an issue?
+Comment by Humpelstilzchen on 2017-07-18:
+Of course this is an issue. A frame_id that is part of your tf-tree is needed to find the origin of your sensor input.
+Comment by xnick77x on 2017-07-18:
+I changed the frame_id in the params in the launch file to match base_laser, but that hasn't fixed any of my errors/warnings.
+Comment by xnick77x on 2017-07-18:
+I restarted everything and it worked. I guess the issue was the frame_id. Thanks for the help
+

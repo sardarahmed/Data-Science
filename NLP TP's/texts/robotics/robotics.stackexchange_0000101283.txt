@@ -1,0 +1,89 @@
+Q:
+
+In ROS2 is it possible to set GAZEBO_MODEL_PATH in launch file?
+
+I use ROS2 Galactic and have a package that spawn a URDF robot model in Gazebo. The problem is that the URDF model uses meshes files and Gazebo is not able to find them if I don't append the package install path to GAZEBO_MODEL_PATH.
+Using the following line the model load without problem:
+export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/home/ros/Documents/ROS2/ros2_ws/install/mars_robot/share/mars_robot
+
+But I am wondering if it is possible to set that environment variable inside a launch file. I have tried with the following code but it doesn't work.
+import os
+import xacro
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription 
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
+from launch.actions import SetEnvironmentVariable
+
+def generate_launch_description():
+
+    gazebo = IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([os.path.join(
+                    get_package_share_directory('gazebo_ros'), 'launch'), '/gazebo.launch.py']),
+             )
+
+    xacro_robot_pkg_path = os.path.join(
+        get_package_share_directory('mars_robot'))
+
+    xacro_file = os.path.join(xacro_robot_pkg_path,
+                              'urdf',
+                              'mars_robot.xacro')
+
+    doc = xacro.parse(open(xacro_file))
+    xacro.process_doc(doc)
+    params = {'robot_description': doc.toxml()}
+
+    node_robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[params]
+    )
+
+    spawn_entity = Node(package='gazebo_ros', executable='spawn_entity.py',
+                        arguments=['-topic', 'robot_description',
+                                   '-entity', 'mars_robot'],
+                        output='screen')
+
+    return launch.LaunchDescription([
+        SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value='/home/ros/Documents/ROS2/ros2_ws/install/mars_robot/share/mars_robot'),
+        gazebo,
+        node_robot_state_publisher,
+        spawn_entity,
+    ])
+
+Am I doing something wrong or symply it is not possible what i am trying?
+Thanks for your help and best regards.
+
+Originally posted by joseecm on ROS Answers with karma: 130 on 2022-02-27
+Post score: 0
+
+A:
+
+I think you are seeking this functionality:
+https://docs.ros.org/en/galactic/How-To-Guides/Launch-files-migration-guide.html#new-tags-in-ros-2
+This issue has some examples for using set_env in XML or from launch.actions import SetEnvironmentVariable in Python.
+
+Originally posted by ljaniec with karma: 3064 on 2022-02-27
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by joseecm on 2022-03-01:
+Thanks for your answer. I have seen the examples and I don't see any difference between them and the use of SetEnvironmentVariable in my code. But the fact is:
+This works:
+export GAZEBO_MODEL_PATH=/home/ros/Documents/ROS2/ros2_ws/install/mars_robot/share/mars_robot
+This doesn't work:
+SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value='/home/ros/Documents/ROS2/ros2_ws/install/mars_robot/share/mars_robot'),
+Any idea what could be the reason?
+Best regards.
+Comment by ljaniec on 2022-03-01:
+I can see the difference in your return value with LaunchDescription instead of launch.LaunchDescription. It shouldn't matter, though. Maybe try the version with GroupAction too? Is the part with env_value correct for sure? You can try to use SetEnvironmentVariable with some dummy variable with hard-coded value just to see if it's working. Then try to modify the GAZEBO_MODEL_PATH with your path as string - if it works, try to use your env_value too. In the end, you should try @Fetullah Atas version in his answer too.
+Comment by joseecm on 2022-03-01:
+I have edited mi original post to simplify the code. As you can see I have hardcoded the path I want to set in GAZEBO_MODEL_PATH, using the same I use with export. The code doesn't work. When I run the launch file Gazebo keeps loading for little more than a minute and at the end links with references to meshes files doesn't appear.
+I have also try the version with GroupAction and what propose @Fetullah Atas in his answer, but with the same result. I really don't know what is happening.
+Comment by ljaniec on 2022-03-01:
+Can you add --verbose to the Gazebo launch parameters? Just to see what kind of problems Gazebo have with this
+

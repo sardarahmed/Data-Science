@@ -1,0 +1,141 @@
+Q:
+
+EKF-SLAM Update step, Kalman Gain becomes singular
+
+I'm using an EKF for SLAM and I'm having some problem with the update step.  I'm getting a warning that K is singular, rcond evaluates to near eps or NaN. I think I've traced the problem to the inversion of Z.  Is there a way to calculate the Kalman Gain without inverting the last term? 
+I'm not 100% positive this is the cause of the problem, so I've also put my entire code here.  The main entry point is slam2d.
+function [ x, P ] = expectation( x, P, lmk_idx, observation)
+    % expectation
+    r_idx = [1;2;3];
+    rl = [r_idx; lmk_idx];
+
+    [e, E_r, E_l] = project(x(r), x(lmk_idx)); 
+    E_rl = [E_r E_l];
+    E = E_rl * P(rl,rl) * E_rl';
+
+    % innovation
+    z = observation - e;
+    Z = E;
+
+    % Kalman gain
+    K = P(:, rl) * E_rl' * Z^-1;
+
+    % update
+    x = x + K * z;
+    P = P - K * Z * K';
+end
+
+function [y, Y_r, Y_p] = project(r, p)     
+    [p_r, PR_r, PR_p] = toFrame2D(r, p);
+    [y, Y_pr]   = scan(p_r);
+    Y_r = Y_pr * PR_r;
+    Y_p = Y_pr * PR_p;    
+end
+
+function [p_r, PR_r, PR_p] = toFrame2D(r , p)
+    t = r(1:2);
+    a = r(3);
+    R = [cos(a) -sin(a) ; sin(a) cos(a)];
+    p_r = R' * (p - t);
+    px = p(1);
+    py = p(2);
+    x = t(1);
+    y = t(2);
+    PR_r = [...
+        [ -cos(a), -sin(a),   cos(a)*(py - y) - sin(a)*(px - x)]
+        [  sin(a), -cos(a), - cos(a)*(px - x) - sin(a)*(py - y)]];
+    PR_p = R';    
+end
+
+function [y, Y_x] = scan(x)
+    px = x(1);
+    py = x(2);
+    d = sqrt(px^2 + py^2);
+    a = atan2(py, px);
+    y = [d;a];
+    Y_x =[...
+    [     px/(px^2 + py^2)^(1/2), py/(px^2 + py^2)^(1/2)]
+    [ -py/(px^2*(py^2/px^2 + 1)), 1/(px*(py^2/px^2 + 1))]];
+end
+
+Edits:
+project(x(r), x(lmk)) should have been project(x(r), x(lmk_idx)) and is now corrected above.  
+K goes singular after a little while, but not immediately.  I think it's around 20 seconds or so.  I'll try the changes @josh suggested when I get home tonight and post the results.
+Update 1:
+My simulation first observes 2 landmarks, so K is $7\ x\ 2$.  (P(rl,rl) * E_rl') * inv( Z ) results in a $5\ x\ 2$ matrix, so it can't be added to x in the next line.  
+K becomes singular after 4.82 seconds, with measurements at 50Hz (241 steps).  Following the advice here, I tried K = (P(:, rl) * E_rl')/Z which results in 250 steps before a warning about K being singular is produced.  
+This tells me the problem isn't with matrix inversion, but it's somewhere else that's causing the problem.    
+Update 2
+My main loop is (with a robot object to store x,P and landmark pointers):
+for t = 0:sample_time:max_time
+    P = robot.P;
+    x = robot.x;
+    lmks = robot.lmks;
+    mapspace = robot.mapspace;
+
+    u = robot.control(t);
+    m = robot.measure(t);
+
+    % Added to show eigenvalues at each step
+    [val, vec] = eig(P);
+    disp('***')
+    disp(val)
+
+    %%% Motion/Prediction
+    [x, P] = predict(x, P, u, dt);
+
+    %%% Correction
+    lids = intersect(m(1,:), lmks(1,:));  % find all observed landmarks
+    lids_new = setdiff(m(1,:), lmks(1,:));
+    for lid = lids
+        % expectation
+        idx = find (lmks(1,:) == lid, 1);
+        lmk = lmks(2:3, idx);
+        mid = m(1,:) == lid;
+        yi = m(2:3, mid);
+
+        [x, P] = expectation(x, P, lmk, yi);
+    end  %end correction
+
+    %%% New Landmarks
+
+    for id = 1:length(lids_new)
+    % if id ~= 0
+        lid = lids_new(id);
+        lmk = find(lmks(1,:)==false, 1);
+        s = find(mapspace, 2);
+        if ~isempty(s)
+            mapspace(s) = 0;
+            lmks(:,lmk) = [lid; s'];
+            yi = m(2:3,m(1,:) == lid);
+
+            [x(s), L_r, L_y] = backProject(x(r), yi);
+
+            P(s,:) = L_r * P(r,:);
+            P(:,s) = [P(s,:)'; eye(2)];
+            P(s,s) = L_r * P(r,r) * L_r';
+        end
+    end  % end new landmarks
+
+    %%% Save State
+    robot.save_state(x, P, mapspace, lmks)
+    end  
+end
+
+At the end of this loop, I save x and P back to the robot, so I believe I'm propagating the covariance through each iteration.  
+More edits
+The (hopefully) correct eigenvalues are now here. There are a number of eigenvalues that are negative. Although their magnitude is never very large, $10^{-2}$ at most, it happens on the iteration immediately after the first landmark is observed and added to the map (in the "new landmarks" section of the main loop).
+
+A:
+
+I just see your post now and it is maybe too late to really help you... but in case you are still interested in this: I think that I identified your problem.
+You write the innovation covariance matrix in the following way
+E = jacobian measure * P * jacobian measure
+It might be alright in theory but what happens is that if your algorithm is effective and especially if you are working on a simulation: the uncertainties will decrease, especially in the directions of your measurement. So E will tend to [[0,0][0,0]].
+To avoid this problem what you can do is to add a measurement noise corresponding to the uncertainties in the measurement and your innovation covariance becomes
+E= Jac*P*Jac'+R
+where R is the covariance of the measurement noise (diagonal matrix where the terms on diagonal are the squares of the standard deviation of the noise). If you actually don't want to consider noise you can make it as small as you want.
+I also add that your covariance update seems strange to me the classical formula is:
+P=P - K * jacobian measure * P
+I never saw your formula written anywhere else, I might be correct but if you are not sure of it you should check it.
+

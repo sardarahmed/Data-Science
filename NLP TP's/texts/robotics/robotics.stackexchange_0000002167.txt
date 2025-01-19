@@ -1,0 +1,133 @@
+Q:
+
+Quadcopter instability with simple takeoff in autonomous mode
+
+I'm trying to get a quad rotor to fly. The on board controller is an Ardupilot Mega 2.6, being programmed by Arduino 1.0.5.
+I'm trying to fly it in simple autonomous mode, no Radio controller involved. I've done a thorough static weight balancing of the assembly (somewhat like this: http://www.youtube.com/watch?v=3nEvTeB2nX4) and the propellers are balanced correctly.
+I'm trying to get the quadcopter to lift using this code:
+#include <Servo.h>
+
+int maxspeed = 155;
+int minspeed = 0;
+
+Servo motor1;
+Servo motor2;
+Servo motor3;
+Servo motor4;
+
+int val = 0;
+int throttleCurveInitialGradient = 1;
+
+void setup()
+{
+
+val = minspeed;
+
+motor1.attach(7);
+motor2.attach(8);
+motor3.attach(11);
+motor4.attach(12);
+
+}
+
+void loop()
+{
+setAllMotors(val);
+delay(200);
+val>maxspeed?true:val+=throttleCurveInitialGradient;
+}
+
+void setAllMotors(int val)
+  {
+    motor1.write(val);
+    motor2.write(val);
+    motor3.write(val);
+    motor4.write(val);
+  }
+
+But the issue is, as soon as the quadcopter takes off, it tilts heavily in one direction and topples over. 
+It looks like one of the motor/propeller is not generating enough thrust for that arm to take-off. I've even tried offsetting the weight balance against the direction that fails to lift, but it doesn't work (and I snapped a few propellers in the process);
+
+Is there something wrong with the way the ESCs are being fired using
+the Servo library?
+If everything else fails, am I to assume there is something wrong
+with the motors?
+Do I need to implement a PID controller for self-balancing the roll
+and pitch just to get this quadrotor to take off?
+
+Edit 1:    Thanks for all the replies.
+I got the PID in place. Actually, it is still a PD controller with the integral gain set to zero. 
+Here's how I'm writing the angles to the servo:
+motor1.write((int)(val + (kP * pError1) +(kI * iError1) +(kD * dError1)));  //front left
+motor2.write((int)(val + (kP * pError2) +(kI * iError2) +(kD * dError2)));  //rear right
+motor3.write((int)(val + (kP * pError3) +(kI * iError3) +(kD * dError3)));  //front right
+motor4.write((int)(val + (kP * pError4) +(kI * iError4) +(kD * dError4)));  //rear left 
+
+kI is zero, so I'll ignore that.
+With the value of kP set somewhere between 0.00051 to 0.00070, I'm getting an oscillation of steady amplitude around a supposed mean value. But the problem is, the amplitude of oscillation is way too high. It is somewhere around +/- 160 degrees, which looks crazy even on a tightly constrained test rig. 
+
+[  Edit 2: How I calculate the term 'pError' - Simple linear thresholding. 
+I've a precomputed data of the average readings (mean and SD) coming out of the gyro when the IMU is steady. Based on the gyro reading, I classify any motion of the setup as left, right, forward or backward. 
+For each of these motion, I increase the pError term for two of the motors, i.e, for right tilt, I add pError terms to motors 2 & 3, for left tilt, I add pError term to motors 1 & 4 etc. (check the comment lines in the code snippet given above). 
+The magnitude of error I assign to the pError term is = abs(current gyro reading) - abs(mean steady-state gyro reading). This value is always positive, therefore the side that is dipping downwards will always have a positive increment in RPM.  ]
+
+As I crank up the derivative gain to around 0.0010 to 0.0015, the oscillation dampens rapidly and the drone comes to a relatively stable attitude hold, but not on the horizontal plane. The oscillation dies down (considerably, but not completely) only to give me a stable quadrotor tilted at 90 - 100 degrees with horizontal. 
+I'm using only the gyros for calculating the error. The gyros were self calibrated, hence I do expect a fair amount of noise and inaccuracy associated with the error values. 
+
+Do you think that is the primary reason for the high amplitude
+oscillation?
+
+One other probable reason might be the low update frequency of the errors. I'm updating the errors 6 times a second. 
+
+Could that be a probable reason it is taking longer to stabilise the
+error?
+
+And, for the steady state error after the wild oscillations dampen, is it necessary to fine tune the integral gain to get rid of that?
+Please help.
+
+Edit 3:  I cranked up the frequency of operation to 150+ Hz and what I get now is a very controlled oscillation (within +/- 10 degrees). 
+I'm yet to tune the derivative gain, following which I plan to recompute the errors for the integral gain using a combination of gyro and accelerometer data. 
+
+Edit 4:  I've tuned the P and D gain, resulting in +/- 5 degrees oscillation(approx). I can't get it to any lower than this, no matter how much I try.
+There are two challenges about which I'm deeply concerned:
+After 5 to 8 seconds of flight, the quadcopter is leaning into one side, albeit slowly. 
+A) Can this drift be controlled by tuning the integral gain?
+B) Can the drift be controlled by using accelerometer + gyro fused data?
+C) Given that my drone still shows +/- 5 degrees oscillation, can I consider this the optimal set point for the proportional and derivative gains? Or do I need to search more? (In which case, I'm really at my wits end here!) 
+
+A:
+
+Even very small errors can bother the balancing. Small errors such as: 
+
+Weight of the quadcopter is unbalanced. 
+One motor is rotating faster/slower than others due to manufacturing or your power-source. 
+Air resistance and wind. 
+Unbalanced propellers due to manufacturing.
+Strong magnetic forces.
+
+You simple can not send the same motor speed to all motors and expect it to hover. 
+You do need a sensor which can read the tilting of the robot and adjust the motor speeds based on the tilt angles. To do that you need to implement a PID controller (The simplest method).
+As far as I know there are some PID controller for arudino. But you could always write your own simple version of a PID controller.
+
+A:
+
+Quadcopter is inherently unstable system. So you have to apply some feedback controller (eg. PID) to keep it airborne. Even if you apply some basic PID using angular rates and angles, you still have to provide manual correction for drift till PID gains are perfectly set. So using radio control for manual control is really helpful during initial development stage.
+
+A:
+
+I read the code but it looks like it is for the first attempt where you tried to hover "open loop"  that can't work.   So now you tried a PID control based straight off the raw IMU data.  Tha't better but you are going to need one more step between the two.   Will I say this assuming you are using a low-cost IMU, the kind that just breaks out the chip.  
+First off it would be ideal if you could measure the speed of each motor, and not just assume it rotates at a speed proportionate to the commanded value.  Likely it does not.  The BEST way to to place an encoder on the motor shaft that sends a few pluses per revolution.  Then you replace "motor2.write(val)" with something like "motor.setspeed(rotationVelocity); and the set speed method runs a PID loop just ontheat one motor's speed, sending whatever PWM value is required.   OK, lacking an encoder, get a hand held propeller tachometer.  And plot RPM vs PWM for a tried vehicle fixed to a stand at some hight from the ground.   
+NEXT YOU NEED TO KNOW HOW TO RELATE RPM TO THRUST.  One problem with yourPID control is it assume PWM value (voltage) is LINEARLY related to force in the vertical direction is is NOT because 
+1) If the vehicle is tilted the foxed is no longer down and is smaller be the cosine of the tilt and..
+2) force is NEVER linearly replaced to voltage.  It think(???) there is a cubed relationship the is power cubed = force.  
+You might just kip all the math and measure the force as a function of PWM and make a lookup table.  Better to use encoders and
+You over all PID loop will work much better when have a linear relationship.
+Next idea:  You CAN make a quad more stable.  What if you tilt the plane of each door inwards just a little.  Each is slightly non-horizonal, now if one side dips it will generate more lift.  
+Last idea:  The IMU is a noisy device.  The accelerometer has high frequency noise on it becise of random vibrations and the gyro has drift.  The "standard" why to address this is with a Kalman Filter.  The math is not easy but you can find MANY examples of Kalman filters on-line.
+Summary:
+1) Use good filter model to correct the IMU data.  The raw data is not good.
+2) Create a method (function) that takes llefting force as input then sets the PWM slue as required.
+3) Used a top layer PID to drive the error to zero
+What this does is address the basic flaw of all PID controller, they don't "see" inside the black box.  They don't know the gyro drift and accelerometer is noisy and that PWM has a non-linear relationship to lift.  
+Next you get into moving flight and you need to make your aerodynamic model better to account for the fixed pitch props
+

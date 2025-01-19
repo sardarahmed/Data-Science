@@ -1,0 +1,74 @@
+Q:
+
+Is there simulation oriented tutorials?
+
+Hello,
+This is the first time to ask questions here.
+I'm a new user at Gazebo and don't have even any experience with ROS.
+So far, I have created a sdf file for my robot and am trying to get familiar with the plugins.
+However, the plugin tutorial on the web is quite short to beginners like me.
+With only API reference, I have no idea how to write the plugin codes.
+I just wanted to rotate the joints of my model, but there's no example talking about it.
+There's only model push example without any explanation on how the codes are flowing
+(Why storing the pointer to the model is needed, Why the onUpdate is needed at that position and etc.).
+I tried to look into the codes in Bitbucket and no luck to me.
+Actually, I have installed ver. 1.5 and most of codes follow previous versions and have quite different syntax.
+Could you let me know any good way to understand the plugin programming?
+Or any typical robot simulation package (sdf and plugin files) with a scenario?
+If I'm on the wrong way, please let me know the right direction.
+I thank you in advance for your help.
+
+Originally posted by Wonyoung on Gazebo Answers with karma: 37 on 2013-03-22
+Post score: 0
+
+A:
+
+hello.
+There is a section in the tutorial version 1.3, that is not on 1.4 and 1.5, "Controling a robot".
+specialy (http://gazebosim.org/wiki/Tutorials/1.3/intermediate/control_model) and (http://gazebosim.org/wiki/Tutorials/1.3/control_robot/mobile_base) ,
+this should get you a good idea how to move robots with the model velocity or with joint commands.
+i advise you to first get a simple plugin controlling the robot movement avoiding obstacles and then, if you want to control it with ROS, make a ROS-enabled plugin like the one in the tutorials and edit it to subscribe linear and angular velocity from a ROStopic with  geometry_msgs/Twist (http://ros.org/doc/api/geometry_msgs/html/msg/Twist.html).
+You should research about message types for rostopics, publishing and subscribing to ROStopics with diferent message types before trying to create your own plugin to talk with ROS
+SIDE NOTE:
+once you have some insight of the tutorials this might be usefull to save you sometime later on if you are not familiar with quaternions (i wasn't), so remember this when you try to get a robot Roll Pitch Yaw angles:
+math::Quaternion r = model->GetWorldPose().rot;
+//from quaternion to roll pitch yaw, in radians
+qw=r.w;     qx=r.x;     qy=r.y;     qz=r.z;
+Rrad=atan2(  2*(qw*qx+qy*qz),  1-2*(qx*qx+qy*qy)  ); //roll
+Prad=asin(2*(qw*qy-qz*qx));                          //pitch
+Yrad=atan2(  2*(qw*qz+qx*qy),  1-2*(qy*qy+qz*qz)  ); //yaw
+
+this might also be usefull in the model plugin (not joint velocity commands tho):
+//set velocities
+float Vlin=0.5; //Linear velocity wanted
+float Vang=1.0; //Angular velocity wanted
+float velx=Vlin*cos(Yrad);
+float vely=Vlin*sin(Yrad);  
+this->model->SetLinearVel(math::Vector3(velx, vely, 0));
+this->model->SetAngularVel(math::Vector3(0, 0, Vang));
+
+the above code will make the robot move in a circle.
+you can then, with laser data for example, change Vlin and Vang to your will.
+i hope the above code examples will save you time instead of spending to much time trying to learn everything by yourself like i did.
+EDIT
+added a somewhat simple/basic plugin i'm using to publish to rostopics, might be usefull
+http://answers.gazebosim.org/question/1991/what-is-the-best-way-to0-learn-gazebo-in-ros-for/
+
+Originally posted by GAugusto with karma: 161 on 2013-03-22
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Wonyoung on 2013-03-22:
+Thank you for the useful information. To avoid any syntax confusion, I didn't look into the previous tutorials. But those have what I want... I think I can move forward a little bit thanks to you!
+Comment by amit on 2013-03-26:
+@GAugusto Hi, I saw your answers and really hope that you can help me. I am running really short on time and desperately need help. I am having a Pioneer robot which I want to move from one point to other. I am struggling in this very first step. I have posted my complete problem here (http://answers.gazebosim.org/question/1374/how-to-set-path-between-2-points-and-make-robot-to/). Is there any way I can contact you? If that is possible I can discuss my problem in a better way. Please help.
+Comment by GAugusto on 2013-03-27:
+hi. from what i understood you want to give a final destination point and send the robot there while mapping/avoiding obstacles, right? ros have a navigation stack that does path planing (avoid obstacles) by giving the destination point (http://www.ros.org/wiki/navigation), i havent explored this stack yet so i cant say for sure how it works (in code) but for example you can use rviz to manualy set the end point and the nav stack gives the vel commands for it to reach the destination.
+Comment by GAugusto on 2013-03-27:
+if you are short in time i might not be the best person to help you as i would advise you to use a ROS-plugin controling a robot with vel comands sent by ros. then "remap" the topic where the navigation stack publish vel comands to the topic of your plugin. but this will take some time to set up unfortunatly. sorry i can't be of more help :(
+Comment by amit on 2013-03-27:
+Thanks my friend. I understand and really appreciate whatever you could help me with. I will work on it and might need your help in future. Thanks again.
+Comment by GAugusto on 2013-04-03:
+@amit, added a plugin on another answer (linked in this). still havent used the navigation stack tho. advise you again to give it a look (http://www.ros.org/wiki/navigation) for what you asked here.
+

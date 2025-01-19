@@ -1,0 +1,72 @@
+Q:
+
+Listener does not update
+
+Good afternoon friends
+I can get an image of the camera from the gazebo: /camera/image_raw. But if you change the qr code, the listener does not update.
+Can anyone help me with this?
+#! /usr/bin/python
+
+import rospy
+import numpy as np
+import cv2
+import cv
+import zbar
+
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+
+bridge = CvBridge()
+
+def callback(msg):
+    cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+    scanner = zbar.ImageScanner()
+    scanner.parse_config('enable')
+    
+    while not rospy.is_shutdown():
+        gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY, dstCn=0)
+
+        frame = np.array(gray)
+        width, height = frame.shape[1], frame.shape[0]
+
+        raw = frame.tostring()
+
+        image = zbar.Image(width, height, 'Y800', raw)
+        scanner.scan(image)
+
+        qrc = None
+
+        for symbol in image:
+            qrc = symbol.data
+
+        if qrc != None:
+            qr_str = qrc
+            rospy.loginfo(qr_str)
+
+def qr_main():
+    rospy.init_node('qr_listener')
+
+    rospy.Subscriber("/camera/image_raw", Image, callback)
+
+    rospy.spin()
+
+if __name__ == '__main__':
+    qr_main()
+
+Originally posted by icarold on ROS Answers with karma: 5 on 2017-04-15
+Post score: 0
+
+A:
+
+The problem is that your callback does not terminate. This function is called whenever new data arrives. You however, have in infinite loop within your callback so that you look for the qr-code in the first image over an over again.
+You somehow assume that your cv2_img-variable gets somehow updated. Wouldn't it be extremely inconvenient if one of your variable changes suddenly why you process it?
+
+Originally posted by NEngelhard with karma: 3519 on 2017-04-15
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by icarold on 2017-04-15:
+Great, my friend!! The problem was the loop!!! Thanks alot for the help!!
+

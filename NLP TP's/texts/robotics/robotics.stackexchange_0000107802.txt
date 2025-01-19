@@ -1,0 +1,70 @@
+Q:
+
+Compilation error when subscription callback's input is of certain type
+
+I did an experiment where I tried all combinations of const, &, and SharedPtr as the input to the subscription callback. The message type is nav_msgs::msg::Odometry and the results are at the bottom of the code snippet.
+#include "rclcpp/rclcpp.hpp"
+#include "nav_msgs/msg/odometry.hpp"
+
+class SubToSharedPtr : public rclcpp::Node
+{
+public:
+    SubToSharedPtr()
+    : Node("sub_to_shared_ptr_node")
+    {
+        odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+            "odom", rclcpp::SystemDefaultsQoS(),
+            std::bind(&SubToSharedPtr::odomCb, this, std::placeholders::_1)
+        );
+    }
+
+private:
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+
+    void odomCb(const nav_msgs::msg::Odometry& msg)
+    {
+
+    }
+};
+
+int main(int argc, char** argv)
+{
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<SubToSharedPtr>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+
+// const SharedPtr& - doesn't work
+// const SharedPtr - works
+// SharedPtr - works
+// SharedPtr& - doesn't work
+// const & - works
+// const - works
+// & - doesn't work
+// nothing - works
+
+It seems like there is an important implication to this pattern (maybe something to do with ownership?). For example, all the ones with & doesn't work except for const & maybe because even though you are getting the actual variable (not a copy) you are promising not to change it, which is why it's acceptable.
+Does anyone have an explanation for why this pattern exists?
+
+A:
+
+You are correct that the implication to the pattern does have to do with ownership. I'll summarize here, but there is a much more thorough explanation of the guidelines in Herb Sutter's GoTW #91: Smart Pointer Parameters
+The relevant section that the ROS 2 callbacks are enforcing are:
+
+Guideline: Don’t pass a smart pointer as a function parameter unless you want to use or manipulate the smart pointer itself, such as to share or transfer ownership.
+
+Guideline: Prefer passing objects by value, *, or &, not by smart pointer.
+
+The new set of signatures are trying to be much more explicit about ownership.  While the ownership may not be important in a single-producer, single-consumer situation, there are more complex applications.  This is especially important in the case of intraprocess communications where the messages are held in an internal buffer and only distributed based on the signatures of the subscriptions.  For more information on the implications on intraprocess comms, consult the Intraprocess Communications Design Doc.   The most relevant section is Number of message copies, which has a table comparing various signatures.
+Generally the signatures should be thought of as follows:
+
+const Msg & - immutable, no ownership
+unique_ptr<Msg> - mutable and takes ownership
+shared_ptr<const Msg> - immutable, but allows subscription to share ownership (by copying into member)
+const shared_ptr<const Msg> & - immutable, but allows subscription to share ownership (by copying into member)
+shared_ptr<Msg> - deprecated.  It's potentially unsafe if multiple subscriptions take the same message.
+
+Finally, for a full enumeration of all of the available subscription types, it's best to consult the AnySubscriptionCallbackPossibleTypes structure in rclcpp: https://github.com/ros2/rclcpp/blob/rolling/rclcpp/include/rclcpp/any_subscription_callback.hpp#L57
+

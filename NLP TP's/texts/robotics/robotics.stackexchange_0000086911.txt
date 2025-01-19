@@ -1,0 +1,220 @@
+Q:
+
+No change in joint positions
+
+Hey guys,
+I am trying to control my robot arm through xbox 360 controller and for the same I have visualized the arm in rviz and I have a small trial code in python for controlling the motion of joints. It's a 5 DOF arm.
+After connecting the controller, I first launch the demo.launch file and then rosrun joy joy_node followed by the python code for controlling the motion of the joints. When I run the python code, the joint values are all 0 at the beginning. But, as I press the controller buttons, there is no change in the arm's pose.
+Could anyone guide me as to where am I doing the mistake? I also would like to know how can I visualize the joint movements, that I give through my controller, in rviz?
+The python code is:
+#!/usr/bin/env python
+
+import sys
+import copy
+import rospy
+import moveit_commander
+import moveit_msgs.msg
+import geometry_msgs.msg
+from sensor_msgs.msg import *
+
+    def callback(data):
+        
+        robot = moveit_commander.RobotCommander()
+        
+        #scene = moveit_commander.PlanningSceneInterface()
+        
+        group1 = moveit_commander.MoveGroupCommander("igus_planning")
+        end_effector_link =  group1.get_end_effector_link()
+        
+        display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path',
+                  moveit_msgs.msg.DisplayTrajectory,queue_size=50)
+        
+        
+      
+        print "============ Waiting for RVIZ..."
+        #rospy.sleep(1)
+        print "============ Reference frame: %s" % group1.get_planning_frame()
+        print "============ End effector: %s" % group1.get_end_effector_link()
+        print "============ Robot Groups: %s" %robot.get_group_names()
+        
+        print "============ Printing robot state"
+        print robot.get_current_state()
+        print "=============="
+        #print end_effector_link
+        
+        print "============ current pose..."
+        print group1.get_current_pose()
+        
+        
+        group1_variable_values = group1.get_current_joint_values()
+
+        ###################   0 and 6   ########################
+        while data.buttons[0]==1:
+            if (data.axes[6]==1):
+                if (group1_variable_values[0] == 3.1): 
+                    print "Limit reached joint 1"
+                else:
+                    print "changing joint 1"
+                group1_variable_values[0] += 0.1
+            if (data.axes[6]==-1):
+                if (group1_variable_values[0] == -3.1): 
+                    print "Limit reached joint 1"
+                else:
+                    print "changing joint 1"
+                group1_variable_values[0] -= 0.1
+        
+        group1.set_joint_value_target(group1_variable_values)
+        
+        plan2 = group1.plan()
+        print group1.get_planning_time()
+        print "plan complete"
+    
+    def move_group_python_interface():
+        moveit_commander.roscpp_initialize(sys.argv)
+        rospy.init_node('move_group_python_interface', anonymous=True)
+        rospy.Subscriber("joy", Joy, callback)
+        rospy.spin()
+    
+    
+    if __name__=='__main__':
+        try:
+            move_group_python_interface()
+        except rospy.ROSInterruptException:
+            pass
+
+The output that I am getting even after pressing the controller buttons are:
+[ INFO] [1525969960.203313336]: Ready to take commands for planning group igus1.
+============ Waiting for RVIZ...
+============ Reference frame: /world
+============ End effector: ee_link
+============ Robot Groups: ['igus1']
+============ Printing robot state
+joint_state: 
+  header: 
+    seq: 0
+    stamp: 
+      secs: 0
+      nsecs:         0
+    frame_id: "/world"
+  name: [j1, j2, j3, j4, ee_joint]
+  position: [0.0, 0.0, 0.0, 0.0, 0.0]
+  velocity: []
+  effort: []
+multi_dof_joint_state: 
+  header: 
+    seq: 0
+    stamp: 
+      secs: 0
+      nsecs:         0
+    frame_id: "/world"
+  joint_names: []
+  transforms: []
+  twist: []
+  wrench: []
+attached_collision_objects: []
+is_diff: False
+==============
+5.0
+plan complete
+[ INFO] [1525969961.417759417]: Ready to take commands for planning group igus1.
+============ Waiting for RVIZ...
+============ Reference frame: /world
+============ End effector: ee_link
+============ Robot Groups: ['igus1']
+============ Printing robot state
+joint_state: 
+  header: 
+    seq: 0
+    stamp: 
+      secs: 0
+      nsecs:         0
+    frame_id: "/world"
+  name: [j1, j2, j3, j4, ee_joint]
+  position: [0.0, 0.0, 0.0, 0.0, 0.0]
+  velocity: []
+  effort: []
+multi_dof_joint_state: 
+  header: 
+    seq: 0
+    stamp: 
+      secs: 0
+      nsecs:         0
+    frame_id: "/world"
+  joint_names: []
+  transforms: []
+  twist: []
+  wrench: []
+attached_collision_objects: []
+is_diff: False
+==============
+5.0
+plan complete
+
+and in the demo.launch terminal, I am getting the following output:
+[ INFO] [1525970703.485868157]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+Debug:   Starting goal sampling thread
+Debug:   Waiting for space information to be set up before the sampling thread can begin computation...
+[ INFO] [1525970703.488563842]: Planner configuration 'igus1' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+Debug:   RRTConnect: Planner range detected to be 4.240270
+Info:    RRTConnect: Starting planning with 1 states already in datastructure
+Debug:   RRTConnect: Waiting for goal region samples ...
+Debug:   Beginning sampling thread computation
+Debug:   Stopped goal sampling thread after 10 sampling attempts
+Debug:   RRTConnect: Waited 0.010157 seconds for the first goal sample.
+Info:    RRTConnect: Created 4 states (2 start + 2 goal)
+Info:    Solution found in 0.011676 seconds
+Info:    SimpleSetup: Path simplification took 0.000092 seconds and changed from 3 to 2 states
+[ INFO] [1525970704.785523323]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+Debug:   Starting goal sampling thread
+Debug:   Waiting for space information to be set up before the sampling thread can begin computation...
+[ INFO] [1525970704.786152331]: Planner configuration 'igus1' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+Debug:   RRTConnect: Planner range detected to be 4.240270
+Info:    RRTConnect: Starting planning with 1 states already in datastructure
+Debug:   RRTConnect: Waiting for goal region samples ...
+Debug:   Beginning sampling thread computation
+Debug:   Stopped goal sampling thread after 10 sampling attempts
+Debug:   RRTConnect: Waited 0.010122 seconds for the first goal sample.
+Info:    RRTConnect: Created 4 states (2 start + 2 goal)
+Info:    Solution found in 0.011302 seconds
+Info:    SimpleSetup: Path simplification took 0.000702 seconds and changed from 3 to 17 states
+
+Originally posted by Kashyap.m94 on ROS Answers with karma: 46 on 2018-05-10
+Post score: 0
+
+A:
+
+Your code appears to plan a path to the new position but it never executes it.
+If you call group1.execute() or use planAndExecute() then it should move your virtual arm.
+Hope this helps.
+
+Originally posted by PeteBlackerThe3rd with karma: 9529 on 2018-05-10
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by Kashyap.m94 on 2018-05-11:
+Thanks for the help. Now the problem that I am having is that the joint positions are constantly changing right from the moment I launch the python code even if I am not giving the input through the controller. Also, the change in position is not being visualized in rviz. Any suggestions ?
+Comment by PeteBlackerThe3rd on 2018-05-11:
+You need to indent the group1_variable_values[0] += 0.1 and group1_variable_values[0] -= 0.1 lines one more time. They are currently outside of the if .. else block.
+Comment by Kashyap.m94 on 2018-05-11:
+That was a silly error while editing it online. My bad.
+But still it's not changing anything. I am adding the terminal output below.
+What I feel is that the code isn't entering into the while statement in the code
+Comment by Kashyap.m94 on 2018-05-11:
+I also checked it by changing the values as group1_variable_values[0] += 10 and group1_variable_values[0] -= 10 , still no change
+Comment by PeteBlackerThe3rd on 2018-05-11:
+Ahh yes the while loop is the problem, it's entering it Okay, but it's never leaving it! It should be an IF statement.
+The while loop is testing the value of the button press at that time, so if it's 1 it will always be 1 because it's not updated with new messages from the controller.
+Comment by Kashyap.m94 on 2018-05-11:
+The Status tab under the MotionPlanning tab in Rviz, reads 'Changed goal state', but somehow it's not being visualized on the bot in rviz. And despite changing the while loop to the if statement, I don't see any much of a difference
+Comment by PeteBlackerThe3rd on 2018-05-11:
+A couple of questions. Do you have the execute call in your new code?
+Can you print out the values of group1_variable_values before and after processing the buttons and check the angles are being changed.
+Comment by Kashyap.m94 on 2018-05-11:
+Yep, I have added the execute call in my code and the group1_variable_values are being displayed through get_current_state and there isn't a difference between the joint values before and after pressing the button.
+Comment by Kashyap.m94 on 2018-05-11:
+I am also printing the position and orientation through get_current_pose, and both these values remain the same even though the joint values are changing continuously.
+Comment by Kashyap.m94 on 2018-05-11:
+Do you think it has something to do with the selection of reference frame in rviz? I have a drop down list with , base_link and world as options (other options are ee_link, l1, l2, l3, l4).
+Also, should I update my Start state before i give instructions from the controller?
+

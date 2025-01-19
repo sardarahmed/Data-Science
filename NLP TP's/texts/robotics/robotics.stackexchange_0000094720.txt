@@ -1,0 +1,47 @@
+Q:
+
+Why is catkin trying to include a cmake file from a different workspace?
+
+I used to have a catkin workspace called "cepton_ros" that I was doing some development in. Things went sideways so I deleted the whole folder to start afresh from the remote repo.
+However, now when I trying building any other workspace with catkin_make, it fails with the following error:
+CMake Error at /opt/ros/kinetic/share/catkin/cmake/catkinConfig.cmake:83 (find_package): 
+  Could not find a package configuration file provided by "cepton_ros" with                                            
+  any of the following names: 
+                                                                                                                                                                                                            
+    cepton_rosConfig.cmake                                                                                               
+    cepton_ros-config.cmake 
+
+  Add the installation prefix of "cepton_ros" to CMAKE_PREFIX_PATH or set                                              
+  "cepton_ros_DIR" to a directory containing one of the above files.  If                                               
+  "cepton_ros" provides a separate development package or SDK, be sure it has                                          
+  been installed. 
+Call Stack (most recent call first):                                                                                   
+  CMakeLists.txt:38 (find_package)                                                                                  
+
+The "cepton_ros" folder no longer exists, and isn't even related to the other workspaces that I'm trying to build. Clearly I have somehow set the base ROS or catkin installation to look for this repository. How did I (likely) manage to do this? And how can I clear the settings to fix the problem?
+
+Originally posted by M@t on ROS Answers with karma: 2327 on 2020-02-12
+Post score: 0
+
+A:
+
+It looks like something is calling the cmake find_package() command and passing in cepton_ros as one of the packages to find. This might be something in your local workspace, or might be something in /opt/ros/kinetic
+A grep -r cepton_ros will likely find the offending files. If they're in your local workspace, you'll probably know how to deal with them.
+If you find files in /opt/ros/kinetic that are referencing ceptop_ros, they're probably a result of doing a catkin install from the old workspace into /opt/ros/kinetic at some point; and there's a decent chance that there are other references to deleted packages in /opt/ros/kinetic too. If that is the case, I recommend that you remove that directory and any ROS packages that you installed through your package manager and then reinstall ROS.
+
+Originally posted by ahendrix with karma: 47576 on 2020-02-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by M@t on 2020-02-13:
+You're right ahendrix, running grep -r cepton_ros in my /opt/ros/kinetic directory identified this file as the culprit:
+share/catkin/cmake/toplevel.cmake:  cepton_ros 
+
+Upon viewing the file, it looks like I somehow managed to copy the CMakeLists file from my local cepton_ros workspace to this toplevel file. Obviously this shouldn't be the case! Following the solution given in this ROS Answers issue, I re-installed catkin with
+sudo apt-get install --reinstall ros-kinetic-catkin
+
+And this fixed the issue!
+Comment by ahendrix on 2020-02-13:
+If you managed to overwrite one file in /opt/ros/kinetic, there may be other. Since you installed ROS from apt, you should be able to reinstall all packages with sudo apt-get install --reinstall $(dpkg -l | grep -o 'ros-kinetic-\S*')
+

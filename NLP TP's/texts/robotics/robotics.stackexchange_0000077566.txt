@@ -1,0 +1,187 @@
+Q:
+
+How to queue goals with actionlib
+
+Hello,
+As I have understood, with the simple action server, when a new goal comes in, it preempts old ones. From this post http://answers.ros.org/question/9776/action-server-with-more-than-one-action/ it seems that it is possible to put such goals into queues, however it is not clear to me how. Is there any tutorial, or anything providing a guideline for how to implement this?
+Thank you for your time:)
+
+Originally posted by highWaters on ROS Answers with karma: 176 on 2016-11-29
+Post score: 1
+
+A:
+
+Hello,
+After playing a bit around with action-server and simple-action-server, I came up with the below simple solution (it is far from being complete of course), in case someone else might find it useful or as a start point. Also, if you see some pitfall, I'd be glad to hear it:)
+First I create a custom simple server as follows:
+#!/usr/bin/env python
+import sys
+from gitagent.msg import *
+import random
+import roslib
+roslib.load_manifest('package name')
+import rospy
+from actionlib import ActionServer
+from actionlib.server_goal_handle import ServerGoalHandle
+import traceback
+import time
+import threading
+
+class ActionServer:
+    def __init__(self, name, ActionSpec, execute_cb=None, auto_start=True):
+
+        self.execute_callback = execute_cb
+        self.goal_callback = None
+        self.preempt_callback = None
+
+        #create the action server
+        self.action_server = ActionServer(name, ActionSpec, self.get_next_gh, self.internal_preempt_callback, auto_start)
+
+        ## @brief Explicitly start the action server, used it auto_start is set to false
+    def start(self):
+            self.action_server.start()
+
+    ## @brief Sets the status of the active goal to succeeded
+    ## @param  result An optional result to send back to any clients of the goal
+    def set_succeeded(self, gh, result=None, text=""):
+        if not result:
+            result = self.get_default_result()
+        gh.set_succeeded(result, text)
+
+    def get_default_result(self):
+        return self.action_server.ActionResultType()
+
+    def accept_new_goal(self, goal):
+        rospy.loginfo("A new goal %s  has been accepted", str(goal.get_goal()))
+        goal.set_accepted("This goal has been accepted by the simple action server -- wait for response")
+
+    #If a new goal is received, start new thread on execute
+    def get_next_gh(self, goal):
+        #self.execute_condition.acquire()
+
+        try:
+                rospy.logdebug("A new goal %shas been recieved by the single goal action server", goal.get_goal_id().id)
+        
+            rospy.loginfo("A new goal %shas been recieved by the single goal action server", goal.get_goal_id().id)
+
+            if self.execute_callback:
+                #Start new thread on execute()
+                rospy.loginfo("New thread about to be launched on execute")
+                try:
+                    t = threading.Thread(target=self.execute_callback, args=(goal,))
+                    t.start()
+                except:
+                    rospy.logerr("Error: unable to start thread")
+            else:
+                rospy.logerr("DEFINE an execute callback moron")
+            #self.execute_condition.release()
+
+        except Exception as e:
+            rospy.logerr("SimpleActionServer.internal_goal_callback - exception %s", str(e))
+            #self.execute_condition.release()
+
+    def internal_preempt_callback(self):
+        pass
+
+Then, each thread running execute puts the goalhandle in a queue. theLoop treats each item of the queue one after the other.
+#!/usr/bin/env python
+import sys
+from gitagent.msg import *
+from threading import Lock
+import random
+import roslib
+roslib.load_manifest('package name')
+import rospy
+import actionlib
+import Queue
+import action_server
+import traceback
+import time
+import threading
+
+class Server:
+    def __init__(self):
+        rospy.init_node('server', anonymous=True)
+        self.queueGoalHandles = Queue.Queue()
+        self.server = action_server.ActionServer('server', doMeFavorAction, self.execute, False)
+        self.server.start()
+        self.keep_track_threads = []
+        self.lock = Lock()
+
+    #Needs to be used similarly as handle_serve, in order to block threads respectively.
+    def execute(self, goalhandle):
+        print 'I got a request'
+
+        # Add tag to identify current thread
+        # Task status: -1 ~ FAIL, 0 ~ PENDING, 1 ~ SUCCESS, 10 ~ no thread active
+        index = -1
+
+        self.lock.acquire()
+        goal = goalhandle.get_goal()
+        print 'extracted goal content: ' + str(goal.sender)
+        self.keep_track_threads.append({'senderId':int(goal.sender), 'task_status':0})
+        # It is assumed that the senderId is unique, that is the server cannot get 2 a second task from the same agent, without returning with the first.
+        # {senderID:task_status}
+        #self.keep_track_threads.append({data.sender:0})
+        index = len(self.keep_track_threads) - 1
+        print self.keep_track_threads
+        # Put task in a queue, make thread wait until task status is set to success/fail 
+        self.queueGoalHandles.put(goalhandle)
+        self.lock.release()
+
+        while self.keep_track_threads[index]['task_status'] == 0:
+            print 'Task execution is pending'
+            rospy.sleep(1)
+        print 'Thread: ' + str(self.keep_track_threads[index]['task_status']) + ' has returned'
+        result.act_outcome = self.keep_track_threads[index]['task_status']
+        self.server.set_succeeded(goalhandle, result)
+        self.lock.acquire()
+        self.keep_track_threads[index]['task_status'] = 10
+        self.lock.release()
+        print self.keep_track_threads
+        print result
+
+    def theLoop(self):
+        print 'Sever started'
+        while not rospy.is_shutdown():
+            #print 'Waiting for goal...'
+            #Non-blocking
+            try:
+                item = self.queueGoalHandles.get(False)
+                print item
+
+                #Assuming we always accept the goal - set this goal as the current goal
+                            self.server.accept_new_goal(item)
+
+                i = 0
+                while i <= 10:
+                    print i
+                    i = i + 1
+                    time.sleep(1)
+                index = next(index for (index, d) in enumerate(self.keep_track_threads) if d['senderId'] == int(item.get_goal().sender))
+                self.keep_track_threads[index]['task_status'] = 1
+                #self.keep_track_threads[0]['task_status'] = 1
+                print self.keep_track_threads
+            except Queue.Empty:
+                #print 'empty queue'
+                pass
+
+if __name__ == '__main__':
+
+    try:
+        serve = Server()
+        serve.theLoop()
+    except rospy.ROSInterruptException:
+        traceback.print_exc()
+    except (AttributeError, TypeError, ValueError, NameError):
+        traceback.print_exc()
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        traceback.print_exc()
+
+Cheers:)
+
+Originally posted by highWaters with karma: 176 on 2016-12-03
+This answer was ACCEPTED on the original site
+Post score: 4
+

@@ -1,0 +1,104 @@
+Q:
+
+lots of nan data when convert pointcloud2 to pcl::PointXYZ
+
+HI all, I use Ubuntu 14.04 LTI with ROS Indigo. Then I simulate kinect in Gazebo:
+ <xacro:macro name="kinect_camera" params="name parent *origin">
+  <xacro:kinect_camera_model name="${name}" parent="${parent}">
+    <xacro:insert_block name="origin" />
+  </xacro:kinect_camera_model>
+  
+  <gazebo reference="${name}_depth_frame">
+    <sensor type="depth" name="${name}">
+      <update_rate>20</update_rate>
+      <camera>
+        <horizontal_fov>${60 * M_PI/180.0}</horizontal_fov>
+        <image>
+          <format>R8G8B8</format>
+          <width>640</width>
+          <height>480</height>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>3</far>
+        </clip>
+      </camera>
+      <plugin name="${name}_camera_controller" filename="libgazebo_ros_openni_kinect.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>20</updateRate>
+        <imageTopicName>${name}/rgb/image_raw</imageTopicName>
+        <cameraInfoTopicName>${name}/rgb/camera_info</cameraInfoTopicName>
+        <depthImageTopicName>${name}/depth/image_raw</depthImageTopicName>
+        <depthImageCameraInfoTopicName>${name}/depth/camera_info</depthImageCameraInfoTopicName>
+        <pointCloudTopicName>${name}/depth/points</pointCloudTopicName>
+        <pointCloudCutoff>0.5</pointCloudCutoff>
+        <frameName>${name}_depth_optical_frame</frameName>
+        <distortion_k1>0.0</distortion_k1>
+        <distortion_k2>0.0</distortion_k2>
+        <distortion_k3>0.0</distortion_k3>
+        <distortion_t1>0.0</distortion_t1>
+        <distortion_t2>0.0</distortion_t2>
+      </plugin>
+    </sensor>
+  </gazebo>
+</xacro:macro>
+
+Then I convert pointcloud2 to pcl::PointXYZ
+follow the link:pcl/overview
+
+3.1 For a subscriber that receives pcl::PointCloud objects directly:
+
+My code:
+void callback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& position)  
+{  
+     const char *path="/home/lin/Desktop/distance.dat";  
+     ofstream file(path);  
+     for(int i=0; i<307200;i++)
+ {    
+      cout << "(x,y,z) = " << position -> points[i] << std::endl;  
+      file << position -> points[i];  
+  }  
+}  
+
+int main(int argc, char** argv){
+
+    ros::init(argc, argv, "distance_publisher");
+    ros::NodeHandle nh;
+
+    std::string topic = nh.resolveName("camera/depth/points");
+    uint32_t queue_size = 1;
+
+    // create a templated subscriber
+    ros::Subscriber sub = nh.subscribe<pcl::PointCloud<pcl::PointXYZ> > (topic, queue_size, callback);
+
+        ros::Rate r(0.1);
+        while(nh.ok()){
+        
+          ros::spinOnce(); 
+          r.sleep();
+         
+        }
+
+}
+
+`
+I get lots of NAN data , I just want to know when convert pointcloud2 to pcl::PointXYZ, it will remove nan data automatically or I need to filter it.
+
+Originally posted by crazymumu on ROS Answers with karma: 214 on 2015-04-16
+Post score: 0
+
+A:
+
+I found this works fine, also please check PCL library in your CmakeLists.txt.
+void callback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& inputCloud )
+{
+   
+    pcl::PointCloud<pcl::PointXYZ>::Ptr outputCloud(new pcl::PointCloud<pcl::PointXYZ>);
+    vector<int> indices;
+    pcl::removeNaNFromPointCloud(*inputCloud,*outputCloud, indices);
+}
+
+Originally posted by crazymumu with karma: 214 on 2015-04-17
+This answer was ACCEPTED on the original site
+Post score: 0
+

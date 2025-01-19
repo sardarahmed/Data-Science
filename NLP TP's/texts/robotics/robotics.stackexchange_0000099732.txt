@@ -1,0 +1,194 @@
+Q:
+
+ROS2 Publish and subscribe in same node
+
+I am trying below code where I have a ROS2 foxy node that first publishes camera frames to a topic camera_frame and then is supposed to be listening to another topic drive_topic. I have created a timer for continuously publishing messages. The issue is that this node would only publish messages, but it never triggers the listener_callback method. I suspect this could be because I have a timer for publishing messages, and it never comes out of that loop. I have confirmed that messages are being present on drive_node and from rqt_graph that the current node is subscribed to this topic. Can anyone help me why this node is not able to subscribe to drive_topic.
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CameraInfo, Image
+from cv_bridge import CvBridge, CvBridgeError
+
+from std_msgs.msg import String
+from std_msgs.msg import Int16MultiArray
+
+import cv2, math, time
+
+class DroneNode(Node):
+
+    def __init__(self):
+        super().__init__('drone_node')
+        self.publisher_ = self.create_publisher(Image, 'camera_frame', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.i = 0
+
+        # Create a VideoCapture object
+        # The argument '0' gets the default webcam.
+        self.cap = cv2.VideoCapture(0)
+        # Used to convert between ROS and OpenCV images
+        self.br = CvBridge()
+
+        # Create the subscriber. This subscriber will receive an Image
+        # from the video_frames topic. The queue size is 10 messages.
+        self.subscription = self.create_subscription(
+          Int16MultiArray, 
+          'drive_topic', 
+          self.listener_callback, 
+          10)
+        self.subscription # prevent unused variable warning
+
+        self.array = Int16MultiArray()
+
+    def listener_callback(self, data):
+        """
+        Callback function.
+        """
+        # Display the message on the console
+        print("Inside listener callback")
+        self.get_logger().info('Receiving drone driving instructions')
+        speed = data.data[0]
+        fb = data.data[1]
+        print(speed, fb)
+
+    def timer_callback(self):
+        while True:
+            # Capture frame-by-frame
+            # This method returns True/False as well
+            # as the video frame.
+            ret, img = self.cap.read()
+            img = cv2.resize(img, (360, 240))
+            image_message = self.br.cv2_to_imgmsg(img)
+            # cv2.imshow("Image", img)
+            # cv2.waitKey(1)
+            if ret == True:
+                self.publisher_.publish(image_message)
+                self.get_logger().info('Publishing images')
+            self.i += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    drone_node = DroneNode()
+
+    rclpy.spin(drone_node)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    drone_node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by nd23 on ROS Answers with karma: 21 on 2021-07-26
+Post score: 2
+
+Original comments
+Comment by Ranjit Kathiriya on 2021-07-26:\
+
+self.timer = self.create_timer(timer_period, self.timer_callback)
+
+Keep this line after self.array = Int16MultiArray(), I think your code will work fine.
+The reason is subscribed is not initializing and your timer method directly start publishing.
+
+self.subscription # prevent unused variable warning
+
+Remove this line.
+Comment by nd23 on 2021-07-26:
+Thank you so much for reviewing the code above. I was able to get it to work by removing the while True statement within timer_callback(). Looks like I created an infinite loop within that call and it never returned to listen to subscribed topic. Thanks a lot for your help. Much appreciated.
+Comment by Ranjit Kathiriya on 2021-07-27:
+Can you please! drop your solution in answer and make your answer correct so your solution can help others. Thanks
+Comment by nd23 on 2021-07-27:
+Looks like I can't make my own answer correct yet. But added here.
+Comment by Ranjit Kathiriya on 2021-07-27:
+Try now, I think now you have enough karma
+Comment by nd23 on 2021-07-27:
+It worked, thanks
+
+A:
+
+I was able to get it to work by removing the while True statement within timer_callback(). Looks like I created an infinite loop within that call and it never returned to listen to subscribed topic. Below is the updated code hope it helps someone:
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CameraInfo, Image
+from cv_bridge import CvBridge, CvBridgeError
+
+from std_msgs.msg import String
+from std_msgs.msg import Int16MultiArray
+
+import cv2, math, time
+
+class DroneNode(Node):
+
+    def __init__(self):
+        super().__init__('drone_node')
+        self.publisher_ = self.create_publisher(Image, 'camera_frame', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.i = 0
+
+        # Create a VideoCapture object
+        # The argument '0' gets the default webcam.
+        self.cap = cv2.VideoCapture(0)
+        # Used to convert between ROS and OpenCV images
+        self.br = CvBridge()
+
+        # Create the subscriber. This subscriber will receive an Image
+        # from the video_frames topic. The queue size is 10 messages.
+        self.subscription = self.create_subscription(
+          Int16MultiArray, 
+          'drive_topic', 
+          self.listener_callback, 
+          10)
+        self.subscription # prevent unused variable warning
+
+        self.array = Int16MultiArray()
+
+    def listener_callback(self, data):
+        """
+        Callback function.
+        """
+        # Display the message on the console
+        print("Inside listener callback")
+        self.get_logger().info('Receiving drone driving instructions')
+        speed = data.data[0]
+        fb = data.data[1]
+        print(speed, fb)
+
+    def timer_callback(self):
+        # Capture frame-by-frame
+        # This method returns True/False as well
+        # as the video frame.
+        ret, img = self.cap.read()
+        img = cv2.resize(img, (360, 240))
+        image_message = self.br.cv2_to_imgmsg(img)
+        # cv2.imshow("Image", img)
+        # cv2.waitKey(1)
+        if ret == True:
+            self.publisher_.publish(image_message)
+            self.get_logger().info('Publishing images')
+        self.i += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    drone_node = DroneNode()
+
+    rclpy.spin(drone_node)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    drone_node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by nd23 with karma: 21 on 2021-07-27
+This answer was ACCEPTED on the original site
+Post score: 0
+

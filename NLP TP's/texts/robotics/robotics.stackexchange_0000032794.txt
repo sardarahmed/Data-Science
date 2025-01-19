@@ -1,0 +1,34 @@
+Q:
+
+Moving robot through waypoints along a cubic spline path
+
+After going through the trajectory filter tutorials, I have two fundamental doubts:
+
+What is the meaning of the output given by the server? Is it the intermediate waypoints - interpolated by the spline smoother? Or is it spline coefficients?
+
+How can I use the output of the trajectory filter server to make the robot move along a cubic spline path? There seems to be no tutorial on exactly this point.
+
+Originally posted by PKG on ROS Answers with karma: 365 on 2011-07-06
+Post score: 0
+
+A:
+
+1. Meaning of output
+The output consists of intermediate waypoints, corresponding to the trajectory interpolated by the spline smoother, each consisting of joint angle (= positions), angular velocity and acceleration and time from start at that waypoint. These also correspond to the spline coefficients. Unfortunately however, there is one coefficient missing when you want to use cubic splines, and three are missing for quintic splines. But they can be computed quite straightforwardly from the given coefficients (the spline_smoother package contains functions that do that).
+The response of the FilterJointTrajectory service is a normal trajectory_msgs/JointTrajectory. That means, for every joint in your robot arm, you have one name in the joint_names[] array. The points[] array contains one element for each trajectory point, corresponding to the spline coefficients, each having one element for each joint.
+So, points[15].positions[3] would correspond to the joint angle of the 4th joint at the 16th trajectory point. Likewise, points[15].velocities[3] would correspond to the angular velocity, and points[15].accelerations[3] to the acceleration at that point.
+points[0] is the "starting position" of the trajectory, i.e., points[0].posisions[*] should all be equal to the current joint angles. Velocities should be 0 (since you start with a stopped arm) and accelerations should be non-zero (otherwise the arm won't start moving).
+points[n] (where n is the last index) is the "ending position". Velocities and accelerations should be 0.
+2. How to use it
+You have to send the trajectory to some node providing the JointTrajectoryAction, so your robot arm can execute it. For the PR2, there is a tutorial here. If you want to run the trajectory on a custom robot arm, you need to implement your own joint_trajectory_action; also see [this tutorial](http://www.ros.org/wiki/arm_navigation/Tutorials/Running arm navigation on non-PR2 arm).
+
+Originally posted by Martin Günther with karma: 11816 on 2011-07-06
+This answer was ACCEPTED on the original site
+Post score: 6
+
+Original comments
+Comment by Martin Günther on 2011-07-07:
+I've updated my answer to that effect. However, you usually don't need to do that, unless you want to run the trajectory on your own custom arm (see the end of my updated answer).
+Comment by PKG on 2011-07-07:
+Many thanks, this makes a lot of sense.  Could you provide more details on how to compute the missing coefficients in Cubic Splines?
+

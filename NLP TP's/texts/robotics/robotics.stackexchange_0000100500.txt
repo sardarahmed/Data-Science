@@ -1,0 +1,76 @@
+Q:
+
+Calling Service from Node does not work, but calling it from CLI works
+
+I want to make an interface for controlling many of my nodes. One function of this node is to set the lifecycle state of the map server provided by the navigation2 package. To do so, I run the following code.
+from ros2lifecycle.api import get_node_names
+from lifecycle_msgs.srv import GetAvailableTransitions
+[...]
+for node in get_node_names(node=self):
+        if 'map_server' in node:
+            self.get_logger().info('switching_to_mapping: Found node {0.full_name}'.format(node))
+            # Since this service doesnt work, we will just call the node's lifecycle service.
+            client = self.create_client(
+                GetAvailableTransitions,
+                f'{node.full_name}/get_available_transitions')
+            self.get_logger().info('switching_to_mapping: Waiting for service to become available')
+            while True:
+                if client.service_is_ready():
+                    self.get_logger().info('switching_to_mapping: Service is ready')
+                    msg = GetAvailableTransitions.Request()
+                    future = client.call_async(msg)
+                    self.get_logger().info('switching_to_mapping: Calling service')
+                    break
+                else:
+                    rclpy.spin_once(self, timeout_sec=1.0)
+    self.get_logger().info('switching_to_mapping: Waiting for service to return')
+    while not future.done():
+        time.sleep(0.1)
+    self.get_logger().info('switching_to_mapping: Service returned')
+
+I never reach that final log statement. Output side looks like this.
+[control_node-21] 1636472070.912905585 [hugo_utils.hugo_control_node] [INFO] switching_to_mapping: Found node /navigation/map_server
+[control_node-21] 1636472070.927478081 [hugo_utils.hugo_control_node] [INFO] switching_to_mapping: Waiting for service to become available
+[control_node-21] 1636472070.929866791 [hugo_utils.hugo_control_node] [INFO] switching_to_mapping: Service is ready
+[control_node-21] 1636472070.932301519 [hugo_utils.hugo_control_node] [INFO] switching_to_mapping: Calling service
+[control_node-21] 1636472070.933709630 [hugo_utils.hugo_control_node] [INFO] switching_to_mapping: Waiting for service to return
+
+Meanwhile, service caller,
+# ros2 service call /hugo_utils/switch_to_mapping std_srvs/srv/Trigger 
+requester: making request: std_srvs.srv.Trigger_Request()
+
+Making sure that service is available and can be called
+ # ros2 service call /navigation/map_server/get_available_transitions lifecycle_msgs/srv/GetAvailableTransitions 
+requester: making request: lifecycle_msgs.srv.GetAvailableTransitions_Request()
+
+response:
+lifecycle_msgs.srv.GetAvailableTransitions_Response(available_transitions=[lifecycle_msgs.msg.TransitionDescription(transition=lifecycle_msgs.msg.Transition(id=4, label='deactivate'), start_state=lifecycle_msgs.msg.State(id=3, label='active'), goal_state=lifecycle_msgs.msg.State(id=14, label='deactivating')), lifecycle_msgs.msg.TransitionDescription(transition=lifecycle_msgs.msg.Transition(id=7, label='shutdown'), start_state=lifecycle_msgs.msg.State(id=3, label='active'), goal_state=lifecycle_msgs.msg.State(id=12, label='shuttingdown'))])
+
+What is going on here? Why does my node not call the service even though it can be found?
+
+Originally posted by Per Edwardsson on ROS Answers with karma: 501 on 2021-11-09
+Post score: 0
+
+Original comments
+Comment by Geoff on 2021-11-09:
+Is the indentation in your code correct? Remember that in Python indentation creates a scope, so your variables might be going out of scope. Also the future probably goes out of scope when the while loop exits. You need to make the variable exist outside of the while loop.
+Comment by Per Edwardsson on 2021-11-10:
+I would think the scope is correct, but at this rate python never ceases to surprise me. If a variable has gone out of scope, surely it would crash?
+
+A:
+
+Short answer:
+Replace time.sleep with rclpy.spin_once
+Long answer:
+Remember that async != multithreading. When you use async, all the code runs in a single thread. So using a for loop that only runs time.sleep means the only thread you have is now locked, and no other code can be executed. You have to give up control so that call_async can do its job. This can be achieved using rclpy.spin_once. I think it is similar to asyncio.sleep(0).
+You can learn more about async in this video (which is fantastic but explains async in javascript; so the syntax is a bit different) and this video that talks about python's async in particular.
+
+Originally posted by m2-farzan with karma: 56 on 2021-11-09
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Per Edwardsson on 2021-11-10:
+What is the correct way to call rclpy.spin_once()? Neither rclpy.spin_until_future_complete(self, future) nor rclpy.spin_once(self) seems to produce any different result. self is a class inherited from rclpy.node.Node. Looks like the problem is that rclpy.spin_once(self) never returns - maybe self is busy elsewhere in the loop?
+Edit: needed to supply a timeout_sec parameter to allow the thread to finish. Thank you.
+

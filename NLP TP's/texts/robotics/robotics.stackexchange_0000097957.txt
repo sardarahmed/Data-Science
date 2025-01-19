@@ -1,0 +1,70 @@
+Q:
+
+ROS2, set parameters from file and directly?
+
+I have one parameter which is defined inside the python launch file (multiple nodes use this parameter), and the other parameters should be loaded from a parameter file.
+Is it possible to use a parameter file and to set parameters directly in a python launch file at the same time? In the documentation, I did not find a way to handle this. It looks like, it is only possible to set a parameter file or to define the parameters directly.
+    trajectory_visualization_param = get_param_file('arg_trajectory_visualization, 'arg_trajectory_visualization.param.yaml')
+
+    trajectory_source = "p3"
+
+    trajectory_visualization_velocity_planner_node = Node(
+              package="arg_trajectory_chunk_provider",
+              node_executable="arg_trajectory_visualization",
+              node_name="arg_trajectory_visualization_velocity_planner",
+              parameters=[{"trajectory_source": trajectory_source}],
+              node_namespace=vehicle_ns
+              )
+
+I do not want to have something like a global parameter server.
+https://roboticsbackend.com/ros2-global-parameters/
+Is there a way to handle this nicely, or how would you handle this?
+
+Originally posted by mschratter on ROS Answers with karma: 35 on 2021-01-03
+Post score: 1
+
+A:
+
+This can be done as of ROS Foxy.
+To set a single parameter on all nodes in the same scope of a launch file, you can use the SetParameter action. The parameter will be set on all nodes launched after the SetParameter action, also applying to any included launch files.
+For example, to set the ROS parameter use_sim_time for all nodes in a launch file, you can something like
+import launch
+import launch_ros.actions
+
+def generate_launch_description():
+    return launch.LaunchDescription([
+        launch_ros.actions.SetParameter(name='use_sim_time', value=True),
+        # 'use_sim_time' will be set on all nodes following the line above
+    ]) 
+
+This is also supported in front-end launch files, for example XML:
+<launch>
+  <set_parameter name="use_sim_time" value="true" />
+  <!-- 'use_sim_time' will be set on all nodes following the line above -->
+</launch>
+
+Note, you can use a launch "group" to scope the SetParameter action. In the following example, the talker node does not have the use_sim_time parameter set, but the listener node does:
+<launch>
+  <group>
+    <set_parameter name="use_sim_time" value="true" />
+    <node name="listener" pkg="demo_nodes_cpp" exec="listener" output="screen" />
+  </group>
+  <node name="talker" pkg="demo_nodes_cpp" exec="talker" output="screen" />
+</launch>
+
+I'll add that it's currently not possible to set parameters from a parameters file in a similar way, though it would be interesting to add such a feature.
+
+Originally posted by jacobperron with karma: 1870 on 2021-01-06
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Josh Whitley on 2021-04-21:
+Have you tried using "double-star" syntax in a YAML file?
+/**:
+  ros__parameters:
+    use_sim_time: true
+
+Comment by jacobperron on 2021-04-22:
+The issue is that the YAML file must be passed to each Node action in the launch file. It would be nice to have an option to set a parameters YAML file with a global action in launch, such that it will be automatically passed to all nodes. I'm not sure it is straight-forward to implement such a launch action though.
+

@@ -1,0 +1,96 @@
+Q:
+
+Velodyne fault readings at near objects
+
+Hello, we are using a Velodyne HDL-64E S2 with ROS fuerte and the velodyne stack. The first test showed us some fault readings if the Velodyne is close to a (white/beige) wall, with other material like a carton box or a computer screen these problems does not occur. In the Links bellow you find pictures with different minimum distance in the ROS-driver and one picture where I drew the position of the wall. The pictures where taken while the Velodyne had a rpm of 300 but a change too even 1200 did not change the outcome, therefore we think that it could not be crosstalk.
+This is the situation: www.robotics.fh-aachen.de/pictures/husky.jpg
+The following pictures showing the rviz output with different minimum distances (min_range) in the ros driver:
+
+1.0m and the wall position that creates the fault readings: www.robotics.fh-aachen.de/pictures/velodyne_1.0m..wall.png
+1.0m: www.robotics.fh-aachen.de/pictures/velodyne_1.0m.png
+1.5m: www.robotics.fh-aachen.de/pictures/velodyne_1.5m.png
+2.0m: www.robotics.fh-aachen.de/pictures/velodyne_2.0m.png
+2.5m: www.robotics.fh-aachen.de/pictures/velodyne_2.5m.png
+3.0m: www.robotics.fh-aachen.de/pictures/velodyne_3.0m.png
+
+The following 2 pictures are turned but taken at the same possition! They showing points instead of billboards:
+
+1.5m minimum distance with points: www.robotics.fh-aachen.de/pictures/velodyne_1.5m_points_0.01alpha.png
+1.5m minimum distance with points and intensity: www.robotics.fh-aachen.de/pictures/velodyne_1.5m_points_0.01alpha_intensity.png
+
+Here is the launch-file: www.robotics.fh-aachen.de/pictures/velodyne.launch
+
+Does somebody has similar experience with the Velodyne Lidar?
+Does somebody know where exactly this error comes from?
+Does somebody has an idea if this fault readings can be filtered and how?
+
+edit #1 (for joq's request):
+I asked a colleague to make these pictures. They are with made on a different pc, so might look a bit different and they are just with Alpha = 0.1
+
+0.02m: www.robotics.fh-aachen.de/pictures/velodyne_0.02m_points_0.01alpha.png
+0.02m intensity: www.robotics.fh-aachen.de/pictures/velodyne_0.02m_points_0.01alpha_intensity.png
+
+You see on these pictures, that they are similar to the setting 1m (maybe you see a bit more, but the velodyne itself filters some readings (I heard about 90 cm is the minimum distance so you might see 10cm more, but this is just a guess)). You also see fault readings at the wall like with all other pictures and new fault readings in a cycle around the velodyne.
+edit #2 (for joq's request):
+Here are now the bag files, recorded with rosbag record --split --duration=10 -j -a and compressed afterwards. I recorded 30 seconds, but I think 1 part should be enough.
+
+#0: www.robotics.fh-aachen.de/pictures/velodyne_0.tar.bz2
+#1: www.robotics.fh-aachen.de/pictures/velodyne_1.tar.bz2
+#2: www.robotics.fh-aachen.de/pictures/velodyne_2.tar.bz2
+
+Originally posted by Tobias Neumann on ROS Answers with karma: 179 on 2013-08-13
+Post score: 2
+
+Original comments
+Comment by joq on 2013-08-16:
+I can't really see what's going on very well. Could you please post either a PCAP file or rosbag containing a few seconds of the velodyne_packets topic? Then I could see it in 3D.
+Comment by Tobias Neumann on 2013-08-16:
+Yes I can upload a rosbag file, but it might take till wednesday.
+Comment by Tobias Neumann on 2013-08-21:
+The bag files are now uploaded.
+Comment by Tobias Neumann on 2013-10-31:
+Recently I tried an intensity- and a statistical outlier removal-filter and also a combination of both of that.
+It is possible to filter all faulty readings, but with a high loss of accurate points.
+So my work around for the moment is to set the min_range to 3.5m.
+But if somebody has the same problem and finds a solution I would appreciate if he could publish it here.
+Comment by joq on 2013-10-31:
+I had forgotten about this problem. I did try our older 64E indoors. It seemed to work OK with min_range set to 0.9m. Any idea what causes the bogus points?
+Comment by Tobias Neumann on 2013-11-02:
+I think the wall ( http://www.robotics.fh-aachen.de/pictures/husky.jpg ) is causing the errors/reflections. Like written above we do not have this problem with cardboard or a laptop screen.
+Apart from that we need to set the min_range to ~1.5m because otherwise we have error cycles in the air.
+
+A:
+
+It looks like your wall is closer than the one-meter min_range. All the cloud nodelet does with points nearer than that is throw them away.
+What happens if you set min_range really small, like 0.02?
+I have no personal experience with using the device indoors with close-up readings.
+UPDATE: the more-distant points may be some generic LIDAR phenomenon with some reflections being bounced around before returning to the sensor. Perhaps the white wall is more reflective, making it more noticeable.
+I'm just making up hypotheses here, because your use case is outside my experience with the device. I hope other LIDAR users may be able to help.
+UPDATE2: I don't know if this explains all the problems you are seeing, but there is a bug in the driver's handling of 64E S2 and S2.1 models (ros-drivers/velodyne#11). That issue was recently fixed in velodyne-1.1.1, released to Hydro, but it still exists in Fuerte.
+Fortunately, there is a work-around you can use with earlier versions on the driver. It appears from your bag that your device is running at 300 RPM (5Hz). If so, the work-around in the answer to this question should be adjusted slightly, as follows:
+$ rosrun velodyne_driver velodyne_node _npackets:=696 _rpm:=300
+
+The result of this bug was that the driver is publishing slightly less than half-scans at twice the actual 5Hz scan rate. That makes the data difficult to view. It probably does not explain the problem you are seeing, but it does make it harder to diagnose.
+UPDATE3: The 64E S2 manual says:
+The minimum return distance for the sensor is approximately 3 feet (0.9 meters). Ignore returns closer than this.
+
+So, I would set min_range to 0.9, which would presumably give results similar to your 1.0 example. That may be the best it can do.
+We recently removed our device from the car. It's now in a lab at the University of Texas. I'll try collecting some indoor data there, to see if it has similar problems.
+
+Originally posted by joq with karma: 25443 on 2013-08-13
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by Tobias Neumann on 2013-08-13:
+I tried to set min_range to 0 before it looked the same as if I put it to 1m (We guessed that this is the case because the Velodyne itself removes close points)
+Comment by Tobias Neumann on 2013-08-13:
+The wall is indeed closer as 1m and the nodelet removes the points within the min_range area as expected. The problem is more that the Velodyne detects points behind that wall. Like I mentioned in the text, we do not have that problem with other materials.
+Comment by joq on 2013-08-13:
+I believe range zero is interpreted as "no data", that is why I suggested something small but non-zero.
+Comment by Tobias Neumann on 2013-08-13:
+Is 1m the default parameter?
+I will try to set it to something small, but I will not have access to the Velodyne before monday.
+Comment by joq on 2013-08-13:
+The default is 2.0, which was appropriate for our autonomous vehicle because it eliminated reflections from the car, itself. There is no more reason for it than that. I would be willing to change the default if a smaller setting works, perhaps the shortest viable range whatever that is.
+

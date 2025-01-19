@@ -1,0 +1,38 @@
+Q:
+
+ROS2 on Windows 10 - `colcon build` uses wrong Python version: "No module named *"
+
+When building my workspace with colcon build, it fails because of missing Python packages:
+
+ModuleNotFoundError: No module named 'em'
+
+'em' is just an example, different project give different errors. When trying to fix this, I see the packages are already installed:
+> python -m pip install empy
+Requirement already satisfied: empy in c:\dev\ros2_humble\.venv\lib\site-packages (3.3.4)
+
+After a little investigation I read the following in the logs:
+
+--- stderr: geographic_msgs
+CMake Error at C:/dev/ros2_humble/share/rosidl_adapter/cmake/rosidl_adapt_interfaces.cmake:59 (message):
+execute_process(C:/Program Files/Python310/python.exe -m rosidl_adapter
+
+colcon is using the wrong version of Python... But I am running all the above after sourcing ROS2, from inside the ROS2 virtual environment.
+How can I get colcon to stick with the right Python version?
+
+A:
+
+It seems CMake is at fault here, even without colcon it just refuses to use the activated Python 3.8 venv, and instead falling back on the highest available Python version.
+You can work around with by adding a CMake flag:
+colcon build --cmake-args -DPython3_FIND_VIRTUALENV="ONLY"
+
+Note that the "3" in "Python3_" is important here.
+
+A permanent solution can be modifying the CMake scripts in the ROS install.
+In [ros_install]/share/ament_cmake_core/cmake/core/python.cmake, modify this line:
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+To look like:
+  find_package(Python3 3.8 EXACT REQUIRED COMPONENTS Interpreter)
+
+This does not enforce virtual environment specifically, but it does lock into Python 3.8 specifically.
+

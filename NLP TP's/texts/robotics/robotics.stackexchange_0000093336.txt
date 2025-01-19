@@ -1,0 +1,64 @@
+Q:
+
+Launch Composed Nodes using the launch XML Frontend
+
+Hi everyone
+I've been looking through the new launch_ros xml/yaml frontend design and parsing recently, and noticed that there doesn't seem to be a way currently to launch composed nodes through this frontend? It looks as if the parser, when in python, uses the frontend to generate a Node, and thus not a ComposableNode let alone a ComposableNodeContainer.
+Is there currently a plan to include launching composable nodes at all via the launch frontend? It seems quite important especially since there is a way to do so using the old ROS1 nodelet API.
+EDIT: Some links to provide context
+As an example, this is the current workflow for launch composition nodes using the launch_ros python interface.
+Looking at the design of the roslaunch XML frontend. The only allowed tags which would launch a process would be executable and node.
+In the node.py file in launch_ros, special provisions and imports were made to expose this action to the frontend, but it seems that currently the composable_node_container.py does not have any similar implementations.
+Since this feature is not mentioned in either the design or the implementation, I wonder if this is something that the frontend is planned to support?
+
+Originally posted by eric1221bday on ROS Answers with karma: 245 on 2019-09-19
+Post score: 2
+
+Original comments
+Comment by tfoote on 2019-09-19:
+Please edit your question to include links to what you're reading and where you're referencing.
+
+A:
+
+Hi eric1221bday,
+The design document you're referring to is actually a format, and the implementation is not limited to just those tags.
+We started by writing the "parsing functions" of the tags that were available in roslaunch XML, but new ones can be easily added.
+Here is Node's parsing function as an example.
+The following actions will need a parsing function to get the functionality you're asking for:
+
+https://github.com/ros2/launch_ros/blob/d25e2b334897b9c4526b1dcd1c8025debc245737/launch_ros/launch_ros/actions/composable_node_container.py#L31
+https://github.com/ros2/launch_ros/blob/d25e2b334897b9c4526b1dcd1c8025debc245737/launch_ros/launch_ros/actions/load_composable_nodes.py#L35
+
+I'm not currently planning to add it, contributions are welcomed.
+Also, you can ping me if you have any question.
+Best,
+Regards
+
+Originally posted by ivanpauno with karma: 86 on 2019-09-19
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by eric1221bday on 2019-09-19:
+Thanks for the response. Since this would entail extending the current XML frontend tags, I'll have to put some more thought into it. But perhaps a  tag might work?
+Comment by ivanpauno on 2019-09-20:
+I would use the following tags:
+
+node_container
+load_composable_node
+composable_node
+
+The last tag is for the composable node description, which doesn't have to be exposed with expose_action as the others.
+For this one, I would recommend writing a free function that does the parsing, and you can reuse it from both node_container and load_composable_node actions.
+Comment by eric1221bday on 2019-09-21:
+So looking at the API here, it occurs to me that I'm not sure if the current API will allow for loading composable nodes in separate launch files. The current LoadComposableNode has a target_container argument which is required to be a ComposableNodeContainer and beyond that it also requires it to have already been executed. Am I missing something? Or does this mean that the current system cannot allow for launching the node container in one launch file and then launching components targeting that container in other launch files.
+Comment by ivanpauno on 2019-09-23:
+That's a good question.
+The current implementation of LoadComposableNodes needs the target container at construction, but if you see the implementation detail, the only needed thing is the node name.
+I would add a new argument to the constructor: node_name.
+One of node_name and target_container should be required (IMO, target_container should be deprecated).
+The topic of having references (i.e.: being able to identify) another action in the XML/YAML frontend is an interesting feature currently not supported.
+It would be useful, for example, to support event handlers.
+Comment by eric1221bday on 2019-09-23:
+Yeah I’ve actually since then gonna ahead and implemented this exact idea, though in my case i made target container a Union so as to not disrupt the current API. The pull request is here
+

@@ -1,0 +1,97 @@
+Q:
+
+Constrain Joint in MoveIt
+
+Hi all!
+I'm working on constraining joints in Moveit by expanding upon this tutorial. Below is a small reproduction of my code, as well as a copy of the error message I'm getting . From what I can tell I followed the moveit.msg documentation to the T. I'm running ROS melodic on Ubuntu 18.04.4 LTS.
+My Code:
+ #!/usr/bin/env python
+
+from move_group_python_interface_tutorial import *
+
+import moveit_msgs.msg
+
+from std_msgs.msg import Float64
+
+def main():
+
+    try:
+        # This is just initializing the tutorial object
+        tutorial = MoveGroupPythonIntefaceTutorial()
+
+        # construct a message
+        joint_constraint = moveit_msgs.msg.JointConstraint()
+        joint_constraint.joint_name = tutorial.move_group.get_joints()[0]
+        joint_constraint.position = Float64(1.0)
+        joint_constraint.tolerance_above = Float64(0.5)
+        joint_constraint.tolerance_below = Float64(0.5)
+        joint_constraint.weight = Float64(1.0)
+
+        joint_constraint_list = []
+        joint_constraint_list.append(joint_constraint)
+
+        constraint_list = moveit_msgs.msg.Constraints()
+        constraint_list.name = 'middle_of_travel'
+        constraint_list.joint_constraints = joint_constraint_list
+
+        tutorial.move_group.set_path_constraints(constraint_list)
+
+    except KeyboardInterrupt:
+        return
+
+if __name__ == '__main__':
+    main()
+
+My error message:
+Traceback (most recent call last):
+
+  File "/home/mike/catkin_ws/src/macs_gazebo_simulation/inspection_cell_moveit_config/test.py", line 33, in <module>
+    main()
+
+  File "/home/mike/catkin_ws/src/macs_gazebo_simulation/inspection_cell_moveit_config/test.py", line 27, in main
+    tutorial.move_group.set_path_constraints(constraint_list)
+
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/moveit_commander/move_group.py", line 403, in set_path_constraints
+    self._g.set_path_constraints_from_msg(conversions.msg_to_string(value))
+
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/moveit_commander/conversions.py", line 49, in msg_to_string
+    msg.serialize(buf)
+
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/moveit_msgs/msg/_Constraints.py", line 469, in serialize
+    except struct.error as se: self._check_types(struct.error("%s: '%s' when writing '%s'" % (type(se), str(se), str(locals().get('_x', self)))))
+
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/genpy/message.py", line 343, in _check_types
+    raise SerializationError(str(exc))
+genpy.message.SerializationError: <class 'struct.error'>: 'required argument is not a float' when writing 'joint_name: "linear_stage_joint"
+position: 
+  data: 1.0
+tolerance_above: 
+  data: 0.5
+tolerance_below: 
+  data: 0.5
+weight: 
+  data: 1.0'
+
+Originally posted by mgagnier93 on ROS Answers with karma: 1 on 2020-06-08
+Post score: 0
+
+A:
+
+You need to replace the lines like:
+joint_constraint.position = Float64(1.0)
+
+with
+joint_constraint.position = 1.0
+
+By calling Float64(1.0) you are creating a ROS message instance of type Float64, when what you really need is a Python float datatype. On the msg ROS wiki page there is documentation describing how primitive field types correspond to client library types for C++ and Python. That documentation indicates a field type of float64 in a message definition should be a float in Python.
+The Float64 message from std_msgs actually has a single field named data of type float64. That's where the data: 1.0 lines in your traceback are coming from. Also note, the key part of your error is this:
+genpy.message.SerializationError: <class 'struct.error'>: 'required argument is not a float'...
+
+Originally posted by jarvisschultz with karma: 9031 on 2020-06-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by mgagnier93 on 2020-06-08:
+@jarvisschultz that makes perfect sense - fixed my issue. Thanks!
+

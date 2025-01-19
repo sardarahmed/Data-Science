@@ -1,0 +1,125 @@
+Q:
+
+How to use NodeHandle in callback?
+
+for example, I declare NodeHandle in main,but it can't use in joyCallback function.
+I tried to move that handle to be global variable,but it says that handle couldn't init before than main.
+Here is the example:
+ #include <ros/ros.h>
+ #include <tf/transform_broadcaster.h>
+ #include <nav_msgs/Odometry.h>
+ #include "std_msgs/String.h"
+ 
+ void joyCallback(const std_msgs::String::ConstPtr& msg)
+ {
+    ROS_INFO("I heard: [%s]", msg->data.c_str());
+ 
+    tf::TransformBroadcaster odom_broadcaster;
+ 
+    double x = 0.0;
+    double y = 0.0;
+    double th = 0.0;
+ 
+    double vx = 0.1;
+    double vy = -0.1;
+    double vth = 0.1;
+ 
+    ros::Time current_time, last_time;
+    current_time = ros::Time::now();
+    last_time = ros::Time::now();
+ 
+    ros::Rate r(1.0);
+    while(n.ok()){
+        current_time = ros::Time::now();
+ 
+        //compute odometry in a typical way given the velocities of the robot
+        double dt = (current_time - last_time).toSec();
+        double delta_x = (vx * cos(th) - vy * sin(th)) * dt;
+        double delta_y = (vx * sin(th) + vy * cos(th)) * dt;
+        double delta_th = vth * dt;
+ 
+        x += delta_x;
+        y += delta_y;
+        th += delta_th;
+ 
+        //since all odometry is 6DOF we'll need a quaternion created from      yaw
+        geometry_msgs::Quaternion odom_quat =      tf::createQuaternionMsgFromYaw(th);
+ 
+        //first, we'll publish the transform over tf
+        geometry_msgs::TransformStamped odom_trans;
+        odom_trans.header.stamp = current_time;
+        odom_trans.header.frame_id = "odom";
+        odom_trans.child_frame_id = "base_link";
+ 
+        odom_trans.transform.translation.x = x;
+        odom_trans.transform.translation.y = y;
+        odom_trans.transform.translation.z = 0.0;
+        odom_trans.transform.rotation = odom_quat;
+ 
+        //send the transform
+        odom_broadcaster.sendTransform(odom_trans);
+ 
+        //next, we'll publish the odometry message over ROS
+ #if 0
+        nav_msgs::Odometry odom;
+        odom.header.stamp = current_time;
+        odom.header.frame_id = "odom";
+ 
+        //set the position
+        odom.pose.pose.position.x = x;
+        odom.pose.pose.position.y = y;
+        odom.pose.pose.position.z = 0.0;
+        odom.pose.pose.orientation = odom_quat;
+ 
+        //set the velocity
+        odom.child_frame_id = "base_link";
+        odom.twist.twist.linear.x = vx;
+        odom.twist.twist.linear.y = vy;
+        odom.twist.twist.angular.z = vth;
+ 
+        //publish the message
+        odom_pub.publish(odom);
+ #endif
+        last_time = current_time;
+        r.sleep();
+    }
+ 
+ }
+ 
+ 
+ int main(int argc, char** argv)
+ {
+    ros::init(argc, argv, "odometry_publisher");
+    ros::NodeHandle n;
+ 
+    //  ros::Publisher odom_pub =      n.advertise<nav_msgs::Odometry>("/odom", 50);
+    ros::Subscriber sub = n.subscribe("joy_vel_output", 1000, joyCallback);
+    ros::spin();
+ }
+
+How can I solve this problem?
+Thank you~
+
+Originally posted by sam on ROS Answers with karma: 2570 on 2012-02-09
+Post score: 3
+
+A:
+
+You must initialize the NodeHandle in the "main" function (or in any method called indirectly or directly by the main function). I sometimes declare a pointer to the NodeHandle as global variable to my program and then initialize it afterwards in the main. But it will work as you have it right now.
+Regarding the ROS Subscriber, try replacing the declaration of the Subscriber by this:
+ros::Subscriber sub = n.subscribe<std_msgs::String>("joy_vel_output", 1000, &joyCallback);
+
+Be always aware of the namespace of your subscribed or advertised topic. I normally use an absolute path to the topic name, so I would have subscribed to "/joy_vel_output" instead of "joy_vel_output".
+
+Originally posted by abacas with karma: 38 on 2012-02-09
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Lorenz on 2012-02-09:
+The difference is an explicit template type, which is not necessary in your case (it is only when using boost::bind) and a & in front of your function name which should also not make a difference in your case.
+Comment by sam on 2012-02-09:
+What's difference between I replace the declaration of the Subscriber with the original post?
+Comment by Lorenz on 2012-02-09:
+I don't think you should ever use a / in topic names in roscpp because it would make remapping of topics to put them in a namespace (e.g. in a multi-robot scenario) much harder and more inconvenient. Instead, using the default NodeHandle constructor as sam did should be the correct solution.
+

@@ -1,0 +1,106 @@
+Q:
+
+tf API: Axes/order of rotation
+
+Hello ROS users!
+I'm working with tf and I've a few questions about the API.
+I am defining frames such that Yaw is applied around Z, followed by Pitch around the new Y and then Roll around new X.
+Consider a transform from base_link --> camera_frame. Assuming I only have constant rotation between the frames (zero translation), here's how I create the transform:
+//Fixed transform values
+double roll, pitch, yaw;
+yaw = DEGREES_TO_RADIANS(90); // 90 degrees around Z 
+pitch = DEGREES_TO_RADIANS(0); // 0 degrees around new Y
+roll = DEGREES_TO_RADIANS(-90); // -90 degrees around new X
+
+//Create Quaternion from Euler angles
+tf::Quaternion quat;
+quat.setRPY(roll, pitch, yaw);
+//quat.setEuler(pitch, roll, -yaw); // 
+
+//Set rotations
+geometry_msgs::TransformStamped bLink_to_cam;
+
+bLink_to_cam.transform.rotation.x = quat.x();
+bLink_to_cam.transform.rotation.y = quat.y();
+bLink_to_cam.transform.rotation.z = quat.z();
+bLink_to_cam.transform.rotation.w = quat.w();
+
+//Set translations
+bLink_to_cam.transform.translation.x = 0;
+bLink_to_cam.transform.translation.y = 0;
+bLink_to_cam.transform.translation.z = 0;
+
+In another node, I have a tf::TransformListener object which receives this transform. Here I print out the values :
+void printEulerAngles(tf::StampedTransform& transform){
+    double roll, pitch, yaw;
+    tf::Matrix3x3 m(transform.getRotation());
+
+    m.getRPY(roll, pitch, yaw);
+    //m.getEulerZYX(yaw, pitch, roll);
+    ROS_INFO("\nRoll    : %.3f\n"
+            "Pitch  : %.3f\n"
+            "Yaw    : %.3f\n",
+            RADIANS_TO_DEGREES(roll), RADIANS_TO_DEGREES(pitch), RADIANS_TO_DEGREES(yaw)  );
+
+}
+
+I expected to see the transform as defined above. However, I see Roll, Pitch, Yaw  (90,90, 0). I did some research and found that setRPY() and getRPY() follow this convention:
+
+(roll around X, pitch around Y and yaw around z) around fixed axes.
+
+Here are my questions:
+
+How do I define rotations when I need to rotate (w.r.t to base_link axes) in the following convention?
+
+(yaw around Z, then pitch around new Y, then roll around new X)
+
+Once I get the above rotation from tf, how do I modify the printEulerAngles() method to display them in the same convention as above?
+
+I'd really appreciate any assistance in understanding tf. Thanks!
+
+Originally posted by Venkat Ganesh on ROS Answers with karma: 57 on 2016-11-10
+Post score: 1
+
+A:
+
+I think you are looking for the setEulerYPR and getEulerYPR functions of tf::Matrix3x3. As far as I can tell, these follow the convention you are describing.
+To generate the quaternion:
+//Fixed transform values
+double roll, pitch, yaw;
+yaw = DEGREES_TO_RADIANS(90); // 90 degrees around Z 
+pitch = DEGREES_TO_RADIANS(0); // 0 degrees around new Y
+roll = DEGREES_TO_RADIANS(-90); // -90 degrees around new X
+
+//Create Matrix3x3 from Euler Angles
+tf::Matrix3x3 m_rot;
+m_rot.setEulerYPR(yaw, pitch, roll);
+
+// Convert into quaternion
+tf::Quaternion quat;
+m_rot.getRotation(quat);
+
+Your printEuler would then be
+void printEulerAngles(tf::StampedTransform& transform){
+    double roll, pitch, yaw;
+    tf::Matrix3x3 m(transform.getRotation());
+    int solution_number = 1;
+
+    m.getEulerYPR(yaw, pitch, roll, solution_number);
+    ROS_INFO("\nRoll    : %.3f\n"
+            "Pitch  : %.3f\n"
+            "Yaw    : %.3f\n",
+            RADIANS_TO_DEGREES(roll), RADIANS_TO_DEGREES(pitch), RADIANS_TO_DEGREES(yaw)  );
+}
+
+However, like I wrote in your previous question, there can be multiple representations of an identical rotation, so your angles might not be the same. You can play around witht the solution_number  argument of getEulerYPR() but I don't know if that will help.
+Good luck.
+
+Originally posted by rbbg with karma: 1823 on 2016-11-14
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Venkat Ganesh on 2016-11-14:
+Hello, thanks for your suggestion. Unfortunately, I still don't see the correct angle.
+In tf_broadcaster_node, I have the same input: Y,P,R = (90,0,-90). However, in tf_listener_node, I see (0, 90, 90). I don't think it's an equivalent rotation.
+

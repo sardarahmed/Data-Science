@@ -1,0 +1,114 @@
+Q:
+
+[URDF] What is a dummy link needed for?
+
+Hi,
+I'm trying to learn as bet as possible ROS2, Gazebo and of course SDF and URDF files.
+I'm currently following some tutorials (a bit troublesome, given the different version of Gazebo/Ignition and the confusion about the name) on how to build robot models.
+I've seen that often URDF models have a dummy link (almost always called base_link) which is empty and does nothing more than provide a "mounting point" of the robot to the world/ground, so to speak.
+I'm failing to understand when and why this is needed, and I think this is giving me issues for the test model I'm building. Could someone please let me in on this?
+Thanks! :D
+EDIT: an example of what I'm referencing:
+<link name="dummy"/>  
+<joint name="dummy_to_base_link=" type="fixed">  
+    <parent link="dummy"/>  
+     <child link="base_link"/>  
+< /joint>
+
+Originally posted by slim71 on ROS Answers with karma: 18 on 2023-05-12
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2023-06-03:
+This seems to be a cross-post of Dummy link in URDF on Reddit.
+
+A:
+
+It's possible/likely the "dummy links" you've seen were included to avoid the well known
+
+The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia. As a workaround, you can add an extra dummy link to your URDF.
+
+See #q192817 for an example (but there are many more).
+This is printed by treeFromUrdfModel(..) in kdl_parser_py/kdl_parser_py/urdf.py:
+
+def treeFromUrdfModel(robot_model, quiet=False):
+
+    """
+    Construct a PyKDL.Tree from an URDF model from urdf_parser_python.
+
+    :param robot_model: URDF xml string, ``str``
+    :param quiet: If true suppress messages to stdout, ``bool``
+    """
+
+    root = robot_model.link_map[robot_model.get_root()]
+
+    if root.inertial and not quiet:
+        print("The root link %s has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF." % root.name);
+    ...
+
+As you can see, the warning suggests to add a "dummy link" (with an identity transform between it and the actual root of your urdf), which you would use to specify dynamics properties (such as the inertia).
+But we can't really know for sure, as such a "dummy link" is not standard practice necessarily. Anyone is free to use the name for whatever they want/need, so it could be the dummy links you've seen are used for something else entirely.
+And note:
+
+I've seen that often URDF models have a dummy link (almost always called base_link) [..]
+
+base_link would not be the dummy link here. base_link would be the root of the URDF's kinematic chain/tree. The dummy would be either before or after base_link in the tree.
+
+Edit:
+
+OK, so in general:
+
+the dummy link is to avoid the warning (or for other purposes)
+the base_link is the first link  of the robot chain/tree (hence the name "base")
+
+Yes, that seems to be correct.
+Although again: that's just one possible use of a "dummy link".
+
+I'm building a mobile robot (simple car-like stuff with a caster wheel), and of course if I don't include the first "empty" link I get the warning you've mentioned, since the chassis (first link) has inertia.
+So then I've introduced a base_link and a fixed joint between that and the chassis to get rid of the warning.
+Doesn't this make the two purposes mix? I've kinda introduced a dummy base, in a sense, right?
+
+Whenever I wanted to get rid of the warning (wanted, as depending on what you use a KDL URDF parser for, it doesn't really always affect anything important), I've used the following structure:
+base_link
+└ some_dummy_link
+  └ <rest of my tree/chain>
+
+With an identity transform, fixed joint between base_link and some_dummy_link and the dynamics properties specified on some_dummy_link.
+This keeps base_link the root of the tree, avoids the KDL-related warning, and keeps the tree relatively 'clean'.
+
+I've kinda introduced a dummy base, in a sense, right?
+
+not if you do it as I show above.
+
+I'm building a mobile robot
+
+note that in the case of a mobile base, you'd typically also want to add a base_footprint link (#q208051). This is also mentioned here, which also comments on some other frames. Another good overview would be wiki/hector_slam/Tutorials/SettingUpForYourRobot.
+
+Then I also have the problem that my robot is not moving, but if I'm getting this correctly it might be because I've used a fixed joint (floating are not supported, it seems).... But I guess that's for another topic!
+
+I'd recommend reviewing documents like REP 105: Coordinate Frames for Mobile Platforms and some of the links I've included above. There's a well-defined hierarchy of frames for mobile bases, and getting that in place should make things 'easier' to get to work.
+But depending on what UI you're looking at, please keep in mind #q382149 (ie: in tools like RViz, 'motion' is purely virtual. There is no ground, or floor, nor is there anything simulated. It's all just visualisation. So 'motion' depends on incrementally increasing the distance to some fixed reference point. If that point isn't configured correctly, "nothing moves". But it's all just transforms, and there is no real motion).
+
+Originally posted by gvdhoorn with karma: 86574 on 2023-05-13
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by slim71 on 2023-05-13:
+OK, so in general:
+
+the dummy link is to avoid the warning (or for other purposes)
+the base_link is the first link  of the robot chain/tree (hence the name "base")
+
+But then this comes to mind:
+I'm building a mobile robot (simple car-like stuff with a caster wheel), and of course if I don't include the first "empty" link I get the warning you've mentioned, since the chassis (first link) has inertia.
+So then I've introduced a base_link and a fixed joint between that and the chassis to get rid of the warning.
+Doesn't this make the two purposes mix? I've kinda introduced a dummy base, in a sense, right?
+Then I also have the problem that my robot is not moving, but if I'm getting this correctly it might be because I've used a fixed joint (floating are not supported, it seems).... But I guess that's for another topic!
+Comment by slim71 on 2023-05-13:
+Airght, I've reviewed what you linked in your edit and it is clearer to me now. Now then, I only have to figure out why the robot isn't moving in Fortress even if messages seem to be bridged correctly...
+Thank you very much for the details and the useful links!!
+Comment by slim71 on 2023-05-13:
+it wasn't the main topic here, but in case someone needing this comes here:
+I've found out that the diff_drive plugin wasn't being included in the SDF during the xacro->URDF->SDF conversion (I've checked doing it manually). In the end, that was because the plugin tag wasn't inside a gazebo tag with no "reference"!
+

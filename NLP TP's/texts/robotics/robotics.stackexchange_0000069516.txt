@@ -1,0 +1,89 @@
+Q:
+
+IR Range sensor Rviz Issue
+
+I am having difficulty displaying the range visualization plugin inside of rviz.
+I have followed this tutorial: http://wiki.ros.org/rosserial_arduino/Tutorials/IR%20Ranger
+Furthermore, I have sensor output on the "range_data/range" topic from the arduino with Indigo.
+Rviz has a plugin for Range topics listed.
+However it appears that when I add the range topic into rviz I encounter an error for the header_frame not matching the fixed_frame.  I resolved this by adding a static transform between my fixed frame[map] and my header frame[ir_ranger]; this remedies the plugin error message within rviz however no ir range sensors are shown visually inside rviz.
+I can not see the IR sensors(cones?) on my map.
+Range topic output:
+
+Without any objects:
+---
+header: 
+  seq: 456
+  stamp: 
+    secs: 1441714744
+    nsecs: 397090908
+  frame_id: /ir_ranger
+radiation_type: 1
+field_of_view: 0.00999999977648
+min_range: 0.0299999993294
+max_range: 0.40000000596
+range: 254.0
+---
+With object:
+---
+header: 
+  seq: 537
+  stamp: 
+    secs: 1441714962
+    nsecs: 24221998
+  frame_id: /ir_ranger
+radiation_type: 1
+field_of_view: 0.00999999977648
+min_range: 0.0299999993294
+max_range: 0.40000000596
+range: 22.0
+---
+
+Originally posted by russellc on ROS Answers with karma: 13 on 2015-09-07
+Post score: 1
+
+Original comments
+Comment by Humpelstilzchen on 2015-09-08:
+Can you paste a rostopic echo of your sensor output?
+
+A:
+
+I'm not sure this is your issue, but looking at the documentation of sensor_msgs/Range, the comments on min_range, max_range and range seem to suggest that any value < min_range, or > max_range "should be discarded":
+float32 range           # range data [m]
+                        # (Note: values < range_min or > range_max
+                        # should be discarded)
+                        # Fixed distance rangers only output -Inf or +Inf.
+                        # -Inf represents a detection within fixed distance.
+                        # (Detection too close to the sensor to quantify)
+                        # +Inf represents no detection within the fixed distance.
+                        # (Object out of range)
+
+The code in rviz/default_plugin/range_display.cpp seems to follow that recommendation (although not explicitly):
+  float displayed_range = 0.0;
+  if(msg->min_range <= msg->range && msg->range <= msg->max_range)
+  {
+    displayed_range = msg->range;
+  }
+  else if(msg->min_range == msg->max_range)  // Fixed distance ranger
+  {
+    if(msg->range < 0 && !std::isfinite(msg->range))     // NaNs and +Inf return false here: both of those should have 0.0 as the range
+    {
+      displayed_range = msg->min_range; // -Inf, display the detectable range
+    }
+  }
+
+The two messages you posted (range: 254.0 and range: 22.0) seem to fall outside both if clauses (not between min and max range, and also min != max), leaving displayed_range at 0.0.
+I think there is a cone in your RViz, it just has 0 length.
+
+Originally posted by gvdhoorn with karma: 86574 on 2015-09-08
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by russellc on 2015-09-08:
+Thanks gvdhoorn, it was my issue.  I modified my range values and it now shows up, albeit not as a 3D cone but as a 2d line emitter(view setting?)...none the less, solved!
+Comment by gvdhoorn on 2015-09-09:
+Well cone width if based on displayed_range and field_of_view (here), so there might be something not entirely correct with your publisher.
+Comment by russellc on 2015-09-09:
+Yes, I ended up adjusting my field_of_view setting to compensate for the new values and now I have the cone object emitter. Thanks.
+

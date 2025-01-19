@@ -1,0 +1,140 @@
+Q:
+
+ROS2 simple commander issue
+
+Hello i use ROS2 humble on ubuntu jammy 22.04
+I have been trying to build this for three days
+this is repository i tried to use:
+https://github.com/ros-planning/navigation2/tree/main/nav2_simple_commander
+terminal returns this:
+
+it seems like the function expects two arguments instead of four but if i change the code deleting two of them it gets worse because it lacks certain handlers
+Code from noise generator test cpp file
+  '''  
+#include <chrono>
+#include <thread>
+
+#include "gtest/gtest.h"
+#include "rclcpp/rclcpp.hpp"
+#include "nav2_mppi_controller/tools/noise_generator.hpp"
+#include "nav2_mppi_controller/models/optimizer_settings.hpp"
+#include "nav2_mppi_controller/models/state.hpp"
+#include "nav2_mppi_controller/models/control_sequence.hpp"
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include "../include/nav2_mppi_controller/tools/parameters_handler.hpp"
+
+// Tests noise generator object
+
+class RosLockGuard
+{
+public:
+  RosLockGuard() {rclcpp::init(0, nullptr);}
+  ~RosLockGuard() {rclcpp::shutdown();}
+};
+RosLockGuard g_rclcpp;
+
+using namespace mppi;  // NOLINT
+
+TEST(NoiseGeneratorTest, NoiseGeneratorLifecycle)
+{
+  // Tests shuts down internal thread cleanly
+  NoiseGenerator generator;
+  mppi::models::OptimizerSettings settings;
+  settings.batch_size = 100;
+  settings.time_steps = 25;
+
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("node");
+  node->declare_parameter("test_name.regenerate_noises", rclcpp::ParameterValue(false));
+  ParametersHandler handler(node);
+
+  generator.initialize(settings, false, "test_name", &handler);
+  generator.reset(settings, false);
+  generator.shutdown();
+}
+
+TEST(NoiseGeneratorTest, NoiseGeneratorMain)
+{
+  // Tests shuts down internal thread cleanly
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("node");
+  node->declare_parameter("test_name.regenerate_noises", rclcpp::ParameterValue(true));
+  ParametersHandler handler(node);
+  NoiseGenerator generator;
+  mppi::models::OptimizerSettings settings;
+  settings.batch_size = 100;
+  settings.time_steps = 25;
+  settings.sampling_std.vx = 0.1;
+  settings.sampling_std.vy = 0.1;
+  settings.sampling_std.wz = 0.1;
+
+  // Populate a potential control sequence
+  mppi::models::ControlSequence control_sequence;
+  control_sequence.reset(25);
+  for (unsigned int i = 0; i != control_sequence.vx.shape(0); i++) {
+    control_sequence.vx(i) = i;
+    control_sequence.vy(i) = i;
+    control_sequence.wz(i) = i;
+  }
+
+  mppi::models::State state;
+  state.reset(settings.batch_size, settings.time_steps);
+
+  // Request an update with no noise yet generated, should result in identical outputs
+  generator.initialize(settings, false, "test_name", &handler);
+  generator.reset(settings, false);  // sets initial sizing and zeros out noises
+  generator.setNoisedControls(state, control_sequence);
+  EXPECT_EQ(state.cvx(0), 0);
+  EXPECT_EQ(state.cvy(0), 0);
+  EXPECT_EQ(state.cwz(0), 0);
+  EXPECT_EQ(state.cvx(9), 9);
+  EXPECT_EQ(state.cvy(9), 9);
+  EXPECT_EQ(state.cwz(9), 9);
+
+    enter code here
+
+  // Request an update with noise requested
+  generator.generateNextNoises();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  generator.setNoisedControls(state, control_sequence);
+  EXPECT_NE(state.cvx(0), 0);
+  EXPECT_EQ(state.cvy(0), 0);  // Not populated in non-holonomic
+  EXPECT_NE(state.cwz(0), 0);
+  EXPECT_NE(state.cvx(9), 9);
+  EXPECT_EQ(state.cvy(9), 9);  // Not populated in non-holonomic
+  EXPECT_NE(state.cwz(9), 9);
+
+  EXPECT_NEAR(state.cvx(0), 0, 0.3);
+  EXPECT_NEAR(state.cvy(0), 0, 0.3);
+  EXPECT_NEAR(state.cwz(0), 0, 0.3);
+  EXPECT_NEAR(state.cvx(9), 9, 0.3);
+  EXPECT_NEAR(state.cvy(9), 9, 0.3);
+  EXPECT_NEAR(state.cwz(9), 9, 0.3);
+
+  // Test holonomic setting
+  generator.reset(settings, true);  // Now holonomically
+  generator.generateNextNoises();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  generator.setNoisedControls(state, control_sequence);
+  EXPECT_NE(state.cvx(0), 0);
+  EXPECT_NE(state.cvy(0), 0);  // Now populated in non-holonomic
+  EXPECT_NE(state.cwz(0), 0);
+  EXPECT_NE(state.cvx(9), 9);
+  EXPECT_NE(state.cvy(9), 9);  // Now populated in non-holonomic
+  EXPECT_NE(state.cwz(9), 9);
+
+  EXPECT_NEAR(state.cvx(0), 0, 0.3);
+  EXPECT_NEAR(state.cvy(0), 0, 0.3);
+  EXPECT_NEAR(state.cwz(0), 0, 0.3);
+  EXPECT_NEAR(state.cvx(9), 9, 0.3);
+  EXPECT_NEAR(state.cvy(9), 9, 0.3);
+  EXPECT_NEAR(state.cwz(9), 9, 0.3);
+
+  generator.shutdown();
+}
+'''
+
+I know it might be trivial issue but i am new to ubuntu and trying to make use of ros for me engineering project, thanks for help in advance
+
+A:
+
+You posted this on github and the issue was found. Cross linking answer: https://github.com/ros-planning/navigation2/issues/4002
+

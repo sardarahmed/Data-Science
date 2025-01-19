@@ -1,0 +1,162 @@
+Q:
+
+[ros2] Test for correct node_name and namespace
+
+I am writing integration test cases for my ROS service. Please see the sample code snippet below:
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from threading import Thread
+import unittest
+
+from example_interfaces.srv import AddTwoInts
+import launch
+import launch_ros
+import launch_ros.actions
+import launch_testing.actions
+import pytest
+import rclpy
+
+@pytest.mark.rostest
+def generate_test_description():
+    minimal_service_node = launch_ros.actions.Node(
+        package='examples_rclpy_minimal_service',
+        namespace='my_namespace',
+        executable='service_member_function',
+        name='minimal_service',
+    )
+    return (
+        launch.LaunchDescription(
+            [
+                minimal_service_node,
+                launch_testing.actions.ReadyToTest(),
+            ]
+        ),
+        {
+            'minimal_service': minimal_service_node,
+        },
+    )
+
+class TestMinimalService(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        rclpy.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        rclpy.shutdown()
+
+    def setUp(self):
+        self.node = rclpy.create_node('test_minimal_service')
+
+        # the following line is a pseudo code
+        self.alll_node_names_and_namespaces = rclpy.get_node_names_and_namespaces()
+
+        self.spin_thread = Thread(target=rclpy.spin, args=(self.node,))
+        self.spin_thread.start()
+
+    def tearDown(self):
+        self.node.destroy_node()
+
+    def test_node_namespaces(self):
+        # test whether node is having with correct namespace
+        namespaces = [namespace for _, namespace in self.alll_node_names_and_namespaces]
+        self.assertIn('my_namespace', namespaces)
+
+    def test_node_name(self):
+        # test whether node is having with correct name
+        node_names = [node_name for node_name, _ in self.alll_node_names_and_namespaces]
+        self.assertIn('minimal_service', node_names)
+
+Question
+How to test whether my node is having with correct name and namespace?
+Additional Info
+Below is the workspace structure:
+.
+├── build
+├── install
+├── log
+└── src
+    └── minimal_service
+        ├── CHANGELOG.rst
+        ├── examples_rclpy_minimal_service
+        │   ├── __init__.py
+        │   └── service_member_function.py
+        ├── package.xml
+        ├── README.md
+        ├── resource
+        │   └── examples_rclpy_minimal_service
+        ├── setup.cfg
+        ├── setup.py
+        └── test
+            ├── test_copyright.py
+            ├── test_flake8.py
+            ├── test_pep257.py
+            └── test_service_member_function.py  <- This is the newly added file
+
+The package minimal_service has been taken from ros2/examples.
+Other Info
+
+Operating System: Ubuntu 20.04.4 LTS
+Installation type: binaries
+Version or commit hash: ROS Foxy
+DDS implementation: Default
+Client library: rclpy
+
+Originally posted by ravijoshi on ROS Answers with karma: 1744 on 2022-07-28
+Post score: 0
+
+A:
+
+You're real close:
+self.alll_node_names_and_namespaces = self.node.get_node_names_and_namespaces()
+
+which returns a list of tuples such as: [('test', '/'), ('talker', '/my/test/ns')]. After that, everything else looks right.
+If you're still not getting any data, you may not be giving the node enough time to actually accumulate discovery information. You may consider replacing your thread with an rclpy.spin_once(self.node, timeout_sec=1.0) to block for at most a second, giving the node some time to discover other nodes.
+
+Originally posted by ChuiV with karma: 1046 on 2022-08-09
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ravijoshi on 2022-08-09:
+Thanks for your answer. I tried, but it failed. Please see shortened log below:
+$ launch_test src/minimal_service/test/test_service_member_function.py 
+test_node_name (test_service_member_function.TestMinimalService) ... 
+FAIL
+test_node_namespaces (test_service_member_function.TestMinimalService) ... FAIL
+
+======================================================================
+FAIL: test_node_name (test_service_member_function.TestMinimalService)
+----------------------------------------------------------------------
+AssertionError: 'minimal_service' not found in ['test_minimal_service']
+
+======================================================================
+FAIL: test_node_namespaces (test_service_member_function.TestMinimalService)
+----------------------------------------------------------------------
+AssertionError: 'my_namespace' not found in ['/']
+
+--------------------------------------------------------------------
+
+Comment by ChuiV on 2022-08-09:
+Three things:
+
+You need to add some sort of spin prior to getting the node names and types. I did the following, but there's probably sleeker ways to do it:
+ def setUp(self):
+     self.node = rclpy.create_node('test_minimal_service')
+     rclpy.spin_once(self.node, timeout_sec=2.0)
+     self.alll_node_names_and_namespaces = self.node.get_node_names_and_namespaces()
+
+You'll need to do self.assertIn('/my_namespace', namespaces) instead of self.assertIn('my_namespace', namespaces)
+
+I could only get these tests to run via colcon test. Running them through clion's test runner wouldn't work for me. (in case you're running it some other way.)
+
+With those three things, these tests work for me.
+Comment by ravijoshi on 2022-08-10:
+Thanks a lot. 1. I used launch_test with the modifications you suggested, and it worked. 2. I used the colcon test, it showed endless warnings, and I certainly had no idea about the status of my test cases. May I request you to look at the logs in PasteBin, please? 3. It seems that self.spin_thread is not required in this case. Using rclpy.spin_once before calling get_node_names_and_namespaces apparently enough.
+Comment by ChuiV on 2022-08-10:
+The pytest warnings about pathlib I usually just ignore... But it seems that those have been fixed in galactic, Cause I'm not seeing them there. When using colcon test I'll look at the log/latest_test/example_rclpy_minimal_service/streams.log file to get a better understanding of what's going on.
+Comment by ravijoshi on 2022-08-13:
+The colcon test shows similar warnings in ROS Galactic in Ubuntu 20.04.4 LTS as well. I checked the "streams.log" file and can not find any information about my test case "test_node_namespaces". So I am sharing the streams.log file and test_service_member_function.py for your reference. BTW, in the same topic, may I request you to look at here, please? My goal is to write integration test cases for a ROS service. Thank you very much.
+

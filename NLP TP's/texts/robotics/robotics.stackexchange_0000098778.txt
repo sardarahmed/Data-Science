@@ -1,0 +1,120 @@
+Q:
+
+Error calling Service in rospy
+
+Been trying to call this Service implemented in the following code as such:
+# instantiate a service server to modify the robots in gazebo
+two_wheel_robot_service = rospy.Service("/morph_sim/two_wheel_robot_update", two_wheel_robot_update, twoWheelRobotUpdateCallback, (add_model_client, delete_model_client, two_wheel_robot_urdf))
+
+The call to the service is over here:
+# instantiate a service client
+two_wheel_robot_update_client = rospy.ServiceProxy("/morph_sim/two_wheel_robot_update", two_wheel_robot_update)
+two_wheel_robot_update_srv_msg = two_wheel_robot_updateRequest()
+[...]
+# prepare the service message
+two_wheel_robot_update_srv_msg.update_code = 1
+two_wheel_robot_update_srv_msg.add_mode = two_wheel_robot_updateRequest.ADD_MODE_RANDOM
+two_wheel_robot_update_srv_msg.half_range = half_range
+two_wheel_robot_update_srv_msg.position_2d = []
+
+# THE SERVICE CALL
+call_service = two_wheel_robot_update_client(two_wheel_robot_update_srv_msg)
+[...]
+
+The two_wheel_robot_update.srv file:
+int32 CODE_DELETE = -1
+int32 CODE_DELETE_ALL = 0
+int32 CODE_ADD = 1
+bool ADD_MODE_RANDOM = False
+bool ADD_MODE_SPECIFIED = True
+int32 update_code
+bool add_mode
+float64 half_range
+float64[] position_2d
+---
+uint8 SUCCESS = 1
+uint8 ADD_FAIL_NO_RESPONSE = 2
+uint8 ADD_FAIL_TOO_CROWDED = 3
+uint8 ADD_FAIL_OCCUPIED = 4
+uint8 DELETE_FAIL_NO_RESPONSE = 5
+uint8 DELETE_FAIL_EXCEED_QUANTITY = 6
+uint8 FAIL_OTHER_REASONS = 7
+uint8 response_code
+
+However, I keep getting this error because of the call, no matter what I try:
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/threading.py", line 801, in __bootstrap_inner
+    self.run()
+  File "/usr/lib/python2.7/threading.py", line 754, in run
+    self.__target(*self.__args, **self.__kwargs)
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/rospy/impl/tcpros_service.py", line 667, in handle
+    requests = transport.receive_once()
+  File "/opt/ros/melodic/lib/python2.7/dist-packages/rospy/impl/tcpros_base.py", line 758, in receive_once
+    raise TransportException("receive_once[%s]: unexpected error %s"%(self.name, str(e)))
+TransportException: receive_once[/morph_sim/two_wheel_robot_update]: unexpected error an integer is required
+
+Please help me solve this, I have no idea what to do, I have tried everything.
+
+Originally posted by HatchEm27998 on ROS Answers with karma: 3 on 2021-04-10
+Post score: 0
+
+Original comments
+Comment by abhishek47 on 2021-04-10:
+Does it help if two_wheel_robot_update_srv_msg.update_code is assigned a 1 that has been type-casted to type int32?
+Comment by HatchEm27998 on 2021-04-11:
+It did not work. Even when I'm giving it a value directly from the .srv file, it is still throwing me that error. I made the following change:
+two_wheel_robot_update_srv_msg.update_code = two_wheel_robot_updateRequest.CODE_ADD
+
+A:
+
+Perhaps spaces are not allowed between the constant name and the constant value.
+Try the following and it may work.
+int32 CODE_DELETE=-1
+int32 CODE_DELETE_ALL=0
+int32 CODE_ADD=1
+bool ADD_MODE_RANDOM=False
+bool ADD_MODE_SPECIFIED=True
+int32 update_code
+bool add_mode
+float64 half_range
+float64[] position_2d
+---
+uint8 SUCCESS=1
+uint8 ADD_FAIL_NO_RESPONSE=2
+uint8 ADD_FAIL_TOO_CROWDED=3
+uint8 ADD_FAIL_OCCUPIED=4
+uint8 DELETE_FAIL_NO_RESPONSE=5
+uint8 DELETE_FAIL_EXCEED_QUANTITY=6
+uint8 FAIL_OTHER_REASONS=7
+uint8 response_code
+
+ref:
+http://wiki.ros.org/srv#Service_Description_Specification
+Update
+Two_wheel_robot_service = rospy.Service("/morph_sim/two_wheel_robot_update", two_wheel_robot_update, twoWheelRobotUpdateCallback, (add_ model_client, delete_model_client, two_wheel_robot_urdf))
+
+The last argument is the buffer size, which seems to take an integer type instead of a list. If it is not specified, the default value is 65536. Thus
+Two_wheel_robot_service = rospy.Service("/morph_sim/two_wheel_robot_update", two_wheel_robot_update, twoWheelRobotUpdateCallback)
+
+If you haven't tried it, could you please try
+ref: http://wiki.ros.org/rospy/Overview/Services#Providing_services
+
+Originally posted by miura with karma: 1908 on 2021-04-11
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by HatchEm27998 on 2021-04-11:
+This did not work, it is still giving me the same error, even if I pass an empty two_wheel_robot_updateRequest message to the ServiceProxy it still throws the same error..
+Comment by miura on 2021-04-11:
+Thank you for trying it. I've added a new idea.
+Comment by HatchEm27998 on 2021-04-11:
+But then how am I supposed to pass the additional parameters to the service callback function?
+Comment by miura on 2021-04-11:
+The quickest way to do this is to make add_model_client, delete_model_client, and two_wheel_robot_urdf global variables and access them from the twoWheelRobotUpdateCallback.
+I'm sure there are other ways to do this, but it is case by case.
+Comment by HatchEm27998 on 2021-04-11:
+Yes, I did this just before I got your reply, and it solved the problem THANK YOU SO MUCH!
+Comment by miura on 2021-04-11:
+Congratulations.
+

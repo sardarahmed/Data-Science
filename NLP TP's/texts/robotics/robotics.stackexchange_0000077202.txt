@@ -1,0 +1,241 @@
+Q:
+
+How to improve the reliability of my robot's localization?
+
+Context
+I have a differential drive robot with 4 wheels, similar to the Clearpath Jackal. It moves in a closed environment in indoor and outdoor, and the map is known. It is equipped with a laser range, an IMU, and odometry is computed thanks to wheel encoders. The robot is also equipped with a GPS, but I would prefer not to use it for now.
+Some area of the map (outdoor) are such that the robot walk through "weak" localization phases due too lack of landmarks.
+I am trying to improve the localization chain, to be more robust to these "weak" localization phases.
+Basically what I am trying to do is to be able to navigate in a degraded mode whitout being completely lost (i.e. AMCL could be lost temporarily but tf map -> odom would still be available).
+Setup
+
+I use a first "local" robot_localization instance to fuse odom and imu data. This outputs what I called /odom/filtered.
+Next I have an AMCL instance, which takes as input laser range measurements and /odom/filtered.
+Then I fuse the AMCL position, odom and imu with a second "global" robot_localization instance.
+The first local ekf_localizer provides odom -> base_link transform
+The second global ekf_localizer provides map -> odom
+The output of the first local ekf_localization is really good as I can see in rviz (The robot return to about 1m from it's departure point after a loop of 93m x 35m, cf image).
+
+odom(blue) vs odom filtered(red)
+
+Os: Ubuntu Server 14.04 with ROS Indigo
+Localization: robot_localization (v2.3.0) package with AMCL (v 1.12.13)
+Visualization: To visualize the covariance of the position and odometry, the rviz_plugin_covariance is used.
+
+AMCL Covariance problem
+All this chain is based on the covariance of the respective measurements. So the covariance matrix values must be as representative of the reality as possible and it seems that's not the case.
+At first I thought that the position covariance provided by AMCL was an estimation of how confident AMCL is on the current robot position in the map, but I am not sure. By displaying the covariance, I see that the robot localization is inside an ellipsoid about 20 to 30cm in diameter when it is well localized.
+Note: For readability purpose,  the displayed ellipsoid is 3sigma (estimated position +- 3 times the standard deviation)
+
+When AMCL begin to get lost the covariance increase significantly,
+
+and then decrease to, again, 20 to 30 cm in diameter, but with AMCL sometimes being really lost !
+
+Why this strange behavior ? This causes the global ekf_localization to "trust" the position more than the odometry.
+In an attempt to workaround this behavior, I tried a naive approach : if the covariance ellipsoid is more than 50cm in diameter, I stop sending the AMCL position to the global ekf node. When the diameter is less than 50cm, I send the current estimated positon as initial position of AMCL. In some way it works well, but the reinitialization of AMCL is worse than expected : most of the time it founds an erroneous position. I need a way to estimate the quality of the AMCL output.
+I found this : https://github.com/dejanpan/snap_map_icp which is a node which performs an ICP (Iterative Closest Point) to get a corrected pose and reset amcl particule distribution, but I haven't tried it yet.
+Global ekf covariance
+Another problem is the value of the global ekf covariance: when I momentarily disable AMCL pose input, the covariance begin to increase. That's normal, because the filter is only fed with odom and imu measurements. But it increase a lot: for example, the robot moving in strait line, after a few meters the incertitude ellipsoid displayed can reach several meters. This does not reflect the reality of the output of the first local ekf.
+Is this a normal behavior ? or my covariance values for odom and or imu are bad ?
+
+odom.twist.covariance[covIndex(0, 0)] = 0.002304;
+odom.twist.covariance[covIndex(1, 1)] = 1e-6; //Very small because non holonomous robot
+odom.twist.covariance[covIndex(2, 2)] = 1e-6; //very small because not measured ?
+odom.twist.covariance[covIndex(3, 3)] = 1e-6; //very small because not measured ?
+odom.twist.covariance[covIndex(4, 4)] = 1e-6; //very small because not measured ?
+odom.twist.covariance[covIndex(5, 5)] = 0.00188411;
+
+The covariance values for linear speed and angular speed are the result of specific measurement, so these are good.
+I have a doubt about (2,2) (3,3) and (4,4) if they need to be really big or really small... But it's not so important as the corresponding value are disabled in input of the ekf node.
+//Position covariance is supposed to increase because robot's position drifts ??`
+odom.pose.covariance[covIndex(0, 0)] = 0.01;
+odom.pose.covariance[covIndex(1, 1)] = 0.01;
+odom.pose.covariance[covIndex(2, 2)] = 1e-6;
+odom.pose.covariance[covIndex(3, 3)] = 1e-6;
+odom.pose.covariance[covIndex(4, 4)] = 1e-6;
+odom.pose.covariance[covIndex(5, 5)] = 0.1;
+
+For now the odometry pose covariance values are fixed, but I think they should increase over time. If I understand, fixed values should give me a smaller covariance than the real one, so this does not explain the big covariance values I have.
+IMU Covariance (Computed from datasheet parameters):
+imu angular_velocity_covariance(0, 0) = 2.7415569547883933e-07
+imu angular_velocity_covariance(1, 1) = 2.7415569547883933e-07
+imu angular_velocity_covariance(2, 2) = 2.7415569547883933e-07
+linear_acceleration_covariance(0, 0) = 7.789801020408049e-05
+linear_acceleration_covariance(1, 1) = 7.789801020408049e-05
+linear_acceleration_covariance(2, 2) = 7.789801020408049e-05
+
+Configuration of the first "local" EKF node:
+frequency: 20 
+two_d_mode: true
+
+# X, Y, Z
+# roll, pitch, yaw
+# X vel, Y vel, Z vel
+# roll vel, pitch vel, yaw vel
+# X accel, Y accel, Z accel
+
+#Odometry input config 
+odom0: /odom 
+odom0_config: [false, false, false,
+               false, false, false,
+               true, true, false,
+               false, false, true,
+               false, false, false] 
+odom0_differential: false 
+odom0_relative: true
+
+#IMU input config 
+imu0: /imu_data 
+imu0_config: [false, false, false,
+              false, false, false,
+              false, false, false,
+              true, true, true,
+              false, false, false]
+imu0_differential: false 
+imu0_relative: true 
+imu0_remove_gravitational_acceleration: false
+
+#Frames config 
+odom_frame: odom 
+base_link_frame: base_link 
+world_frame: odom
+
+Configuration of the "global" EKF node:
+frequency: 10
+two_d_mode: true
+
+# X, Y, Z
+# roll, pitch, yaw
+# X vel, Y vel, Z vel
+# roll vel, pitch vel, yaw vel
+# X accel, Y accel, Z accel
+
+#Odometry input config
+odom0: /odom
+odom0_config: [false, false, false,
+               false, false, false,
+               true, true, false,
+               false, false, true,
+               false, false, false]
+odom0_differential: false
+odom0_relative: true
+
+#IMU input config
+imu0: /imu_data
+imu0_config: [false, false, false,
+              false, false, false,
+              false, false, false,
+              true, true, true,
+              false, false, false]
+imu0_differential: false
+imu0_relative: true
+imu0_remove_gravitational_acceleration: false
+
+#Pose from localizer
+pose0: /localizer/pose_filtered
+pose0_config: [true, true, false,
+               false, false, true,
+               false, false, false,
+               false, false, false,
+               false, false, false]
+pose0_differential: false
+pose0_relative: false
+
+#Frames config
+odom_frame: odom
+base_link_frame: base_link
+world_frame: map
+
+If you have any thought about all this setup, it would be really appreciated.
+Thanks in advance
+Update1:
+Relative to @TomMoore answer.
+I tuned the process_noise_covariance for both of the ekf_localization nodes, and it improved a lot the resulting output covariance.
+Edit: I updated a new screenshot showing when all data is fused (odom, imu, amcl pose) in green and when only odom and imu are fused in orange.
+
+I added in both configuration files :
+process_noise_covariance: [0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001]
+
+Originally posted by Inounx on ROS Answers with karma: 293 on 2016-11-08
+Post score: 16
+
+Original comments
+Comment by Tom Moore on 2016-11-08:
+Great question! I'll need some time to look over it, but I'll respond.
+Comment by M@t on 2016-11-08:
+You've done a great job clearly outlining your problem and providing plenty of explanation. I probably won't be able to help too much, but if you can provide a short bagfile or two with all your data that will definitely help others answer your question.
+Comment by Inounx on 2016-11-09:
+Thanks, I will try to make a small package with everything needed included, to easily replay this scenario.
+Comment by Inounx on 2016-11-09:
+Here is the catkin package with a rosbag included: localization_replay.tar.bz2
+All the config is done (rviz too), just add to a catkin workspace, build, and roslaunch localization_replay localization_replay.launch
+Comment by Inounx on 2016-11-14:
+I have some warnings from both robot_localization nodes : Transform from imu to base_link was unavailable for the time requested. Using latest instead. I think it comes from the non-synchronization between /odom /imu_data and /amcl_pose, but maybe I am wrong ?
+Comment by Tom Moore on 2016-11-14:
+Sounds to me like you are using a regular tf static_transform_broadcaster instead of a tf2 one. Is that true?
+Comment by Inounx on 2016-11-14:
+I am using robot_state_publisher with an urdf model. The default parameters are used, so use_tf_static is false. I didn't heard about tf2 before, so yes I guess, I am using regular tf. I will look into it.
+Comment by Tom Moore on 2016-11-17:
+Why do I see lateral "jumps" in your robot pose as it goes around the curve? Is the amcl pose estimate being fused at that point?
+Comment by Inounx on 2016-11-17:
+Yes exactly, what is displayed here is the output of the global ekf_localization node. I am trying to find a good way to display with rviz when amcl pose is fused, and when it's not (color change?), as the transition between the two is not always clear.
+Comment by adityakamath on 2017-06-22:
+Thanks for such a detailed description of your problem! I have been working on something similar and your catkin package helped me solve some issues in my ROS config. I would like to reference and acknowledge your work in my master thesis. Can you give me your email, so I can contact you?
+Comment by linusnie on 2017-06-27:
+Hi @inounx! This is off topic, but what do you use to plot the covariance ellipsoids in your pictures? I have been looking for something like this, but afaik it is not possible in the standard rviz.
+Comment by Inounx on 2017-07-10:
+@adityakamath Hi, my email is in the package.xml in the archive you downloaded.
+@linusnie Hi, It is written in the fist post... It rviz_plugin_covariance, works with indigo, but not with kinetic AFAIK
+Comment by fj138696 on 2017-07-31:
+HI @Inounx! may i know what IMU model you are using? thanks
+
+A:
+
+Here are the last modifications I did to improve this localization system, as I think it is not useful to let this post open forever.
+Note: this is not (for now) a complete solution, as there are still some points to be improved.
+I adapted and tried the icp I mentionned in my question : in practice, the results are not so good. It is computationally expensive and does not really improve AMCL localization. I had some cases where the ICP gave worse results than AMCL, so I decided to not use it.
+To check the AMCL output I project the lidar point cloud :
+
+once to the position given by AMCL
+once to the global fused position (output of global ekf node)
+
+and check how much it matches with the map : if AMCL is the best match, position is sent to the global ekf to be fused.
+if global ekf is the best match, I send the current global position to amcl.
+If neither ekf match nor amcl match are good, we stay in "degraded" mode for a maximum distance waiting to get again a good match.
+In pratice it works pretty well, excepted in open areas where a certain distance is travelled and AMCL do not manage to re-localize successfully. The difficulty here is to set a good threshold to consider when a match is "good enough" or not.
+Improvement to be made
+Some improvement can still be made :
+
+When AMCL begin to be lost its computation time to give a position increase significantly, maybe it can be used as another indicator to detect when it is lost. It is kind of ugly because setting a threshold here is dependent on the hardware and actual computation load from other nodes...
+
+Keep track of the count of "landmark" points in the map in a radius around the robot, and if there are too few points, stop fusing AMCL poses as there is not enough landmarks to be localized.
+
+Originally posted by Inounx with karma: 293 on 2017-05-05
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by Lotfi_Z on 2019-06-05:
+Hi Inoux,
+First, i have to tell that you did a very good job in the AMCL issue explanation, i have facing the same problem and i think that it can be solved with a point to map ICP, do you think that you can share with us the method that you used or some tips on how to achieve that ? Thank you very much
+Comment by Inounx on 2019-06-10:
+@Lofti_Z Hi, I didn't use the ICP in the end, check the https://github.com/dejanpan/snap_map_icp package, it should give you a good start.
+Comment by Danny_PR2 on 2021-03-03:
+Thanks for the excellent question. Could you please share how does the system operates during "degraded mode" ?
+Comment by Muhd Hizam on 2021-11-17:
+Hi, this is an excellent question. Sorry if my query is very dated, but can I ask how did you check whether the AMCL or global EKF provides the best match to the lidar point cloud? Did you use any algo to calculate some metric score?
+

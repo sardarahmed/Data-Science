@@ -1,0 +1,96 @@
+Q:
+
+base_local_planner simplest navigation (no curve lines)
+
+hi there,
+i'm pretty new to ros world and i want my robot to navigate only straight+inplace rotation. I noticed that with base_local_planner the robot start to go navigate forward before finishing the orientation. How can i accomplish this goal?
+thanks in advance
+
+Originally posted by aerydna on ROS Answers with karma: 51 on 2016-07-26
+Post score: 2
+
+Original comments
+Comment by Humpelstilzchen on 2016-07-27:
+Not sure what you want, but try the carrot planner
+Comment by aerydna on 2016-07-28:
+you mean that is not possible with base_local_planner or dwa to navigate the robot only on straight lines? anyway i'll try it
+Comment by aerydna on 2016-07-28:
+@Humpelstilzchen  what i'm searching is a local planner that navigate the robot in a full-in-place-rotation-first-then-go-ahead way. with the robot path that  always looks like a polygon
+
+A:
+
+TL;DR: Use a SimpleActionClient to send a MoveBaseGoal to an instance of the move_base node. There's a tutorial that shows you how to do this in C++ here or look below for the python equivalent. In the target pose you can specify a pose and an orientation. What you want to do is calculate the heading between "goalN" and "goalN+1" then send your robot to goalN with that heading. So that when the robot successfully gets to goalN it will automatically rotate on the spot to face goalN+1.
+Of course, MoveBase goals work with any heading you provide, so your robot doesn't have to rotate to face anything specifically. But if your robot is already facing the next goal, that usually ensures that the path-planner will plot a straight line directly to it.
+
+Full explanation:
+So you want to achieve a trajectory that looks something like this?
+
+I've just managed to achieve this myself, and there isn't really a good explanation anywhere of how to do all this so I'll try to quickly run you through it.
+What you will need
+
+A navigation stack for your robot. Doesn't really matter how you do it as long as you have a map, an odometry stream for your robot in that map, and an instance of the move_base node. I'm personally using the robot_localization package and a pre-made launch file for the move_base node that came with the robot I'm using.
+A node which acts as a SimpleActionClient. You will have to write this yourself, but it's relatively straight forward as long as your navigation stack works properly.
+
+Writing the SimpleActionClient
+There is already a tutorial on how to do this in C++ here, but I'm using Python so that's what my explanation will be in.
+Essentially the actionlib package is a framework for writing your own goal and feedback system. The client sends the goal (usually from your laptop) and the server typically runs on the robot, executes the goal and provides feedback. The goal can be anything from moving the robot base to moving an arm. There is already a simplified version of this package with a few basic goals built in, and this is what we will be using. More specifically, we want to use the 'MoveBaseAction' goal that tells the move_base node where to send the robot in the world.
+The code I use (roughly para-phrased) is here:
+# Important modules to import
+import rospy
+import actionlib
+from move_base_msgs.msg import *
+
+# Create your SimpleActionClient and boot a default version of the SimpleActionServer
+client = actionlib.SimpleActionClient('move_base', MoveBaseAction) 
+client.wait_for_server()
+
+def send_robot_to_goal(X, Y, heading):
+    # Cancel any pre-existing goals (don't want them to conflict)
+    self.client.cancel_all_goals()    
+
+    # Convert to a heading (yaw) to quaternion
+    yaw = heading
+    roll = 0.0
+    pitch = 0.0
+    quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+   
+    # Create a new goal
+    goal = MoveBaseGoal()
+    goal.target_pose.header.frame_id = 'map'          # The frame you want to navigate in
+    goal.target_pose.header.stamp = rospy.Time.now()
+    goal.target_pose.pose.position.x = float(X)        # X coordinate to travel to
+    goal.target_pose.pose.position.y = float(Y)        # Y coordinate to travel to
+    goal.target_pose.pose.orientation.x = quaternion[0]
+    goal.target_pose.pose.orientation.y = quaternion[1]
+    goal.target_pose.pose.orientation.z = quaternion[2]
+    goal.target_pose.pose.orientation.w = quaternion[3]
+
+    # Send goal to move_base node
+    self.client.send_goal(goal)
+
+The heading can be whatever you want, and you can calculate it however you want. I think from memory ROS expects roll/pitch/yaw to be of the format +0 >> +180 >> -180 >> -0 instead of 0 >> 360 degrees. I prefer to work with 0 >> 360 so I've written a lot of my own functions for the heading/quaternion calculations.
+X,Y are the points you want the robot to move to in the 'map' frame. This should be the same frame created by your navigation stack, and the one that all your odometry data is reported in.
+Also, something to be mindful of, the heading the robot will rotate to is it's heading in the map frame, which may be different from magnetic heading depending on how you set up your navigation stack
+Making  move_base plot straight paths
+All this by itself won't achieve anything unless you understand a little bit about how move_base works. If move_base is ordered to move the robot to a point it isn't currently facing, it will bring the robot around in a sweeping arc before heading towards the goal - as I'm sure you've already seen.
+However, if the robot is already facing the goal, then it will (usually) just plot a path straight to the goal, resulting in odometry similar to the image above.
+So, we can force the robot to travel everywhere in straight lines by making it face the next point your're going to send it to. For every point you want to send the robot to - say "goalN", calculate the heading between "goalN" and 'goalN+1" and send your robot to the X,Y position of "goalN' with that heading. When the robot gets to the X,Y coordinate, it will rotate on the spot to face the heading you specified. But the key part being that it will only rotate on the spot after you've already arrived at X,Y.
+What I've described uses a single move goal to execute a translation (forward movement) and then a rotation. In theory of course, you can break this down into two separate goals  and reverse the order, i.e. a rotation and then a translation. The rotation is just a move goal where X,Y are the current X,Y coordinates of the robot in the 'map' frame. However, personally I've found this doesn't work most of the time (if told to rotate on the spot the robot simply doesn't move), and it's something I'm still working on so hopefully I'll be able to update this again soon.
+Hope this explanation helps.
+
+Originally posted by M@t with karma: 2327 on 2016-07-31
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by aerydna on 2016-08-01:
+first of all, thank you for the answer. what you describe seems to work only with multiple goal so i presume i have to (by writing a simple action client) split a single goal in two sub-goal the first for the rotation and the second for the linear movement.
+Comment by aerydna on 2016-08-01:
+i'm a bit disappointed for base_local_planner (and the other local planner too) not to having a simple flag to work in this way though
+Comment by M@t on 2016-08-01:
+You're welcome, and you're absolutely right. You can issue a goal where X,Y is the current position and only the heading is different. But for reasons I don't quite understand, this doesn't seem to work for me.
+Comment by stevemartin on 2018-10-26:
+@M@t Hi, did you manage to accomplish this?
+Comment by M@t on 2018-10-29:
+Hi @stevemartin, are you asking if I have achieved "in-place" rotation using move_base? I haven't actually tried to do that in a while, but I know it is possible because you can do it with the simulated jackal in  these Clearpath tutorials.
+

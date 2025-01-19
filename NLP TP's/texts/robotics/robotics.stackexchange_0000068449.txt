@@ -1,0 +1,145 @@
+Q:
+
+Why doesn't my node publish to the topic cmd_vel?
+
+Hi,
+I'm trying to send commands to an Ardrone through cmd_vel topic. But I don't know why it isn't working, here is my code:
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <cv_bridge/cv_bridge.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Point.h>
+#include <std_msgs/Empty.h>
+#include <std_msgs/String.h>
+#include <sstream>
+#include <fstream>
+using namespace std;
+
+int posY,posZ;
+float ey,ez,ex,dey,eypa,dex,expa,dez,ezpa,iex,iey,iez,uy,ux,uz,posX;
+geometry_msgs::Twist twist_msg;
+geometry_msgs::Point point_msg;
+std_msgs::Empty emp_msg;
+
+    void posCallback(const geometry_msgs::Point& msg)
+    {
+        ros::NodeHandle neu;
+        ros::Rate loop_rate(50);
+        posY=msg.x;
+        posZ=msg.y;
+        posX=msg.z;
+        //printf("[%d,%d,%f] \n",posY,posZ,posX);
+        ros::Publisher pub_twist= neu.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
+
+        ey=(319-posY)/320.0;
+        ez=(179-posZ)/180.0;
+        ex=(40.0-posX)/40.0;
+        dey=-(ey-eypa)/1.0;
+        dez=-(ez-ezpa)/1.0;
+        dex=-(ex-expa)/1.0;
+        iey=iey+ey;
+        iez=iez+ez;
+        iex=iex+ex;
+        uy=ey+dey;
+        ux=ex/4+dex;
+        uz=ez+dez;
+        if(abs(uy)>1.0)
+        {
+            uy=uy/abs(uy);              
+        }
+        if(abs(ux)>1.0)
+        {
+            ux=ux/abs(ux);              
+        }
+        if(abs(uz)>1.0)
+        {
+            uz=uz/abs(uz);              
+        }
+        twist_msg.angular.z=uy;
+        twist_msg.linear.x=ux;
+        //ROS_INFO("Ball Position:[%f,%f,%f,%f]",ex,dex,iex,ux);                            
+        pub_twist.publish(twist_msg);
+        ros::spinOnce();
+    }
+
+int main(int argc, char **argv)
+{
+    //Initializing ROS
+    ros::init(argc, argv, "control");
+    ros::NodeHandle nh;
+    ros::Rate loop_rate(50);    
+
+    twist_msg.linear.y=0.0;
+    twist_msg.linear.x=0.0;
+    twist_msg.linear.z=0.0;
+    twist_msg.angular.z=0.0;
+    twist_msg.angular.y=0.0;
+    twist_msg.angular.x=0.0;
+
+    eypa=0.0;
+    expa=0.0;
+    ezpa=0.0;
+    iex=0.0;
+    iey=0.0;
+    iez=0.0;
+        
+    ros::Subscriber sub = nh.subscribe("color_position", 100, posCallback);
+    ros::spin();
+}
+
+The idea is that the node subscribe to color_tracking topic, and gets the reference, then with that reference it computes a pid controler, and send it to the drone via cmd_vel. But when i echo cmd_vel, it doesnt gets anything
+Again I think is a problem of spin() and spinOnce(), but i have no idea.
+Hope someone can help me, thanks.
+
+Originally posted by erivera1802 on ROS Answers with karma: 59 on 2015-07-04
+Post score: 0
+
+A:
+
+You instantiate a new publisher everytime your callback posCallback is called. There is a time gap between instantiating a publisher till a publish call to it actually publishes, as things are threaded behind the scenes. So what happens everytime your posCallback is called:
+
+Publisher pub_twist gets instantiated
+publish() is called on the instantiated pub_twist publisher at the end of your callback. The publisher is not set up correctly yet at that point in time, so nothing actually gets published.
+pub_twist goes out of scope and it's
+destructor is called as it is a local
+variable of your posCallback.
+
+What you can do is make the Publisher a global variable and use it. Minimal example:
+#include <ros/ros.h>
+[...]
+
+ros::Publisher pub_twist;
+
+[...]
+    void posCallback(const geometry_msgs::Point& msg)
+    {
+        [...]
+        pub_twist.publish(twist_msg);
+    }
+
+int main(int argc, char **argv)
+{
+    [...] 
+
+    pub_twist= nh.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
+
+    ros::Subscriber sub = nh.subscribe("color_position", 100, posCallback);
+    ros::spin();
+}
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2015-07-04
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by erivera1802 on 2015-07-05:
+I tried your solution, but it shows me this error:
+call to publish() on an invalid publisher
+I think its because i dont do the advertise stuff in the callback function but in the main, then it doesnt configure correctly the publisher.
+Any idea?
+Comment by erivera1802 on 2015-07-05:
+I writed the code again and your solution worked perfectly! Thank you Stefan
+

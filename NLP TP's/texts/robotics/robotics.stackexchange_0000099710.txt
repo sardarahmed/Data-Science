@@ -1,0 +1,76 @@
+Q:
+
+Using FastDDS discovery server through SSH tunnel to remote PC
+
+I've got a Windows 10 notebook and a remote Linux PC.
+I can connect to the Linux PC from Windows with SSH over VPN connection.
+Linux PC is also behind a firewall, however, it is possible to open ports in it.
+I'd like to use FastDDS discovery server to run ROS2 nodes on Windows and Linux.
+Is it possible?
+How should I configure firewall and SSH-tunnel?
+I was following tutorial at https://docs.ros.org/en/foxy/Tutorials/Discovery-Server/Discovery-Server.html#run-this-tutorial
+Current setup that is not working.
+
+SSH and firewall configuration
+I use Putty for SSH, I add SSH tunnel to port 11811:localhost:11811
+UDP port range 42900 - 43000 is opened in the firewall.
+
+Open SSH connection to Linux and run discovery server
+ $ . /opt/ros2/foxy/local_setup.zsh
+    $ export ROS2_DOMAIN_ID=142
+ $ fastdds discovery --server-id 0
+
+Open SSH connection to Linux and run listener node
+ $ . /opt/ros2/foxy/local_setup.zsh
+    $ export ROS2_DOMAIN_ID=142
+ $ export ROS_DISCOVERY_SERVER=127.0.0.1:11811
+    $ ros2 run demo_nodes_cpp listener --ros-args --remap __node:=listener_discovery_server
+
+Open SSH connection to Linux and run talker node
+ $ . /opt/ros2/foxy/local_setup.zsh
+    $ export ROS2_DOMAIN_ID=142
+ $ export ROS_DISCOVERY_SERVER=127.0.0.1:11811
+    $ ros2 run demo_nodes_cpp talker --ros-args --remap __node:=talker_discovery_server
+
+And the listener prints "I heard [Hello world]"
+
+Open new CMD terminal in windows and run another listener.
+ c:\> call c:\opt\ros\foxy\local_setup.bat
+ c:\> set ROS_DOMAIN_ID=142
+ c:\> set ROS_DISCOVERY_SERVER=127.0.0.1:11811
+ c:\> ros2 run demo_nodes_cpp listener --ros-args --remap __node:=listener_discovery_server
+
+And the Windows node doesn't hear "Hello"s
+
+I've also tried running discovery server, talker and listener on Windows PC, and they do hear each other.
+
+Originally posted by wl on ROS Answers with karma: 127 on 2021-07-23
+Post score: 5
+
+Original comments
+Comment by wl on 2021-07-23:
+Well, it looks like SSH tunnel can pass only TCP traffic, and ROS2 nodes are communicating over UDP
+
+A:
+
+This is not possible without additional software.
+SSH tunnel passes TCP traffic, but ROS2 nodes are communicating over UDP.
+Linux has socat or netcat programs that can help forwarding UDP traffic to SSH tunnel.
+And it looks like there are no similar tools on Windows.
+
+Originally posted by wl with karma: 127 on 2021-08-02
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2021-08-02:
+I'm not sure this is entirely correct.
+Many DDS implementations allow you to configure TCP-based transports. FastDDS has a TCP/IP based transport for instance.
+Whether that will make all functionality available I don't know, but that would be something to figure out.
+Another option could be to use a (peer-to-peer) VPN. As you wrote, you can open ports in the firewall, so using something like tinc should be possible (IIRC, it supports forwarding UDP). You'd be encapsulating UDP in TCP (so would lose all the advantages of UDP), but still.
+Comment by wl on 2021-08-04:
+Unfortunately, I cannot use any VPN, this is not allowed in our company. I must use only one, specific, approved VPN.
+I agree that I should better study documentation for DDS.
+Yesterday I've managed to run talker and listener over our VPN following example from this link
+However, I had to switch from FastRTPS to CycloneDDS
+

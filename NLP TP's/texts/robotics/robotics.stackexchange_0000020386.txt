@@ -1,0 +1,29 @@
+Q:
+
+Link collision avoidance for redundant manipulator
+
+I am trying to have my robot arm follow a trajectory while avoiding collisions between obstacles and the robot links. The way I go about it is to find the closest point on the robot arm, and treat the links leading up to this point as a separate robot. Then for this separate robot I find joint velocities that make the robot move straight away from the obstacle. Lastly I project these joint velocities onto the nullspace of the complete robot's Jacobian $J$.
+This works well most of the times, but sometimes I experience that the jacobian for the separate robot $J_0$ becomes ill conditioned - and produces huge joint velocities. This usually happens when the closest point sits on one of the first links, then the separate robot is often close to a singularity.
+I am trying to improve the condition number of $J_0$ by using the "damped jacobian" $$J_0 = (J_0 + \lambda I)$$
+However unless the closest point on the robot sits on the sixth link $J_0$ will not be square and you cannot add the identity matrix in this case. I guess there are ways to damp these subjacobians, but I am unsure how.
+In essence I am looking for a way to condition variable sized jacobians. Or some alternative which makes the robot play nice close to singularities.
+An example of where it goes wrong, can be seen in the image below. The robot is following the blue dashed trajectory, while trying to avoid the brown rod. In this specific case the purple vector indicates the closest point on obstacle and link at one timestep. In the next timestep the closest link has changed (orange arrow). The jacobian for the manipulator leading up to the tip of the orange arrow has a condition number of 170 - compared to the condition number of the one leading up to the purple arrow tip, which is only 3. 
+
+For reference. This is the resolved rate motion scheme I am using:
+\begin{align}
+ &\dot q_0 = J_0^+(q) \dot x_0 \\
+ &\dot q = J^+(q) \dot x + NN^+\dot q_0 \\
+&q = q + \dot q \cdot dt
+\end{align}
+$\dot x_0$ is the desired velocity of the endpoint of the separate robot
+$\dot x$ is the desired velocity of the end point for the full robot
+$A^+$ is the pseudo inverse of A.
+$N$ is the nullspace of $J$
+
+A:
+
+Using "damped least squares" is usually the way to make the jacobian behave better around singularities.  But keep in mind it is still a singularity, and things will always be weird there.
+The formulation for damped least squares that I have seen is:
+$\dot{q}=J^T(JJ^T+\lambda^2I)^{-1}\dot{x}$
+Also, you might want to use a different motion planner.  TrajOpt is a good one that easily handles keeping the arm out of obstacles.
+

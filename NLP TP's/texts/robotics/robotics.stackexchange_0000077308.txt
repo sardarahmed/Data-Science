@@ -1,0 +1,80 @@
+Q:
+
+IMU Data Problem
+
+Hi,
+I have a gyro - no accelerometer or compass so only generating orientation IMU data. I'm getting a problem with Google's cartographer where is dies with an error:
+[FATAL] [1478971675.576678386]: F1112 17:27:55.000000  2963 imu_tracker.cc:70] Check failed: (orientation_ * gravity_vector_).z() > 0. (nan vs. 0) 
+
+From the code this is coming from the Linear Acceleration checks:
+void ImuTracker::AddImuLinearAccelerationObservation(
+ const Eigen::Vector3d& imu_linear_acceleration) {
+ // Update the 'gravity_vector_' with an exponential moving average using the
+ // 'imu_gravity_time_constant'.
+ const double delta_t =
+  last_linear_acceleration_time_ > common::Time::min()
+      ? common::ToSeconds(time_ - last_linear_acceleration_time_)
+      : std::numeric_limits<double>::infinity();
+  last_linear_acceleration_time_ = time_;
+  const double alpha = 1. - std::exp(-delta_t / imu_gravity_time_constant_);
+ gravity_vector_ =
+     (1. - alpha) * gravity_vector_ + alpha * imu_linear_acceleration;
+ // Change the 'orientation_' so that it agrees with the current
+ // 'gravity_vector_'.
+ const Eigen::Quaterniond rotation = Eigen::Quaterniond::FromTwoVectors(
+  gravity_vector_, orientation_.inverse() * Eigen::Vector3d::UnitZ());
+ orientation_ = (orientation_ * rotation).normalized();
+ //cout << "Orientation: " << orientation_ << endl;
+ CHECK_GT((orientation_ * gravity_vector_).z(), 0.);
+
+So I think my defaulting of this data is incorrect (As I don't have the sensors for the o/p)
+An example of my data is:
+header: 
+  seq: 62350
+  stamp: 
+    secs: 1478974808
+    nsecs: 401812741
+  frame_id: imu_msg
+orientation: 
+  x: 0.573576460039
+  y: 0.0
+  z: -0.0
+  w: -0.819152027703
+orientation_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+angular_velocity: 
+  x: 0.0
+  y: 0.0
+  z: 0.0
+angular_velocity_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+linear_acceleration: 
+  x: 0.0
+  y: 0.0
+  z: 0.0
+linear_acceleration_covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+Any help would me appreciated.
+Thanks
+Mark
+
+Originally posted by MarkyMark2012 on ROS Answers with karma: 1834 on 2016-11-12
+Post score: 0
+
+Original comments
+Comment by mike on 2016-11-15:
+This is a problem I am grappling with as well. If a sensor does not generate data for part of a message, what should the value be set to? A value of 0 for linear_acceleration is a valid number. Also, a covariance of 0.0 indicates that it is perfect. Shouldn't the value be set to NAN?
+Comment by mike on 2016-11-15:
+So the extended question is what should unused fields in a message be set to?
+
+A:
+
+Cartographer requires linear acceleration to do gravity alignment. We do provide a "flat_world_imu" for your use case here: https://github.com/googlecartographer/cartographer_turtlebot/blob/master/cartographer_turtlebot/cartographer_turtlebot/flat_world_imu_node_main.cc
+
+Originally posted by damonkohler with karma: 3838 on 2016-12-01
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by MarkyMark2012 on 2016-12-01:
+Thanks - I'll give it a go and let you know
+Cheers Mark
+

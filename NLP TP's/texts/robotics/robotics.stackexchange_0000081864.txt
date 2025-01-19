@@ -1,0 +1,95 @@
+Q:
+
+Using roslaunch to launch ros nodes
+
+I'm familiar with creating nodes from scratch by coding publishes and subscribers, but i'm not very familiar with roslaunch.  Let's say i've downloaded a ros package off github, and this package contains several nodes.  If i navigate the package and find the launch folder, i know that i can use
+
+roslaunch parentfolder launchfile.launch
+
+to run an individual launch file (and this usually launches some corresponding node).  But if this package i've installed has 5 nodes, i have to run roslaunch 5 times, in 5 different terminals to simultaneously run all of these nodes.  So i have two questions:
+Can i use roslaunch to launch more than one .launch file at a time?
+Will roslaunch only take .launch files, or can it be used to launch other types of files?  (and as a follow up, i'm not really too familiar with ros .launch files, i know basic xml but i'd like to become more familiar so any links or resources to that effect would help a lot)
+Thanks!
+
+Originally posted by Ryan_F on ROS Answers with karma: 71 on 2017-07-19
+Post score: 1
+
+Original comments
+Comment by jayess on 2017-07-19:
+You can also use launch files to load parameters and to launch nodes on different machines as well.
+
+A:
+
+Yes, you can use roslaunch to launch multiple nodes at once and you can even include other launch files (from other packages!) within a separate launch file. Let's use the turtlebot_simulator metapackage  as an example.
+Here's the code for the launch file that brings up a gazebo simulation of the turtlebot (turtlebot_world.launch) :
+<launch>
+  <arg name="world_file"  default="$(env TURTLEBOT_GAZEBO_WORLD_FILE)"/>
+
+  <arg name="base"      value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
+  <arg name="battery"   value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 --> 
+  <arg name="gui" default="true"/>
+  <arg name="stacks"    value="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons --> 
+  <arg name="3d_sensor" value="$(optenv TURTLEBOT_3D_SENSOR kinect)"/>  <!-- kinect, asus_xtion_pro --> 
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="world_name" value="$(arg world_file)"/>
+  </include>
+  
+  <include file="$(find turtlebot_gazebo)/launch/includes/$(arg base).launch.xml">
+    <arg name="base" value="$(arg base)"/>
+    <arg name="stacks" value="$(arg stacks)"/>
+    <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
+  </include>
+  
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="30.0" />
+  </node>
+  
+  <!-- Fake laser -->
+  <node pkg="nodelet" type="nodelet" name="laserscan_nodelet_manager" args="manager"/>
+  <node pkg="nodelet" type="nodelet" name="depthimage_to_laserscan"
+        args="load depthimage_to_laserscan/DepthImageToLaserScanNodelet laserscan_nodelet_manager">
+    <param name="scan_height" value="10"/>
+    <param name="output_frame_id" value="/camera_depth_frame"/>
+    <param name="range_min" value="0.45"/>
+    <remap from="image" to="/camera/depth/image_raw"/>
+    <remap from="scan" to="/scan"/>
+  </node>
+</launch>
+
+This launch file includes both other launch files and several nodes. Here is how it includes other launch files:
+<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="world_name" value="$(arg world_file)"/>
+</include>
+
+and here is how it includes other nodes:
+<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="30.0" />
+</node>
+
+You could simply include a launch file without args or params like this:
+<include file="$(find package_name)/launchfile.launch"/>
+
+or similarly for a node:
+<node pkg="package" type="node_type" name="node_name"/>
+
+Please refer to the roslaunch wiki entry for more details, or ask another question.
+
+Originally posted by jayess with karma: 6155 on 2017-07-19
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Ryan_F on 2017-07-19:
+Thanks so much for this!  All of those arguments that you have entered, are those some sort of argv commands passed into a .cpp or python file somehow?
+Comment by jayess on 2017-07-19:
+They're the way that you pass data from one launch file to another which can then set parameters or do some boolean checks. I suggest that you read about args at the wiki.
+Comment by jayess on 2017-07-19:
+Also read about the parameter server and param tag. Knowing about these and how to use them will give you access to some of the power of using launch files.
+

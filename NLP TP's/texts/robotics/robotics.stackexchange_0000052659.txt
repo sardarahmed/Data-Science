@@ -1,0 +1,67 @@
+Q:
+
+Calling a ros service function from another one
+
+I am trying to find a way to call a service function from another one. To explain the situation, let's assume the following ROS messages and services:
+# mypack/msg/MyRosMsg.msg
+uint8       v1
+# ... other definitions
+
+# mypack/srv/MyRosSrv1.srv
+mypack/MyRosMsg  msg
+
+# mypack/srv/MyRosSrv2.srv
+mypack/MyRosMsg  msg
+# ... other definitions
+
+I have a ROS service function as below:
+bool my_service_1(mypack::MyRosSrv1::Request &req, mypack::MyRosSrv1::Response &req)
+{
+  // do some processing
+  return(true);
+}
+
+and I want to call my_service_1 from the second service function by copying msg member of MyRosSrv2 into MyRosSrv1 as below:
+bool my_service_2(mypack::MyRosSrv2::Request &req, mypack::MyRosSrv2::Response &req)
+{      
+  mypack::MyRosSrv1 srv1;
+  srv1.msg = req.msg;
+  // how to call properly my_service_1?
+}
+
+Edit 1
+Both service functions are inside one node. The service my_service_1 performs a processing that I am trying to avoid repeating the code in the service my_service_2.
+Edit 2
+As tbh answered, the following changes is the trick to make it work:
+bool my_service_2(mypack::MyRosSrv2::Request &req, mypack::MyRosSrv2::Response &req)
+{      
+  mypack::MyRosSrv1 srv1;
+  srv1.request.msg = req.msg;
+  my_service_1(srv1.request, srv1.response);
+  // do other processing
+}
+
+Originally posted by Rasoul on ROS Answers with karma: 115 on 2013-07-10
+Post score: 1
+
+Original comments
+Comment by dornhege on 2013-07-10:
+Does the standard way of calling a service not work out of my_service_2?
+Comment by thebyohazard on 2013-07-10:
+srv1.msg doesn't exist. You mean srv1.request.msg.
+
+A:
+
+I'm not sure if you mean for these two service callbacks to be in the same node or not...
+If they are, the service callback is still a function, right? So you should be able to call my_service_1(srv1.request, srv1,response); like you would any other function.
+If they're not in the same node, there's no rule that says you can't call one service from another service.  Just know that services are blocking.  So the caller of my_service_2 would have to wait for my_service_2 to finish before continuing execution, and my_service_2 won't finish until my_service_1 finishes.
+
+Originally posted by thebyohazard with karma: 3562 on 2013-07-10
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Clancy on 2015-04-29:
+It's as simple as tbh makes it out to be - just call that function name from inside the other service. No need to specify an address for the srv.request or srv.response, they are already included. So it looks like this:
+serviceCallBack(some_srv.request, some_srv.response)
+

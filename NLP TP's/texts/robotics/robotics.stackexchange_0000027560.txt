@@ -1,0 +1,48 @@
+Q:
+
+Why does performance decrease when removing / inserting models?
+
+I've a world plugin that does the following:
+
+Insert a model (in this contrived example it's a simple sphere)
+Run for 5 seconds simulation time
+Measure the elapsed real time, calculate and print the real time factor, and remove the model
+Repeat
+
+This is a rather contrived simplification of a legitimate use case. I'm doing this with the server only, i.e. no GUI, in Gazebo 6.1. Even though the performed simulation is exactly the same each time, the real time factor decreases rapidly. The decrease is actually superlinear (quadratic?), as evidenced by this plot of the real time factors:
+
+It would therefore seem that something related to the old models lingers and slows everything down. I'd like to investigate and hopefully solve this issue, but I have no idea what could be causing this. My question, therefore, is whether anyone has an idea where this might come from?
+
+Originally posted by Elte Hupkes on Gazebo Answers with karma: 133 on 2015-11-08
+Post score: 4
+
+Original comments
+Comment by chapulina on 2015-11-08:
+There are known issues with improper clean up when deleting models, both on the server and the client. Even though the problem goes beyond visuals, I think this issue is the one capturing the problem.
+Comment by djou07 on 2015-11-09:
+do you delete and add the exactly same model ? if yes they should have the same performance
+Comment by Elte Hupkes on 2015-11-09:
+Yes, it is exactly the same model - so yes the performance should be the same.. But it is not. @chapulina I'm gonna check that out.
+Comment by djou07 on 2015-11-09:
+I had this problem too. When doing evolution, if you keep the best individual of a generation, this individual should behave the same in next generation to learn. but if it will not, then the evolution has no effect. To avoid this I stopped and restarted simulation at each generation...
+Comment by Elte Hupkes on 2015-11-09:
+@chapulina Are the visuals even loaded though when only the server is used?
+Comment by chapulina on 2015-11-09:
+On the server side, rendering is only used for sensors, like cameras.
+Comment by Elte Hupkes on 2015-11-09:
+I noticed that, but I'm not using any sensors for this test at the moment. Put some print statements in Visual just in case, none are created, so it can't be that...
+Comment by djou07 on 2015-11-10:
+@Elte Hupkes onlty server without visualisation
+Comment by Elte Hupkes on 2015-11-10:
+@djou07 Similar use case then, since I'm also doing evolution. Restarting the simulation seems like a huge overhead... Also my requirements include some online evolution scenarios, so it's not really an option. Dead set on fixing this ;).
+
+A:
+
+Thanks @silvio.traversaro for suggesting the flame graphs, I think I'm now on to what is happening here.  It seems that ODEPhysics::CreateLink() calls dSimpleSpaceCreate for every model, but I can find zero code which deletes these spaces when models are removed from the world. Every model created thus results in an extra space. This would cause a quadratic slowdown since collision code is probably roughly O(n^2).
+I'll move on to verify this is indeed correct, file a bug report and mark this as the correct answer.
+EDIT: This does indeed appear to be what's going on, created issue https://bitbucket.org/osrf/gazebo/issues/1780/ode-collision-space-not-deleted-when-model. Unfortunately I'm still seeing performance degrade over time (though far less profound), likely caused by another issue. I'll continue to investigate but I'll mark this as the correct answer.
+
+Originally posted by Elte Hupkes with karma: 133 on 2015-11-10
+This answer was ACCEPTED on the original site
+Post score: 2
+

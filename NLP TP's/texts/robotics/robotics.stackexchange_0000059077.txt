@@ -1,0 +1,148 @@
+Q:
+
+Problem with new BaseGlobalPlanner plugin
+
+I tried to make a new BaseGlobalPlanner plugin for use with move_base.
+In this Plugin I use ros-hydro-ompl package.
+After I've created .cpp and .h (that include ompl library) file, I've compiled with catkin_make and everything works! All the dependencies seem to be satisfied.
+But when I run plugin I show this error:
+[FATAL] [1398764927.385890076, 2.100000000]: Failed to create the ompl_planner_rrt/OMPLPlannerRRT planner, are you sure it is properly registered and that the containing library is built? Exception: Failed to load library /home/prima/catkin_ws/devel/lib//libompl_planner_rrt.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = /home/prima/catkin_ws/devel/lib//libompl_planner_rrt.so: undefined symbol: _ZTVN4ompl4base18CompoundStateSpaceE)
+
+The name between PLUGINLIB_EXPORT_CLASS macro and XML file is correct!
+This is the macro in .cpp file
+PLUGINLIB_EXPORT_CLASS(ompl_planner_rrt::OMPLPlannerRRT, nav_core::BaseGlobalPlanner)
+
+this is .xml file:
+<library path="lib/libompl_planner_rrt">
+  <class name="ompl_planner_rrt/OMPLPlannerRRT" type="ompl_planner_rrt::OMPLPlannerRRT" base_class_type="nav_core::BaseGlobalPlanner">
+    <description>
+      A implementation of RRT
+    </description>
+  </class>
+</library>
+
+The undefined symbol ompl4base18CompoundStateSpace is a ompl function (ompl::base::CompoundStateSpace). It seems that in runtime there aren't dependencies with ompl package.
+This is my CMakeLists.txt file:
+cmake_minimum_required(VERSION 2.8.3)
+project(ompl_planner_rrt)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  costmap_2d
+  geometry_msgs
+  nav_core
+  nav_msgs
+  pluginlib
+  tf
+  angles
+)
+
+find_package(
+    ompl
+)
+
+find_package(Boost REQUIRED COMPONENTS system thread)
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES ompl_planner_rrt
+  CATKIN_DEPENDS roscpp nav_core pluginlib
+  DEPENDS system_lib
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(ompl_planner_rrt
+   src/ompl_planner_rrt.cpp
+)
+
+target_link_libraries(ompl_planner_rrt
+   ${catkin_LIBRARIES}
+   ${OMPL_LIBRARIES} #added on the advice of ahendrix
+ )
+
+and package.xml:
+<?xml version="1.0"?>
+<package>
+  <name>ompl_planner_rrt</name>
+  <version>0.0.0</version>
+  <description>The ompl_planner package</description>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>costmap_2d</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>nav_core</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>pluginlib</build_depend>
+  <build_depend>tf</build_depend>
+  <build_depend>angles</build_depend>
+  <build_depend>eigen_conversions</build_depend>
+  <build_depend>boost</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>costmap_2d</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>nav_core</run_depend>
+  <run_depend>nav_msgs</run_depend>
+  <run_depend>pluginlib</run_depend>
+  <run_depend>tf</run_depend>
+  <run_depend>angles</run_depend>
+  <run_depend>eigen_conversions</run_depend>
+  <run_depend>boost</run_depend>
+  <run_depend>ompl</run_depend>
+
+  <export>
+     <nav_core plugin="/home/prima/catkin_ws/src/ompl_planner_rrt/bgp_plugin.xml" />
+  </export>
+</package>
+
+When I show this:
+ldd '/home/prima/catkin_ws/devel/lib/libompl_planner_rrt.so'
+
+I don't find libompl.so, I suppose this is the problem.
+Can anyone help me? Thanks
+
+Originally posted by Stefano Primatesta on ROS Answers with karma: 402 on 2014-04-29
+Post score: 1
+
+Original comments
+Comment by Ken_in_JAPAN on 2014-04-29:
+I wanna ask you a question. Did you try sudo apt-get install ros-hydro-ompl? I also try it, because I have never installed ompl.
+Comment by Ken_in_JAPAN on 2014-04-29:
+I knew you were correct, after installing ompl package . The package included only source.
+Comment by Stefano Primatesta on 2014-04-29:
+I've already install ompl package. I only run sudo apt-get install ros-hydro-ompl, I hope it's enough.
+
+A:
+
+It looks like your planner library isn't linked against OMPL.
+Try linking it against ompl by adding the following to your CMakeLists.txt:
+target_link_libraries(ompl_planner_rrt ${ompl_LIBRARIES})
+
+(NOTE: this assumes that the find_package command for OMPL is exporting its libraries in the ompl_LIBRARIES variable. if it isn't, or the variable name is different, you'll have to make the appropriate adjustments above)
+
+Originally posted by ahendrix with karma: 47576 on 2014-04-29
+This answer was ACCEPTED on the original site
+Post score: 3
+
+Original comments
+Comment by Stefano Primatesta on 2014-04-29:
+I tried to do that, but nothing changes.
+Comment by Stefano Primatesta on 2014-04-29:
+Is there a command to link manually libompl.so? How Can I add libompl.so to my CMakeLists.txt?
+Comment by Ken_in_JAPAN on 2014-04-30:
+Hi @Prima89:You executed sudo apt-get install  at first. At that time, libompl.so is located in /opt/ros/hydro/lib and source file is located in /opt/ros/hydro/share. I think so because I tried. So how did you replace the location to ~/catkin_ws/?
+Comment by ahendrix on 2014-04-30:
+You can manually link to OMPL with target_link_libraries(ompl_planner_rrt ompl)
+Comment by Stefano Primatesta on 2014-04-30:
+Hi @Ken_in_JAPAN In catkin_ws there is only my package for the plugin. Others packages are in opt/ros/hydro/share with libraries in opt/ros/hydro/lib.
+Comment by Ken_in_JAPAN on 2014-04-30:
+@Prima89: Thanks for replying early. I got it. But I don't help you. So sorry!
+Comment by Stefano Primatesta on 2014-05-01:
+Thanks @ahendrix !!! It works, I only add  target_link_libraries(ompl_planner_rrt ompl)
+Comment by Ken_in_JAPAN on 2014-05-14:
+Hello @Prima89: I also want to use same plugin with Turtlebot. I'm sorry, but could you show me your *.cpp and *.h?
+

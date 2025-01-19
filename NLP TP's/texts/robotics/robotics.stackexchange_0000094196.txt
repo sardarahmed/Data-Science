@@ -1,0 +1,55 @@
+Q:
+
+SIGABRT double free detected in tcache 2
+
+Running latest ROS2 eloquent release. Node aborting on startup in rclinit()
+free(): double free detected in tcache 2
+Aborted (core dumped)
+
+GDB tells me the error is in the rclcpp::init(argc, argv) call which is the first statement of the node. It only started aborting after I added a yaml config file. So I added  --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address" to enable the memory sanitizing features of GCC.
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==24262==ERROR: AddressSanitizer: SEGV on unknown address 0x00002dfffff1 (pc 0x7f3437322962 bp 0x00002dfffff1 sp 0x7ffecf4d24c0 T0)
+==24262==The signal is caused by a WRITE memory access.
+    #0 0x7f3437322961  (/usr/lib/x86_64-linux-gnu/libasan.so.5+0x28961)
+    #1 0x7f3437406014 in __interceptor_free (/usr/lib/x86_64-linux-gnu/libasan.so.5+0x10c014)
+    #2 0x7f3436d0a6de in __default_deallocate (/opt/ros2/eloquent/install/rcutils/lib/librcutils.so+0x46de)
+    #3 0x7f34367308e8 in rcl_yaml_node_struct_fini (/opt/ros2/eloquent/install/rcl_yaml_param_parser/lib/librcl_yaml_param_parser.so+0x28e8)
+    #4 0x7f343676ab8e in rcl_arguments_fini (/opt/ros2/eloquent/install/rcl/lib/librcl.so+0xfb8e)
+    #5 0x7f3436769ab0 in rcl_parse_arguments (/opt/ros2/eloquent/install/rcl/lib/librcl.so+0xeab0)
+    #6 0x7f3436772f19 in rcl_init (/opt/ros2/eloquent/install/rcl/lib/librcl.so+0x17f19)
+    #7 0x7f34370f5d69 in rclcpp::Context::init(int, char const* const*, rclcpp::InitOptions const&) (/opt/ros2/eloquent/install/rclcpp/lib/librclcpp.so+0x3d9d69)
+    #8 0x7f3437212fa7 in rclcpp::init(int, char const* const*, rclcpp::InitOptions const&) (/opt/ros2/eloquent/install/rclcpp/lib/librclcpp.so+0x4f6fa7)
+    #9 0x55c93cebce1a in main /home/guru/src/humanoid/ros2/humanoid/src/lss_joint_publisher/src/lss_joint_states.cpp:96
+    #10 0x7f3436943b6a in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x26b6a)
+    #11 0x55c93ceba619 in _start (/home/guru/src/humanoid/ros2/humanoid/build/lss_joint_publisher/lss_joint_states+0xf619)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV (/usr/lib/x86_64-linux-gnu/libasan.so.5+0x28961) 
+
+Yaml file is simple, just a single parameter
+joints: 17
+
+Originally posted by guru_florida on ROS Answers with karma: 280 on 2019-12-21
+Post score: 0
+
+A:
+
+So I've figured out that I need the node name and ros__parameters lines added to the yaml. I did this at first but I didnt realize that there is a double underscore in ros__parameters. So my working yaml is:
+lss_joint_publisher:
+    ros__parameters:
+        joints: [17,18,19]
+
+I still dont think a SIGABRT is a good way to handle yaml errors. lol. but I am working again. :)
+
+Originally posted by guru_florida with karma: 280 on 2019-12-21
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2019-12-22:
+I'm not entirely sure where right now, but I would suggest to report this to a GH issue tracker of one the repositories hosting this infrastructure, as I agree with you this does not seem like a proper way to handle this, and ROS Anwers Q&As like this one do not really work very well as bug reports.
+Comment by guru_florida on 2019-12-22:
+You're right. I thought the same after I wrote this and found the right repo ros2/rcl. Still worth keeping this for the next user though. ;)
+https://github.com/ros2/rcl/issues/553
+

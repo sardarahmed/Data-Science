@@ -1,0 +1,86 @@
+Q:
+
+Launch same node multiple times
+
+Hi,
+I have a simple publisher which I want to launch with different parameters (rate and length) using the same code:
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+
+int main(int argc, char **argv)
+{
+    std::string NODE_NAME = "pc_pub_string";
+    ros::init(argc, argv, NODE_NAME);
+    ros::NodeHandle n;
+
+    ros::Publisher string_pub = n.advertise<std_msgs::String>(NODE_NAME, 100);
+
+    // Get the sample rate of this node (set in the launch file)
+    ros::NodeHandle np("~");
+    int loop_rate_p, data_length_p;
+    if(np.getParam("loop_rate", loop_rate_p)){
+        ROS_INFO("Initialized [%s] node at %d Hz", NODE_NAME.c_str(), loop_rate_p);
+    }
+    else{
+        ROS_ERROR("Couldn't get rate parameter");
+        return 0;
+    }
+    if(np.getParam("data_length", data_length_p)){
+        ROS_INFO("Initialized [%s] node with %d elements in data", NODE_NAME.c_str(), data_length_p);
+    }
+    else{
+        ROS_ERROR("Couldn't get data length parameter");
+        return 0;
+    }
+    ros::Rate loop_rate(loop_rate_p);
+
+    // Populate string message (content doesn't matter for proof of concept)
+    std_msgs::String str;
+    for(int i=0; i<data_length_p; i++)
+        str.data.push_back(i);
+
+    while(ros::ok())
+    {
+        string_pub.publish(str);
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
+
+    return 0;
+}
+
+For this, I am using this  launch file:
+<launch>
+
+  <group ns="publisher">
+    <node pkg="proof_of_concept_string_ips" name="pc_pub_string0" type="pc_pub_string">
+      <param name="loop_rate" type="int" value="2" />
+      <param name="data_length" type="int" value="4" />
+      <remap from="publisher/pc_pub_string" to="publisher/pc_pub_string0"/>
+    </node>
+
+    <node pkg="proof_of_concept_string_ips" name="pc_pub_string1" type="pc_pub_string">
+      <param name="loop_rate" type="int" value="4" />
+      <param name="data_length" type="int" value="2" />
+      <remap from="publisher/pc_pub_string" to="publisher/pc_pub_string1"/>
+    </node>    
+
+  </group>
+
+</launch>
+
+The issue is that in the topic list, I only see what I wrote in NODE_NAME = "pc_pub_string". However, with ros info I can see that there are two publisher. I was hoping to have two topics, one called pc_pub_string0 and another pc_pub_string1. This could be achieved by having 2 .cpp files and compile 2 different executables, but their code would be the same.
+Is it possible to avoid having two executables and use only one to manipulate their parameters (also topic names to have multiple) from the launch file?
+Thanks for the help.
+
+Originally posted by Ariel on ROS Answers with karma: 65 on 2022-01-13
+Post score: 0
+
+A:
+
+The error is in the launch file. The remap should not include the group name: <remap from="pc_pub_string" to="pc_pub_string0"/>
+
+Originally posted by Ariel with karma: 65 on 2022-01-13
+This answer was ACCEPTED on the original site
+Post score: 0
+

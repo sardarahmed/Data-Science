@@ -1,0 +1,83 @@
+Q:
+
+How to send messages from a node running python to arduino?
+
+I upload the following code to Arduino.
+#include <ros.h>
+#include <std_msgs/Float64.h>
+ros::NodeHandle nh;
+
+void messageCb(const std_msgs::Float64& msg)
+{
+  if(msg.data > 1.0)
+    digitalWrite(13, HIGH);   // blink the led
+    else 
+    digitalWrite(13, LOW);    // Turn off led
+}
+
+ros::Subscriber<std_msgs::Float64> sub("your_topic", &messageCb);
+ 
+void setup()
+{
+  pinMode(13, OUTPUT);
+  nh.initNode();
+  nh.subscribe(sub);
+}
+void loop()
+{
+  
+ nh.spinOnce();
+ delay(1);
+}
+
+I use this code to turn on a LED connected to PIN13. The code receives a signal from the topic "your_topic", then if the signal is bigger than 1.0 it turns the LED.
+From the terminal, I use the next code to publish to "your_topic": rostopic pub your_topic std_msgs/Float64 2
+Though this code works, I now want to publish using python. I tried the succeeding code.
+#!/usr/bin/env python
+import rospy
+from project_1.msg import *
+from random import randint
+
+rospy.init_node('Arduino_hear_my_whispers')
+pub = rospy.Publisher('your_topic', Arduino_message, queue_size=10)
+rnd = randint(0,2)
+print "the number is " + str(rnd)
+message=Arduino_message(x=rnd)
+pub.publish(message)
+rate = rospy.Rate(10)
+rate.sleep()
+
+Although the code worked, the LED did not turn on. Can someone help me?
+
+Originally posted by JollyRogers on ROS Answers with karma: 58 on 2018-01-15
+Post score: 1
+
+A:
+
+There's a couple of things going on here:
+
+What are the contents of Arduino_message? This looks like it's a custom message but we don't know what it looks like
+The your_topic topic from the Arduino's perspective is expecting a Float64 message but your Python node is publishing an Arduino_message message (containing an int for the x parameter)
+You're not looping so you're only publishing once which means you'll have to keep re-running the node until you get 2 (which may be what you want, but IMO is tedious to test)
+
+This should help:
+
+Post the contents of your custom Arduino_message so we can see what's going on there
+Match the data (message) type of the your_topic topic. Either go with your custom Arduino_message, a Float64, or an int
+At least test this out using a loop until you get it working.
+
+Also, I notice that you have a print statement in there. Can you please update your question with a copy and paste of the result of it? Otherwise this answer is just a guess.
+
+Originally posted by jayess with karma: 6155 on 2018-01-15
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by JollyRogers on 2018-01-15:
+Here is the content of the Arduino_message.msg file:
+float64 x
+I also run the script in a loop and found the following error: [WARN] [1516049736.697616][std_msgs/Float64] vs. [project_1/Arduino_message] ...
+It is like the format std_msgs/Float64 and float64 are different.
+Comment by jayess on 2018-01-15:
+@JollyRogers: please update your question with the full error and the definition
+

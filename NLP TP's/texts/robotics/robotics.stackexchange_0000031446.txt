@@ -1,0 +1,72 @@
+Q:
+
+How to run ik_openrave.py with my URDF file?
+
+I am trying to run OpenRave's IK service with my URDF file for the Katana 450 6M90A arm, running diamondback. The URDF file can be found in the katana_description package. Here is what I did:
+rosrun xacro xacro.py katana.urdf.xacro > katana6m90a.urdf
+rosrun collada_urdf urdf_to_collada katana6m90a.urdf katana6m90a.dae
+rosrun orrosplanning ik_openrave.py --scene="katana6m90a.dae"
+
+The last command very briefly shows the viewer displaying my arm model, then quits with  the following output:
+[openravepy_int.cpp:3267] viewer qtcoin successfully attached
+initializing, please wait for ready signal...
+Traceback (most recent call last):
+  File "/home/martin/ros/stacks/openrave_planning/orrosplanning/ik_openrave.py", line 60, in <module>
+    robot = env.GetRobots()[0]
+IndexError: list index out of range
+
+Running ik_openrave.py without parameters works and displays the PR2 model. What am I doing wrong?
+EDIT:
+Thanks Antons, now I get one step further. Using this xml file...
+<Robot name="katana6m90a" file="katana6m90a.dae">
+  <Manipulator name="arm">
+    <base>katana_base_link</base>
+    <effector>katana_gripper_tool_frame</effector>
+    <joints>katana_l_finger_joint katana_r_finger_joint</joints>
+    <closingdirection>-1 -1</closingdirection>
+    <direction>0 0 1</direction>
+    <translation>0 0 0</translation>
+  </Manipulator>
+</Robot>
+
+... I get:
+[openravepy_int.cpp:3272] viewer qtcoin successfully attached
+initializing, please wait for ready signal...
+[xmlreaders.cpp:2331] Failed to find manipulator base katana_base_link
+[xmlreaders.cpp:2323] Failed to find manipulator end effector katana_gripper_tool_frame
+[Robot.cpp:2320] manipulator arm has undefined base and end effector links
+[Robot.cpp:2329] could not find gripper joint katana_l_finger_joint for manipulator arm
+[Robot.cpp:2329] could not find gripper joint katana_r_finger_joint for manipulator arm
+terminate called after throwing an instance of 'OpenRAVE::openrave_exception'
+  what():  openrave (Assert): [/usr/include/boost/smart_ptr/shared_ptr.hpp:418] -> T* boost::shared_ptr< <template-parameter-1-1> >::operator->() const [with T = OpenRAVE::KinBody::Link], expr: px != 0
+[1]    25820 abort (core dumped)  rosrun orrosplanning ik_openrave.py --scene="katana6m90a.robot.xml"
+
+I had a look at your wubble_description and tried to figure out what I was doing wrong, but no luck. Any more ideas? :-)
+
+Originally posted by Martin Günther on ROS Answers with karma: 11816 on 2011-05-04
+Post score: 0
+
+Original comments
+Comment by arebgun on 2011-05-04:
+Hmm, it looks like it can't find the links you specified in the dae file. Can you visualize your dae file in OpenRAVE by running: rosrun openrave openrave -f rospack find path_to_katana/katana.dae?
+
+A:
+
+In order to do successful collada export, you need to use the robot_model trunk, the robot_model diamondback has an old exporter.
+Please check out
+svn co https://code.ros.org/svn/ros-pkg/stacks/robot_model/trunk robot_model
+
+and make sure it is declared first in your ROS_PACKAGE_PATH variable, then remake all your projects.
+Afterwords, run:
+rosrun openrave openrave0.3-robot.py yourrobot.dae --list links
+
+this will give you the list of links you can choose from so you can edit your manipulator description.
+
+Originally posted by Rosen Diankov with karma: 516 on 2011-05-04
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Martin Günther on 2011-05-04:
+Thanks Rosen, that did it! (Long version, for posterity: it fixed the "failed to find..." error, after the EDIT)
+

@@ -1,0 +1,35 @@
+Q:
+
+URDF/RobotModel + joint states to tf robot states in a function call?
+
+Is there a way to get all the functionality of robot_state_publisher in a function call?  I want to be able to get transforms within a robot model given hypothetical joint positions in a fast loop, so it can't listen to joint state topics or publish onto /tf.
+robot_model.init(urdf_from_robot_description_rosparam_or_xml_string)
+transforms = robot_model.update(new_joint_states)
+... put transforms into a BufferCore and then can do tf lookups
+
+I was hoping I could do this in python maybe with urdf_parser_py, but if not I'll use C++ instead and refactor robot_state_publisher so I can provide joint states directly and return transforms instead of having a listener and publisher.  But it would be nice to save that effort- does moveit provide something similar without going through any planning or IK, just jumps to set angles?
+https://answers.ros.org/question/378951/get-and-set-joint-angles-using-moveit-in-python/ is maybe asking half of the same question but specific to moveit, https://answers.ros.org/question/250127/best-way-to-get-fk-for-many-different-joint-states/ is also similar
+https://answers.ros.org/answers/209161/revisions/ says it isn't possible (as of 2015)
+
+Originally posted by lucasw on ROS Answers with karma: 8729 on 2022-07-24
+Post score: 0
+
+A:
+
+https://github.com/lucasw/robot_state_publisher/tree/robot_state_function has code cut-and-paste out of robot_state_publisher into a standalone RobotState class, and https://github.com/lucasw/robot_state_publisher/blob/robot_state_function/test/test_robot_state.cpp shows basic usage.
+#include <robot_state_publisher/robot_state.h>
+...
+robot_state_publisher::RobotState rs;
+const auto stamp = ros::Time::now();    
+sensor_msgs::JointState js;
+js.header.stamp = stamp;
+js.name.push_back("joint1");
+double angle = 0.538;
+js.position.push_back(angle);
+rs.setJointState(js);    
+const tf2_msgs::TFMessage tfm = rs.getTransforms(stamp);
+
+Originally posted by lucasw with karma: 8729 on 2022-07-24
+This answer was ACCEPTED on the original site
+Post score: 0
+

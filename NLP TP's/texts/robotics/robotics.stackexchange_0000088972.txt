@@ -1,0 +1,95 @@
+Q:
+
+Slow build time
+
+I am experiencing very slow builds (and I have been for a while) using catkin_make building the ROS navigation stack. I have tried -DCMAKE_BUILD_TYPE=Release, --use-ninga, ccache, etc but the problem still persists. Specifically, clean builds sometimes take me over an hour on a modern machine (i7 w/ 8GB RAM).
+The build process proceeds rather quickly until it seems to stall out at 100%. A quick htop reveals that the culprit is a couple of linking threads that are taking 100% CPU and often are costmap_2d or trajectory planner related.
+Has anyone seen this before or have any insight on how to fix this?
+
+Additional Information
+
+OS: Ubuntu 16.04.5 LTS  
+gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)  
+cmake version 3.5.1  
+ROS Version: Kinetic 
+
+ROS Install: ROS installed from .debs (desktop-full) and upgraded w/ apt
+Steps to reproduce:
+
+mkdir -p ~/test/src  
+cd ~/test/src  
+catkin_init_workspace  
+git clone https://github.com/ros-planning/navigation.git  
+git checkout kinetic-devel  
+cd ..
+catkin_make  
+... wait ...
+
+Total Build Time: 22.5 min
+The build got to 100% after <5min with the last message printed ... `
+[100%] Built target move_base_node 
+Then 15 min later ...
+
+[100%] Built target costmap_2d_cloud
+[100%] Built target costmap_2d_markers
+Base path: /home/patrick/test
+Source space: /home/patrick/test/src
+Build space: /home/patrick/test/build
+Devel space: /home/patrick/test/devel
+Install space: /home/patrick/test/install
+####
+#### Running command: "cmake /home/patrick/test/src -DCATKIN_DEVEL_PREFIX=/home/patrick/test/devel -DCMAKE_INSTALL_PREFIX=/home/patrick/test/install -G Unix Makefiles" in "/home/patrick/test/build"
+####
+####
+#### Running command: "make -j6 -l6" in "/home/patrick/test/build"
+####
+
+The full output of catkin_make is available here ... https://pastebin.com/ZkFUqU2s
+
+Additional Information - Second Round
+Memory consumption during the first 5 minutes of the build ...
+
+patrick@patrick:~/test$ free -mh
+              total        used        free      shared  buff/cache   available
+Mem:           7.2G        4.1G        222M        1.1G        2.9G        1.5G
+Swap:          7.4G        3.2G        4.3G
+
+After reaching the 100% ...
+
+patrick@patrick:~/test$ free -mh
+              total        used        free      shared  buff/cache   available
+Mem:           7.2G        4.6G        180M        1.2G        2.5G        1.0G
+Swap:          7.4G        3.2G        4.2G
+
+It looks like there should be plenty of free memory right?
+Also, here are the processes that are "stalling" out in the second 15min of the build ...
+https://pastebin.com/CDb2qLQs
+Specifically, the /usr/bin/ld threads (there are 2, costmap_2d_cloud and costmap_2d_markers) which are taking 100% CPU
+
+Originally posted by baronep on ROS Answers with karma: 106 on 2018-09-12
+Post score: 0
+
+Original comments
+Comment by gvdhoorn on 2018-09-13:
+Please add some information about your system: which OS is this, which version, how did you install ROS (.debs or completely from source), which and what version of compiler do you have installed, CMake version and what exactly you are building (ie: pkgs).
+Comment by baronep on 2018-09-13:
+Added additional information in the post above
+Comment by David Lu on 2018-09-13:
+What does your memory usage look like during that time?
+Comment by baronep on 2018-09-13:
+Added additional information above
+Comment by baronep on 2018-09-14:
+Just an observation, if I comment out the costmap_2d_cloud and costmap_2d_markers targets in the CMakelists.txt, my build reduces from >20min to ~3min. What about these 2 targets would make them have such a dramatic impact? voxel_grid?
+
+A:
+
+I've replicated your problem. It's hanging on the linking step, but you can fix it by adding ${catkin_LIBRARIES} to the target_link_libraries command for costmap-2d_cloud and markers. Not sure why yet, but I'm going to investigate and make a PR.
+
+Originally posted by David Lu with karma: 10932 on 2018-09-19
+This answer was ACCEPTED on the original site
+Post score: 0
+
+Original comments
+Comment by David Lu on 2018-10-12:
+https://github.com/ros-planning/navigation/pull/800
+

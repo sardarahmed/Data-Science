@@ -1,0 +1,86 @@
+Q:
+
+ros_control: Difficulty getting custom hardware interface to run
+
+Hello,
+I am trying to implement a custom hardware interface for a 3-joint manipulator with ros_control. I was following the tutorial on the matter pretty closely.
+The problem is that while the controller_manager apparently gets started, service calls like list_controllers just hang. I am also unable to load any controllers, as this call also hangs.
+To narrow down the possible causes, I created a test node (called test_iface) which contains almost exactly the code from the tutorial mentioned above, i.e., two joints, "A" and "B", and the interface implements a JointStateInterface as well as a PositionJointInterface. The read() and write() methods simply write a message to stdout (ROS_INFO).
+Now, when I start this test node, the read/write loop gets executed properly, as I get the ROS_INFO messages from them. Also, the output of rosservice list is:
+user@ubuntu:~$ rosservice list
+/controller_manager/list_controller_types
+/controller_manager/list_controllers
+/controller_manager/load_controller
+/controller_manager/reload_controller_libraries
+/controller_manager/switch_controller
+/controller_manager/unload_controller
+/joint_state_publisher/get_loggers
+/joint_state_publisher/set_logger_level
+/rosout/get_loggers
+/rosout/set_logger_level
+/test_iface_node/get_loggers
+/test_iface_node/set_logger_level
+
+So the controller_manager seems to start up okay. However, when I try to call the list_controllers service (via rqt; expecting an empty list, since no controllers have been loaded yet), the request just hangs and nothing happens.
+When I use gazebo instead of my custom HW interface, the service call to list_controllers returns an empty list, as expected. (on a side note, if I run "rosrun controller_manager controller_manager list", that always seems to hang).
+What can I do to debug this? Do you have any suggestions as to what I might be doing wrong? The test_iface code is the MyRobot class from the tutorial, extended by a read() and write() that only print debug messages, and this main method:
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "test_iface_node");
+  ros::NodeHandle nh;
+    
+  MyRobot robot;
+  controller_manager::ControllerManager cm(&robot);
+
+  ros::Time ts = ros::Time::now();
+  while (true)
+  {
+     ros::Duration d = ts - ros::Time::now(); 
+     ts = ros::Time::now();
+     robot.read();
+     cm.update(ts, d);
+     robot.write();
+     sleep(1);
+  }
+  
+  return 0;
+}
+
+Any hints or suggestions are welcome.
+Thanks!
+
+Originally posted by onkel_keks on ROS Answers with karma: 28 on 2015-02-03
+Post score: 1
+
+Original comments
+Comment by cyborg-x1 on 2015-12-01:
+I was using your code as example (was in a real need for a simple one) ... well there is a little issue:
+ros::Duration d = ts - ros::Time::now(); //is negative because time now is later and bigger ...
+Must be like
+ros::Duration d = ros::Time::now() - ts;
+Comment by cyborg-x1 on 2015-12-01:
+My example if you anybody is interested: https://github.com/cyborg-x1/ros_control_test (based on yours, now with fixed time calculation ;-) )
+Comment by bario on 2017-02-07:
+cyborg-x1,
+Your link was quite helpful for me. Thanks
+Comment by SofiaGr on 2017-05-26:
+hello, what needs to be added in cyborg-x1's example so that the robot can move? Can I add rostopic commands into the program? I am trying to write a program that will ask for user input, as to how to move a link and will give back the actual position of the link.
+Comment by cyborg-x1 on 2017-05-31:
+As far as I remember my example you should have the topic cmd_vel as in the launchfile there is a diff drive controller loaded. Set linear.x part of the message for forward backward speed and angular.z for left/right.
+
+A:
+
+For service (and also topic)  callbacks to be able to get called, ros::spin() has to be called. This does not happen in your example, which is the reason for the behavior you observe. The easiest way to make things work in your example is probably adding a ros::spinOnce() somewhere in your while loop (This will add potentially non-deterministic delays to your controller loop however).
+A better option is using an AsyncSpinner, which spins using one or more separate threads in parallel to your main loop. An example of it's use can be found here.
+
+Originally posted by Stefan Kohlbrecher with karma: 24361 on 2015-02-03
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by onkel_keks on 2015-02-03:
+Thanks, that solved it! I guess sometimes you just don't think of the obvious.
+I have to say this though, it would be nice if the example on the ros_control wiki was actually working code...
+Comment by Adolfo Rodriguez T on 2015-02-03:
+Having a separate spinner thread (other than the control thread) is a requirement. This is explained in detail in minutes 20-24 of the ROSCON'14 talk on ros_control.
+

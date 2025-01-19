@@ -1,0 +1,60 @@
+Q:
+
+What do I wait for to avoid RViz error "No robot state or robot model loaded" on launch?
+
+Including panda_control_moveit_rviz.launch in my own launch file which also launches a process which moves the robot results in
+[ERROR] - [/rviz_<rviz_anonymized_name>::TrajectoryVisualization::incomingDisplayTrajectory::464]: No robot state or robot model loaded`.
+
+This error is completely ignored and the process seems to run fine except for an update issue with the hand of the robot (possibly even unrelated).
+Upon further investigation, this seems to stem from launch order, in the sense that running the other nodes separately beforehand and launching my own move-the-robot node after the others (rviz included) are initialized, avoids the message entirely.
+Since roslaunch doesn't guarantee startup order I sought out to find which service/topic/other to wait on for before starting my own node, as I was doing in another case for planning scene service get_planning_scene, but:
+
+I wanted to add a breakpoint at the incomingDisplayTrajectory call with gdb but I couldn't find some package like ros-kinetic-rviz-dbg as per this to have debug symbols, so that didn't work;
+I couldn't find anything from exploring the RViz source code: I worked my way from the top to the likely path that leads to the message, found out it needs robot_loaded_ true in robot.h and from there went to RobotModelDisplay but in the end couldn't solve the issue.
+
+In the end I would only like to find out what I should wait for, but it would be nice to know if the only way to set the breakpoint I wanted to would have been to get rviz from source and recompile it myself.
+UPDATE 1:
+
+UPDATE 2:
+I have both robot_state_ and robot_mndel_ empty...
+Thread 1 "rviz" hit Breakpoint 1, moveit_rviz_plugin::TrajectoryVisualization::incomingDisplayTrajectory (this=0x1512de0, msg=...) at /home/ap/catkin_ws/src/moveit/moveit_ros/visualization/rviz_plugin_render_tools/src/trajectory_visualization.cpp:460
+460     {
+(gdb) s
+[ERROR] - [/rviz_ap_NUC7i7DNKE_32236_8470600300558912922::PollSet::update::194]: poll failed with error Interrupted system call
+[Thread 0x7fffd0d9c700 (LWP 2149) exited]
+462       if (!robot_state_ || !robot_model_)
+(gdb) display robot_state_
+1: robot_state_ = std::shared_ptr<moveit::core::RobotState> (empty) = {get() = 0x0}
+(gdb) display robot_model_
+2: robot_model_ = std::shared_ptr<const moveit::core::RobotModel> (empty) = {get() = 0x0}
+(gdb)
+
+This, combined with the 5 calls printing "Loading robot model 'panda'..." is somewhat suspicious.
+
+Originally posted by aPonza on ROS Answers with karma: 589 on 2019-01-09
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2019-01-09:\
+
+but it would be nice to know if the only way to set the breakpoint I wanted to would have been to get rviz from source and recompile it myself.
+
+if you want to use a debugger, then yes, that would be what is needed. The binary pkgs don't include debug symbols, and the buildfarm does not yet ..
+Comment by gvdhoorn on 2019-01-09:
+.. generate -dbg pkgs (that is something that needs to be done explicitly, you don't get that for free when using .deb infrastructure).
+Without the symbols, debugging is going to be rather difficult.
+
+A:
+
+I solved this error message by making sure the "MotionPlanning" display is active in RViz.
+
+Originally posted by Void with karma: 71 on 2019-11-21
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by aPonza on 2020-02-11:
+I have a MotionPlanning display active and I still face the error. I attached a screenshot to the question displaying both RViz with an active MotionPlanning display and the terminal showing the error (the actual 3D view is grey due to a wall).
+Comment by Void on 2020-04-21:
+I'm not sure in that case.
+

@@ -1,0 +1,72 @@
+Q:
+
+RTAB-Map remote mapping issue , unable to get data fast enough over WiFi
+
+Hi guys,
+I am having issues using RTAB-Map on the client side(base station/my laptop).
+I have a Kinect on my robot and the machine it is connected is set as the Master.I have no problem accessing the topics produced from the client side , when I view the topics individually on rviz on the client side everything works fine.
+But when I launch rtabmapviz it lags to the point of failure.It starts to build the map but it is too slow and eventually fails.
+I am guessing the issue is with getting the data from the robot to the base station over WiFi.
+I have tried using the remote mapping launch file example but there is no data when I ros echo the topics.
+Any help would be much appreciated.
+Thanks!
+
+Originally posted by blane on ROS Answers with karma: 23 on 2016-01-22
+Post score: 1
+
+A:
+
+Hi,
+If rtabmap node is on client side, you should throttle the subscribed compressed topics and use relays to avoid multiple subscriptions on the same topics used by rviz, rtabmap or rtabmapviz (the messages should only be sent one time over the network). See this example:
+image description http://wiki.ros.org/rtabmap_ros/Tutorials/SetupOnYourRobot?action=AttachFile&do=get&target=remoteMapping.png
+  <node name="camera_info_relay" type="relay" pkg="topic_tools" args="/camera/data_throttled_camera_info /camera/data_throttled_camera_info_relay" />
+  <node name="republish_rgb" type="republish" pkg="image_transport" args="theora in:=/camera/data_throttled_image raw out:=/camera/data_throttled_image_relay" />
+  <node name="republish_depth" type="republish" pkg="image_transport" args="compressedDepth in:=/camera/data_throttled_image_depth raw out:=/camera/data_throttled_image_depth_relay" />
+
+The throttled topics on the robot side can be created with data_throttle node. Example at the beginning of section 6 of this page:
+<launch>
+  <include file="$(find freenect_launch)/launch/freenect.launch">
+     <arg name="depth_registration" value="True" />
+  </include>
+
+  <!-- Use same nodelet used by Freenect/OpenNI -->
+  <group ns="camera">
+    <node pkg="nodelet" type="nodelet" name="data_throttle" args="load rtabmap_ros/data_throttle camera_nodelet_manager" output="screen">
+      <param name="rate" type="double" value="5.0"/>
+
+      <remap from="rgb/image_in"       to="rgb/image_rect_color"/>
+      <remap from="depth/image_in"     to="depth_registered/image_raw"/>
+      <remap from="rgb/camera_info_in" to="rgb/camera_info"/>
+
+      <remap from="rgb/image_out"       to="data_throttled_image"/>
+      <remap from="depth/image_out"     to="data_throttled_image_depth"/>
+      <remap from="rgb/camera_info_out" to="data_throttled_camera_info"/>
+    </node>
+  </group>      
+</launch>
+
+EDIT
+There is a new tutorial on remote mapping here: http://wiki.ros.org/rtabmap_ros/Tutorials/RemoteMapping
+cheers
+
+Originally posted by matlabbe with karma: 6409 on 2016-01-23
+This answer was ACCEPTED on the original site
+Post score: 4
+
+Original comments
+Comment by blane on 2016-01-23:
+Thanks matlabbe , appreciate the help - I am still a novice in this area.
+I am using freenect_launch on my robot , I do not know where to place the data_throttle node.Do I incorporate it into the freenect_launch launch file?
+Thanks in advance!
+Comment by matlabbe on 2016-01-23:
+You can have a main launch file (or generally called a bring up launch file on the robot), which would launch every nodes and sub launch files at once. See roslaunch for more info. I updated the data_throttle box for a small example.
+Comment by blane on 2016-01-30:
+I followed the remote mapping tutorial and it works but after 15-30 seconds it fails.(rtabmap: Could not get transform from odom to camera_link after 0.10 second!).
+Robot Download speed 37.63 Mbit/s Wifi  Up 19.61 Mbit/s
+Base St speed Down: 75.89 Mbit/s Up 20.13 Mbit/s (ethernet)
+Thanks
+Comment by matlabbe on 2016-02-04:
+I updated the tutorial by showing the network usage that you should have, a steady ~500 KB/s.
+Comment by HexC on 2017-03-23:
+Hi, I have a steady ~500 KB/s relays but the remote computer mapping program stops working after 1~2 minutes. I think it is too much data going through the ROS TCP/IP.  Later on, I swap the computer on the robot and use the onboard laptop to finish the mapping.
+

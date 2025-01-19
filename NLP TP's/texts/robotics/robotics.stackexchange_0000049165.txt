@@ -1,0 +1,99 @@
+Q:
+
+MoveIt! Rviz Plugin - No interactive markers visible/available
+
+Hello to all,
+I created a Robot-Config via MoveIt! Setup Assistant. The Robot is a simple 6 Dof Robot.
+When I start it with the Rviz Moveit Plugin the interactive markers are not displayed. (After I click on "Interact"). I suspect the End-Effector is not correctly set by me.
+RVIZ:
+
+Screenshots of the MoveIt Setup Assistant:
+1.
+
+2.
+
+I set for both plannings groups the "KDLKinematicsPlugin" as Solver on default values.
+I followed this tutorial for the pr2-robot.
+My .launch-file:
+<launch>
+
+<include file="$(find tx60l_final3)/launch/upload_tx60l.launch"/>
+
+<node pkg="tf" type="static_transform_publisher" name="odom_broadcaster" args="0 0 0 0 0 0 odom_combined base_footprint 100" />
+
+<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+ <param name="/use_gui" value="false"/>
+</node>
+
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="true" output="screen"/>
+
+  <include file="$(find tx60l_final3)/launch/move_group.launch">
+    <arg name="allow_trajectory_execution" value="false"/>
+  </include>
+
+<include file="$(find tx60l_final3)/launch/moveit_rviz.launch"/>
+
+</launch>
+
+Edit (no gazebo-part in urdf): See here the Terminal-Output.
+Info: Removing and adding "MotionPlanning" inside Rviz didn't help.
+Edit (working Links):
+Here you can download my robot-description.
+Here you can download my urdf-folder.
+Update: If I set the "fixed_frame" to a link of the robot itself, interactive markers for joint a4 show up. (See picture below) But I need interactive markers in joint5. If I let "fixed_frame" set on "base_footprint" or "odom_combined" (as it should be, I think) and "plan and execute" for a random query MoveIt! crashes (output)
+
+Update: Now the interactive markers work correctly.
+Many Thanks to all supporters.
+viovio
+
+Originally posted by viovio on ROS Answers with karma: 117 on 2013-03-09
+Post score: 4
+
+Original comments
+Comment by Jeremy Zoss on 2013-03-14:
+Please mark an answer as correct, so the question is flagged as "answered".  Glad it's working for you!  Consider looking into http://ros.org/wiki/Industrial, which has several tutorials and templates for controlling your industrial robot through ROS.  We'd love to add support for Staubli to ROS-I !
+Comment by ROSkinect on 2015-03-03:
+did you tried to connect that to real robot or the simulator ?
+
+A:
+
+To me, it looks like the issue is that your joint_state_publisher is crashing due to a malformed robot URDF.  See the following snippet from your error log:
+xml.parsers.expat.ExpatError: unbound prefix: line 3, column 4
+[joint_state_publisher-3] process has died 
+
+I was able to reproduce the error using the tx60l.urdf supplied in your links.  The issue here is with the <gazebo> section in your URDF.  The joint_state_publisher uses a python minidom XML parser, which is more picky about XML syntax than the TinyXML C++ parser used in much of the rest of ROS (including the check_urdf test you ran earlier).  Even though the TinyXML parser can handle your URDF, the minidom parser requires a little bit more help...
+To fix the error, you have two options:
+
+remove the <gazebo> section from your URDF
+or update the URDF to a "more correct" format:
+move the <gazebo> section inside the <robot> section
+add xmlns qualifiers to the robot tag as shown:
+
+<robot name="TX60L">
+       xmlns:controller="http://playerstage.sourceforge.net/gazebo/xmlschema/#controller"
+       xmlns:interface="http://playerstage.sourceforge.net/gazebo/xmlschema/#interface">
+  <gazebo>
+    ...
+  </gazebo>
+  <link name="base_link">
+    ...
+</robot>
+
+Using these changes, I was able to get the joint_state_publisher to run without errors.  I expect this will also fix the issue you were having with missing interactive markers.
+
+Originally posted by Jeremy Zoss with karma: 4976 on 2013-03-14
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by viovio on 2013-03-14:
+Thx for your answer. I updated the links, so it must work now. My urdf file seems to be fine according to check_urdf.
+Comment by viovio on 2013-03-14:
+In the meantime I also noticed this. I removed it and the joint_state_publisher starts correctly. But this doesn't solve the problem. But I noticed something interesting: When setting the fixed_frame from odom_combined  to a link of the robot itself, interactive markers appear for the a4-link!
+Comment by Jeremy Zoss on 2013-03-14:
+I think you are seeing the correct behavior.  What are you expecting to see?  For a fixed robot, you shouldn't need to define odom_combined.  It is appropriate to set the fixed_frame in rviz to base_link of your robot.
+Comment by Jeremy Zoss on 2013-03-14:
+Similarly, at4 is the last link in your robot_arm group.  That's where the markers should be shown.  If you prefer to include the at5 link, then you need to add it to your robot_arm group.  This may require you to use a dummy (fixed) joint for the EE group, if you don't have a true gripper.
+Comment by viovio on 2013-03-14:
+Thx. I followed your comment and the interactive markers are now on their right spot.
+

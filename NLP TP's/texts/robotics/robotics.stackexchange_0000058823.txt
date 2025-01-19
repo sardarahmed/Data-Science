@@ -1,0 +1,112 @@
+Q:
+
+How much to turn to face the goal?
+
+Hi,
+I am implementing a simple algorithm to move the robot towards an assumed goal position in the willow-erratic world map in stage_ros package.
+I want to calculate the degree quantity that the robot should turn to face the goal.
+I am using the following equation but it seems that there is a problem with the code since when the robot is turning the quantity doesn't change. Also, when I manually place the robot in a location(1.5, 8) where it should turn 180 degrees to face the goal (3.5, 8), the equation below yields an output of -79.38 which is incorrect.
+Someone told me I can do this task using quaternions. How can I do that? robotPose.pose.orientation.z is equal to 1 now. How can I use that to find out the degree quantity that the robot need to turn to face the goal?
+angle = (math.atan2(goalY - robotPose.pose.position.y, goalX - robotPose.pose.position.x) - math.atan2(robotPose.pose.position.y, robotPose.pose.position.x)) * 180/math.pi
+
+What am I doing wrong?
+Thank you
+
+Originally posted by Warrior on ROS Answers with karma: 61 on 2014-04-17
+Post score: 0
+
+A:
+
+What you need is a fixed reference for both goal and robot pose. Here's an example with /map frame (sorry it is a C++ cause I don't master Python code):
+while(ros::ok())
+{
+    //declare some variables
+    tf::StampedTransform poseRobot;
+    geometry_msgs::PoseStamped robot_pose;
+    //initialize robot angle
+    double yaw_r(50);
+    //try what's between {}
+    try
+    {
+        ROS_DEBUG("Pose du robot ...");
+        // have the transform from /map to /base_link (robot frame) and put it in "poseRobot": this is the robot pose in /map!
+        listener.lookupTransform("/map","/base_link",ros::Time(0), poseRobot);
+      
+        //get the orientation: it is a quaternion so don't worry about the z. It doesn't mean there is a 3D thing here!
+        robot_pose.pose.orientation.x = poseRobot.getRotation().getX();
+        robot_pose.pose.orientation.y = poseRobot.getRotation().getY();
+        robot_pose.pose.orientation.z = poseRobot.getRotation().getZ();
+        robot_pose.pose.orientation.w = poseRobot.getRotation().getW();
+    
+        // convert the quaternion to an angle (the yaw of the robot in /map frame!)         
+        yaw_r = tf::getYaw(robot_pose.pose.orientation);  
+    }
+    catch(tf::TransformException &ex) //if the try doesn't succeed, you fall here!
+    {
+        // continue
+        ROS_INFO("error. no robot pose!");
+    }
+    
+            //angleDes is the goal angle in /map frame you get it by subscribing to goal 
+            //The angleDes you should get it in a call back normally by converting the goals orientation to a yaw. Exactly as we have done to get robot's yaw
+    
+            //delta_yaw is what you want to get
+            double delta_yaw = angleDes - yaw_r;
+            //and here I just make sure my angle is between minus pi and pi!
+    if (delta_yaw > M_PI)
+            delta_yaw -= 2*M_PI;
+    if (delta_yaw <= -M_PI)
+            delta_yaw += 2*M_PI;
+
+You can replace /map frame with /odom frame.
+Suppose now that your goal is not in /map frame.
+This how you convert it with tf:
+//some bool to check if conversion is alright
+success =false;
+try
+{
+    ROS_DEBUG("transform from goalFrame to mapFrame ...");
+    
+    //prepare conversion by sync'ing times
+    ros::Time current_transform = ros::Time::now(); 
+    listener2.getLatestCommonTime(currentGoal.header.frame_id, "map", current_transform, NULL);
+    currentGoal.header.stamp = current_transform;
+      
+     //conversion
+    geometry_msgs::PoseStamped goalInMap;
+    listener2.transformPose("/map", currentGoal, goalInMap);
+      
+    angleDes = tf::getYaw(goalInMap.pose.orientation);
+    
+    success =true;
+}
+catch(tf::TransformException &ex)
+{
+    // continue
+    ROS_DEBUG("error. no transform from goal frame to map frame!");
+}
+
+Originally posted by AbuIbra with karma: 118 on 2014-04-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by Warrior on 2014-04-18:
+Your way seems to be complicated and I couldn't understand it properly. I may note that my robot is in a 2-D space, not 3D. Does that make sense?
+I think I figured out the correct way of calculating the degree quantity that the robot must move to face the goal as follow:
+((math.atan2(self.goalY - self.robotY, self.goalX - self.robotX)) * 180/math.pi) - self.robotAngle
+What do you think?
+Comment by AbuIbra on 2014-04-18:
+I edited my answer to put more explanatory comments to make my code clearer. Believe me man, this is not complicated, this , I think, is the straight forward way to do things with ROS basic tools (tf, poseStamped, etc. )
+Comment by AbuIbra on 2014-04-18:
+As for your change in the comment, I can't say much about it. You have to understand that there are frames. So your "self" thing means nothing unless you tell me in which frame it is.
+For example, imagine you have robotPose variable expressed in /base_link(robot frame), you always have x=0 y=0 !
+Comment by Warrior on 2014-04-18:
+Sorry, I shouldn't have copied the code directly. The "self" thing is used because I am writing my codes in a class. Here's the more understandable code: ((math.atan2(goalY - robotY, goalX - robotX)) * 180/math.pi) - robotAngle. Initially, robotAngle is 180 (the robot is looking backward). So, the quantity of this equation will be the angle that the robot must turn to face the goal. However, the topics that I have subscribed to publish both pose.{x, y, z} along with orientation.{x, y, z, w} quantities. So, suppose my robot starts at the position (-8, -2) and its robot.pose.orientation.z quantity is 1. The goal is also located at (3.5, 8). How can I calculate what should robot.pose.orientation.z be when I am facing the robot? (Sorry I am still a little bit lost)
+Comment by Stefan Kohlbrecher on 2014-04-18:
+I think a lot of the confusion stems from the fact that you've been misunderstanding how the orientation quaternion works. Have a look here:http://answers.ros.org/question/30340/problem-in-geometry_msgspose/
+Comment by AbuIbra on 2014-04-20:
+@Warrior: this :"((math.atan2(goalY - robotY, goalX - robotX)) * 180/math.pi) - robotAngle"
+can be always equal to "((math.atan2(goalY, goalX)) * 180/math.pi)" because in robot frame: robotX =0 robotY=0 and robotAngle=0! So without the frame, this is useless.
+So you really have to think FRAMES!
+

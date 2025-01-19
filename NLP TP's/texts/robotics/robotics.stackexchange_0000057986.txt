@@ -1,0 +1,101 @@
+Q:
+
+how do I publish folder which contains 100 images over ROSTOPIC using custom message type
+
+I don't know how to use folder which contains 100 images in custom message type..
+
+Originally posted by Abinaya on ROS Answers with karma: 1 on 2014-03-17
+Post score: 0
+
+A:
+
+Write yourself a little publisher like:
+#include <iostream>
+
+#include <list>
+#include <vector>
+
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/highgui/highgui.hpp>
+
+int main ( int argc, char** argv )
+{
+    if ( argc < 2 )
+    {
+      std::cout << "no image names given" << std::endl;
+      return -1;
+    }
+
+  ros::init( argc, argv, "image_publisher" );
+  
+  ros::NodeHandle lo_nh;
+  
+  try
+  {
+    
+    std::vector<cv::Mat> lv_images;
+ 
+    ROS_INFO( "Loading images" );
+    
+    for ( int lo_i = 1; lo_i < argc; lo_i++ )
+    {
+      lv_images.push_back( cv::imread(std::string( argv[ lo_i ] ), CV_LOAD_IMAGE_COLOR ) );
+    }
+    
+    ros::Publisher lo_pub = lo_nh.advertise<sensor_msgs/Image>( “/image”, 5 );
+    
+      int lo_rate = 10;
+      
+      ROS_INFO_STREAM( "Publishing images at " << lo_rate << "hz" );
+      ros::Rate lo_rate1( lo_rate );
+      
+      std::vector<cv::Mat>::iterator lo_iter_imgs( lv_images.begin() ), lo_iter_imgs_end( lv_images.end() );
+      
+      for ( ; lo_iter_imgs != lo_iter_imgs_end ; ++lo_iter_imgs )
+      {
+    cv_bridge::CvImage lo_img;
+    lo_img.encoding = "bgr8";
+    lo_img.image = *lo_iter_imgs;   
+    
+    lo_pub.publish(lo_img.toImageMsg() );
+    
+    ros::spinOnce();
+    lo_rate1.sleep();
+      }
+      
+  }
+  catch ( const std::exception& lo_e )
+  {
+    std::cout << "Exception in main: " << lo_e.what() << std::endl;
+    
+    return -1;
+  }
+  catch( ... )
+  {
+    std::cout << "Unknown exception in main" << std::endl;
+    
+    return -1;
+  }
+  
+  return 0;
+}
+
+And call it with all images in the current folder using a shell script like:
+#!/bin/bash
+echo "Working ..."
+
+FILES= 
+
+for i in $(ls *.png); do
+ FILES="${FILES} ${i}"
+done
+
+rosrun my_pkg my_image_publisher $FILES
+
+echo "Done"
+
+Originally posted by Wolf with karma: 7555 on 2014-03-17
+This answer was ACCEPTED on the original site
+Post score: 1
+

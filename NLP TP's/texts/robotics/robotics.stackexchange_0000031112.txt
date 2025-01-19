@@ -1,0 +1,421 @@
+Q:
+
+How to execute floor collision map demo in ucsb-ros-pkg
+
+Hi,
+I am very interested in know if anyone knows how to run the floor collision map demo in the ucsb-ros-pkg as seen here in their google docs video.
+I have downloaded and ran all the other examples in the ucsb package and have even moded it to work with a wii Remote, but cannot find the floor mapping code in the package.
+http://code.google.com/p/ucsb-ros-pkg/
+Thanks,
+-Scott
+
+Originally posted by Scott on ROS Answers with karma: 693 on 2011-04-15
+Post score: 0
+
+A:
+
+Hi,
+I'm the creator of that demo, so I should be able to help you out.  I haven't uploaded the code to our public svn because it could do with a little updating to clean up the code, split off sections into functions, etc.  It also doesn't compile under electric because it was developed under cturtle and I haven't updated it.
+This demo was mostly created for me to learn PCL, so there are lots of ways to improve the code.  For example, using kd trees instead of brute force collision detection, etc.
+That said, here's the source code if you want to take a look.
+-Brian
+  //find_floor.cpp
+//Author: Brian Satzinger (bsatzinger@gmail.com)
+//Demonstration of automated floor finding & reorientation through
+//planar segmentation, with a collision detection function.
+//Publishes several ros topics with intermediate data for debugging
+//and illustrative purposes.
+
+/*
+Copyright (c) 2011, Brian Satzinger
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the UCSB Robotics Lab nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+//ROS Includes
+#include <ros/ros.h>
+#include <geometry_msgs/Polygon.h>
+#include <geometry_msgs/Point32.h>
+
+//RVIZ ROS API Includes
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+
+//TF Includes
+#include <tf/transform_broadcaster.h>
+
+//PCL Includes
+#include <pcl/ModelCoefficients.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl_visualization/pcl_visualizer.h>
+#include <pcl/filters/project_inliers.h>
+#include <pcl/surface/convex_hull.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl_tf/transforms.h>
+#include <pcl_ros/subscriber.h>
+
+//Other includes
+#include <boost/thread/mutex.hpp>
+#include <iostream>
+#include <stdio.h>
+#include <math.h>
+
+using namespace std;
+
+//Typedefs
+typedef pcl::PointXYZRGB PointT;
+typedef pcl::PointCloud<PointT> CloudT;
+typedef pcl_visualization::PointCloudColorHandler<sensor_msgs::PointCloud2> ColorHandler;
+typedef ColorHandler::Ptr ColorHandlerPtr;
+typedef ColorHandler::ConstPtr ColorHandlerConstPtr;
+
+//Some constants to be experimented with
+#define Z_LIMIT 4.5                                     //Maximum allowable distance from the kinect
+#define LEAF 0.02                                       //Size of the voxel grid for initial downsampling
+#define LEAF_COARSE 0.15                        //Size of the voxel grid for coarse downsampling
+#define QUORUM 2000                                     //Number of points it takes to be considered a plane
+#define PLANE_DIST_THRESH ( 0.13 )      //Ground plane distance threshold
+
+//A global variable for passing point cloud data from the callback to the main thread
+sensor_msgs::PointCloud2ConstPtr cloud_, cloud_old_;
+boost::mutex m;
+
+//Callback for receiving cloud data
+void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud)
+{
+  ROS_INFO ("PointCloud with %d data points (%s), stamp %f, and frame %s.", cloud->width * cloud->height, pcl::getFieldsList (*cloud).c_str (), cloud->header.stamp.toSec (), cloud->header.frame_id.c_str ());
+  m.lock ();
+  cloud_ = cloud;
+  m.unlock ();
+}
+
+//Check if any points in obs collide with a sphere of radius r centered at pos
+//Used for collision detection with a spherical collision model
+int in_collision (const CloudT& obs, const tf::Vector3& pos, double r)
+{
+        int n = obs.points.size();
+
+        for (int i = 0; i < n; i++)
+        {
+                PointT obs_pt = obs.points[i];
+                tf::Vector3 obs3 = tf::Vector3(obs_pt.x, obs_pt.y, obs_pt.z);
+
+                //Compute the distance between the position of the robot and the point
+                tf::Vector3 delta = obs3 - pos;
+                double dist = delta.length();
+
+                if (dist < r)
+                {
+                        return 1;
+                }
+        }
+
+        return 0;
+}
+
+//main: Detect the ground plane, determine the Kinect's relative position to the ground
+//and detect obstacles to a robot traveling on the ground plane
+int main (int argc, char** argv)
+{
+        //**************************************
+        //INITIALIZE ROS:
+        //**************************************
+        ros::init (argc, argv, "floor_finder");
+        ros::NodeHandle nh;
+
+        //ROS Publishers. These are primarily used for debugging and illustration,
+        //and can be removed if this code is used for a specific purpose and they
+        //are not specifically needed.
+        ros::Publisher npl_pub = nh.advertise<sensor_msgs::PointCloud2>("nonplane_cloud", 1);
+        ros::Publisher pl_pub = nh.advertise<sensor_msgs::PointCloud2>("plane_cloud", 1);
+        ros::Publisher hull_pub = nh.advertise<sensor_msgs::PointCloud2>("hull_cloud", 1);
+        ros::Publisher align_pub = nh.advertise<sensor_msgs::PointCloud2>("aligned_cloud",1);
+        ros::Publisher coarse_pub = nh.advertise<sensor_msgs::PointCloud2>("coarse_outliers",1);
+        ros::Publisher coarse_trans_pub = nh.advertise<sensor_msgs::PointCloud2>("coarse_worldref",1);
+        ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 10);
+
+        // Get the queue size from the command line
+        int queue_size = 1;
+        printf("Using a queue size of %d\n", queue_size);
+
+        // Create a ROS subscriber to the kinect data
+        ros::Subscriber sub = nh.subscribe ("/kinect/depth/points2", queue_size, cloud_cb);
+
+        //**************************************
+        //DECLARE VARIABLES:
+        //**************************************
+        pcl::PCDReader reader;
+        pcl::PassThrough<PointT> pass;
+        pcl::NormalEstimation<PointT, pcl::Normal> ne;
+        pcl::SACSegmentationFromNormals<PointT, pcl::Normal> seg;
+        pcl::PCDWriter writer;
+        pcl::ExtractIndices<PointT> extract;
+        pcl::ExtractIndices<pcl::Normal> extract_normals;
+        pcl::KdTreeANN<PointT>::Ptr tree = boost::make_shared<pcl::KdTreeANN<PointT> > ();
+
+        // Datasets
+        pcl::PointCloud<PointT> full_cloud, cloud_depth, cloud_fine, plane_inliers, plane_inliers_proj, floor_conv_hull, plane_outliers, plane_outliers_coarse;
+        pcl::PointCloud<pcl::Normal> cloud_normals;
+        pcl::ModelCoefficients coefficients_plane, coefficients_cylinder;
+        pcl::PointIndices indx_inliers_plane;
+
+        //**************************************
+        //MAIN LOOP:
+        //**************************************
+        while (nh.ok ())
+        {
+                //Wait for a new pointcloud to arrive
+                ros::spinOnce ();
+                ros::Duration (0.001).sleep ();
+                // If no cloud received yet, continue
+                if (!cloud_)
+                        continue;
+                if (cloud_ == cloud_old_)
+                        continue;
+                m.lock ();
+                {
+                        pcl::fromROSMsg (*cloud_, full_cloud);
+                }
+                m.unlock();
+
+                //**************************************
+                //INITIAL FILTERING:
+                //**************************************
+                // Build a passthrough filter to remove points which are too far away
+                pass.setInputCloud (boost::make_shared<pcl::PointCloud<PointT> > (full_cloud));
+                pass.setFilterFieldName ("z");
+                pass.setFilterLimits (0, Z_LIMIT);
+                pass.filter (cloud_depth);
+
+                //Voxel grid downsampling
+                pcl::VoxelGrid<PointT> sor;
+                sor.setInputCloud (boost::make_shared<CloudT> (cloud_depth));
+                sor.setLeafSize(LEAF, LEAF, LEAF);
+                sor.filter(cloud_fine);
+                cout << "Voxel Grid Downsampling: " << cloud_fine.points.size() << " points remain\n";
+
+                // Estimate point normals
+                ne.setSearchMethod (tree);
+                ne.setInputCloud (boost::make_shared<pcl::PointCloud<PointT> >(cloud_fine));
+                ne.setKSearch (50);
+                ne.compute (cloud_normals);
+
+                //**************************************
+                //PLANE DETECTION:
+                //**************************************
+                // Create the segmentation object for the planar model and set all the parameters
+                seg.setOptimizeCoefficients (true);
+                seg.setModelType (pcl::SACMODEL_NORMAL_PLANE);
+                seg.setMethodType (pcl::SAC_RANSAC);
+                seg.setNormalDistanceWeight (0.1);
+                seg.setMaxIterations (100);
+                seg.setDistanceThreshold (PLANE_DIST_THRESH);
+                seg.setInputCloud (boost::make_shared<pcl::PointCloud<PointT> >(cloud_fine));
+                seg.setInputNormals (boost::make_shared<pcl::PointCloud<pcl::Normal> >(cloud_normals));
+                // Obtain the plane inliers and coefficients
+                seg.segment (indx_inliers_plane, coefficients_plane);
+                cout << "Plane coefficients: " << coefficients_plane << std::endl;
+
+                cout << "Extracting plane inliers...\n";
+                // Extract the planar inliers from the input cloud
+                extract.setInputCloud (boost::make_shared<pcl::PointCloud<PointT> > (cloud_fine));
+                extract.setIndices (boost::make_shared<pcl::PointIndices> (indx_inliers_plane));
+                extract.setNegative (false);
+                extract.filter (plane_inliers);
+                cout << "Plane contains " << (int)plane_inliers.points.size() << "\n";
+
+                //Project the planar cloud to lie exactly on the plane model
+                pcl::ProjectInliers<PointT> proj;
+                proj.setModelType(pcl::SACMODEL_NORMAL_PLANE);
+                proj.setInputCloud(boost::make_shared<CloudT> (plane_inliers));
+                proj.setModelCoefficients(boost::make_shared<pcl::ModelCoefficients> (coefficients_plane));
+                proj.filter(plane_inliers_proj);
+
+                //Construct a convex hull for the projection
+                CloudT cloud_hull;
+                pcl::ConvexHull2D<PointT, PointT> chull;
+                chull.setInputCloud(boost::make_shared<CloudT> (plane_inliers_proj));
+                chull.reconstruct(floor_conv_hull);
+
+                //Visualize the plane outline in RVIZ
+                visualization_msgs::Marker line_strip;
+                line_strip.header.frame_id = "kinect_ground";
+                line_strip.header.stamp = ros::Time::now();
+                line_strip.ns = "points_and_lines";
+                line_strip.action = visualization_msgs::Marker::ADD;
+                line_strip.pose.orientation.w = 1.0;
+                line_strip.id = 0;
+                line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+                line_strip.scale.x = 0.01; //the x component sets the line width
+                line_strip.color.a = 1.0f;
+                line_strip.color.r = 1.0f;
+                line_strip.lifetime = ros::Duration(2.0f);
+                for (unsigned int i = 0; i < floor_conv_hull.points.size(); i++)
+                {
+                        geometry_msgs::Point p;
+                        p.x = floor_conv_hull.points[i].x;
+                        p.y = floor_conv_hull.points[i].y;
+                        p.z = floor_conv_hull.points[i].z;
+
+                        line_strip.points.push_back(p);
+                }
+                marker_pub.publish(line_strip);
+
+                //extract the plane outliers
+                extract.setNegative (true);
+                extract.filter (plane_outliers);
+                extract_normals.setNegative (true);
+                extract_normals.setInputCloud (boost::make_shared<pcl::PointCloud<pcl::Normal> > (cloud_normals));
+                extract_normals.setIndices (boost::make_shared<pcl::PointIndices> (indx_inliers_plane));
+                extract_normals.filter (cloud_normals);
+
+                //Publish a ROS message with the planar segments included
+                sensor_msgs::PointCloud2 scene;
+                pcl::toROSMsg(plane_inliers, scene);
+                pl_pub.publish(scene);
+
+                //Publish a ROS message with non-planar segments
+                sensor_msgs::PointCloud2 scene_non;
+                pcl::toROSMsg(plane_outliers, scene_non);
+                scene_non.header.frame_id = "kinect_ground";
+                npl_pub.publish(scene_non);
+
+                //**************************************
+                //TF COMPUTATION:
+                //**************************************
+                //Define the TF
+                static tf::TransformBroadcaster br;
+                tf::Transform transform;
+                transform.setOrigin(tf::Vector3(0.0,0.0,0.0));
+
+                //Calculate the z-alignment rotation
+                tf::Vector3 plane_norm = tf::Vector3(coefficients_plane.values[0],coefficients_plane.values[1],coefficients_plane.values[2]);
+                tf::Vector3 desired_orientation = tf::Vector3(0.0,0.0,-1.0); //align to -z axis
+                plane_norm = plane_norm.normalize();
+                desired_orientation = desired_orientation.normalize();
+                double rot_ang = acos(plane_norm.dot(desired_orientation));
+                tf::Vector3 rot_axis = plane_norm.cross(desired_orientation);
+                tf::Quaternion q = tf::Quaternion(rot_axis,rot_ang);
+
+                //Calculate the y-alignment rotation
+                plane_norm.setZ(0);
+                plane_norm = plane_norm.normalize();
+                tf::Vector3 x_axis = tf::Vector3(0.0,1.0,0.0);
+                rot_ang = acos(plane_norm.dot(x_axis));
+                rot_axis = plane_norm.cross(x_axis);
+                rot_axis.normalize();
+                tf::Quaternion q2 = tf::Quaternion(rot_axis,rot_ang);
+
+                //Define the transform
+                transform.setRotation(q2 * q);
+                transform.setOrigin(tf::Vector3(0,0,-1.0 * coefficients_plane.values[3]));
+                tf::StampedTransform trans = tf::StampedTransform(transform, ros::Time::now(), "world", "kinect_ground");
+                br.sendTransform(trans);
+
+                //Publish a kinect_ground aligned pointcloud (for debugging)
+                sensor_msgs::PointCloud2 aligned2;
+                pcl::toROSMsg(full_cloud, aligned2);
+                aligned2.header.frame_id = "kinect_ground";
+                align_pub.publish(aligned2);
+
+                //**************************************
+                //COARSE COLLISION GRID:
+                //**************************************
+
+                pcl::VoxelGrid<PointT> sor2;
+                sor2.setInputCloud (boost::make_shared<CloudT> (plane_outliers));
+                sor2.setLeafSize(LEAF_COARSE, LEAF_COARSE, LEAF_COARSE);
+                sor2.filter(plane_outliers_coarse);
+
+                cout << "Coarse Voxel Grid Downsampling: " << plane_outliers_coarse.points.size() << " points remain\n";
+                double reduction_percent = 100.0 - 100.0 * ((float) plane_outliers_coarse.points.size()) / ((float) plane_outliers.points.size());
+                cout << reduction_percent << " percent reduction in collision points\n";
+
+                //Publish the coarse voxel grid (mainly for debugging)
+                sensor_msgs::PointCloud2 coarse2;
+                pcl::toROSMsg(plane_outliers_coarse, coarse2);
+                coarse2.header.frame_id="kinect_ground";
+                coarse_pub.publish(coarse2);
+
+                sensor_msgs::PointCloud2 coarse2tf;
+                pcl::transformPointCloud("/world", trans, coarse2, coarse2tf);
+                coarse_trans_pub.publish(coarse2tf);
+
+                pcl::fromROSMsg(coarse2tf, plane_outliers_coarse);
+
+                //**************************************
+                //VISUALIZE COLLISIONS:
+                //**************************************
+
+                //Publish a blue marker on each point not in collision
+                visualization_msgs::Marker marker;
+                marker.header.frame_id = "/world";
+                marker.header.stamp = ros::Time();
+                marker.ns = "collision_ns";
+                marker.id = 0;
+                marker.type = visualization_msgs::Marker::POINTS;
+                marker.lifetime = ros::Duration(2.0f);
+                marker.color.a = 0.5;
+                marker.color.r = 0.0;
+                marker.color.g = 0.0;
+                marker.color.b = 1.0;
+                marker.action = visualization_msgs::Marker::ADD;
+                marker.scale.x = marker.scale.y = marker.scale.z = 0.05;
+                //Test points in a grid
+                for (double x = -3.0; x < 3.0; x = x + 0.05)
+                {
+                        for (double y = 0.0; y < 5.0; y = y + 0.05)
+                        {
+                                geometry_msgs::Point pt;
+                                pt.x = x;
+                                pt.y = y;
+                                pt.z = 0;
+
+                                //Add the point if it is not in collision
+                                if ( in_collision (plane_outliers_coarse, tf::Vector3(x,y,0), 0.3) == 0 )
+                                {
+                                        marker.points.push_back(pt);
+                                }
+                        }
+                }
+
+                //Publish the markers
+                marker_pub.publish(marker);
+         }
+
+  return (0);
+}
+
+Originally posted by bsatzinger with karma: 76 on 2011-09-27
+This answer was ACCEPTED on the original site
+Post score: 3
+

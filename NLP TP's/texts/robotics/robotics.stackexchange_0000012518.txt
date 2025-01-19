@@ -1,0 +1,42 @@
+Q:
+
+Stepper motor control
+
+I am trying to understand the stepper motor to Mach3 type software control interfaces, mostly from a logical perspective, deducing most of everything because I have no concrete resource to refer.
+So basically I have purchased a "LinkSprite" 3 axis engraver. It says it comes with Arduino GRBL board which interprets G-code. Sends it to stepper driver shields.
+Bottom
+I can see the drivers need to send a approximate sign wave of some sort to one or both windings to actuate them.
+Top
+Mach3 I read essentially transmits two signals per axis to the motion controller/breakout board (which in turn is connected to the drivers), one being the number of steps the other the direction and probably via parallel ports GPIO or something.
+
+So what underlying transmission protocol carries mach3 signals, like i2c or something via the parallel poet? How is steps and direction, and axis encoded?
+
+What does the motion controller do exactly? Minimally does it just breakout out the signal to the drivers? What is the drivers inputs?
+
+My Arduino GRBL board I read interprets G-code, but isn't that what Mach3 does?
+
+How can I connect from stepper motor waveform on windings to some interface like Mach3 the encodings and concrete information of this logical path of the workings of the control of the stepper motors?
+
+A:
+
+So you have three different questions here I will answer them separately:
+Q: How is Mach 3 controlling steppers?
+Mach 3 normally uses a step and direction interface where it is abusing the parallel port on your PC to output signals. 
+A step and direction port does just what it sounds like, it has one pin where every transition of the signal from low to high to low (or vice versa) commands the motor to take one "step" (fraction of a rotation) forward, the other signal indicates what direction the step should go, where high is forward and low is reverse or vice versa. There are 7 data pins on a parallel port enough to control 3 steppers.
+These step and direction commands are going to servo drivers that interpret those commands and move the stepper, the motion controllers are normally very dumb with minimal logic.
+
+Q: How is GRBL controlling steppers?
+GRBL is just interpreting the G-Code line by line and controlling the steppers, which brings us to your last question.
+Q: How does G-code translate to real world movement?
+G-Code is a standard numerical control programming language for encoding moving things. 
+
+G-Code is first parsed by a parser that decodes the commands, say a movement command like G01 X1 (Fast move to x value of 1)
+The parsed command is then compared to the current state of the machine to find out what needs to change, so in our example say we were at x 0 (the origin) it would find out that we need to move 1 unit in the x direction
+The controller would then command the appropriate number of steps at the appropriate speed to complete the desired movement, for our example if our controller was told that 100 steps corresponded to 1 unit, it would command 100 steps in the forward direction
+The Servo driver then outputs the right waveforms to move the stepper.
+The controller would then loop to step 1 to interpret the next line of G-Code
+
+A GRBL/Stepper shield is handling steps 1-4 all on its own, with the computer feeding in lines of G-Code as it needs it. 
+Mach 3 is handling lines 1-3 and just outputting the resulting step and direction command to a separate box with Servo Drivers.
+My example is very basic, normally the Motion control software is pretty sophisticated, handling things like relative vs absolute position movements, soft limits feed rated coordinated axis movement etc... but that should give you an idea of how it works under the hood.
+

@@ -1,0 +1,94 @@
+Q:
+
+MoveIt Task constructor - Merge example
+
+Hi,
+I am learning how to use MoveIt task constructor and as there is few examples and documentation about it, I am having a hard time to create a merge task : move both arms of a PR2 robot at the same time (ie: lower them of about 10 cm at the same time).
+void planTest(Task &t) {
+
+t.loadRobotModel();
+
+auto cartesian = std::make_shared<solvers::CartesianPath>();
+cartesian->setProperty("jump_threshold", 0.0);
+
+Stage* current_state = nullptr;
+auto initial = std::make_unique<stages::CurrentState>("current state");
+current_state = initial.get();
+t.add(std::move(initial));
+
+// planner used for connect
+auto pipeline = std::make_shared<solvers::PipelinePlanner>();
+pipeline->setPlannerId("RRTConnectkConfigDefault");
+
+auto merger = std::make_unique<Merger>();
+
+{
+        auto stage = std::make_unique<stages::MoveRelative>("lower object left", cartesian);
+        stage->properties().set("marker_ns", "lower_object");
+        stage->properties().set("link", "l_gripper_tool_frame");
+        stage->properties().set("group","left_arm");
+        stage->setMinMaxDistance(.03, .13);
+        // Set downward direction
+        geometry_msgs::Vector3Stamped vec;
+        vec.header.frame_id = "base_footprint";
+        vec.vector.z = -1.0;
+        stage->setDirection(vec);
+
+      merger->insert(std::move(stage));
+}
+
+{
+        auto stage = std::make_unique<stages::MoveRelative>("lower object right", cartesian);
+        stage->properties().set("marker_ns", "lower_object");
+        stage->properties().set("link", "r_gripper_tool_frame");
+        stage->properties().set("group","right_arm");
+        stage->setMinMaxDistance(.03, .13);
+        // Set downward direction
+        geometry_msgs::Vector3Stamped vec;
+        vec.header.frame_id = "base_footprint";
+        vec.vector.z = -1.0;
+        stage->setDirection(vec);
+
+      merger->insert(std::move(stage));
+}
+
+t.add(std::move(merger));
+}
+
+The error returned when running is :
+
+Error initializing stages:
+current state: required interface is not satisfied
+merger: start interface of 'lower object left' (↑) doesn't match mine (?)
+merger: start interface of 'lower object right' (↑) doesn't match mine (?)
+merger: no child provides expected push interface
+
+I don't really manage to understand the "interface" mechanism of MoveIt task constructor and there isn't much information on internet...
+I managed to understand and use "Alternatives" and normal task workflow by trial and error but merger seems to be trickier and no examples are available for now.
+thanks for your help.
+Regards,
+
+Originally posted by Madcreator on ROS Answers with karma: 114 on 2020-03-18
+Post score: 1
+
+Original comments
+Comment by gvdhoorn on 2020-04-10:
+@Madcreator: if @v4hn's answer answered your question, please accept the answer by clicking the checkmark left of the answer. It will turn green.
+We don't close questions here on ROS Answers if they are actually answered.
+Comment by Madcreator on 2020-04-10:
+Oups ok, made the modification :) Thank you for the advice !
+
+A:
+
+You actually hit a bug in the inference of logical information flow.
+If you replace the Merger in your example by Fallback or Alternative, you will see the same error.
+To work around it for the moment, you can restrict the direction of computation by hand for both MoveRelative stages via stage->restrictDirection(PropagatingEitherWay::FORWARD), but I'll work on a fix now, as your code should be valid.
+
+Originally posted by v4hn with karma: 2950 on 2020-03-18
+This answer was ACCEPTED on the original site
+Post score: 2
+
+Original comments
+Comment by v4hn on 2020-04-14:
+With this pull-request merged, there should be no need for the workaround I describe here anymore.
+

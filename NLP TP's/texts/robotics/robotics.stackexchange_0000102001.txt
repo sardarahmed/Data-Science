@@ -1,0 +1,51 @@
+Q:
+
+GoalUpdater-bt_navigator-behavior_tree Updating a goal to /navigate_to_pose not responding
+
+Hello,
+I am trying to find a way to update a goal passed to the action /navigate_to_pose since calling a new action would result in aborting the previous one. I found the bt plugin GoalUpdater which should do the magic but when I try to use it basically nothing happens when I publish on /goal_update topic.
+ROS_DISTRO: galactic
+UBUNTU: 20.04
+bt_navigator.xml: 
+<BehaviorTree ID="MainTree">
+    <Sequence name="Test">
+        <ClearEntireCostmap name="ClearLocalCostmap-test" service_name="local_costmap/clear_entirely_local_costmap"/>
+      <ClearEntireCostmap name="ClearGlobalCostmap-test" service_name="global_costmap/clear_entirely_global_costmap"/>
+      <Wait wait_duration="1"/>
+<RecoveryNode number_of_retries="6" name="NavigateRecovery">
+    <PipelineSequence name="NavigateWithReplanning">
+      <RateController hz="10.0">
+        <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+          <GoalUpdater input_goal="{goal}" output_goal="{updated_goal}">
+            <ComputePathToPose goal="{updated_goal}" path="{path}" planner_id="GridBased"/>
+          </GoalUpdater>
+          <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+        </RecoveryNode>
+      </RateController>
+      <RecoveryNode number_of_retries="1" name="DynamicFollowPath">
+        <FollowPath path="{path}" controller_id="DynamicFollowPath"/>
+        <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+      </RecoveryNode>
+    </PipelineSequence>
+  <ReactiveFallback name="RecoveryFallback">
+    <GoalUpdated/>
+    <SequenceStar name="RecoveryActions">
+      <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+      <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+      <Wait wait_duration="1"/>
+    </SequenceStar>
+  </ReactiveFallback>
+</RecoveryNode>
+</Sequence>
+
+Originally posted by Mrmara on ROS Answers with karma: 71 on 2022-06-22
+Post score: 1
+
+A:
+
+For those who are interested, it turned out goalUpdater node was receiving the goal_update topic but inside the plugin there is a check on the timestamps and since I was sending a message without timestamp the plugin was just discarding it. It has been sufficient to fill the timestamp in the header fo the message and GoalUpdater made the magic
+
+Originally posted by Mrmara with karma: 71 on 2022-06-23
+This answer was ACCEPTED on the original site
+Post score: 1
+

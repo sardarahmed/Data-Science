@@ -1,0 +1,154 @@
+Q:
+
+MoveIt can't find custom moveit_controller_manager plugin in ROS2 Humble
+
+For a project using ROS2 as a planning back-end for a robot simulation in Unity I am trying to make a custom MoveIt controller-manager and -handle that send trajectories planned by MoveIt to Unity based on this Project for ROS1: https://github.com/szandara/unity_moveit_manager/tree/master/src/unity_moveit_manager. I am however very much a beginner at using ROS and as such this is my first time making a plugin for MoveIt. While I have searched for official documentation on this, what I could find was either too basic or still for ROS1.
+The plugin itself builds without warnings or errors, however when I try to get MoveIt to use this plugin by editing the moveit_controllers.yaml file of a Setup-Assistant generated MoveIt-config like so:
+# MoveIt uses this configuration for controller management
+
+# moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+moveit_controller_manager: unity_controller/UnityControllerManager
+
+# moveit_simple_controller_manager:
+unity_controller:
+  controller_names:
+    - robot_arm_controller
+
+  robot_arm_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
+And launch MoveIt, for example with demo.launch.py, I will get the following Error messages and a robot that can plan but not execute trajectories:
+[move_group-3] [FATAL] [1708859046.029615231] [moveit_ros.trajectory_execution_manager]: Exception while loading controller manager 'unity_controller/UnityControllerManager': According to the loaded plugin descriptions the class unity_controller/UnityControllerManager with base class type moveit_controller_manager::MoveItControllerManager does not exist. Declared types are  moveit_simple_controller_manager/MoveItSimpleControllerManager
+[move_group-3] [ERROR] [1708859046.029670616] [moveit_ros.trajectory_execution_manager]: Failed to reload controllers: `controller_manager_` does not exist.
+
+Apparently MoveIt can't find the unity_controller plugin. I've tried a number of ways to fix this issue or just to discover what exactly goes wrong. Among these I have build a demo-plugin following the pluginlib tutorial for Humble (Which worked) and then trying to load my controller-plugin the same way (Which didn't). Here is the Testbench I wrote and the resulting error message:
+#include <cstdio>
+#include <pluginlib/class_loader.hpp>
+#include <polygon_base/regular_polygon.hpp>
+#include <moveit/controller_manager/controller_manager.h>
+
+int main(int argc, char ** argv)
+{
+  (void) argc;
+  (void) argv;
+
+  pluginlib::ClassLoader<polygon_base::RegularPolygon> poly_loader("polygon_base", "polygon_base::RegularPolygon");
+  pluginlib::ClassLoader<moveit_controller_manager::MoveItControllerManager> controller_loader("moveit", "moveit_controller_manager::MoveItControllerManager");
+  try {
+    std::shared_ptr<polygon_base::RegularPolygon> triangle = poly_loader.createSharedInstance("polygon_plugins::Triangle");
+    std::shared_ptr<moveit_controller_manager::MoveItControllerManager> unity_controller_manager = controller_loader.createSharedInstance("moveit_simple_controller_manager::MoveItSimpleControllerManager");
+    triangle->initialize(10.0);
+    printf("Triangle area: %.2f\n", triangle->area());
+
+    printf("Instance made successfully\n");
+  } catch(pluginlib::LibraryLoadException& ex) {
+    printf("Library load exception : %s\n", ex.what());
+  } catch(pluginlib::ClassLoaderException& ex) {
+    printf("Class load exception : %s\n", ex.what());
+  } catch(pluginlib::PluginlibException& ex) {
+    printf("Some other exception: %s\n", ex.what());
+  }
+  return 0;
+}
+
+run plugin_test plugin_tester
+Library load exception : According to the loaded plugin descriptions the class moveit_simple_controller_manager::MoveItSimpleControllerManager with base class type moveit_controller_manager::MoveItControllerManager does not exist. Declared types are 
+
+I've noticed that this time the standart moveit_simple_controller_manager/MoveItSimpleControllerManager doesn't seem to be found either as seen in the different messages. Right now my guess is that for loading MoveIt plugins some extra step is required that I have been unable to discover.
+I would be thankful if somebody could point me to the issue that is preventing MoveIt from finding and using my plugin.
+In case the issue lies with my plugin itself, here is that:
+
+Since I have discovered the issue to be with CMakeLists.txt I have shortened this part to the offending file
+
+CMakeLists.txt:
+cmake_minimum_required(VERSION 3.8)
+project(unity_controller)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_ros REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(trajectory_msgs REQUIRED)
+find_package(pluginlib REQUIRED)
+
+pluginlib_export_plugin_description_file(unity_controller plugins.xml)
+
+add_library(unity_controller src/unity_controller.cpp)
+target_compile_features(unity_controller PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_include_directories(unity_controller PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(
+  unity_controller
+  "trajectory_msgs"
+  "rclcpp"
+  "moveit_core"
+  "pluginlib"
+)
+
+# Causes the visibility macros to use dllexport rather than dllimport,
+# which is appropriate when building the dll but not consuming it.
+target_compile_definitions(unity_controller PRIVATE "UNITY_CONTROLLER_BUILDING_LIBRARY")
+
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+install(
+  TARGETS unity_controller
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_export_include_directories(
+  include
+)
+ament_export_libraries(
+  unity_controller
+)
+ament_export_targets(
+  export_${PROJECT_NAME}
+)
+
+ament_package()
+```
+
+A:
+
+I have now found the issue to be with Pluginlib and not not MoveIt specific. In CMakeLists.txt the line
+pluginlib_export_plugin_description_file(unity_controller plugins.xml)
+
+should be replaced with
+pluginlib_export_plugin_description_file(moveit_core plugins.xml)
+
+as this should contain the package the plugin is for and not the plugin's own.
+With this change the plugin is now discovered and used correctly.
+

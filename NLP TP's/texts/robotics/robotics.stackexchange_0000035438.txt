@@ -1,0 +1,73 @@
+Q:
+
+ROS Answers SE migration: Kinect amcl
+
+Hi everybody!
+I am testing amcl on a KUKA youBot equipped with a Kinect.
+Following this tutorial
+http://www.ros.org/wiki/navigation/Tutorials/Navigation%20Tuning%20Guide
+I move the robot with a joypad on the known map to check the amcl.
+This is what I obtain:
+http://www.youtube.com/watch?v=Bn0Bde0BjSs
+As you can see the correction for translation is quite good, te problem is that odom doesn't turn enough to in order to correct odometry in rotation.
+Here is my amcl file
+<launch>
+<node pkg="amcl" type="amcl" name="amcl">
+  <!-- Publish scans from best pose at a max of 10 Hz -->
+  <param name="base_frame_id" value="/base_footprint"/>
+  <param name="odom_model_type" value="omni"/>
+  <param name="odom_alpha5" value="0.5"/>
+  <param name="transform_tolerance" value="0.2" />
+  <param name="gui_publish_rate" value="10.0"/>
+  <param name="laser_max_beams" value="60"/>
+  <param name="min_particles" value="1000"/>
+  <param name="max_particles" value="10000"/>
+  <!--param name="kld_err" value="0.05"/-->
+  <param name="kld_z" value="0.99"/>
+  <param name="odom_alpha1" value="0.5"/>
+  <param name="odom_alpha2" value="0.5"/>
+  <!-- translation std dev, m -->
+  <param name="odom_alpha3" value="0.5"/>
+  <param name="odom_alpha4" value="0.5"/>
+  <param name="laser_z_hit" value="0.95"/>
+  <param name="laser_z_short" value="0.15"/>
+  <param name="laser_z_max" value="0.03"/>
+  <param name="laser_z_rand" value="0.01"/>
+  <param name="laser_sigma_hit" value="0.002"/>
+  <param name="laser_lambda_short" value="0.1"/>
+  <param name="laser_model_type" value="likelihood_field"/>
+  <param name="laser_likelihood_max_dist" value="4.0"/>
+  <param name="update_min_d" value="0.05"/>
+  <param name="update_min_a" value="0.05"/>
+  <param name="odom_frame_id" value="/odom"/>
+  <param name="resample_interval" value="1"/>
+  <param name="recovery_alpha_slow" value="0.001"/>
+  <param name="recovery_alpha_fast" value="0.1"/>
+  <param name="initial_pose_x" value="0.35"/>
+  <param name="initial_pose_y" value="1.08"/>
+  <param name="initial_pose_a" value="1.57"/>
+  <param name="first_map_only" value="true"/>
+  <param name="laser_max_range" value="4.0"/>
+  <param name="laser_min_range" value="0.6"/>
+</node>
+</launch>
+
+The youBot odometry is not so good, so I gave a high weight to odom parameters and I tried to trust much more the laser with a very low "laser_sigma_hit" parameter.
+Any suggesion to make it works better?
+Thank you guys
+
+Originally posted by Lorenzo on ROS Answers with karma: 76 on 2011-11-03
+Post score: 2
+
+A:
+
+Thanks for supplying the bag file; that always helps in trying to debug this sort of issue.
+It looks like the robot is consistently underreporting the actual rotation.  I watched the scans accumulate in the odom frame in rviz (as described here), and would estimate that it's underreporting by 5-10 degrees per rotation.
+amcl's odometry model assumes zero-mean noise. It has a hard time correcting for systematic bias, which your robot seems to exhibit.  If your robot is indeed always underreporting rotation (more data might be required to verify that), then I would try to correct the odometry before sending it to amcl.  You might try a variation on the TurtleBot calibration, which uses a wall as a fixed feature to compare to.  Or you might just inflate the reported yaw differences by 1-3%.  Either way, if there's a consistent bias, it should be possible to do a one-time correction (not a periodic re-calibration). Such a fix could probably be incorporated into the YouBot odometry calculation somewhere.
+If fixing the odometry is not feasible, I would try tuning amcl's odometry parameters.  In this situation, odom_alpha1 is probably the most important one to increase, with odom_alpha4 coming next.  I would leave the other parameters low (at their defaults).
+I would not increase confidence on the laser model; the Kinect isn't really giving you high-quality laser scans.  Instead, I would take the laser model configuration from turtlebot_navigation.
+
+Originally posted by Brian Gerkey with karma: 2916 on 2011-11-08
+This answer was ACCEPTED on the original site
+Post score: 5
+

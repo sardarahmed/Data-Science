@@ -1,0 +1,120 @@
+Q:
+
+"Using Callback Groups" demo is not working
+
+Hello,
+I am trying to use MultithreadExecutor in my ROS2 foxy application but it is not working. So I tried the demo code from the guide "Using callback groups" to see if it works. Even if I copy everything 1 to 1 I get the error (shown in the guide) as if I use a SingleThreadExecutor or no callback groups.
+I am using a Python package with the identical Python code from the demo.
+I am using a Docker container with Ubuntu 20.04 and ros-foxy-desktop installed.
+(C++ code worked but unfortunately can't program well in it).
+Server:
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import Empty
+
+class ServiceNode(Node):
+    def __init__(self):
+        super().__init__('service_node')
+        self.srv = self.create_service(Empty, 'test_service', callback=self.service_callback)
+
+    def service_callback(self, request, result):
+        self.get_logger().info('Received request, responding...')
+        return result
+
+def main():
+    rclpy.init()
+    node = ServiceNode()
+    try:
+        node.get_logger().info("Starting server node, shut down with CTRL-C")
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+    node.destroy_node()
+    rclpy.shutdown()
+
+Client:
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.node import Node
+from std_srvs.srv import Empty
+
+class CallbackGroupDemo(Node):
+    def __init__(self):
+        super().__init__('client_node')
+
+        client_cb_group = MutuallyExclusiveCallbackGroup()
+        timer_cb_group = MutuallyExclusiveCallbackGroup()
+        self.client = self.create_client(Empty, 'test_service', callback_group=client_cb_group)
+        self.call_timer = self.create_timer(1, self._timer_cb, callback_group=timer_cb_group)
+
+    def _timer_cb(self):
+        self.get_logger().info('Sending request')
+        _ = self.client.call(Empty.Request())
+        self.get_logger().info('Received response')
+
+def main():
+    rclpy.init()
+    node = CallbackGroupDemo()
+    executor = MultiThreadedExecutor(num_threads=3)
+    executor.add_node(node)
+
+    try:
+        node.get_logger().info('Beginning client, shut down with CTRL-C')
+        executor.spin()
+    except KeyboardInterrupt:
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+Originally posted by quirky_franklin on ROS Answers with karma: 31 on 2022-10-20
+Post score: 2
+
+Original comments
+Comment by ravijoshi on 2022-10-26:
+I am not sure which guide you are talking about. Therefore, may I request you share the URL of the source code, please?
+Comment by quirky_franklin on 2022-10-26:
+Of course here is the link: https://docs.ros.org/en/foxy/How-To-Guides/Using-callback-groups.html
+Comment by ravijoshi on 2022-10-27:
+Your code works fine! Just recompile your workspace, and try again please!
+Comment by ljaniec on 2022-10-27:
+Maybe it's a problem with your ROS2 configuration, this tutorial worked for me without problems. As @ravijoshi suggested, remove folders build, log and install from your ros2_ws and use colcon build --symlink install and source ~/ros2_ws/install/setub.bash again.
+Comment by quirky_franklin on 2022-10-27:
+Still the same errors:
+$python3 service.py 
+[INFO] [1666868240.642108465] [service_node]: Starting server node, shut down with CTRL-C
+[INFO] [1666868284.343087130] [service_node]: Received request, responding...
+[INFO] [1666868995.025454979] [service_node]: Keyboard interrupt, shutting down.
+
+$python3 client.py 
+Test
+[INFO] [1666868283.362897658] [client_node]: Beginning client, shut down with CTRL-C
+[INFO] [1666868284.341332508] [client_node]: Sending request
+^C[INFO] [1666868997.601692748] [client_node]: Keyboard interrupt, shutting down.
+
+Comment by oferbar on 2022-11-21:
+I'm having the same issue. I tried to reproduce the exact code in my ROS workspace (foxy container) without any luck. For some reason, any MultiThreadExecutor example that I tried to reproduce with Python this week seems to fail. By fail, I mean that it act like SingleThreadExecutor. I'm starting to believe that there is a wider problem here.
+Edit:
+After a few more frustrating hours, I managed to successfully reproduce the demos in Galactic workspace (without container), while the same code wouldn't work in a Foxy container.
+Comment by ravijoshi on 2022-11-22:
+@oferbar: I remember verifying the code. As per my comments, you can noticed that it worked fine. I suspect something wrong with the installation or environment. It could an interesting task to identify it in great details.
+
+A:
+
+Thank you very much for the replies. Since it doesn't seem to be ROS, I built a completely new Docker container. 
+In the new container it works! 
+Now I just need to figure out what is wrong with my main Docker container. But thats another story.
+
+Originally posted by quirky_franklin with karma: 31 on 2022-10-27
+This answer was ACCEPTED on the original site
+Post score: 1
+
+Original comments
+Comment by ljaniec on 2022-10-27:
+You should create an issue with this problem on the ROS Github (I think this one?), especially if the C++ example works in your docker and the Python one isn't.
+Comment by oferbar on 2022-11-22:
+For what its worth, I had the exact same problem with my Foxy container. Solved when I worked in a Galactic workspace without container.
+
