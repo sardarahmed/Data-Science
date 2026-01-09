@@ -4,7 +4,7 @@ def mapreduce(r1):
     mapped_data = []
 
     for a in r1:
-        mapped_data.append({a: 'r1'})
+        mapped_data.append([{a: 'r2'},{a: 'r1'}])
 
     return mapped_data
 
