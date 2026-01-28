@@ -7,7 +7,7 @@ my_function()
 
 # passing arguments to a function
 def my_function(fname):
-  print(fname + " Refsnes")
+  return print(fname + " Refsnes")
 
 my_function("Emil")
 my_function("Tobias")
