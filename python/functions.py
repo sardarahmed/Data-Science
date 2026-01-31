@@ -17,9 +17,15 @@ my_function("Linus")
 def my_function(country = "Norway"):
     print("I am from " + country)
 
+
+
+
 my_function("Sweden")
 my_function("Pakistan")
 my_function()
+
+
+
 
 # return values
 def my_function(x):
@@ -30,10 +36,18 @@ print(my_function(5))
 print(my_function(9))
 
 
+
+
+
+
 # passing a list as an argument
 def my_function(food):
   for x in food:
     print(x)
+
+
+
+
 
 fruits = ["apple", "banana", "cherry"]
 my_function(fruits)
@@ -43,6 +57,9 @@ def my_function(food):
   for x in food:
     print(x)
     return food
+
+
+
 
 fruits = ["apple", "banana", "cherry"]
 x = my_function(fruits)
