@@ -9,6 +9,9 @@ my_function()
 def my_function(fname):
   return print(fname + " Refsnes")
 
+
+
+
 my_function("Emil")
 my_function("Tobias")
 my_function("Linus")
@@ -16,6 +19,9 @@ my_function("Linus")
 # default parameter value
 def my_function(country = "Norway"):
     print("I am from " + country)
+
+
+
 
 
 
