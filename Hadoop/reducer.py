@@ -1,26 +1,21 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import sys
 
 current_word = None
-languages = set()
+current_count = 0
 
 for line in sys.stdin:
     line = line.strip()
-    word, language = line.split("\t")
+    word, count = line.split("\t",1)
+    count   = int(count)
 
-    if word == current_word:
-        # Add language to the set for the word
-        languages.add(language)
+
+    if current_word == word:
+        current_count += count
     else:
-        if current_word and len(languages) == 2:
-            # If both 'français' and 'english' appear for the current word
-            print(f"{current_word}\t0")
-        
-        # Update current word and reset languages set
+        if current_word:
+            print(f"{current_word}\t{current_count}")
         current_word = word
-        languages = {language}
+        current_count = count
 
-# Don't forget to output the last word if it has both languages
-if current_word and len(languages) == 2:
-    print(f"{current_word}\t0")
+if current_word:
+    print(f"{current_word}\t{current_count}")
