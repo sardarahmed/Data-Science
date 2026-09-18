@@ -1,36 +1,11 @@
-# Active SQL Notebook: joins.sql
-_Last updated: 9/18/2026, 4:25:46 PM_
-
-## How to edit cells (IMPORTANT for Cursor agents)
-
-SQL notebook cells are **virtual views** over a single plain-text file.
-You CANNOT edit virtual cell URIs directly — they are read-only in VS Code's file system.
-
-**Correct approach:** Edit `joins.sql` directly at the line ranges shown below.
-The notebook view updates automatically when the file changes.
-
-- Cell numbers are **1-based** — Cell 1 is the first cell, Cell 2 is the second, etc.
-- To edit Cell N: edit `joins.sql` at the line range shown under "Cell N" below
-- To add a new cell: insert `-- %%` followed by your SQL at the appropriate line
-- To delete a cell: remove its `-- %%` marker and SQL block from the file
-- Preserve all `-- %%` markers — they are the cell boundaries
-
-## Notebook structure (25 cells)
-
-### Cell 1 · lines 1–7 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 CREATE TABLE
     Customers (
         customerID INT PRIMARY KEY,
         customerName VARCHAR(50)
     )
-```
- 
 
-### Cell 2 · lines 8–16 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 cREATE TABLE
     Orders (
         orderID INT PRIMARY KEY,
@@ -38,12 +13,8 @@ cREATE TABLE
         orderDate DATE,
         FOREIGN KEY (customerID) REFERENCES Customers(customerID)
     )
-```
- 
 
-### Cell 3 · lines 17–31 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 INSERT INTO
     Customers (customerID, customerName)
 VALUES
@@ -57,24 +28,14 @@ VALUES
     (8, 'Grace Harris'),
     (9, 'Henry Jackson'),
     (10, 'Ivy King');
-```
- 
 
-### Cell 4 · lines 32–37 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     *
 FROM
     Customers;
-```
- 
-**Result:** 10 rows × 2 columns
-**Columns:** `customerID, customerName`
 
-### Cell 5 · lines 38–52 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 INSERT INTO
     orders (orderID, customerID, orderDate)
 VALUES
@@ -88,88 +49,54 @@ VALUES
     (8, 8, '2023-08-30'),
     (9, 9, '2023-09-14'),
     (10, 10, '2023-10-01');
-```
- 
 
-### Cell 6 · lines 53–58 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     *
 FROM
     orders;
-```
- 
-**Result:** 10 rows × 3 columns
-**Columns:** `orderID, customerID, orderDate`
 
-### Cell 7 · lines 59–66 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.customerName,
     orders.orderid
 FROM
     Customers
     INNER JOIN orders ON customers.customerID = orders.customerID;
-```
- 
-**Result:** 10 rows × 2 columns
-**Columns:** `customerName, orderID`
 
-### Cell 8 · lines 67–74 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.customerName,
     orders.orderid
 FROM
     Customers
     LEFT JOIN orders ON customers.customerID = orders.customerID;
-```
- 
-**Result:** 10 rows × 2 columns
-**Columns:** `customerName, orderID`
 
-### Cell 9 · lines 75–82 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.customerName,
     orders.orderid
 FROM
     Customers
     RIGHT JOIN orders ON customers.customerID = orders.customerID;
-```
- 
-**Result:** 10 rows × 2 columns
-**Columns:** `customerName, orderID`
 
-### Cell 10 · lines 83–90 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.customerName,
     orders.orderid
 FROM
     Customers
     FULL OUTER JOIN orders ON customers.customerID = orders.customerID;
-```
- 
-**Result:** 10 rows × 2 columns
-**Columns:** `customerName, orderID`
 
-### Cell 11 · lines 91–94 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 drop table if EXISTS customers;
 drop table if EXISTS orders;
-```
- 
 
-### Cell 13 · lines 99–123 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %% [md]
+Example pratice
+
+
+-- %%
 CREATE TABLE
     Customers (
         customer_id INT,
@@ -193,12 +120,8 @@ CREATE TABLE
         product_name VARCHAR(50),
         category VARCHAR(50)
     );
-```
- 
 
-### Cell 14 · lines 124–134 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 INSERT INTO
     Customers (customer_id, name, city)
 VALUES
@@ -208,12 +131,8 @@ VALUES
     (4, 'John', 'Paris'),
     (5, 'Maria', 'Nice'),
     (6, 'David', 'Marseille');
-```
- 
 
-### Cell 15 · lines 135–145 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 INSERT INTO
     Orders (order_id, customer_id, product_id, amount)
 VALUES
@@ -223,12 +142,8 @@ VALUES
     (104, 3, 1, 200),
     (105, 7, 2, 90),
     (106, 4, 4, 150);
-```
- 
 
-### Cell 16 · lines 146–155 · ✅ last run 3h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 INSERT INTO
     Products (product_id, product_name, category)
 VALUES
@@ -237,12 +152,8 @@ VALUES
     (3, 'Keyboard', 'Electronics'),
     (4, 'Chair', 'Furniture'),
     (5, 'Desk', 'Furniture');
-```
- 
 
-### Cell 17 · lines 156–165 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.customer_id,
     customers.name,
@@ -251,14 +162,8 @@ SELECT
 FROM
     customers
     INNER JOIN orders ON customers.customer_id = orders.customer_id;
-```
- 
-**Result:** 5 rows × 4 columns
-**Columns:** `customer_id, name, order_id, amount`
 
-### Cell 18 · lines 166–176 · ⚠ SQL changed — output is stale, re-run to refresh · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.name,
     orders.order_id,
@@ -268,14 +173,8 @@ FROM
     customers
     INNER JOIN orders ON customers.customer_id = orders.customer_id
     INNER JOIN products ON orders.product_id = products.product_id;
-```
- 
-**Result:** 5 rows × 4 columns
-**Columns:** `name, order_id, product_name, amount`
 
-### Cell 19 · lines 177–185 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     name,
     order_id,
@@ -283,14 +182,8 @@ SELECT
 FROM
     customers
     LEFT JOIN orders ON customers.customer_id = orders.customer_id;
-```
- 
-**Result:** 7 rows × 3 columns
-**Columns:** `name, order_id, amount`
 
-### Cell 20 · lines 186–195 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     name,
     order_id,
@@ -299,14 +192,8 @@ SELECT
 FROM
     customers
     RIGHT JOIN orders ON customers.customer_id = orders.customer_id;
-```
- 
-**Result:** 6 rows × 4 columns
-**Columns:** `name, order_id, amount, customer_id`
 
-### Cell 21 · lines 196–205 · ○ not yet run · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     name,
     order_id,
@@ -315,13 +202,8 @@ SELECT
 FROM
     customers
     FULL OUTER JOIN orders ON customers.customer_id = orders.customer_id;
-```
- 
-_Not yet executed_
 
-### Cell 22 · lines 206–215 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     
     orders.order_id,
@@ -330,40 +212,22 @@ SELECT
 FROM
     products
     LEFT JOIN orders ON products.product_id = orders.product_id;
-```
- 
-**Result:** 7 rows × 3 columns
-**Columns:** `order_id, product_name, amount`
 
-### Cell 23 · lines 216–222 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.name
 FROM
     customers
     LEFT JOIN orders ON customers.customer_id = orders.customer_id where orders.customer_id IS NULL;
-```
- 
-**Result:** 2 rows × 1 columns
-**Columns:** `name`
 
-### Cell 24 · lines 223–229 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     products.product_name
 FROM
     products
     LEFT JOIN orders ON products.product_id = orders.product_id where orders.product_id IS NULL;
-```
- 
-**Result:** 1 rows × 1 columns
-**Columns:** `product_name`
 
-### Cell 25 · lines 230–240 · ✅ last run 2h ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.name,
     products.product_name,
@@ -373,14 +237,8 @@ FROM
     INNER JOIN orders ON customers.customer_id = orders.customer_id 
     INNER JOIN products ON orders.product_id = products.product_id
     where orders.amount > 100;
-```
- 
-**Result:** 3 rows × 3 columns
-**Columns:** `name, product_name, amount`
 
-### Cell 26 · lines 241–250 · ✅ last run 35m ago · 🔌 mysql (sqlite)
- 
-```sql
+-- %%
 SELECT
     customers.name,
     COALESCE(SUM(orders.amount), 0) AS total_spent
@@ -390,7 +248,3 @@ FROM
 GROUP BY
     customers.customer_id,
     customers.name;
-```
- 
-**Result:** 6 rows × 2 columns
-**Columns:** `name, total_spent`
