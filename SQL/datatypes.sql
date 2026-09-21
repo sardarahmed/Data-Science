@@ -64,7 +64,6 @@ VALUES (
     x'89504E470D0A1A0A' 
 );
 
-
 -- %%
 drop TABLE  EMPLOYEES;
 
@@ -75,7 +74,6 @@ CREATE TABLE EMPLOYEES(
     Salary DECIMAL(10, 2),
     department VARCHAR(20)
 );
-
 
 -- %%
 INSERT INTO
@@ -109,12 +107,13 @@ where Salary > 60000;
 select firstName, lastName, Salary, department from EMPLOYEES where department IN ('MANAGER', 'DEVELOPER', 'DESIGNER');
 
 -- %%
-select firstName, lastName, Salary, department from Employees order by department ASC, salary DESC;
-
--- %%
-
-
--- %%
-
-
--- %%
+SELECT
+    firstName,
+    lastName,
+    Salary,
+    department
+FROM
+    Employees
+ORDER BY
+    department ASC,
+    salary DESC;
