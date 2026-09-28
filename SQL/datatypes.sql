@@ -31,7 +31,7 @@ VALUES
         995.59,
         5.5,
         "Ahmed",
-        "Nazar",
+        "Naz",
         "I live in France for my studies",
         '2026-09-17',
         '09:37:20',
@@ -104,7 +104,15 @@ from EMPLOYEES
 where Salary > 60000;
 
 -- %%
-select firstName, lastName, Salary, department from EMPLOYEES where department IN ('MANAGER', 'DEVELOPER', 'DESIGNER');
+SELECT
+    firstName,
+    lastName,
+    Salary,
+    department
+FROM
+    EMPLOYEES
+WHERE
+    department IN ('MANAGER', 'DEVELOPER', 'DESIGNER');
 
 -- %%
 SELECT

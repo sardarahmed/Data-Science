@@ -95,7 +95,6 @@ drop table if EXISTS orders;
 -- %% [md]
 Example pratice
 
-
 -- %%
 CREATE TABLE
     Customers (
@@ -248,3 +247,30 @@ FROM
 GROUP BY
     customers.customer_id,
     customers.name;
+
+-- %%
+SELECT
+    name
+FROM
+    customers;
+
+-- %%
+SELECT
+    name
+FROM
+    customers
+LIMIT
+    2 OFFSET 3;
+
+-- %%
+SELECT
+    customer_id
+FROM
+    customers
+UNION 
+SELECT
+    customer_id
+FROM
+    orders;
+
+-- %%
