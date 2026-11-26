@@ -274,3 +274,12 @@ FROM
     orders;
 
 -- %%
+SELECT
+    order_id
+FROM
+    orders
+UNION ALL
+SELECT
+    product_id
+FROM
+    products;
