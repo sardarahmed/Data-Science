@@ -1,0 +1,1 @@
+"""Independent RevenuePulse dashboard configurations."""
